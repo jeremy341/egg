@@ -42,6 +42,43 @@ describe("sprites", () => {
   });
 });
 
+describe("the bigger sprite", () => {
+  const cellsOf = (s: ReturnType<typeof parse>) => {
+    const out = new Map<string, number>();
+    for (let i = 0; i < s.cells.length; i += 3) out.set(`${s.cells[i]},${s.cells[i + 1]}`, s.cells[i + 2]);
+    return out;
+  };
+
+  it("draws a lone cell as four", () => {
+    expect(cellsOf(parse(["5"], 2)).size).toBe(4);
+  });
+
+  it("rounds the four corners of a block and nothing else", () => {
+    const big = cellsOf(parse(["555", "555", "555"], 2));
+    expect(big.size).toBe(32);
+    for (const corner of ["0,0", "5,0", "0,5", "5,5"]) expect(big.has(corner), corner).toBe(false);
+    for (const edge of ["1,0", "4,0", "0,1", "5,4", "2,2"]) expect(big.has(edge), edge).toBe(true);
+  });
+
+  it("cuts a stair-step into half steps", () => {
+    // A diagonal of two blocks: the cells that touch across the step take the neighbour's shade.
+    const flat = cellsOf(parse(["55.", "555", ".55"], 2));
+    const solid = cellsOf(parse(["555", "555", "555"], 2));
+    expect(flat.size).toBeLessThan(solid.size);
+    expect(flat.size).toBeGreaterThan(18);
+  });
+
+  it("keeps a hole a hole, and leaves characters out of the body", () => {
+    const sprite = parse(["5505>"], 2);
+    const big = cellsOf(sprite);
+    expect([...big.values()]).toContain(0);
+    expect(sprite.glyphs).toHaveLength(3);
+    expect(sprite.glyphs[0]).toBe(4);
+    // Nothing is drawn under the character.
+    for (const key of big.keys()) expect(Number(key.split(",")[0])).toBeLessThan(8);
+  });
+});
+
 describe("randomness", () => {
   it("hash is repeatable and inside 0..1", () => {
     for (let i = 0; i < 200; i++) {
