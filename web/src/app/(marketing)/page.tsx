@@ -32,7 +32,7 @@ const primary = cn(
 const secondary = cn(pill, "shadow-border-base bg-background hover:bg-[var(--ds-gray-100)]");
 
 /**
- * Text and two buttons, with the chickens (ChickenFieldLoader, in the layout) walking over the page
+ * Text and two buttons, with the chicken (ChickenFieldLoader, in the layout) walking over the page
  * in the browser; without them the hero is the plain grid. The headline is scanned in a pixel column at a time and the
  * rest rises in while the scan finishes. The hero fills the first screen under the 60px header, so
  * nothing else shows on load; the frame below starts under the fold (see GridFrame). It is sized
@@ -77,8 +77,8 @@ function Hero() {
         </p>
       </div>
       <p className="cf-hint" aria-hidden="true">
-        <span className="cf-fine">Click the grid to feed the chickens. Poke one, stroke one, pick one up.</span>
-        <span className="cf-coarse">Tap the grid to feed the chickens. Tap one to poke it.</span>
+        <span className="cf-fine">Click the grid to feed the chicken. Poke it, stroke it, pick it up.</span>
+        <span className="cf-coarse">Tap the grid to feed the chicken. Tap it to poke it.</span>
       </p>
     </section>
   );
