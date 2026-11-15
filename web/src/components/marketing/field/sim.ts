@@ -44,10 +44,17 @@ export function mirror(frame: Frame): string[] {
  * Scale2x and Scale3x, the classic pixel-art enlargements: a corner where two neighbours agree
  * and the other two differ takes the neighbour's shade, so the stair-steps of a diagonal edge
  * are cut into smaller steps and a big body is rounded instead of being a block-for-block
- * magnification. Any other `k` is a plain magnification. Characters (beaks, legs) are not body,
+ * magnification. `k` 4 is Scale2x twice. Any other `k` is a plain magnification. Characters (beaks, legs) are not body,
  * and a hole (shade 0) is enlarged and rounded like any shade, so an eye stays an eye.
  */
 export function upscale(frame: Frame, k: number): number[] {
+  // Four times is Scale2x twice: round, then round the rounded.
+  if (k === 4) {
+    const rows = Array.from({ length: frame.length * 2 }, () => Array<string>(frame[0].length * 2).fill("."));
+    const t = upscale(frame, 2);
+    for (let i = 0; i < t.length; i += 3) rows[t[i + 1]][t[i]] = String(t[i + 2]);
+    return upscale(rows.map((r) => r.join("")), 2);
+  }
   const h = frame.length;
   const w = frame[0].length;
   const at = (x: number, y: number) => {
