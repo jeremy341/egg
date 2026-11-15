@@ -58,8 +58,8 @@ describe("the chicken", () => {
     expect(legs.size).toBe(3);
   });
 
-  it("is one big chicken, drawn at least three times the sprite size", () => {
-    expect(chick.scale).toBeGreaterThanOrEqual(3);
+  it("is one chicken, about as big as Orry: the sprite drawn twice as large", () => {
+    expect(chick.scale).toBe(2);
     expect(chick.count).toEqual([1, 1, 1]);
   });
 

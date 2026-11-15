@@ -256,7 +256,7 @@ export const SPECIES: readonly Species[] = [
     reach: 50,
     wake: ",'",
     glow: 2,
-    scale: 3,
+    scale: 2,
   },
 ];
 
