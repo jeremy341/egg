@@ -308,7 +308,7 @@ describe("secrets never show", () => {
 
   it("drops secret-looking values under any key", () => {
     const secrets = [
-      "nd_3f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c",
+      "egg_3f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c",
       "ghp_16C7e42F292c6912E7710c838347Ae178B4a",
       "github_pat_11ABCDEFG0abcdefghijkl",
       "sk-proj-AbCdEf0123456789",
@@ -346,7 +346,7 @@ describe("secrets never show", () => {
   });
 
   it("never lets a secret reach a field, the sentence or the search text", () => {
-    const secret = "nd_3f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c";
+    const secret = "egg_3f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c";
     const m = formatMeta("project.update", { fields: "branch", note: secret, token: secret, password: "p" });
     expect(JSON.stringify(m)).not.toContain(secret);
     expect(JSON.stringify(m)).not.toContain('"p"');

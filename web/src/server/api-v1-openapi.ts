@@ -21,10 +21,10 @@ const ERROR_TEXT: Record<number, string> = {
   502: "The container could not be reached.",
 };
 
-const DESCRIPTION = `Manage your Nest Deploy projects from scripts and AI agents: read and change projects, deployments, environment variables, domains and settings, and (with their own tightly limited permissions) use a terminal and files on the container.
+const DESCRIPTION = `Manage your Egg projects from scripts and AI agents: read and change projects, deployments, environment variables, domains and settings, and (with their own tightly limited permissions) use a terminal and files on the container.
 
 Authenticate every request with a personal access token created in Account:
-\`Authorization: Bearer ndp_...\`. Browser sessions (cookies) are never accepted here. Each token has scopes; an endpoint needs the one listed on it.
+\`Authorization: Bearer egg_...\`. Browser sessions (cookies) are never accepted here. Each token has scopes; an endpoint needs the one listed on it.
 
 Rate limits are per token: ${API_LIMITS.read.limit} requests a minute for reads and ${API_LIMITS.write.limit} a minute for changes. Anything that opens an SSH session to your container (inventory, file access, deployment logs, resource history, opening a terminal) shares a smaller allowance of ${API_LIMITS.ssh.limit} a minute, and terminal keystrokes get ${API_LIMITS.input.limit} a minute. Past that you get 429 with a Retry-After header.
 
@@ -120,7 +120,7 @@ export function buildOpenApi(): Json {
 
   const doc: Json = {
     openapi: "3.1.0",
-    info: { title: "Nest Deploy API", version: "1.0.0", description: DESCRIPTION },
+    info: { title: "Egg API", version: "1.0.0", description: DESCRIPTION },
     servers: [{ url: "/api/v1" }],
     tags: [...new Set(ENDPOINTS.map((e) => e.tag)), "Meta"].map((name) => ({ name })),
     security: [{ bearerAuth: [] }],
@@ -130,7 +130,7 @@ export function buildOpenApi(): Json {
         bearerAuth: {
           type: "http",
           scheme: "bearer",
-          description: `A personal access token starting with ndp_. Scopes: ${SCOPES.map((s) => `${s} (${SCOPE_LABEL[s]})`).join("; ")}.`,
+          description: `A personal access token starting with egg_. Scopes: ${SCOPES.map((s) => `${s} (${SCOPE_LABEL[s]})`).join("; ")}.`,
         },
       },
       schemas: {

@@ -114,7 +114,7 @@ describe("a preview that fails its health check", () => {
 
     const after = await row(dep.id);
     expect(after.state).toBe("error");
-    const unit = `nd-edge-app-pv-${after.releaseId.slice(0, 8)}.service`;
+    const unit = `egg-edge-app-pv-${after.releaseId.slice(0, 8)}.service`;
     const left = (await sh("ls $HOME/units")).split(/\s+/);
     expect(left).not.toContain(unit);
   }, 60_000);

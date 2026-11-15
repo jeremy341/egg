@@ -10,7 +10,7 @@ export async function GET() {
   }
   const { url, state } = githubAuthorizeUrl();
   const res = NextResponse.redirect(url, 303);
-  res.cookies.set("nd_gh_state", state, {
+  res.cookies.set("egg_gh_state", state, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",

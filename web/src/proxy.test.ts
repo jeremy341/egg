@@ -8,7 +8,7 @@ function request(path: string, cookie?: string) {
   });
 }
 
-const SIGNED_IN = "nd_session=abc";
+const SIGNED_IN = "egg_session=abc";
 
 describe("docs are for signed-in people only", () => {
   it.each(["/docs", "/docs/quickstart"])("sends a signed-out visitor from %s to /login", (path) => {

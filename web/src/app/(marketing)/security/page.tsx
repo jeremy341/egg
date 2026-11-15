@@ -79,16 +79,16 @@ export default function SecurityPage() {
                 dashboard, and you can delete it there at any time.
               </Term>
               <Term name="A folder for each project">
-                <Code>~/.nest-deploy/&lt;project&gt;/</Code> holds the releases, an upload area, a <Code>shared/</Code>{" "}
-                folder that deploys never touch, and a marker file named <Code>.nest-deploy-managed</Code>.
+                <Code>~/.egg/&lt;project&gt;/</Code> holds the releases, an upload area, a <Code>shared/</Code>{" "}
+                folder that deploys never touch, and a marker file named <Code>.egg-managed</Code>.
               </Term>
               <Term name="One service for each project">
-                A systemd service named <Code>nd-&lt;project&gt;</Code>. A branch preview gets its own service, named{" "}
-                <Code>nd-&lt;project&gt;-pv-</Code> and eight more characters. Each one carries a{" "}
-                <Code># nest-deploy:managed</Code> comment.
+                A systemd service named <Code>egg-&lt;project&gt;</Code>. A branch preview gets its own service, named{" "}
+                <Code>egg-&lt;project&gt;-pv-</Code> and eight more characters. Each one carries a{" "}
+                <Code># egg:managed</Code> comment.
               </Term>
               <Term name="The current link">
-                <Code>~/.nest-deploy/&lt;project&gt;/current</Code> is a link to the live release. A deploy points it at
+                <Code>~/.egg/&lt;project&gt;/current</Code> is a link to the live release. A deploy points it at
                 the new release and a rollback points it back.
               </Term>
             </Terms>
@@ -99,7 +99,7 @@ export default function SecurityPage() {
             <Sub>What it never touches</Sub>
             <p className="m-0">
               Anything that does not carry one of those markers. A service or folder you made yourself is not
-              overwritten, stopped or removed, even if its name starts with <Code>nd-</Code>. Before a first deploy
+              overwritten, stopped or removed, even if its name starts with <Code>egg-</Code>. Before a first deploy
               Egg checks the container for apps that are already running and for ports and service names that are
               already taken.
             </p>
@@ -124,8 +124,8 @@ export default function SecurityPage() {
                 access: a changed file can change the code your app runs the next time it restarts.
               </Term>
               <Term name="Removing leftovers (off by default)">
-                Stops and removes services whose names start with <Code>nd-</Code>, and folders inside{" "}
-                <Code>~/.nest-deploy</Code> that no project uses any more. It only removes what carries Egg&apos;s
+                Stops and removes services whose names start with <Code>egg-</Code>, and folders inside{" "}
+                <Code>~/.egg</Code> that no project uses any more. It only removes what carries Egg&apos;s
                 marker, and it asks you to confirm each removal.
               </Term>
             </Terms>
@@ -350,7 +350,7 @@ export default function SecurityPage() {
             </p>
             <Points>
               <li>
-                The <Code>X-NestDeploy-Signature</Code> header carries a timestamp and an HMAC-SHA256 of the timestamp
+                The <Code>X-Egg-Signature</Code> header carries a timestamp and an HMAC-SHA256 of the timestamp
                 and the body, made with that webhook&apos;s secret. Your receiver should also refuse a timestamp more
                 than five minutes old.
               </li>
@@ -443,10 +443,17 @@ export default function SecurityPage() {
             <Sub>When you disconnect a server</Sub>
             <p className="m-0">
               Egg first closes any terminal open on that server, so a root shell cannot outlive its key. Then it deletes
-              its record of the server: the encrypted SSH key, and with it every project on that server, their
-              environment variables, deployments and build logs, domains, usage and page-view numbers, and alert
-              history. It does not connect to the container while doing this, so nothing on the container is changed and
-              your apps keep running. Your tokens and your activity log are not tied to a server, so they stay.
+              its copy of the encrypted SSH key and the pinned host key, so Egg cannot connect to the container again. It
+              does not connect to the container while doing this, so nothing on the container is changed and your apps
+              keep running. Your tokens and your activity log are not tied to a server, so they stay.
+            </p>
+            <p className="m-0">
+              Whether the projects on that server go too is your choice. The confirmation has a box, unchecked, that
+              reads &quot;Also delete the projects on this server&quot; with the number of them. Left unchecked, the
+              projects stay, with their environment variables, deployments, build logs and domains. Their apps keep
+              running, but Egg stops managing them until you connect the same Nest account again. If you check the box,
+              the projects are deleted with their environment variables, deployments and build logs, domains, usage and
+              page-view numbers, and alert history.
             </p>
             <Sub>Remove Egg completely</Sub>
             <p className="m-0">
@@ -454,19 +461,19 @@ export default function SecurityPage() {
               off access.
             </p>
             <ol className="m-0 flex list-decimal flex-col gap-2 pl-5 marker:text-muted-foreground">
-              <li>In Egg, disconnect the server. Egg cannot connect to the container again.</li>
+              <li>In Egg, disconnect the server. Egg cannot connect to the container again. Check the box to also delete its projects, or leave it to keep them.</li>
               <li>
                 In the Nest dashboard, delete the key on the SSH Keys page. Egg shows the key&apos;s fingerprint, and
-                the key&apos;s comment is <Code>nest-deploy:</Code> followed by your Nest username. Once it is deleted,
+                the key&apos;s comment is <Code>egg:</Code> followed by your Nest username. Once it is deleted,
                 nothing can use it, even a copy.
               </li>
             </ol>
             <Sub>What stays on the container</Sub>
             <p className="m-0">
-              Your apps keep running. The <Code>~/.nest-deploy</Code> folder, with its releases, <Code>shared/</Code>{" "}
-              files and <Code>.env</Code> files, and the <Code>nd-</Code> services also stay, because Egg does not
-              reconnect to clean up. To clear them, stop and delete the <Code>nd-</Code> services and delete{" "}
-              <Code>~/.nest-deploy</Code> yourself. Do that after you have copied anything in <Code>shared/</Code> that
+              Your apps keep running. The <Code>~/.egg</Code> folder, with its releases, <Code>shared/</Code>{" "}
+              files and <Code>.env</Code> files, and the <Code>egg-</Code> services also stay, because Egg does not
+              reconnect to clean up. To clear them, stop and delete the <Code>egg-</Code> services and delete{" "}
+              <Code>~/.egg</Code> yourself. Do that after you have copied anything in <Code>shared/</Code> that
               you want to keep.
             </p>
           </Section>

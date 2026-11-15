@@ -3,7 +3,7 @@
  * tested directly and the same rules run before any SSH call is made.
  *
  * Paths are relative to the project's folder on the container
- * (`<home>/.nest-deploy/<slug>/`). The empty string is the folder itself.
+ * (`<home>/.egg/<slug>/`). The empty string is the folder itself.
  *
  *   shared/**    writable (when the owner has turned file changes on), survives deploys
  *   current/**   readable, never writable: `current` points at the live release,
@@ -141,7 +141,7 @@ export function assertSimpleName(name: string): string {
 /**
  * Symlink containment, on resolved (real) paths. `realPath` must already have
  * had every symlink followed (`readlink -f`). Whole-segment prefix match, so
- * `/home/x/.nest-deploy/app-evil` is not inside `/home/x/.nest-deploy/app`.
+ * `/home/x/.egg/app-evil` is not inside `/home/x/.egg/app`.
  */
 export function isInsideRoot(realRoot: string, realPath: string): boolean {
   const root = realRoot.replace(/\/+$/, "");

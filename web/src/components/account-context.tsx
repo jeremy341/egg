@@ -6,7 +6,7 @@ export type AccountServer = {
   id: string;
   nestUsername: string;
   host: string;
-  status: "pending" | "connected" | "error";
+  status: "pending" | "connected" | "error" | "disconnected";
 };
 
 export type Account = {

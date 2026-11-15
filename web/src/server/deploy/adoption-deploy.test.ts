@@ -82,7 +82,7 @@ afterAll(async () => {
   for (const unit of (await sh("ls $HOME/units 2>/dev/null || true")).split(/\s+/).filter(Boolean)) {
     await sh(`systemctl stop ${unit}`).catch(() => {});
   }
-  await sh("pkill -f nd-adopt-listener || true").catch(() => {});
+  await sh("pkill -f egg-adopt-listener || true").catch(() => {});
   await mock.stop();
   await ctx.cleanup();
 });
@@ -90,30 +90,30 @@ afterAll(async () => {
 describe("a unit that is not ours", () => {
   it("is never overwritten, and nothing else is created", async () => {
     const p = await makeProject("clash");
-    mock.writeFile(`${home}/units/nd-clash.service`, "[Service]\nExecStart=/usr/bin/true\n");
+    mock.writeFile(`${home}/units/egg-clash.service`, "[Service]\nExecStart=/usr/bin/true\n");
     const { row } = await deploy(p);
     expect(row.state).toBe("error");
-    expect(row.error).toContain("nd-clash.service");
-    expect(await sh(`cat ${home}/units/nd-clash.service`)).toBe("[Service]\nExecStart=/usr/bin/true");
-    expect(await sh(`[ -e ${home}/.nest-deploy/clash ] && echo made || echo none`)).toBe("none");
+    expect(row.error).toContain("egg-clash.service");
+    expect(await sh(`cat ${home}/units/egg-clash.service`)).toBe("[Service]\nExecStart=/usr/bin/true");
+    expect(await sh(`[ -e ${home}/.egg/clash ] && echo made || echo none`)).toBe("none");
   });
 });
 
 describe("a folder that is not ours", () => {
-  it("keeps a user's git checkout at ~/.nest-deploy/<slug> untouched and refuses to deploy", async () => {
+  it("keeps a user's git checkout at ~/.egg/<slug> untouched and refuses to deploy", async () => {
     const p = await makeProject("mycheckout");
-    mock.writeFile(`${home}/.nest-deploy/mycheckout/.git/config`, '[remote "origin"]\n\turl = https://github.com/owner/demo\n');
-    mock.writeFile(`${home}/.nest-deploy/mycheckout/server.js`, "// mine");
+    mock.writeFile(`${home}/.egg/mycheckout/.git/config`, '[remote "origin"]\n\turl = https://github.com/owner/demo\n');
+    mock.writeFile(`${home}/.egg/mycheckout/server.js`, "// mine");
     const { row } = await deploy(p);
     expect(row.state).toBe("error");
-    expect(row.error).toMatch(/checkout|not created by Nest Deploy/);
-    expect(await sh(`cat ${home}/.nest-deploy/mycheckout/server.js`)).toBe("// mine");
-    expect(await sh(`ls ${home}/.nest-deploy/mycheckout`)).not.toContain("releases");
+    expect(row.error).toMatch(/checkout|not created by Egg/);
+    expect(await sh(`cat ${home}/.egg/mycheckout/server.js`)).toBe("// mine");
+    expect(await sh(`ls ${home}/.egg/mycheckout`)).not.toContain("releases");
   });
 
   it("refuses a folder that is a symlink instead of writing through it", async () => {
     const p = await makeProject("linked");
-    await sh(`mkdir -p ${home}/elsewhere && mkdir -p ${home}/.nest-deploy && ln -s ${home}/elsewhere ${home}/.nest-deploy/linked`);
+    await sh(`mkdir -p ${home}/elsewhere && mkdir -p ${home}/.egg && ln -s ${home}/elsewhere ${home}/.egg/linked`);
     const { row } = await deploy(p);
     expect(row.state).toBe("error");
     expect(await sh(`ls -A ${home}/elsewhere | wc -l`)).toBe("0");
@@ -121,11 +121,11 @@ describe("a folder that is not ours", () => {
 
   it("is not removed with the project, even when asked to delete data", async () => {
     const p = await makeProject("keepme");
-    mock.writeFile(`${home}/.nest-deploy/keepme/notes.txt`, "precious");
-    mock.writeFile(`${home}/units/nd-keepme.service`, "[Service]\nExecStart=/usr/bin/true\n");
+    mock.writeFile(`${home}/.egg/keepme/notes.txt`, "precious");
+    mock.writeFile(`${home}/units/egg-keepme.service`, "[Service]\nExecStart=/usr/bin/true\n");
     await removeProjectFromServer(userId, p.id, { deleteData: true, unitDir: `${home}/units` });
-    expect(await sh(`cat ${home}/.nest-deploy/keepme/notes.txt`)).toBe("precious");
-    expect(await sh(`cat ${home}/units/nd-keepme.service`)).toContain("ExecStart=/usr/bin/true");
+    expect(await sh(`cat ${home}/.egg/keepme/notes.txt`)).toBe("precious");
+    expect(await sh(`cat ${home}/units/egg-keepme.service`)).toContain("ExecStart=/usr/bin/true");
   });
 });
 
@@ -133,13 +133,13 @@ describe("a port that is already taken", () => {
   it("refuses the deploy and leaves the other process running", async () => {
     const p = await makeProject("busyport");
     await sh(
-      `setsid nohup node -e "require('http').createServer((q,r)=>r.end('theirs')).listen(${p.port},'0.0.0.0'); /* nd-adopt-listener */" >/dev/null 2>&1 < /dev/null & sleep 1`
+      `setsid nohup node -e "require('http').createServer((q,r)=>r.end('theirs')).listen(${p.port},'0.0.0.0'); /* egg-adopt-listener */" >/dev/null 2>&1 < /dev/null & sleep 1`
     );
     const { row } = await deploy(p);
     expect(row.state).toBe("error");
     expect(row.error).toContain(String(p.port));
     expect(await sh(`curl -s --max-time 3 http://127.0.0.1:${p.port}/`)).toBe("theirs");
-    expect(await sh(`[ -e ${home}/units/nd-busyport.service ] && echo made || echo none`)).toBe("none");
+    expect(await sh(`[ -e ${home}/units/egg-busyport.service ] && echo made || echo none`)).toBe("none");
   });
 });
 
@@ -158,7 +158,7 @@ describe("the same repo already running by hand", () => {
     await sh("systemctl stop myapp.service");
     expect(row.state).toBe("error");
     expect(row.error).toContain("myapp.service");
-    expect(await sh(`[ -e ${home}/units/nd-twice.service ] && echo made || echo none`)).toBe("none");
+    expect(await sh(`[ -e ${home}/units/egg-twice.service ] && echo made || echo none`)).toBe("none");
   });
 });
 
@@ -181,8 +181,8 @@ describe("the user's own keys", () => {
     mock.writeFile(`${home}/old-clone/.git/config`, '[remote "origin"]\n\turl = https://github.com/owner/demo\n');
     const { row, logs } = await deploy(p);
     expect(row.state, logs).toBe("ready");
-    expect(await sh(`cat ${home}/units/nd-alongside.service`)).toContain("# nest-deploy:managed");
-    expect(await sh(`ls -A ${home}/.nest-deploy/alongside`)).toContain(".nest-deploy-managed");
+    expect(await sh(`cat ${home}/units/egg-alongside.service`)).toContain("# egg:managed");
+    expect(await sh(`ls -A ${home}/.egg/alongside`)).toContain(".egg-managed");
     expect(await sh(`ls ${home}/old-clone/.git`)).toBe("config");
     // A second deploy of our own project is not mistaken for a conflict.
     const again = await deploy(p);

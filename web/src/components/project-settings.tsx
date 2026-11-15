@@ -354,7 +354,7 @@ export function ProjectSettings({
           <Card
             id="danger-heading"
             title="Delete Project"
-            description="Removes the project from Nest Deploy. Optionally stops it and deletes its releases on your server first."
+            description="Removes the project from Egg. Optionally stops it and deletes its releases on your server first."
             tone="danger"
             footer={
               <>

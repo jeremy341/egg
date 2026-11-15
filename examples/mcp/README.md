@@ -1,6 +1,6 @@
 # Connect an AI agent over MCP
 
-The MCP address is `https://your-nest-deploy/api/mcp`. Replace it and `ndp_...` with your own address and token.
+The MCP address is `https://your-egg/api/mcp`. Replace it and `egg_...` with your own address and token.
 
 - `cursor.json`: add it to Cursor's MCP settings (`~/.cursor/mcp.json`, or `.cursor/mcp.json` in a project).
 - `claude-desktop.json`: add it to Claude Desktop's `claude_desktop_config.json`. Claude Desktop starts local programs, so this uses the third-party `mcp-remote` bridge to reach an HTTP address.

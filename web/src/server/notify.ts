@@ -100,7 +100,7 @@ type Message = { title: string; detail: string; link: string };
 function payload(kind: Kind, m: Message) {
   const text = `${m.title}\n${m.detail}\n${m.link}`;
   return kind === "discord"
-    ? { username: "Nest Deploy", content: text, allowed_mentions: { parse: [] } }
+    ? { username: "Egg", content: text, allowed_mentions: { parse: [] } }
     : { text };
 }
 
@@ -130,7 +130,7 @@ export async function sendTestNotification(
     url,
     kind,
     {
-      title: `Test from Nest Deploy for ${project.name}`,
+      title: `Test from Egg for ${project.name}`,
       detail: "If you can read this, deployment messages will arrive here.",
       link: appLink(`/projects/${project.slug}`),
     },

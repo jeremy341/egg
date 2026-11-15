@@ -1,4 +1,4 @@
-// Create the Nest Deploy GitHub App for this machine, without copying secrets by hand.
+// Create the Egg GitHub App for this machine, without copying secrets by hand.
 //
 //   node scripts/create-github-app.mjs
 //
@@ -23,7 +23,7 @@ const APP_URL = process.env.APP_URL ?? "http://localhost:3100";
 const STATE = randomBytes(16).toString("hex");
 
 const manifest = {
-  name: `Nest Deploy (${process.env.USER ?? process.env.USERNAME ?? "local"}-${STATE.slice(0, 4)})`,
+  name: `Egg (${process.env.USER ?? process.env.USERNAME ?? "local"}-${STATE.slice(0, 4)})`,
   url: APP_URL,
   description: "Deploys GitHub repositories to a Hack Club Nest container.",
   public: false,
@@ -45,10 +45,10 @@ function page() {
   const body = JSON.stringify(manifest).replace(/</g, "\\u003c");
   return `<!doctype html>
 <meta charset="utf-8">
-<title>Create the Nest Deploy GitHub App</title>
+<title>Create the Egg GitHub App</title>
 <body style="font-family: system-ui; max-width: 36rem; margin: 3rem auto; line-height: 1.5">
 <h1>Create the GitHub App</h1>
-<p>This sends the Nest Deploy app settings to GitHub. You will see GitHub's own page with the name and permissions. Press <b>Create GitHub App</b> there.</p>
+<p>This sends the Egg app settings to GitHub. You will see GitHub's own page with the name and permissions. Press <b>Create GitHub App</b> there.</p>
 <form id="f" method="post" action="https://github.com/settings/apps/new?state=${STATE}">
   <input type="hidden" name="manifest" value="">
   <button type="submit" style="font-size: 1rem; padding: 0.5rem 1rem">Continue to GitHub</button>
@@ -101,7 +101,7 @@ const server = createServer(async (req, res) => {
     try {
       const r = await fetch(`https://api.github.com/app-manifests/${encodeURIComponent(code)}/conversions`, {
         method: "POST",
-        headers: { accept: "application/vnd.github+json", "user-agent": "nest-deploy-setup" },
+        headers: { accept: "application/vnd.github+json", "user-agent": "egg-setup" },
       });
       if (!r.ok) throw new Error(`GitHub answered ${r.status}`);
       const app = await r.json();
@@ -114,7 +114,7 @@ const server = createServer(async (req, res) => {
         GITHUB_WEBHOOK_SECRET: app.webhook_secret ?? "",
       });
       console.log(`Created app ${app.slug} (id ${app.id}). Credentials written to web/.env.local.`);
-      console.log(`Next: install it on your account and choose the nest-deploy repo: ${app.html_url}/installations/new`);
+      console.log(`Next: install it on your account and choose the egg repo: ${app.html_url}/installations/new`);
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       res.end(`<body style="font-family: system-ui; max-width: 36rem; margin: 3rem auto"><h1>Done</h1><p>The app was created and its credentials were saved. You can close this tab and go back to the terminal.</p><p><a href="${app.html_url}/installations/new">Install it on your account</a></p></body>`);
       setTimeout(() => server.close(() => process.exit(0)), 300);

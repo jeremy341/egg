@@ -10,7 +10,7 @@ describe("webhook signature", () => {
     expect(signWebhook(SECRET, BODY, 1_700_000_000)).toBe(
       "t=1700000000,v1=ec2157b7a227ff44d17d9aee9c1c0d109531eabb07b95b9210c3694c24cff8c9"
     );
-    expect(SIGNATURE_HEADER).toBe("X-NestDeploy-Signature");
+    expect(SIGNATURE_HEADER).toBe("X-Egg-Signature");
   });
 
   it("verifies a fresh signature and refuses a changed body, timestamp or secret", () => {

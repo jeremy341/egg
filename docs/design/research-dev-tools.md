@@ -41,7 +41,7 @@ Centred giant headline plus two pills; div-built fake dashboards; round-number s
 
 ## Ten homepage section ideas for Egg
 
-Facts from `public-site-direction.md`: 5 releases kept, 2 previews, health check up to 45 s, `current` link, `nd-<slug>.service`, three switches off by default.
+Facts from `public-site-direction.md`: 5 releases kept, 2 previews, health check up to 45 s, `current` link, `egg-<slug>.service`, three switches off by default.
 
 1. **Push to live timeline.** A real-time-scaled strip: push, build, new release folder, health check, `current` switches. Proves a release only goes live once the app answers on its port.
 2. **Rollback you can press.** Five release chips; click an older one and `current` moves. Proves the last five releases stay on disk and rollback is a switch.
@@ -49,7 +49,7 @@ Facts from `public-site-direction.md`: 5 releases kept, 2 previews, health check
 4. **What it touches table.** Two columns: "Egg changes" (one release folder, one service, a `current` link) and "Egg never touches" (everything else on your container until you flip a switch). Proves least-touch and the default-off permissions.
 5. **Three switches, all off.** Terminal, File changes, Removing leftovers as real toggles with one sentence each on what turning it on allows. Proves the student stays in control.
 6. **Before and after the tmux bot.** Left: `tmux` session dies at lunch. Right: same bot, restarts after a push. Proves the problem in the visitor's own terms.
-7. **Where does it run: your Nest.** A path diagram `~/.nest-deploy/<slug>/releases/<id>`, then `current`, then `nd-<slug>.service`. Proves it runs on your container, not a hosted platform.
+7. **Where does it run: your Nest.** A path diagram `~/.egg/<slug>/releases/<id>`, then `current`, then `egg-<slug>.service`. Proves it runs on your container, not a hosted platform.
 8. **Preview before production.** A branch push becomes a preview, two kept. Proves previews exist and are capped.
 9. **Goal-to-answer table (from Supabase).** "I have a bot", "I have a static site", "I want to roll back", "I want to leave", each linking to a docs page. Proves the docs answer first questions.
 10. **Open and leaveable footer.** Commit link, source link, status link, plus "remove Egg" steps. Proves it is inspectable and you can walk away without losing the app.

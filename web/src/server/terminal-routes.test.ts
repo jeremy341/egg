@@ -62,7 +62,7 @@ beforeEach(() => {
     },
     audit: async () => {},
   });
-  (globalThis as unknown as Record<symbol, unknown>)[Symbol.for("nest-deploy.terminal-manager")] = manager;
+  (globalThis as unknown as Record<symbol, unknown>)[Symbol.for("egg.terminal-manager")] = manager;
   auth.user = ALICE;
 });
 

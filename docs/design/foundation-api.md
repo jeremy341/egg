@@ -68,6 +68,6 @@ Built by the Foundation workstream from `ui-spec.md`. Use these instead of writi
 
 ## Notes
 
-- Keyframes are prefixed `nd-`, so they don't collide with `tw-animate-css`'s `enter` and `exit`.
+- Keyframes are prefixed `egg-`, so they don't collide with `tw-animate-css`'s `enter` and `exit`.
 - `shadow-border-base` was missing before, so outline buttons, Segmented and a few others now show the hairline they were written for.
 - Reduced motion is handled by one global block. Still, never rely on motion to convey information.

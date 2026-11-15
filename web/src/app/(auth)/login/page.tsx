@@ -7,7 +7,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LoadingRegion, Skeleton, SkeletonText } from "@/components/ui/skeleton";
 import { pixel } from "@/lib/fonts";
-import { config, hackClubConfigured } from "@/server/config";
+import { config, hackClubConfigured, localModeEnabled } from "@/server/config";
 import { cn } from "@/lib/utils";
 
 export const metadata = { title: "Log in" };
@@ -76,9 +76,10 @@ async function LoginContent({
 }) {
   const { error } = await searchParams;
   const hackClub = hackClubConfigured();
+  const local = localModeEnabled();
   const dev = config().DEV_LOGIN && process.env.NODE_ENV !== "production";
   // When sign-in is not set up, the note below already says so.
-  const showError = error && !(error === "not_configured" && !hackClub);
+  const showError = error && !(error === "not_configured" && !hackClub && !local);
 
   return (
     <main className={cn(pixel.variable, shell)}>
@@ -87,7 +88,7 @@ async function LoginContent({
         <div className="motion-enter">
           <Link
             href="/"
-            aria-label="Nest Deploy, home"
+            aria-label="Egg, home"
             className="mx-auto block w-fit rounded-md outline-offset-4"
           >
             <NestMark className="mx-auto size-10" />
@@ -97,7 +98,7 @@ async function LoginContent({
           style={delay(60)}
           className="motion-enter font-pixel mt-6 text-center text-[28px] leading-8 font-medium"
         >
-          Log in to Nest Deploy
+          Log in to Egg
         </h1>
 
         <div
@@ -110,6 +111,17 @@ async function LoginContent({
             </Notice>
           ) : null}
 
+          {local ? (
+            <form action="/api/auth/local" method="post" className={hackClub ? "mb-3" : undefined}>
+              <Button type="submit" size="lg" className="w-full">
+                Sign in on this computer
+              </Button>
+              <p className="mt-3 text-center text-[13px] text-muted-foreground">
+                Local mode is on, so no account is needed. Anyone who can open this page can sign in.
+              </p>
+            </form>
+          ) : null}
+
           {hackClub ? (
             <a
               href="/api/auth/login"
@@ -117,7 +129,7 @@ async function LoginContent({
             >
               Continue with Hack Club
             </a>
-          ) : (
+          ) : local ? null : (
             <>
               <Button size="lg" className="w-full" disabled aria-describedby="login-unavailable">
                 Continue with Hack Club
@@ -127,10 +139,12 @@ async function LoginContent({
               </Notice>
             </>
           )}
-          <p className="mt-4 text-center text-[13px] text-muted-foreground">
-            Hack Club Auth only confirms who you are. It doesn&apos;t give Nest Deploy access to your
-            server.
-          </p>
+          {hackClub || !local ? (
+            <p className="mt-4 text-center text-[13px] text-muted-foreground">
+              Hack Club Auth only confirms who you are. It doesn&apos;t give Egg access to your
+              server.
+            </p>
+          ) : null}
 
           {dev ? (
             <form action="/api/auth/dev" method="post" className="mt-6 border-t pt-5">

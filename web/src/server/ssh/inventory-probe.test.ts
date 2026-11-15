@@ -62,8 +62,8 @@ describe("parseNetstatLine", () => {
 describe("parseInventory", () => {
   const full = output([
     ...HEAD,
-    ["UNIT", "nd-blog.service", "loaded", "active", "running", "4242", "/etc/systemd/system/nd-blog.service", "/system.slice/nd-blog.service", '/bin/bash -lc "exec node server.js"'].join(T),
-    ["UNIT", "nd-old.service", "loaded", "failed", "failed", "0", "/etc/systemd/system/nd-old.service", "", ""].join(T),
+    ["UNIT", "egg-blog.service", "loaded", "active", "running", "4242", "/etc/systemd/system/egg-blog.service", "/system.slice/egg-blog.service", '/bin/bash -lc "exec node server.js"'].join(T),
+    ["UNIT", "egg-old.service", "loaded", "failed", "failed", "0", "/etc/systemd/system/egg-old.service", "", ""].join(T),
     ["UNIT", "../evil.service", "loaded", "active", "running", "1", "", "", ""].join(T),
     ["DIR", "blog", "20480", "0"].join(T),
     ["DIR", "old", "", "1"].join(T),
@@ -71,7 +71,7 @@ describe("parseInventory", () => {
     `PORT${T}LISTEN 0 511 0.0.0.0:3000 0.0.0.0:* users:(("node",pid=4242,fd=19))`,
     `PORT${T}LISTEN 0 511 [::]:3000 [::]:* users:(("node",pid=4242,fd=20))`,
     `PORT${T}LISTEN 0 128 0.0.0.0:22 0.0.0.0:*`,
-    `PIDCG${T}4242${T}/system.slice/nd-blog.service,`,
+    `PIDCG${T}4242${T}/system.slice/egg-blog.service,`,
     "END=1",
   ]);
 
@@ -80,13 +80,13 @@ describe("parseInventory", () => {
     expect(inv.home).toBe("/home/sam");
     expect(inv.disk).toEqual({ totalMb: 10240, usedMb: 4096 });
     expect(inv.hasSystemctl).toBe(true);
-    expect(inv.units.map((u) => u.name)).toEqual(["nd-blog.service", "nd-old.service"]); // traversal-looking name dropped
+    expect(inv.units.map((u) => u.name)).toEqual(["egg-blog.service", "egg-old.service"]); // traversal-looking name dropped
     expect(inv.units[0]).toMatchObject({
       state: "running",
       detail: "running",
       mainPid: 4242,
-      unitFile: "/etc/systemd/system/nd-blog.service",
-      controlGroup: "/system.slice/nd-blog.service",
+      unitFile: "/etc/systemd/system/egg-blog.service",
+      controlGroup: "/system.slice/egg-blog.service",
       execStart: '/bin/bash -lc "exec node server.js"',
     });
     expect(inv.units[1]).toMatchObject({ state: "failed", mainPid: null, execStart: null });
@@ -103,7 +103,7 @@ describe("parseInventory", () => {
     expect(inv.ports.map((p) => p.port)).toEqual([22, 3000]);
     const web = inv.ports.find((p) => p.port === 3000)!;
     expect(web).toMatchObject({ addresses: ["0.0.0.0", "[::]"], process: "node", pid: 4242 });
-    expect(web.cgroups).toEqual(["/system.slice/nd-blog.service"]);
+    expect(web.cgroups).toEqual(["/system.slice/egg-blog.service"]);
     expect(inv.ports.find((p) => p.port === 22)).toMatchObject({ process: null, pid: null });
   });
 
@@ -164,8 +164,8 @@ describe("the inventory script", () => {
   });
 
   it("reads the units, folders and ports in one go", () => {
-    expect(script).toContain("nd-*.service");
-    expect(script).toContain("$HOME/.nest-deploy");
+    expect(script).toContain("egg-*.service");
+    expect(script).toContain("$HOME/.egg");
     expect(script).toContain("ss -ltnpH");
     expect(script).toContain("ss -ltnH");
     expect(script).toContain("netstat -ltnp");
@@ -180,10 +180,10 @@ describe("the inventory script", () => {
 
 describe("the removal scripts", () => {
   it("removes a unit by stopping, disabling, deleting the file and reloading", () => {
-    const s = removeUnitScript("/etc/systemd/system/", "nd-old.service");
+    const s = removeUnitScript("/etc/systemd/system/", "egg-old.service");
     expect(s).toContain("systemctl stop");
     expect(s).toContain("systemctl disable");
-    expect(s).toContain(`file='/etc/systemd/system/nd-old.service'`);
+    expect(s).toContain(`file='/etc/systemd/system/egg-old.service'`);
     expect(s).toContain("rm -f -- \"$file\"");
     expect(s).toContain("systemctl daemon-reload");
   });

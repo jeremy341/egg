@@ -2,7 +2,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { audit } from "@/server/audit";
 import { config } from "@/server/config";
 import { getDb, schema } from "@/server/db";
-import { isValidSlug } from "@/server/deploy/layout";
+import { UNIT_PREFIX, isValidSlug } from "@/server/deploy/layout";
 import { HttpError } from "@/server/http";
 import { getServerForUser, withServerSession } from "@/server/servers";
 import { SshError } from "@/server/ssh/connection";
@@ -20,7 +20,7 @@ import {
 } from "@/server/ssh/inventory-probe";
 
 /**
- * What is on a Nest container, set against what Nest Deploy knows. The pure
+ * What is on a Nest container, set against what Egg knows. The pure
  * functions here (classify, portConflicts, parseOrphanId) take plain data, so
  * they are tested without a container or a database.
  */
@@ -78,9 +78,9 @@ export type OrphanEntry = {
   sizeKb: number | null;
   /** Ports this orphan is listening on. */
   ports: number[];
-  /** False for a link or anything Nest Deploy did not create, which it never removes. */
+  /** False for a link or anything Egg did not create, which it never removes. */
   removable: boolean;
-  /** True when it has no Nest Deploy marker: it looks like ours by name but is the user's. */
+  /** True when it has no Egg marker: it looks like ours by name but is the user's. */
   notOurs?: boolean;
 };
 
@@ -116,10 +116,10 @@ export type Inventory = {
   conflicts: PortConflict[];
 };
 
-const PREVIEW_UNIT = /^nd-(.+)-pv-([0-9a-f]{8})\.service$/;
+const PREVIEW_UNIT = /^egg-(.+)-pv-([0-9a-f]{8})\.service$/;
 
-/** A unit name Nest Deploy could have written. Strict: no slashes, no dots but the suffix. */
-export const UNIT_NAME = /^nd-[a-z0-9]+(?:-[a-z0-9]+)*\.service$/;
+/** A unit name Egg could have written. Strict: no slashes, no dots but the suffix. */
+export const UNIT_NAME = /^egg-[a-z0-9]+(?:-[a-z0-9]+)*\.service$/;
 
 export type OrphanTarget =
   | { kind: "unit"; unit: string }
@@ -167,7 +167,7 @@ function classifyUnit(
   projects: ProjectInfo[],
   previews: PreviewInfo[]
 ): UnitClass {
-  const production = projects.find((p) => `nd-${p.slug}.service` === name);
+  const production = projects.find((p) => `egg-${p.slug}.service` === name);
   if (production) return { type: "project", project: production };
 
   const m = PREVIEW_UNIT.exec(name);
@@ -182,7 +182,7 @@ function classifyUnit(
     }
     return { type: "orphan", preview: true, slug: m[1] };
   }
-  return { type: "orphan", preview: false, slug: name.slice(3, -".service".length) };
+  return { type: "orphan", preview: false, slug: name.slice(UNIT_PREFIX.length, -".service".length) };
 }
 
 export function classifyInventory(
@@ -213,7 +213,7 @@ export function classifyInventory(
     if (wanted) {
       // Without a process name we cannot tell whose it is. If the project's own
       // service is up, assume it is that service rather than cry wolf.
-      const own = unitByName.get(`nd-${wanted.slug}.service`);
+      const own = unitByName.get(`egg-${wanted.slug}.service`);
       const up = own && (own.state === "running" || own.state === "starting");
       if (up && p.pid === null) {
         return { ...base, owner: { type: "project", projectId: wanted.id, slug: wanted.slug } };
@@ -226,7 +226,7 @@ export function classifyInventory(
 
   const folderBySlug = new Map(raw.folders.map((f) => [f.name, f]));
   const projectEntries: ProjectEntry[] = projects.map((p) => {
-    const unit = unitByName.get(`nd-${p.slug}.service`) ?? null;
+    const unit = unitByName.get(`egg-${p.slug}.service`) ?? null;
     const listening = ports.find((x) => x.port === p.port);
     const portStatus: ProjectEntry["portStatus"] = !listening
       ? "free"
@@ -330,7 +330,7 @@ export function portConflicts(
         o.type === "orphan"
           ? o.unit
           : o.type === "project" || o.type === "preview"
-            ? `nd-${o.slug}${o.type === "preview" ? " preview" : ""}`
+            ? `egg-${o.slug}${o.type === "preview" ? " preview" : ""}`
             : (held.process ?? "another process");
       out.push({
         projectId: p.id,
@@ -448,7 +448,7 @@ export async function removeOrphans(
   for (const id of unique) {
     const t = parseOrphanId(id);
     if (!t) {
-      results.set(id, { id, status: "refused", message: "That is not a Nest Deploy name." });
+      results.set(id, { id, status: "refused", message: "That is not a Egg name." });
     } else {
       targets.set(id, t);
     }
@@ -497,7 +497,7 @@ export async function removeOrphans(
               id,
               status: "refused",
               message: orphan.notOurs
-                ? "Nest Deploy did not create this, so it was left alone."
+                ? "Egg did not create this, so it was left alone."
                 : "This is a link, so it was left alone.",
             });
             continue;

@@ -1,6 +1,6 @@
-# Nest Deploy: Decided Feature Scope
+# Egg: Decided Feature Scope
 
-This document resolves the earlier **Could need** list against the product you described: a polished web dashboard for each person’s Nest servers, projects, resources and traffic, with GitHub deployment automation and rollback. It combines the Vercel capability review with the general Nest Deploy requirements.
+This document resolves the earlier **Could need** list against the product you described: a polished web dashboard for each person’s Nest servers, projects, resources and traffic, with GitHub deployment automation and rollback. It combines the Vercel capability review with the general Egg requirements.
 
 ## The Version 1 user flow
 
@@ -10,11 +10,11 @@ This document resolves the earlier **Could need** list against the product you d
 4. **Launch a project.** Detect supported project settings, let the user review the runtime/build configuration and environment variables, then deploy to their connected server. Show progress and errors.
 5. **Manage it.** The user sees its URL, deployed commit, logs, health, resources, visits/traffic when available, previews, domains and rollback controls in the dashboard.
 
-The goal is that a person who has just finished a supported project can sign in, connect their server and repository, and deploy without manually setting up every service. “Any website” should mean the runtimes and network configurations Nest Deploy explicitly supports; it cannot guarantee arbitrary applications work on Nest.
+The goal is that a person who has just finished a supported project can sign in, connect their server and repository, and deploy without manually setting up every service. “Any website” should mean the runtimes and network configurations Egg explicitly supports; it cannot guarantee arbitrary applications work on Nest.
 
 ## Version 1: private Nest deployment dashboard
 
-The first release is the full self-hosted Nest Deploy experience we are aiming to offer: connect a Nest server, deploy and manage projects, and understand their resources and traffic. Implement the supporting integrations and infrastructure as part of this version, validating each against Nest policies and limits.
+The first release is the full self-hosted Egg experience we are aiming to offer: connect a Nest server, deploy and manage projects, and understand their resources and traffic. Implement the supporting integrations and infrastructure as part of this version, validating each against Nest policies and limits.
 
 - **Private account and Nest connection:** secure sign-in; pair one or more Nest servers through a guided setup; show its identity, connection status and last check-in; support reconnect and revoke. Give each server its own workspace, projects, metrics and connection controls.
 - **GitHub project import:** connect GitHub with least-privilege access; select a repository, branch and commit; configure the project root, runtime, build/start commands, port and environment variables; support a useful set of common runtimes rather than limiting the product to Node.js.
@@ -46,7 +46,7 @@ Extend the complete dashboard with more providers, deeper automation and operati
 
 ## Out of scope for both versions
 
-- AI Gateway, model hosting/routing, v0 generation, AI SDK and Chat SDK as Nest Deploy products.
+- AI Gateway, model hosting/routing, v0 generation, AI SDK and Chat SDK as Egg products.
 - Recreating a global CDN/edge network, worldwide routing, global autoscaling, or Vercel's managed serverless/Fluid Compute platform.
 - Building a managed database, object store, container registry, durable workflow engine or message queue.
 - Vercel's marketplace/platform business, microfrontends platform, BotID, enterprise bot management, compliance program or enterprise networking.
@@ -59,16 +59,16 @@ The following tables retain Need and Could need feature rows from the detailed V
 ### Platform features
 
 ## Accounts, projects and source control
-| Vercel feature and documented controls | Nest Deploy fit | Reason and source pages |
+| Vercel feature and documented controls | Egg fit | Reason and source pages |
 | --- | --- | --- |
-| Accounts, account settings, access tokens, token creation, expiration, scope (account/team/project), token revocation, login/logout | Need | Need user identity and revocable scoped credentials. Nest Deploy tokens should be short-lived and bound to a server/project. [Accounts](https://vercel.com/docs/accounts), [access tokens](https://vercel.com/docs/accounts/access-tokens), [CLI login](https://vercel.com/docs/cli/login), [CLI tokens](https://vercel.com/docs/cli/tokens) |
+| Accounts, account settings, access tokens, token creation, expiration, scope (account/team/project), token revocation, login/logout | Need | Need user identity and revocable scoped credentials. Egg tokens should be short-lived and bound to a server/project. [Accounts](https://vercel.com/docs/accounts), [access tokens](https://vercel.com/docs/accounts/access-tokens), [CLI login](https://vercel.com/docs/cli/login), [CLI tokens](https://vercel.com/docs/cli/tokens) |
 | Teams, organizations, members, invitations, access groups, team roles, project-level roles, extended permissions, member management | Could need | Start with a single owner per server; later support collaborators with narrow project permissions. [RBAC](https://vercel.com/docs/rbac), [access groups](https://vercel.com/docs/rbac/access-groups), [roles](https://vercel.com/docs/rbac/access-roles) |
 | Project creation, project settings, linking a local project, framework selection, project environment, project configuration file, build/development settings | Need | Users need a project record tied to a server, repository and explicit runtime settings. [Projects](https://vercel.com/docs/projects), [project configuration](https://vercel.com/docs/project-configuration), [CLI project linking](https://vercel.com/docs/cli/project-linking) |
 | Git provider connection; repository import; GitHub/GitLab/Bitbucket/Azure DevOps; selected branches; commit metadata; protected Git scopes; monorepo roots and project selection | Need / Could need | GitHub is needed for the first smooth flow; other providers and advanced monorepos can follow. [Git](https://vercel.com/docs/git), [protected Git scopes](https://vercel.com/docs/protected-git-scopes), [monorepos](https://vercel.com/docs/monorepos) |
 | Project templates, starter examples, package-manager detection, framework presets and build configuration | Need | Detect common defaults, explain them and allow expert overrides. [Frameworks](https://vercel.com/docs/frameworks), [package managers](https://vercel.com/docs/package-managers), [templates](https://vercel.com/docs/templates) |
 
 ## Builds and deployment lifecycle
-| Vercel feature and documented controls | Nest Deploy fit | Reason and source pages |
+| Vercel feature and documented controls | Egg fit | Reason and source pages |
 | --- | --- | --- |
 | Build command, output directory, install command, environment, build image, build features and build queue | Need | Essential to build applications; initially support one validated runtime and bounded build resources. [Builds](https://vercel.com/docs/builds), [configure a build](https://vercel.com/docs/builds/configure-a-build), [build image](https://vercel.com/docs/builds/build-image), [build queues](https://vercel.com/docs/builds/build-queues) |
 | Build logs, build status, cancellation, retries, cache, build usage, build troubleshooting | Need | Users need observable failures; control time, memory, concurrency, retries and cache size. [Managing builds](https://vercel.com/docs/builds/managing-builds), [build features](https://vercel.com/docs/builds/build-features), [CLI build](https://vercel.com/docs/cli/build) |
@@ -80,7 +80,7 @@ The following tables retain Need and Could need feature rows from the detailed V
 | Skew protection between application versions, immutable assets and deployment consistency | Could need | Useful for multi-version traffic and client assets; requires version-aware routing. [Skew protection](https://vercel.com/docs/skew-protection), [Build Output API](https://vercel.com/docs/build-output-api) |
 
 ## Runtime, compute and routing
-| Vercel feature and documented controls | Nest Deploy fit | Reason and source pages |
+| Vercel feature and documented controls | Egg fit | Reason and source pages |
 | --- | --- | --- |
 | Static output hosting and file serving | Need | Common beginner workload with a simple build-and-publish path. [Build Output API](https://vercel.com/docs/build-output-api), [directory listing](https://vercel.com/docs/directory-listing) |
 | Long-running Node.js/Python services, daemons, process lifecycle, restart and service bindings | Need | Fits Nest's Linux server model if user-container permissions support it. [Daemons](https://vercel.com/docs/daemons), [services](https://vercel.com/docs/services), [Build Output API services](https://vercel.com/docs/build-output-api/services) |
@@ -93,20 +93,20 @@ The following tables retain Need and Could need feature rows from the detailed V
 | Routes, rewrites, redirects, bulk redirects, custom error pages and project routing rules | Could need | Provide only through a supported Nest reverse proxy or domain mechanism. [Routing](https://vercel.com/docs/routing), [redirects](https://vercel.com/docs/routing/redirects), [bulk redirects](https://vercel.com/docs/routing/redirects/bulk-redirects), [custom errors](https://vercel.com/docs/custom-error-pages) |
 
 ## Domains, delivery, caching and data
-| Vercel feature and documented controls | Nest Deploy fit | Reason and source pages |
+| Vercel feature and documented controls | Egg fit | Reason and source pages |
 | --- | --- | --- |
 | Project domains, custom domains, DNS verification, redirects, certificates, domain transfers and domain troubleshooting | Need / Could need | A reachable app URL is needed; custom-domain automation depends on Nest DNS/reverse-proxy support and domain-owner authorization. [Domains](https://vercel.com/docs/domains), [CLI domains](https://vercel.com/docs/cli/domains) |
 | CDN delivery, cache status, cache-control headers, purge/invalidation, cache debugging and usage | Could need | A single user container cannot provide global edge delivery; can integrate an approved CDN and explain cache behavior. [CDN](https://vercel.com/docs/cdn), [caching](https://vercel.com/docs/caching), [cache purge](https://vercel.com/docs/caching/cdn-cache/purge), [CDN usage](https://vercel.com/docs/manage-cdn-usage) |
 | Image optimization, responsive image transformation, formats, loader and caching | Could need | Useful for web performance but requires supported runtime/edge capacity or external integration. [Image Optimization](https://vercel.com/docs/image-optimization) |
 | Incremental Static Regeneration, revalidation, on-demand revalidation, draft mode and partial prerendering | Could need | Framework/runtime features, not standalone control-panel features; support through compatible app builds. [ISR](https://vercel.com/docs/incremental-static-regeneration), [draft mode](https://vercel.com/docs/draft-mode), [partial prerendering](https://vercel.com/docs/partial-prerendering) |
-| Blob/object storage: public/private storage, upload/download, client/server uploads, signed URLs, access control, examples, SDK and usage/pricing | Could need | Apps may need object storage; integrate an actual provider instead of implying Nest Deploy includes one. [Vercel Blob](https://vercel.com/docs/vercel-blob), [private storage](https://vercel.com/docs/vercel-blob/private-storage), [signed URLs](https://vercel.com/docs/vercel-blob/vercel-signed-urls) |
+| Blob/object storage: public/private storage, upload/download, client/server uploads, signed URLs, access control, examples, SDK and usage/pricing | Could need | Apps may need object storage; integrate an actual provider instead of implying Egg includes one. [Vercel Blob](https://vercel.com/docs/vercel-blob), [private storage](https://vercel.com/docs/vercel-blob/private-storage), [signed URLs](https://vercel.com/docs/vercel-blob/vercel-signed-urls) |
 | Postgres, Redis, marketplace storage and external integrations | Could need | Offer links or connection guidance; hosting databases brings backups, quotas, persistence and recovery obligations. [Storage](https://vercel.com/docs/storage), [Postgres](https://vercel.com/docs/postgres), [Redis](https://vercel.com/docs/redis), [marketplace storage](https://vercel.com/docs/marketplace-storage), [Integrations](https://vercel.com/docs/integrations) |
 
 ## Logs, metrics, analytics and feedback
-| Vercel feature and documented controls | Nest Deploy fit | Reason and source pages |
+| Vercel feature and documented controls | Egg fit | Reason and source pages |
 | --- | --- | --- |
 | Runtime/build logs, filtering, search, structured output, traces, instrumentation and error investigation | Need / Could need | Build/runtime logs are core; traces are advanced. Redact secrets, bound retention and label log source. [Logs](https://vercel.com/docs/logs), [tracing](https://vercel.com/docs/tracing), [instrumentation](https://vercel.com/docs/tracing/instrumentation) |
-| Server CPU, memory, disk, process health, uptime, project attribution, quota and time-series views | Need | This is an explicit Nest Deploy goal. Report scope and measurement source, and show unavailable/stale data rather than inventing precision. Vercel observability is a reference, not the source of Nest host metrics. [Observability](https://vercel.com/docs/observability), [metrics](https://vercel.com/docs/query) |
+| Server CPU, memory, disk, process health, uptime, project attribution, quota and time-series views | Need | This is an explicit Egg goal. Report scope and measurement source, and show unavailable/stale data rather than inventing precision. Vercel observability is a reference, not the source of Nest host metrics. [Observability](https://vercel.com/docs/observability), [metrics](https://vercel.com/docs/query) |
 | Alerts, thresholds, notifications and alert configuration | Need | Notify about failed builds, offline agent/apps and resource pressure. [Alerts](https://vercel.com/docs/alerts), [configure alerts](https://vercel.com/docs/alerts/configure-alerts), [notifications](https://vercel.com/docs/notifications) |
 | Web Analytics: visits, referrers, pages, devices, custom events, filters, APIs, CLI access, privacy, sensitive-data redaction, limits and troubleshooting | Need (visits requested); exact mechanism Could need | Visits require instrumentation or a proxy/provider; disclose analytics behavior, retention and privacy. [Analytics](https://vercel.com/docs/analytics), [custom events](https://vercel.com/docs/analytics/custom-events), [filtering](https://vercel.com/docs/analytics/filtering), [redaction](https://vercel.com/docs/analytics/redacting-sensitive-data), [privacy](https://vercel.com/docs/analytics/privacy-policy) |
 | Speed Insights/web vitals, custom performance metrics, usage limits and CLI/API access | Could need | Useful for frontend projects once standard server metrics are reliable. [Speed Insights](https://vercel.com/docs/speed-insights), [metrics](https://vercel.com/docs/speed-insights/metrics) |
@@ -114,7 +114,7 @@ The following tables retain Need and Could need feature rows from the detailed V
 | Toolbar, comments, layout-shift/interaction/accessibility tools and preview feedback | Could need | Helpful developer feedback on previews, after deployment and monitoring are stable. [Toolbar](https://vercel.com/docs/vercel-toolbar), [comments](https://vercel.com/docs/comments) |
 
 ## Security, operations and platform governance
-| Vercel feature and documented controls | Nest Deploy fit | Reason and source pages |
+| Vercel feature and documented controls | Egg fit | Reason and source pages |
 | --- | --- | --- |
 | Firewall custom rules, managed rulesets, IP blocking/trusted IP, rate limits, attack mode, DDoS mitigation, firewall analytics and pricing | Could need | Protect the public control plane and offer only defenses backed by verified network infrastructure. A Nest user container does not inherit Vercel's edge firewall. [Firewall](https://vercel.com/docs/vercel-firewall), [WAF](https://vercel.com/docs/vercel-firewall/vercel-waf), [rate limiting](https://vercel.com/docs/vercel-firewall/vercel-waf/rate-limiting), [DDoS mitigation](https://vercel.com/docs/vercel-firewall/ddos-mitigation) |
 | Deployment protection for previews, access restrictions and shared preview safety | Could need | Useful once previews exist; not a substitute for securing the agent/control plane. [Deployment Protection](https://vercel.com/docs/deployment-protection) |
@@ -126,36 +126,36 @@ The following tables retain Need and Could need feature rows from the detailed V
 | Code owners, approvers, deployment comments, collaboration and review workflow | Could need | Team workflow can wait until multiple users share a server/project. [Code Owners](https://vercel.com/docs/code-owners), [comments](https://vercel.com/docs/comments) |
 | Release phases, betas, changelog, API errors, troubleshooting, support and product docs | Need | Maintain versioned agent releases, migration notes, useful error messages, recovery instructions and support boundaries. [Release phases](https://vercel.com/docs/release-phases), [errors](https://vercel.com/docs/errors), [support](https://vercel.com/docs/support-center) |
 
-## Distinct Vercel products outside the Nest Deploy goal
-| Vercel capability | Nest Deploy fit | Reason |
+## Distinct Vercel products outside the Egg goal
+| Vercel capability | Egg fit | Reason |
 | --- | --- | --- |
 | Agent resources, MCP tools, Vercel Connect/token brokering and eve agent platform | Could need (optional integrations) | Not needed to deploy/manage Nest projects; assess only after secure APIs exist. See [[Audit AI Agent Docs]] and [[audit-connect-eve]]. |
 
 
 ### AI, agent, Connect and MCP features
 
-| Documentation set | Features found | Nest Deploy fit |
+| Documentation set | Features found | Egg fit |
 | --- | --- | --- |
-| MCP | Server deployment, client integrations, tool discovery and events | Could need later for authorized Nest Deploy actions |
+| MCP | Server deployment, client integrations, tool discovery and events | Could need later for authorized Egg actions |
 | Vercel Connect | OAuth connectors, installations, token scopes, consent, triggers and provider integrations | Secure authorization patterns needed; Connect product itself optional |
 
 ## AI Gateway
 Source: [AI Gateway documentation](https://vercel.com/docs/ai-gateway), [models and integrations](https://vercel.com/docs/ai-gateway/models-and-providers), [SDKs and APIs](https://vercel.com/docs/ai-gateway/sdks-and-apis), [observability](https://vercel.com/docs/ai-gateway/observability).
-| Feature | Nest Deploy decision | Reason |
+| Feature | Egg decision | Reason |
 | --- | --- | --- |
 | Budgets, rate limits, usage attribution and cost visibility | Could need as a pattern | Per-server build and resource quotas are relevant; model billing is not. |
 
 ## Agent resources, provider integrations and skills
 Sources: [Agent resources](https://vercel.com/docs/agent-resources), [agent integrations](https://vercel.com/docs/agent-resources/integrations-for-agents), [model integrations](https://vercel.com/docs/agent-resources/integrations-for-models), [skills](https://vercel.com/docs/agent-resources/skills), [Markdown access](https://vercel.com/docs/agent-resources/markdown-access).
-| Feature | Nest Deploy decision | Reason |
+| Feature | Egg decision | Reason |
 | --- | --- | --- |
 | Agent skills and reusable instructions | Could need | A future operator helper could guide troubleshooting, but is not needed for the dashboard. |
-| Markdown documentation access and agent discovery | Could need | Publishing readable Nest Deploy docs could help users and tools; optional. |
-| A Nest Deploy MCP with a restricted allowlist | Could need later | Could expose list projects, deployment status, logs, deploy and rollback after API authorization is secure. Never expose unrestricted shell by default. |
+| Markdown documentation access and agent discovery | Could need | Publishing readable Egg docs could help users and tools; optional. |
+| An Egg MCP with a restricted allowlist | Could need later | Could expose list projects, deployment status, logs, deploy and rollback after API authorization is secure. Never expose unrestricted shell by default. |
 
 ## Vercel MCP tool surface
 Source: [Vercel MCP tools](https://vercel.com/docs/agent-resources/vercel-mcp/tools). The docs enumerate operations under these families. This is their functional scope, not an endorsement to reproduce each operation.
-| Tool family documented | Examples of operations | Nest Deploy decision |
+| Tool family documented | Examples of operations | Egg decision |
 | --- | --- | --- |
 | Projects and teams | List/read projects, teams, users and memberships | Could need later; scope every result to the user’s workspaces. |
 | Deployments | Create/cancel/list/read deployments, build logs, files, Git context, URLs and events | Need the underlying deployment actions; MCP exposure could come later. |
@@ -167,32 +167,32 @@ Source: [Vercel MCP tools](https://vercel.com/docs/agent-resources/vercel-mcp/to
 | Caching and artifacts | Query/invalidate caches, remote cache status, upload artifacts | Could need build cache later; resource usage and cleanup matter. |
 | Checks and CI | Rerequest checks; inspect Vercel CI definitions, jobs, runs and logs; retry runs | Could need deployment checks and retry; Vercel CI controls themselves are not required. |
 | Analytics | Aggregate/count pageviews and events; read Web Analytics | Could need traffic metrics via an appropriate Nest-compatible source. |
-| Sandboxes | Create, list, update and stop sessions; run commands; read/write files; snapshots and network policies | Could need as an isolation design reference. Do not expose general command execution in a Nest Deploy agent without a verified sandbox boundary. |
+| Sandboxes | Create, list, update and stop sessions; run commands; read/write files; snapshots and network policies | Could need as an isolation design reference. Do not expose general command execution in an Egg agent without a verified sandbox boundary. |
 
 ## Agent harnesses and Vercel Agent
 Sources: [Agent harnesses](https://vercel.com/docs/agent-harnesses), [security](https://vercel.com/docs/agent-harnesses/security), [observability](https://vercel.com/docs/agent-harnesses/observability), [self-hosting](https://vercel.com/docs/agent-harnesses/self-hosting), [Vercel Agent](https://vercel.com/docs/agent).
-| Feature | Nest Deploy decision | Reason |
+| Feature | Egg decision | Reason |
 | --- | --- | --- |
 | Resume after crashes using persistent workflow/run state | Could need as reliability pattern | Deployment jobs should survive control-plane restarts and report their state. |
 
 ## AI SDK and Chat SDK
 Sources: [AI SDK](https://vercel.com/docs/ai-sdk), [AI SDK with AI Gateway](https://vercel.com/docs/ai-gateway/sdks-and-apis/ai-sdk), [Chat SDK](https://vercel.com/docs/chat-sdk), [MCP integration with AI SDK](https://vercel.com/docs/mcp/integrations/ai-sdk).
-| Feature | Nest Deploy decision | Reason |
+| Feature | Egg decision | Reason |
 | --- | --- | --- |
 | MCP client/server connections through AI SDK | Could need later | Potential integration for user-authorized automation; prioritize the deployment API and controls first. |
 
 ## MCP product and integrations
 Sources: [MCP](https://vercel.com/docs/mcp), [deploy MCP servers](https://vercel.com/docs/mcp/deploy-mcp-servers-to-vercel), [MCP integrations](https://vercel.com/docs/mcp/integrations), [MCP events](https://vercel.com/docs/connect/mcp-events), [CLI MCP](https://vercel.com/docs/cli/mcp).
-| Feature | Nest Deploy decision | Reason |
+| Feature | Egg decision | Reason |
 | --- | --- | --- |
-| Host an MCP server as a deployed service | Could need | Nest Deploy itself may be used to host MCP applications, but no special MCP hosting is required. |
-| Discover available tools and configure clients | Could need later | Useful if Nest Deploy offers a constrained MCP endpoint. |
+| Host an MCP server as a deployed service | Could need | Egg itself may be used to host MCP applications, but no special MCP hosting is required. |
+| Discover available tools and configure clients | Could need later | Useful if Egg offers a constrained MCP endpoint. |
 | OAuth/authentication for MCP clients | Need if MCP is built | Must preserve per-user and per-server authorization; never rely on obscure tool names as security. |
 | MCP event subscriptions and notifications | Could need | Deployment status events may power integrations; dashboard is first. |
 
 ## Vercel Connect
 Sources: [Connect](https://vercel.com/docs/connect), [authentication](https://vercel.com/docs/connect/concepts/authentication), [connectors](https://vercel.com/docs/connect/concepts/connectors), [installations](https://vercel.com/docs/connect/concepts/installations), [tokens](https://vercel.com/docs/connect/concepts/tokens), [triggers](https://vercel.com/docs/connect/concepts/triggers), [pricing and limits](https://vercel.com/docs/connect/pricing).
-| Feature | Nest Deploy decision | Reason |
+| Feature | Egg decision | Reason |
 | --- | --- | --- |
 | OAuth connectors and provider account linking | Could need | GitHub authorization is core; a general-purpose connector marketplace is optional. |
 | Connector installation, consent and revocation lifecycle | Need as a pattern | Users must understand and revoke GitHub/server grants. |
@@ -204,7 +204,7 @@ Sources: [Connect](https://vercel.com/docs/connect), [authentication](https://ve
 
 ## eve
 Sources: [eve](https://vercel.com/docs/eve), [concepts](https://vercel.com/docs/eve/concepts), [authentication](https://vercel.com/docs/eve/authentication), [agent runs](https://vercel.com/docs/eve/agent-runs), [software factory](https://vercel.com/docs/eve/software-factory).
-| Feature | Nest Deploy decision | Reason |
+| Feature | Egg decision | Reason |
 | --- | --- | --- |
 | Agent run durability, deployment and sandbox execution | Could need as a pattern | Job state and build isolation merit study, but eve is not a Nest deployment mechanism. |
 | User/session authentication and authorization | Need as a pattern | Every server/project action must check ownership and scope. |
@@ -213,11 +213,11 @@ Sources: [eve](https://vercel.com/docs/eve), [concepts](https://vercel.com/docs/
 
 ### REST API feature families
 
-See [[REST API Feature Catalog]] for all 938 individual API operations and source links. The API is a reference for what Vercel exposes; Nest Deploy only needs operations supporting the core workflows above. The REST API audit considers SDK-reference operations **Could need** as implementation tooling, while unrelated Vercel administration endpoints stay out of the Nest product.
+See [[REST API Feature Catalog]] for all 938 individual API operations and source links. The API is a reference for what Vercel exposes; Egg only needs operations supporting the core workflows above. The REST API audit considers SDK-reference operations **Could need** as implementation tooling, while unrelated Vercel administration endpoints stay out of the Nest product.
 
 ## General requirements and implementation stages
 
-# Nest Deploy Requirements
+# Egg Requirements
 
 Status: product proposal, not an implementation or a claim of Nest support. Research snapshot: 28 October 2026. Related: [[Nest - Deploy]] · [[Vercel Feature Inventory]] · [[UI and Design Inspiration]].
 
@@ -244,7 +244,7 @@ A shared website provides a smooth Vercel-inspired experience for people who con
 ## 2. Server workspaces
 
 - **P0:** one server workspace per connected container with clear online/offline status, agent version and last contact; projects scoped to that server.
-- **P0:** manual connection repair, agent removal, stale-state indication and clear distinction between Nest Deploy availability and app availability.
+- **P0:** manual connection repair, agent removal, stale-state indication and clear distinction between Egg availability and app availability.
 - **P1:** multiple independently paired server workspaces; switch, rename and disconnect; explicitly show which workspace a project belongs to.
 - **P1:** overview of managed apps, process state, current deployments, resource trends and alerts where data is available.
 - **P2:** read-only discovery of existing services where supported; explicit opt-in adoption, with no automatic takeover or destructive configuration changes.

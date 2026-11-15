@@ -85,7 +85,9 @@ export const servers = sqliteTable(
     allowTerminal: integer("allow_terminal", { mode: "boolean" }).notNull().default(false),
     allowFileWrites: integer("allow_file_writes", { mode: "boolean" }).notNull().default(false),
     allowOrphanRemoval: integer("allow_orphan_removal", { mode: "boolean" }).notNull().default(false),
-    status: text("status", { enum: ["pending", "connected", "error"] })
+    /** Memory limit of the build sandbox for this server's projects, in MB. Range in lib/build-memory.ts. */
+    buildMemoryMb: integer("build_memory_mb").notNull().default(2048),
+    status: text("status", { enum: ["pending", "connected", "error", "disconnected"] })
       .notNull()
       .default("pending"),
     lastError: text("last_error"),

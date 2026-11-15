@@ -159,7 +159,7 @@ fs.readFile(f,(e,d)=>{if(e){r.writeHead(404);r.end('Not found');return}r.writeHe
 export const ENV_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 /** Variables that would break the service or let a project hijack its unit. */
-export const RESERVED_ENV = new Set(["PORT", "HOST", "PATH", "HOME", "NEST_DEPLOY"]);
+export const RESERVED_ENV = new Set(["PORT", "HOST", "PATH", "HOME", "EGG"]);
 
 /**
  * systemd EnvironmentFile syntax: KEY="value" with C-style escapes. An empty

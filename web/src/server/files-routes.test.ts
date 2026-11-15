@@ -210,7 +210,7 @@ describe("operations", () => {
     expect(body.entries[0]).toMatchObject({ name: "a.txt", type: "file", size: 6 });
     expect(body.scope).toMatchObject({ area: "shared", writable: true, liveRelease: false });
     const [, run] = calls;
-    expect(run.command).toContain("'/home/sam/.nest-deploy/app' 'shared'");
+    expect(run.command).toContain("'/home/sam/.egg/app' 'shared'");
   });
 
   it("reads text and reports binary without content", async () => {

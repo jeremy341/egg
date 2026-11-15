@@ -19,10 +19,10 @@ const MIN_STEPS = 2;
 /** What each switch records, word for word. It is the same text the docs give. */
 export const RECORDS = {
   clicks:
-    "Records the label of each link or button a visitor clicks (its text up to 40 characters, its aria-label, or its data-nd-track name) and the day. Never input values, form contents or URLs with query strings, and no visitor id.",
+    "Records the label of each link or button a visitor clicks (its text up to 40 characters, its aria-label, or its data-egg-track name) and the day. Never input values, form contents or URLs with query strings, and no visitor id.",
   time: "Records how long a page was open and visible, as one of four ranges (under 10 seconds, 10 to 60 seconds, 1 to 5 minutes, over 5 minutes), sent when the visitor leaves. Time in a hidden tab is not counted. It stores the day and no visitor id.",
   funnel:
-    "Counts the visitors who reach each step you list, in order. A page step uses the page views already recorded. A step set by data-nd-track name also records that name with the same daily visitor code a page view has, which changes every day and cannot follow anyone across days.",
+    "Counts the visitors who reach each step you list, in order. A page step uses the page views already recorded. A step set by data-egg-track name also records that name with the same daily visitor code a page view has, which changes every day and cannot follow anyone across days.",
 } as const;
 
 function Switch({
@@ -134,7 +134,7 @@ export function AnalyticsFeatures({ projectId, initial }: { projectId: string; i
           <fieldset className="mb-3 ml-7 min-w-0">
             <legend className="text-label text-muted-foreground">
               Steps, in order ({MIN_STEPS} to {MAX_STEPS}). A page step is a path like /pricing. A name step matches an
-              element with data-nd-track=&quot;name&quot;.
+              element with data-egg-track=&quot;name&quot;.
             </legend>
             <ol className="mt-2 space-y-2">
               {steps.map((s, i) => (

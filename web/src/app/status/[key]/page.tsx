@@ -160,7 +160,7 @@ async function Content({ params }: Props) {
       <p className="mt-12 flex items-center gap-2 text-[13px] text-muted-foreground">
         <NestMark className="size-4" />
         <Link href="/" className="link">
-          Hosted with Nest Deploy
+          Hosted with Egg
         </Link>
       </p>
     </div>

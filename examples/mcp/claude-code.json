@@ -1,10 +1,10 @@
 {
   "mcpServers": {
-    "nest-deploy": {
+    "egg": {
       "type": "http",
-      "url": "https://your-nest-deploy/api/mcp",
+      "url": "https://your-egg/api/mcp",
       "headers": {
-        "Authorization": "Bearer ndp_..."
+        "Authorization": "Bearer egg_..."
       }
     }
   }

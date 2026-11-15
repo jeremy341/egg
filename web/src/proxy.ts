@@ -52,7 +52,7 @@ export function proxy(req: NextRequest) {
     return res;
   }
   if (PUBLIC.some((p) => p.test(pathname))) return NextResponse.next();
-  if (req.cookies.has("nd_session")) return NextResponse.next();
+  if (req.cookies.has("egg_session")) return NextResponse.next();
   if (!DASHBOARD.test(pathname) && !pathname.startsWith("/api/")) return NextResponse.next();
 
   if (pathname.startsWith("/api/")) {

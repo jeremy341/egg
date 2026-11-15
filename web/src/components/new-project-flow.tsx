@@ -442,7 +442,7 @@ function Configure({
           <Alert tone="error" role="alert" className="mt-3">
             <p id="np-blocked">
               Deploy is turned off because {blocking.length === 1 ? "one thing" : `${blocking.length} things`} on
-              this container {blocking.length === 1 ? "is" : "are"} in the way. Nest Deploy will not stop or
+              this container {blocking.length === 1 ? "is" : "are"} in the way. Egg will not stop or
               change {blocking.length === 1 ? "it" : "them"} for you. Fix {blocking.length === 1 ? "it" : "them"}{" "}
               on your container, or change the project name, server or port.
             </p>
@@ -716,7 +716,7 @@ export function NewProjectFlow({ servers, github }: { servers: Server[]; github:
           <div className="rounded-lg bg-card p-5 shadow-border-small">
             <p className="font-medium tracking-[-0.02em]">Connect GitHub</p>
             <p className="mt-1 text-muted-foreground">
-              Install the Nest Deploy GitHub App to pick repositories, deploy private ones, and deploy on every push.
+              Install the Egg GitHub App to pick repositories, deploy private ones, and deploy on every push.
             </p>
             <div className="mt-4 flex flex-wrap gap-2">
               {github.installUrl ? (

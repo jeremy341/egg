@@ -12,6 +12,7 @@ import {
   type RuntimeSpec,
 } from "@/server/deploy/runtime";
 import { secretNeedles } from "@/server/deploy/redact";
+import { DEFAULT_BUILD_MEMORY_MB, checkBuildMemory } from "@/lib/build-memory";
 
 export type LogFn = (level: "info" | "warn" | "error", message: string) => void;
 
@@ -28,6 +29,10 @@ export type BuildRequest = {
   };
   /** Variables for the build step. Never printed. */
   env: Record<string, string>;
+  /** Memory limit of the build sandbox in MB: the server's setting. Defaults to 2048. */
+  memoryMb?: number;
+  /** Total memory the server reported, if it did. Sets the top of the allowed range. */
+  serverMemoryMb?: number | null;
   log: LogFn;
   signal?: AbortSignal;
 };
@@ -312,7 +317,7 @@ export const defaultBuilder: Builder = async (req) => {
     );
     if (cloneCode !== 0) {
       throw new BuildError(
-        "Could not clone the repository. Check the branch name and that Nest Deploy has access to it."
+        "Could not clone the repository. Check the branch name and that Egg has access to it."
       );
     }
 
@@ -366,7 +371,12 @@ export const defaultBuilder: Builder = async (req) => {
     if (script) {
       log("info", `Building: ${script}`);
       const code = await runBuildScript(script, appDir, srcDir, req, line);
-      if (code !== 0) throw new BuildError(`The build failed (exit ${code}).`);
+      if (code !== 0) {
+        const oomKillable = c.BUILD_RUNNER !== "local";
+        throw new BuildError(
+          oomKillable ? buildFailureMessage(code, req.memoryMb ?? DEFAULT_BUILD_MEMORY_MB) : buildFailureMessage(code, null)
+        );
+      }
     } else {
       log("info", "No build step for this project.");
     }
@@ -418,6 +428,73 @@ export const defaultBuilder: Builder = async (req) => {
   }
 };
 
+/**
+ * The message for a failed build. Docker kills a sandbox that goes over its
+ * memory limit and the process exits with 137, so that case says what to do.
+ */
+export function buildFailureMessage(code: number, memoryMb: number | null): string {
+  if (code === 137 && memoryMb !== null) {
+    return `The build ran out of memory (limit ${memoryMb} MB). Raise the build memory for this server on the Container page, or make the build use less.`;
+  }
+  return `The build failed (exit ${code}).`;
+}
+
+export type DockerBuildArgs = {
+  name: string;
+  srcDir: string;
+  /** The project folder relative to the clone, with forward slashes. */
+  rel: string;
+  image: string;
+  script: string;
+  /** `-e` arguments for the project variables. */
+  cliArgv: string[];
+  /** Memory limit in MB. Defaults to 2048. */
+  memoryMb?: number;
+  /** Total memory the server reported, if it did. Sets the top of the allowed range; 8192 without it. */
+  serverMemoryMb?: number | null;
+};
+
+/**
+ * The arguments of the `docker run` command for a build sandbox. The memory
+ * limit is the server's setting, and swap is capped at the same size so the
+ * limit is a real one. A limit outside 512 MB to the server's reported memory
+ * (8192 MB when none is reported) is refused, as it is when the setting is saved.
+ */
+export function dockerBuildArgs(o: DockerBuildArgs): string[] {
+  const memoryMb = o.memoryMb ?? DEFAULT_BUILD_MEMORY_MB;
+  const problem = checkBuildMemory(memoryMb, o.serverMemoryMb);
+  if (problem) throw new BuildError(`${problem} Change it on the Container page.`);
+  const args = [
+    "run",
+    "--rm",
+    "--name",
+    o.name,
+    "--memory",
+    `${memoryMb}m`,
+    "--memory-swap",
+    `${memoryMb}m`,
+    "--cpus",
+    "2",
+    "--pids-limit",
+    "2048",
+    "--cap-drop",
+    "ALL",
+    "--security-opt",
+    "no-new-privileges",
+    "-v",
+    `${o.srcDir}:/src`,
+    "-w",
+    `/src/${o.rel}`.replace(/\/$/, ""),
+    "-e",
+    "HOME=/tmp",
+  ];
+  if (process.platform !== "win32" && process.getuid && process.getgid) {
+    args.push("--user", `${process.getuid()}:${process.getgid()}`);
+  }
+  args.push(...o.cliArgv, o.image, "sh", "-c", `set -e; ${o.script}`);
+  return args;
+}
+
 async function runBuildScript(
   script: string,
   appDir: string,
@@ -443,39 +520,20 @@ async function runBuildScript(
   const image =
     req.runtime.runtime === "python" ? c.BUILD_IMAGE_PYTHON : c.BUILD_IMAGE_NODE;
   const rel = path.relative(srcDir, appDir).split(path.sep).join("/");
-  const name = `nd-build-${req.deploymentId.slice(0, 8)}`;
-  const args = [
-    "run",
-    "--rm",
-    "--name",
-    name,
-    "--memory",
-    "2g",
-    "--memory-swap",
-    "2g",
-    "--cpus",
-    "2",
-    "--pids-limit",
-    "2048",
-    "--cap-drop",
-    "ALL",
-    "--security-opt",
-    "no-new-privileges",
-    "-v",
-    `${srcDir}:/src`,
-    "-w",
-    `/src/${rel}`.replace(/\/$/, ""),
-    "-e",
-    "HOME=/tmp",
-  ];
-  if (process.platform !== "win32" && process.getuid && process.getgid) {
-    args.push("--user", `${process.getuid()}:${process.getgid()}`);
-  }
+  const name = `egg-build-${req.deploymentId.slice(0, 8)}`;
   // Values are passed through the docker CLI's own environment, not argv, except
   // for names that would change how the docker command itself runs.
   const cli = buildCliEnv(env, process.env);
-  args.push(...cli.argv);
-  args.push(image, "sh", "-c", `set -e; ${script}`);
+  const args = dockerBuildArgs({
+    name,
+    srcDir,
+    rel,
+    image,
+    script,
+    cliArgv: cli.argv,
+    memoryMb: req.memoryMb,
+    serverMemoryMb: req.serverMemoryMb,
+  });
 
   return runProcess("docker", args, {
     env: cli.env,

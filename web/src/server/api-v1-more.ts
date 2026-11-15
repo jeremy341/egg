@@ -710,7 +710,7 @@ export const EXPANDED_ENDPOINTS: Endpoint[] = [
     tag: "Environment",
     summary: "Set an environment variable",
     description: `Create or replace one environment variable. The value is write-only: it is stored encrypted and is never shown again. It reaches the app at the next deploy. The same name can exist once per target. Only use when the user asked, and never repeat a value back in your own output. ${NOT_FOUND_NOTE}`,
-    pathParams: { projectId, key: envInput.shape.key.describe("The variable name: letters, digits and underscores, not starting with a digit, not one Nest Deploy sets itself.") },
+    pathParams: { projectId, key: envInput.shape.key.describe("The variable name: letters, digits and underscores, not starting with a digit, not one Egg sets itself.") },
     body: {
       value: envInput.shape.value.describe("The value, up to 10000 characters. Write-only."),
       target: envTarget.describe("Which deployments get it: all (default), production or preview."),

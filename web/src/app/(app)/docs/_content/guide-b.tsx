@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { BUILD_RESOURCES, repoLink, scopeNeeds, TOKEN_PLACEHOLDER } from "@/lib/developer";
 import { REPO_URL } from "@/lib/site";
-import { B, C, Callout, ExternalLink, H3, InternalLink, List, P, Section, Table } from "../_components/prose";
+import { B, C, Callout, ExternalLink, H2, H3, InternalLink, List, P, Section, Table } from "../_components/prose";
 import {
   Limits,
   Steps,
@@ -11,14 +11,16 @@ import {
   type ProblemItem,
   type StepItem,
 } from "../_components/worked-example";
+import { CodeBlock } from "../_components/code-block";
 import { docsHref, subsectionTitle } from "../_data/nav";
 
 const setupDoc = `${REPO_URL}/blob/main/docs/backend-setup.md`;
 
 // Small adapters so each page below reads as data. Every block takes a heading
-// id that is unique on its page. Topic sections are `<H3 id />` (an h2 from
-// `_data/nav.ts`); steps sit one level down (h3); the limits, the failures and
-// the worked example close the page as h2 sections.
+// id that is unique on its page. Topic sections are `<H2 id />` (an h2 from
+// `_data/nav.ts`) or `<H2 id title />` for a section the nav does not list;
+// steps sit one level down (h3); the limits, the failures and the worked
+// example close the page as h2 sections.
 
 type Step = { title: string; body?: ReactNode; code?: StepItem["code"]; path?: string[] };
 const toStep = (s: Step): StepItem => ({ title: s.title, children: s.body, code: s.code, path: s.path });
@@ -28,10 +30,32 @@ const steps = (id: string, title: string, items: Step[], level: 2 | 3 = 3) => (
   <Steps id={id} title={title} items={items.map(toStep)} level={level} />
 );
 
-/** Limits as name, value and what happens at it. */
-const limits = (id: string, rows: [string, string, ReactNode][], level: 2 | 3 = 2) => {
-  const items: LimitItem[] = rows.map(([name, value, atLimit]) => ({ name, value, atLimit }));
-  return <Limits id={id} items={items} level={level} />;
+/** A limit's name with, under it, the file in the code that holds the number. */
+const named = (name: string, source?: string): ReactNode =>
+  source ? (
+    <>
+      {name}
+      <span className="mt-0.5 block text-[13px] leading-5 font-normal text-muted-foreground">
+        In the code: <C>{source}</C>
+      </span>
+    </>
+  ) : (
+    name
+  );
+
+/** Limits as name, value and what happens at it. The optional last item is the file that sets the number. */
+const limits = (id: string, rows: [string, string, ReactNode, string?][], level: 2 | 3 = 2) => {
+  const items: LimitItem[] = rows.map(([name, value, atLimit, source]) => ({
+    name: named(name, source),
+    value,
+    atLimit,
+  }));
+  return (
+    <Limits id={id} items={items} level={level}>
+      These numbers are read from the code that enforces them. Under each name is the file that holds the number,
+      relative to the web/src folder.
+    </Limits>
+  );
 };
 
 /** Each failure: the exact message (shown as code), then the fix. */
@@ -62,6 +86,266 @@ const related = (pages: [string, string][]) => (
   </P>
 );
 
+/** A short rationale for a choice that is not obvious. */
+const why = (children: ReactNode) => (
+  <Callout tone="note" title="Why it works this way">
+    {children}
+  </Callout>
+);
+
+/** A stand-alone code block under a paragraph. */
+const code = (label: string, text: string) => <CodeBlock label={label} code={text} />;
+
+/* -------------------------------------------------------------------- */
+/* Messages shared by more than one page. Each string is what the code   */
+/* sends, word for word.                                                 */
+/* -------------------------------------------------------------------- */
+
+const SWITCH_OFF: [string, ReactNode][] = [
+  [
+    "The terminal is turned off for this server. Turn it on in Account, under Container permissions.",
+    "403. Turn on Terminal in Account. Nothing else is needed to read files or the Container page.",
+  ],
+  [
+    "Changing files is turned off for this server. Turn it on in Account, under Container permissions.",
+    "403. Turn on File changes. Reading and downloading still work without it.",
+  ],
+  [
+    "Removing leftovers is turned off for this server. Turn it on in Account, under Container permissions.",
+    "403. Turn on Removing leftovers. Leftovers stay listed while it is off.",
+  ],
+  [
+    "Confirm with Hack Club first. Turning this on needs a sign-in in the last 5 minutes.",
+    "403. Flip the switch again. It sends you through Hack Club and back to Account, where the switch is applied.",
+  ],
+];
+
+const TERMINAL_PROBLEMS: [string, ReactNode][] = [
+  [
+    "This server has not been verified yet. Run Test connection on the Connect page first.",
+    "409. The host key is not pinned yet, and a terminal never opens to a host Egg has not checked. Press Test connection.",
+  ],
+  [
+    "A terminal is already open for this project. Resume or close it first.",
+    "409. Only one terminal per project and person. Press Resume terminal, or Close it, then open a new one.",
+  ],
+  [
+    "You can have 5 terminals open at once. Close one first.",
+    "429. One account may hold 5 terminals across all its projects, so one account cannot use up the server’s share. Close one you are not using.",
+  ],
+  [
+    "Too many terminals are open right now. Try again soon.",
+    "503. The server as a whole holds 50 terminals. Wait a little and open yours again.",
+  ],
+  [
+    "The terminal was closed before it opened.",
+    "403. You signed out, or switched Terminal off, while it was still connecting. Open it again.",
+  ],
+  [
+    "Could not open a terminal: <reason>",
+    "502. Egg could not reach your container. The reason is the SSH error. Check the container is running, then try again.",
+  ],
+  [
+    "Could not open a terminal on your container.",
+    "502. The same, with no detail from the connection. Try again in a minute.",
+  ],
+  [
+    "The terminal size must be 20 to 400 columns and 5 to 200 rows.",
+    "400. Only scripts and the API see this: the page sends a size that fits.",
+  ],
+  [
+    "Send at most 8192 bytes at a time.",
+    "413. One input request carries at most 8 KB. Split the text.",
+  ],
+  [
+    "That is too much input at once.",
+    "413. The whole request was over 64 KB, which is room for 8 KB of text after JSON escaping.",
+  ],
+  [
+    "Too many requests for terminal input. Wait <n> second(s) and try again.",
+    "429. 300 input requests a minute for your account. Wait for the seconds in Retry-After.",
+  ],
+  [
+    "Terminal session not found",
+    "404. The session ended, or the id is wrong, or it belongs to someone else. Open a new one.",
+  ],
+];
+
+const FILE_PROBLEMS: [string, ReactNode][] = [
+  [
+    "This project has no folder on your container yet. Deploy it first.",
+    "404. The folder is created by the first deploy. Deploy once, then open Files.",
+  ],
+  [
+    "This location is read only. Files in shared/ can be changed. The live release (current/) cannot.",
+    "403. Open shared/ and work there. The page shows the same rule as “current/ is the live release and is read only.”",
+  ],
+  [
+    "current/ is the live release and is read only. Changing it would change the code your app runs. Make the change in your repository and deploy, or use shared/ for files that last.",
+    "403. Change the code in your repository and deploy. Put files that must last in shared/.",
+  ],
+  [
+    "This file holds the project's environment variable values, so it is not shown here. Change the values in the project's settings.",
+    "403. The Files tab never opens a release’s .env. Change the values in the project’s settings, then deploy.",
+  ],
+  [
+    "That file holds the project's environment variable values, which are never returned by the API.",
+    "403. The API refuses those files too. Use env:read to list names.",
+  ],
+  ["Nothing exists at that path.", "404. Check the spelling, or refresh the folder."],
+  ["That path is not a folder.", "409. You asked to list a file. Open its folder instead."],
+  ["That path is not a file.", "409. You asked to read or download a folder."],
+  ["That path is a folder.", "409. You tried to write over a folder. Pick a file name."],
+  [
+    "That path is a symbolic link. Files are not written through links.",
+    "409. A link could lead outside shared/, so it is never written through. Write to the real path.",
+  ],
+  [
+    "Something with that name already exists.",
+    "409. Pick another name. An upload to an existing file asks whether to replace it.",
+  ],
+  ["That path leaves the project folder.", "403. A path must stay inside the project’s folder, links included."],
+  [
+    "That file is over the 50 MB limit.",
+    "413. Uploads and downloads stop at 50 MB. Put larger files on the container by SSH.",
+  ],
+  [
+    "The upload arrived incomplete. Nothing was saved.",
+    "The connection broke part way. Upload again.",
+  ],
+  [
+    "Too many file requests. Wait <n> second(s) and try again.",
+    "429. Listing, reading and downloading are 120 a minute for your account.",
+  ],
+  [
+    "Too many requests for file changes. Wait <n> second(s) and try again.",
+    "429. Creating, writing, renaming and deleting are 60 a minute for your account.",
+  ],
+  ["Enter a name.", "A new name cannot be empty."],
+  ["A name cannot contain a slash.", "A rename or new folder takes one name. Open the folder first."],
+  ["That name is not allowed.", "“.” and “..” are not names."],
+  ["That is the same path.", "A rename must change the name."],
+  ["A folder cannot move into itself.", "Pick a destination outside the folder you are moving."],
+  [
+    "This container's tools are too limited to list files.",
+    "502. The container lacks tools Egg uses to list a folder. Test connection lists what is missing.",
+  ],
+  [
+    "Your container could not finish that. Try again.",
+    "502. The container failed part way. Try again, and check Container for disk space.",
+  ],
+];
+
+const TOKEN_PROBLEMS: [string, ReactNode][] = [
+  [
+    "Send an access token as an Authorization: Bearer egg_... header.",
+    "401. Add the header. A cookie is never accepted here.",
+  ],
+  [
+    "That access token is not valid.",
+    "401. Missing, revoked, expired and unknown tokens all look the same on purpose. Make a new one on the Developer page.",
+  ],
+  [
+    "This token does not have the <scope> permission.",
+    "403. The message names it. Press Edit on the token on the Developer page and tick it. The change applies to the next request.",
+  ],
+  [
+    "Too many requests for unrecognised access tokens. Wait <n> second(s) and try again.",
+    "429. 60 tokens that did not check out from one address in a minute. Fix the token your script sends.",
+  ],
+  [
+    "Too many requests for this token. Wait <n> second(s) and try again.",
+    "429. Wait for the seconds in the Retry-After header. Reads are 120 a minute, changes 30, container sessions 10, terminal input 300.",
+  ],
+  ["No such item, or it belongs to someone else.", "404. Check the id. Another account’s items answer the same way."],
+  [
+    "The request body is too large.",
+    "413. 16 KB for most calls, 4 MB for a file write, 64 KB for MCP and 4 KB for webhooks.",
+  ],
+  ["Request body must be JSON", "400. Send valid JSON, or no body."],
+  ["Request body must be a JSON object", "400. Send { … }, not a list or a bare value."],
+  [
+    "Unknown field \"<name>\". Allowed: ...",
+    "400. Unknown body fields are refused so a typo cannot silently do nothing. The message lists the allowed ones.",
+  ],
+  [
+    "A token with the terminal or file change permission expires in 7 days at most. Pick 7 days, or remove that permission.",
+    "400. Pick 7 days, or untick Use the terminal and Change files.",
+  ],
+  [
+    "A token with the terminal or file change permission expires in 7 days at most. Set the expiry to 7 days in the same change, or remove that permission.",
+    "400. Raised when you edit a token. Set Expires after to 7 days in the same edit.",
+  ],
+  ["You can have up to 25 active tokens. Revoke one first.", "400. Revoke a token you no longer use. Expired and revoked ones do not count."],
+  ["Give the token a name.", "400. A name is 1 to 60 characters."],
+  ["Pick at least one permission.", "400. A token with no permissions can do nothing."],
+  ["Send at least one field to change.", "400. An edit must change the name, the permissions or the expiry."],
+  ["This token is revoked and cannot be edited.", "409. A revoked token is final. Make a new one."],
+  ["Token not found", "404. It was deleted, or it is not yours."],
+  ["content is not valid base64.", "400. With encoding set to base64, send standard base64 text."],
+  [
+    "The API writes files of up to 1 MB. Upload larger files in the dashboard.",
+    "413. Use the Files tab for bigger files.",
+  ],
+  [
+    "That file is over the 2 MB limit for this endpoint. Download larger files in the dashboard.",
+    "413. The API download returns at most 2 MB, as base64.",
+  ],
+  ["This endpoint only accepts POST.", "405. The MCP address takes POST only."],
+];
+
+/** Every API call, grouped as the code lists them: tool name, method and path, permission, allowance. */
+type Call = [tool: string, method: string, path: string, scope: string | null, allowance: string];
+const CALLS: Call[] = [
+  ["get_me", "GET", "/me", null, "Reads"],
+  ["list_projects", "GET", "/projects", "projects:read", "Reads"],
+  ["get_project", "GET", "/projects/{projectId}", "projects:read", "Reads"],
+  ["create_project", "POST", "/projects", "projects:write", "Changes"],
+  ["update_project", "PATCH", "/projects/{projectId}", "projects:write", "Changes"],
+  ["delete_project", "DELETE", "/projects/{projectId}", "projects:write", "Changes"],
+  ["get_status_page", "GET", "/projects/{projectId}/status-page", "projects:read", "Reads"],
+  ["list_deployments", "GET", "/projects/{projectId}/deployments", "deployments:read", "Reads"],
+  ["deploy_branch", "POST", "/projects/{projectId}/deployments", "deployments:write", "Changes"],
+  ["get_deployment", "GET", "/deployments/{deploymentId}", "deployments:read", "Reads"],
+  ["get_deployment_logs", "GET", "/deployments/{deploymentId}/logs", "deployments:read", "Container session"],
+  ["redeploy", "POST", "/deployments/{deploymentId}/redeploy", "deployments:write", "Changes"],
+  ["cancel_deployment", "POST", "/deployments/{deploymentId}/cancel", "deployments:write", "Changes"],
+  ["rollback_deployment", "POST", "/deployments/{deploymentId}/rollback", "deployments:write", "Changes"],
+  ["rotate_deploy_hook", "POST", "/projects/{projectId}/hook/rotate", "deployments:write", "Changes"],
+  ["revoke_deploy_hook", "DELETE", "/projects/{projectId}/hook", "deployments:write", "Changes"],
+  ["get_logs", "GET", "/projects/{projectId}/logs", "logs:read", "Reads"],
+  ["list_env_vars", "GET", "/projects/{projectId}/env", "env:read", "Reads"],
+  ["set_env_var", "PUT", "/projects/{projectId}/env/{key}", "env:write", "Changes"],
+  ["delete_env_var", "DELETE", "/projects/{projectId}/env/{key}", "env:write", "Changes"],
+  ["list_domains", "GET", "/domains", "domains:read", "Reads"],
+  ["add_domain", "POST", "/domains", "domains:write", "Changes"],
+  ["verify_domain", "POST", "/domains/{domainId}/verify", "domains:write", "Changes"],
+  ["remove_domain", "DELETE", "/domains/{domainId}", "domains:write", "Changes"],
+  ["get_notifications", "GET", "/projects/{projectId}/notify", "notifications:read", "Reads"],
+  ["test_notification", "POST", "/projects/{projectId}/notify/test", "notifications:read", "Changes"],
+  ["get_alerts", "GET", "/projects/{projectId}/alerts", "alerts:read", "Reads"],
+  ["get_analytics", "GET", "/projects/{projectId}/analytics", "analytics:read", "Reads"],
+  ["get_activity", "GET", "/activity", "activity:read", "Reads"],
+  ["get_server_usage", "GET", "/servers/{serverId}/usage", "resources:read", "Reads"],
+  ["get_resource_history", "GET", "/servers/{serverId}/usage/history", "resources:read", "Container session"],
+  ["get_project_resources", "GET", "/projects/{projectId}/resources", "resources:read", "Container session"],
+  ["list_servers", "GET", "/servers", "container:read", "Reads"],
+  ["get_container_inventory", "GET", "/servers/{serverId}/inventory", "container:read", "Container session"],
+  ["list_files", "GET", "/projects/{projectId}/files", "files:read", "Container session"],
+  ["read_file", "GET", "/projects/{projectId}/files/content", "files:read", "Container session"],
+  ["download_file", "GET", "/projects/{projectId}/files/download", "files:read", "Container session"],
+  ["write_file", "PUT", "/projects/{projectId}/files/content", "files:write", "Container session"],
+  ["make_folder", "POST", "/projects/{projectId}/files/folders", "files:write", "Container session"],
+  ["rename_file", "POST", "/projects/{projectId}/files/rename", "files:write", "Container session"],
+  ["delete_file", "DELETE", "/projects/{projectId}/files", "files:write", "Container session"],
+  ["terminal_status", "GET", "/projects/{projectId}/terminal", "terminal:use", "Reads"],
+  ["terminal_open", "POST", "/projects/{projectId}/terminal", "terminal:use", "Container session"],
+  ["terminal_send", "POST", "/projects/{projectId}/terminal/{sessionId}/input", "terminal:use", "Terminal input"],
+  ["terminal_read", "GET", "/projects/{projectId}/terminal/{sessionId}/output", "terminal:use", "Reads"],
+  ["terminal_resize", "POST", "/projects/{projectId}/terminal/{sessionId}/resize", "terminal:use", "Changes"],
+  ["terminal_close", "DELETE", "/projects/{projectId}/terminal/{sessionId}", "terminal:use", "Changes"],
+];
+
 /**
  * The guides for security, the container, activity, the account, limits,
  * running your own copy, troubleshooting and the API. Every number is read from
@@ -73,14 +357,20 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
   security: () => (
     <Section
       id="security"
-      intro="How Nest Deploy keeps your SSH key, your builds and your secrets, and what the people who run it can and cannot see."
+      intro="How Egg keeps your SSH key, your builds and your secrets, what each part can reach, and what the people who run it can and cannot see."
     >
-      <H3 id="security-key" />
       <P>
-        When you press <B>Create key</B> on the Connect page, Nest Deploy makes one ed25519 key for that server and
-        for nothing else. You paste the public half into the SSH Keys page of the Nest dashboard. The private half is
-        sealed with AES-256-GCM before it is stored. The sealing key comes from the <C>APP_SECRET</C> setting, and the
-        sealed value is tied to that one server, so it cannot be copied into another row and still open. The private
+        Every statement on this page is enforced by the server, and every number is the value the code uses. The
+        Limits table at the end says where each one is set. To report a vulnerability, use the{" "}
+        <InternalLink href="/security">security page</InternalLink>, not a public issue.
+      </P>
+
+      <H2 id="security-key" />
+      <P>
+        When you press <B>Create key</B> on the Connect page, Egg makes one ed25519 key for that server and for
+        nothing else. You paste the public half into the SSH Keys page of the Nest dashboard. The private half is
+        sealed with AES-256-GCM before it is stored. The sealing key comes from the <C>APP_SECRET</C> setting, and
+        each sealed value is tied to its own record, so a value copied into another row does not open. The private
         key is never shown, and no API call returns it.
       </P>
       <Callout tone="warning" title="This key is root on your container">
@@ -88,14 +378,27 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         The Connect page says so before you add it. Connect only a container you are happy to deploy to.
       </Callout>
       <P>
-        The first successful <B>Test connection</B> pins the SHA-256 fingerprint of Nest’s SSH host. After that, if
-        the host presents any other key, Nest Deploy stops before it sends anything. <B>New key</B> replaces your key
-        but keeps the pin. The only way to clear a pin is <B>Disconnect</B>, then adding the server again.
+        The first connection that gets through pins the SHA-256 fingerprint of Nest’s SSH host. That is normally{" "}
+        <B>Test connection</B>, and a terminal never opens to a server that has not been pinned. After that, if the
+        host presents any other key, Egg stops before it sends anything. <B>New key</B> replaces your key but keeps
+        the pin. The way to clear a pin is <B>Disconnect</B>, then connecting the server again.
       </P>
-      <Callout tone="warning" title="Disconnect also deletes the server’s projects">
-        Disconnect removes the server here, and with it every project on that server: its deployments, logs,
-        variables, hook and status page. Nothing is removed from the container, and the dialog does not mention the
-        projects, so read this before you press it.
+      {why(
+        <>
+          Nest cannot hand Egg a narrower login than yours, so the key is as strong as your own. A key made for one
+          server means you can end Egg’s access by deleting that one key in the Nest dashboard, without touching
+          anything else. The pin exists because SSH trusts whatever answers the first time. After the first
+          connection a different host is refused before any file or variable is sent. The first connection itself
+          cannot be checked, so if something sat between Egg and Nest at that moment, its key would be the one
+          pinned.
+        </>
+      )}
+      <Callout tone="warning" title="Disconnect asks about the server’s projects">
+        Disconnect closes the terminals opened with this server’s key and removes Egg’s key. When the server has
+        projects, a box asks whether to delete them as well: “Also delete the project on this server”, or “Also
+        delete the N projects on this server”. Left unticked, which is the default, the projects are kept, the server
+        shows as disconnected, and connecting the same Nest username again reattaches them. Ticked, the projects and
+        their deployments and logs are deleted. Nothing on the container is removed either way.
       </Callout>
       {steps("security-key-steps", "Take access back", [
         {
@@ -122,21 +425,66 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         },
       ])}
 
-      <H3 id="security-builds" />
+      <H2 id="security-builds" />
       <P>
-        Builds run on the Nest Deploy side, never on your container. Each one runs in a Docker sandbox with 2 GB of
-        memory, 2 CPUs, at most 2048 processes, every Linux capability dropped and <C>no-new-privileges</C> set. The
-        build gets your project’s variables and normal outbound network access, because installing packages needs it.
-        The source folder is deleted when the deployment ends. Only plain <C>https</C> repositories on{" "}
-        <C>github.com</C> are cloned.
+        Builds run on the Egg side, never on your container. The container receives only the finished archive, and
+        unpacks it as its own user. Each build runs in a Docker sandbox:
       </P>
+      <Table
+        caption="The build sandbox"
+        head={["Setting", "Value"]}
+        rows={[
+          [
+            "Memory",
+            <>
+              2048 MB by default. You set it for each server, from 512 MB up to the memory the server reports (8192
+              MB when it reports none), under Build memory on the Container page. Swap is capped at the same size so
+              the limit is real.
+            </>,
+          ],
+          ["CPUs", "2."],
+          ["Processes", "At most 2048."],
+          ["Linux capabilities", "All dropped."],
+          ["Privilege gain", <><C>no-new-privileges</C> is set.</>],
+          ["User", "The same user as the worker, not root. On Windows the image’s own user applies."],
+          ["What it can see", <>The cloned source folder, mounted at <C>/src</C>. Its home folder is <C>/tmp</C>.</>],
+          ["Network", "Normal outbound access, because installing packages needs it. No ports are published."],
+          ["What it is given", <>Your project’s variables, and <C>CI=true</C>.</>],
+        ]}
+      />
+      <List>
+        <li>
+          <B>What is checked first.</B> The repository must be a plain <C>https</C> URL on <C>github.com</C>. A
+          branch name may use letters, digits, dots, underscores, hyphens and slashes, and may not start with a hyphen or contain{" "}
+          <C>..</C>, so it cannot be read as a Git option. The root and output folders are resolved to their real
+          paths, so a link inside a repository cannot pull in a file from the machine that builds.
+        </li>
+        <li>
+          <B>What is kept.</B> The build output is capped at 500 MB. The source folder is deleted when the
+          deployment ends. A deployment stores at most 20,000 log lines, and then one line says “Further log output
+          was dropped: this deployment reached its log limit.” Colour codes and control characters are removed from
+          each line, and a line is cut at 4000 characters.
+        </li>
+        <li>
+          <B>Pull requests from forks are never built</B>, because that would run a stranger’s code next to your
+          variables.
+        </li>
+      </List>
       <P>
-        Pull requests from forks are never built, because that would run a stranger’s code next to your variables. A
-        copy of Nest Deploy that you run yourself can set <C>BUILD_RUNNER=local</C>, which runs builds on the host
-        with no isolation. See <InternalLink href={docsHref("selfhost")}>Running your own</InternalLink>.
+        A copy of Egg that you run yourself can set <C>BUILD_RUNNER=local</C>, which runs builds on the host with no
+        isolation. See <InternalLink href={docsHref("selfhost")}>Running your own</InternalLink>.
       </P>
+      {why(
+        <>
+          A build runs code from a repository, so it runs on a machine that holds nothing of yours except the
+          variables for that one project. Your container’s small share of CPU and memory is not spent on compiling,
+          and a build that goes wrong cannot touch your other apps. The sandbox still has network access, because a
+          build that cannot install packages is no build. That is a deliberate trade, and it is why variables should
+          hold only what the build needs.
+        </>
+      )}
 
-      <H3 id="security-vars" />
+      <H2 id="security-vars" />
       <List>
         <li>
           <B>Environment variables</B> are sealed with AES-256-GCM, tied to the project, the name and where the
@@ -144,59 +492,81 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
           deploy time they are written to a <C>.env</C> file on your container with mode 600.
         </li>
         <li>
-          <B>Log masking.</B> A value of 4 or more characters is replaced by <C>***</C> in build and deploy logs. It
-          matches the exact text only: a shorter value, or one your build prints in another form such as base64, is
-          not masked. Do not print secrets.
+          <B>Log masking.</B> A value of 4 or more characters is replaced by <C>***</C> in build and deploy logs and
+          in a deployment’s error text. A value that spans several lines, such as a PEM key, is masked line by line
+          for each line of 8 or more characters. Masking matches the exact text only: a value shorter than 4
+          characters, or one your build prints in another form such as base64, is not masked. Do not print secrets.
         </li>
         <li>
           <B>Deploy hooks, access tokens and sessions.</B> Only a SHA-256 of each is stored. A hook URL and a token
           secret are shown once, when you make them.
         </li>
         <li>
-          <B>Notification webhook URLs</B> are sealed and never shown again.
+          <B>Notification webhook URLs and webhook signing secrets</B> are sealed. A Discord or Slack URL is never
+          shown again. A signing secret starts with <C>whsec_</C> and is shown once.
+        </li>
+        <li>
+          <B>Analytics keys</B> are the exception: a key starting with <C>nda_</C> sits in your page source on
+          purpose, and can only add a page view to its own project.
         </li>
       </List>
-      <Callout tone="note" title="One place a value can be read">
-        The Files tab can open <C>current/.env</C> and each release’s <C>.env</C> in plain text, because reading files
-        is not behind a switch. Anyone signed in to your account can do this. The API refuses those files with “That
-        file holds the project’s environment variable values, which are never returned by the API.” Treat your Nest
-        Deploy sign-in as the key to your variables.
+      <Callout tone="note" title="Where a value can still be read">
+        The Files tab and the API both refuse <C>current/.env</C> and each release’s <C>.env</C>, by name and after
+        links are followed, so a link in <C>shared/</C> cannot reach them. A terminal can still read them, because a
+        shell reads anything its user can. That is why the terminal is off by default and why an access token with
+        the terminal permission lives 7 days at most. Treat the terminal switch, and your Egg sign-in, as the key to
+        your variables.
       </Callout>
 
-      <H3 id="security-signin" />
+      <H2 id="security-signin" />
       <List>
         <li>
-          <B>Sign-in.</B> Hack Club Auth proves who you are. Nest Deploy asks only for <C>openid</C>, <C>profile</C>{" "}
-          and <C>email</C>, and none of that reaches your container.
+          <B>Sign-in.</B> Hack Club Auth proves who you are. Egg asks only for <C>openid</C>, <C>profile</C> and{" "}
+          <C>email</C>, and none of that reaches your container. The sign-in handshake must finish within 10
+          minutes, in the browser that began it.
         </li>
         <li>
-          <B>Session.</B> A random token in an <C>httpOnly</C>, <C>SameSite=Lax</C> cookie called{" "}
-          <C>nd_session</C>. It lasts 30 days. Only a hash is stored.
+          <B>Session.</B> A random token in an <C>httpOnly</C>, <C>SameSite=Lax</C> cookie called <C>egg_session</C>,
+          marked <C>Secure</C> in production. It lasts 30 days. Only a hash is stored. Signing in again replaces the
+          session you were using, so an old cookie does not live on.
         </li>
         <li>
           <B>Requests.</B> Every change from the browser must come from this site, because the <C>Origin</C> header
-          is checked. The API and the MCP endpoint never read cookies. They take a bearer token only.
+          is checked. A write with no <C>Origin</C> that the browser marks as cross-site is refused too. The API and
+          the MCP endpoint never read cookies. They take a bearer token only.
         </li>
         <li>
           <B>Sensitive switches.</B> The Terminal and File changes switches need a Hack Club sign-in from the last 5
-          minutes before they turn on.
+          minutes before they turn on. Turning one off never asks.
+        </li>
+        <li>
+          <B>Guessing.</B> One address may make 20 sign-in attempts a minute, and 60 requests a minute with access
+          tokens that are not valid. Past that the answer is 429. With no proxy header there is no address to count,
+          so nothing is limited.
         </li>
         <li>
           <B>GitHub events.</B> A webhook is accepted only with a valid <C>X-Hub-Signature-256</C> signature over the
-          raw body.
+          raw body. The body is capped at 25 MB, and a delivery id is remembered for 1 hour, so a replayed delivery
+          does nothing. A deploy hook takes a body of 4 KB at most.
+        </li>
+        <li>
+          <B>Browser headers.</B> Every page is sent with <C>X-Frame-Options: DENY</C> and a policy that forbids
+          framing, <C>nosniff</C>, a strict referrer policy and a permissions policy that turns off the camera,
+          microphone, location and payment. In production it also sends <C>Strict-Transport-Security</C> for two
+          years. The content policy still allows inline scripts, because Next.js writes the ones that start a page.
         </li>
       </List>
 
-      <H3 id="security-visibility" />
+      <H2 id="security-visibility" />
       <List>
         <li>
           <B>You</B> can see everything that belongs to your account and nothing that belongs to anyone else. Another
           account’s project, server or deployment answers as if it did not exist.
         </li>
         <li>
-          <B>The people who run Nest Deploy</B> have no admin screen in the product. What shows through the site is
-          the public stats page, which gives totals only: a count under 10 shows as “fewer than 10”, and a percentage
-          or median appears only with at least 50 items behind it.
+          <B>The people who run Egg</B> have no admin screen in the product. What shows through the site is the
+          public stats page, which gives totals only: a count under 10 shows as “fewer than 10”, a larger one keeps
+          two significant figures, and a percentage or median appears only with at least 50 items behind it.
         </li>
         <li>
           <B>They also host the database and hold the secret.</B> <C>APP_SECRET</C> seals your SSH key and your
@@ -206,40 +576,60 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         <li>
           <B>The public</B> can see three things you turn on: a status page, the analytics script and its collector,
           and the comment on a pull request. A status page shows the project name, whether the app answers, a 30-day
-          strip and the latest 10 outages, and nothing else.
+          strip and the latest 10 outages, and nothing else. The collector answers 204 whether or not a key exists,
+          so keys cannot be probed.
+        </li>
+        <li>
+          <B>Your receivers</B> see a signed message when you add a webhook. It never carries variables, logs,
+          commit messages or errors. Egg refuses to send to a private or internal address and does not follow
+          redirects.
         </li>
         <li>
           <B>The log of your actions</B> records what you did, with names and paths. It never records the contents of
-          a file, a variable’s value, or what you typed or saw in the terminal.
+          a file, a variable’s value, or what you typed or saw in the terminal, and anything that looks like a secret
+          is dropped before an entry is shown.
         </li>
       </List>
 
       {limits("security-limits", [
-        ["Session", "30 days", "The cookie and the stored session both expire. Sign in again."],
-        ["Fresh sign-in", "5 minutes", "Older than that, turning on Terminal or File changes sends you to Hack Club again."],
-        ["Sign-in handshake", "10 minutes", "A sign-in that takes longer fails. Start again from the login page, in one browser."],
-        ["Token with terminal or file changes", "7 days at most", "The token form refuses a longer expiry."],
-        ["Servers per account", "5", "“You can connect up to 5 servers.”"],
-        ["Notification post", "5 seconds", "The post is dropped and logged. Redirects are refused."],
+        ["Session", "30 days", "The cookie and the stored session both expire. Sign in again.", "server/auth/session.ts (SESSION_DAYS)"],
+        ["Fresh sign-in", "5 minutes", "Older than that, turning on Terminal or File changes sends you to Hack Club again.", "server/auth/session.ts (REAUTH_WINDOW_MS)"],
+        ["Sign-in handshake", "10 minutes", "A sign-in that takes longer fails. Start again from the login page, in one browser.", "app/api/auth/login/route.ts (maxAge)"],
+        ["Sign-in attempts", "20 a minute per address", "A redirect to the login page. Wait a minute.", "server/rate-limit.ts (RATE_LIMITS.signIn)"],
+        ["Invalid access tokens", "60 a minute per address", "429 with Retry-After.", "server/rate-limit.ts (RATE_LIMITS.badToken)"],
+        ["Token with terminal or file changes", "7 days at most", "The token form refuses a longer expiry.", "server/api-tokens.ts (SHORT_LIVED_MAX_DAYS)"],
+        ["Terminals", "5 per account, 50 on the server", "“You can have 5 terminals open at once. Close one first.”", "server/terminal.ts (TERMINAL_LIMITS)"],
+        ["Servers per account", "5", "“You can connect up to 5 servers.”", "server/servers.ts (MAX_SERVERS_PER_USER)"],
+        ["GitHub delivery", "25 MB, id remembered 1 hour", "A larger body or a repeated id is dropped.", "app/api/webhooks/github/route.ts, server/github/webhook.ts (DELIVERY_TTL_MS)"],
+        ["Deploy hook body", "4 KB", "413.", "app/api/hooks/deploy/[token]/route.ts (MAX_BODY_BYTES)"],
+        ["Build output", "500 MB", "The deployment fails with the size in the message.", "server/deploy/build.ts (MAX_ARCHIVE_BYTES)"],
+        ["Build log", "20,000 lines", "One line says the rest was dropped.", "server/deploy/logger.ts (MAX_LOG_ROWS)"],
+        ["Build memory", "2048 MB by default, 512 MB up to the server’s memory", "“Build memory must be a whole number of MB from 512 to <max>.”", "lib/build-memory.ts"],
+        ["Notification post", "5 seconds", "The post is dropped and logged. Redirects are refused.", "server/notify.ts"],
       ])}
 
       {wrong("security-wrong", [
         [
           "The host key of <host> changed (was <old>, now <new>). Nothing was sent. If you expected this, reconnect the server.",
-          "Stop. Something else answered where Nest should be, or Nest changed its key. If you expected it, Disconnect and add the server again, remembering that Disconnect deletes the server’s projects here.",
+          "Stop. Something else answered where Nest should be, or Nest changed its key. If you expected it, Disconnect and add the server again, and choose whether to keep its projects.",
         ],
         [
           "Nest rejected the key. Check that you pasted the public key on the SSH Keys page of the Nest dashboard, and that the username is exactly your Nest username.",
           "Paste the public key again. After New key, the old one stops working.",
         ],
+        ...SWITCH_OFF.slice(3),
         [
-          "Confirm with Hack Club first. Turning this on needs a sign-in in the last 5 minutes.",
-          "Flip the switch again. It sends you through Hack Club and back to Account.",
+          "<name> is disconnected. Connect it again to manage its projects.",
+          "409. You kept the projects when you disconnected. Connect the same Nest username again from Connect and run Test connection.",
+        ],
+        [
+          "Too many requests for unrecognised access tokens. Wait <n> second(s) and try again.",
+          "429. Many invalid tokens came from your address. Fix the token your script sends, then wait.",
         ],
       ])}
 
       {example("security-example", {
-        title: "End Nest Deploy’s access",
+        title: "End Egg’s access",
         given: "A server connected as sam-r, with two projects running.",
         steps: [
           {
@@ -250,7 +640,7 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
             title: "Test the connection",
             body: (
               <>
-                In Nest Deploy, open Connect and press <B>Test connection</B>.
+                In Egg, open Connect and press <B>Test connection</B>.
               </>
             ),
           },
@@ -262,10 +652,30 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
           </>
         ),
       })}
+      {example("security-example-mask", {
+        title: "See a secret masked",
+        given: (
+          <>
+            A project with a variable <C>STRIPE_KEY</C> set to <C>sk_live_abc123</C>, and a build command of{" "}
+            <C>{"echo \"key is $STRIPE_KEY\""}</C>.
+          </>
+        ),
+        steps: [
+          { title: "Deploy", body: "Press Deploy and open the deployment’s log." },
+          { title: "Find the line", body: "Look for the line the echo printed." },
+        ],
+        result: (
+          <>
+            The log shows <C>key is ***</C>. Had the value been <C>abc</C> (3 characters) or printed as base64, the
+            log would have shown it.
+          </>
+        ),
+      })}
       {related([
         ["servers", "Servers"],
         ["container", "Container, terminal and files"],
         ["env", "Environment variables"],
+        ["api", "Access tokens and the API"],
       ])}
     </Section>
   ),
@@ -274,25 +684,51 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
   activity: () => (
     <Section
       id="activity"
-      intro="A newest-first log of what you changed and what the monitor saw, with a search and two filters."
+      intro="A newest-first log of what you changed and what the monitor saw, with a search, two filters and a CSV export."
     >
       <P>
-        Open Activity in the sidebar. Entries are grouped by day in UTC. Each row says what happened, to which
-        project, server or domain, and what did it. A change made with an access token shows the token’s name, so you
-        can tell a script from yourself.
+        Open Activity in the sidebar. Entries are grouped by day in UTC, with Today and Yesterday named. Each row
+        says what happened, to which project, server or domain, and what did it. A change made with an access token
+        shows the token’s name, so you can tell a script from yourself. A project, token or server that has since been
+        deleted still shows by the name it had, marked as gone.
       </P>
-      <H3 id="activity-log" />
+      {why(
+        <>
+          Days are cut at midnight UTC so the log reads the same wherever you are and two people on one account see
+          the same groups. Two entries a second apart on either side of midnight UTC land under different days. The
+          build log on a deployment page shows your browser’s time, which is the only place that does.
+        </>
+      )}
+
+      <H2 id="activity-log" />
       <P>
         The log covers your own actions and the monitor’s. Examples of the wording: “Created project”, “Changed
-        settings for”, “Redeployed”, “Rolled back”, “Canceled a deployment of”, “Deployed through the deploy hook
-        for”, “Detected downtime on”, “Created an access token”, “Opened a terminal on”, “Saved a file on”, “Changed
+        settings for”, “Saved environment variable on”, “Started a deployment of”, “Redeployed”, “Rolled back”,
+        “Canceled a deployment of”, “Deployed through the deploy hook for”, “Turned on analytics for”, “Published a
+        status page for”, “Detected downtime on”, “Detected recovery of”, “Created an access token”, “Opened a
+        terminal on”, “Saved a file on”, “Created a webhook”, “Replaced the SSH key for”, “Changed the build memory limit for”, “Disconnected”, “Changed
         container permissions for” and “Removed a leftover from the container”.
       </P>
+      <Table
+        caption="What each Kind covers"
+        head={["Kind", "What it holds"]}
+        rows={[
+          [<B key="p">Projects</B>, "Creating, changing, restarting and deleting projects. Saving and removing variables. Turning analytics on or off or changing what it records. Publishing or unpublishing a status page."],
+          [<B key="d">Deployments</B>, "Starting, redeploying, rolling back and canceling deployments. Deleting previews. Creating, revoking and using a deploy hook."],
+          [<B key="o">Domains</B>, "Adding, changing and removing a domain."],
+          [<B key="s">Servers</B>, "Replacing the SSH key, changing the build memory limit, changing container permissions, removing leftovers and disconnecting a server. A disconnect entry records how many projects were kept or deleted."],
+          [<B key="a">Access and tokens</B>, "Creating, editing and revoking access tokens. Signing out other browsers. Confirming sign-in with Hack Club. Creating, changing, testing and deleting webhooks."],
+          [<B key="m">Monitoring</B>, "“Detected downtime on” and “Detected recovery of”."],
+          [<B key="t">Terminal and files</B>, "Opening and closing a terminal, and saving, creating, renaming and deleting files."],
+        ]}
+      />
       <P>
-        Terminal and file entries record that something happened, with a path or a duration. They never record file
-        contents or what you typed or saw. Anything that looks like a secret is dropped before an entry is shown.
+        An entry that fits none of these shows only under All. Terminal and file entries record that something
+        happened, with a path or a duration. They never record file contents or what you typed or saw. A detail that
+        looks like a secret, by its name or its value, is dropped before an entry is shown or exported.
       </P>
-      <H3 id="activity-filters" />
+
+      <H2 id="activity-filters" />
       {steps("activity-filters-steps", "Find an entry", [
         { title: "Search", body: "Type in “Search by action, project or detail”. Every word you type has to match." },
         {
@@ -301,28 +737,55 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         },
         { title: "Pick a date range", body: "Choose Last 24 hours, Last 7 days, Last 30 days or All time." },
         { title: "Load more", body: "Press Load more at the bottom to read the next 50." },
+        { title: "Start again", body: "Press Clear filters to go back to All kinds, All time and no search." },
       ])}
+      <P>
+        The filters are in the address, so a filtered list can be bookmarked or shared with yourself on another
+        device. With Kind on All and nothing in the search box, three or more neighbouring entries of one kind fold
+        into one row such as “4 token and access changes”, and every entry is still inside it. Search and a chosen
+        Kind show every row.
+      </P>
 
-      <H3 id="activity-export" title="Exporting to CSV" />
+      <H2 id="activity-export" title="Exporting to CSV" />
       <P>
         Press <B>Export CSV</B> at the top of the page to download what the list shows. The file follows the search,
         kind and date range you have set, newest first. Its columns are Time (UTC), Kind, Action, Description,
         Target, Details, Access token and Entry id. Secrets are left out exactly as they are on the page, and a value
         that starts with <C>=</C>, <C>+</C>, <C>-</C> or <C>@</C> gets a leading quote so a spreadsheet shows it as
-        text.
+        text. The response carries an <C>x-export-truncated</C> header that is <C>true</C> when more entries matched
+        than the file holds.
       </P>
+      <H3 id="activity-api" title="Reading it from a script" />
+      <P>
+        A token with <C>activity:read</C> can read the same log with <C>GET /api/v1/activity</C>, with the same kinds
+        and ranges. <C>kind</C> is one of <C>all</C>, <C>projects</C>, <C>deployments</C>, <C>domains</C>,{" "}
+        <C>servers</C>, <C>access</C>, <C>monitoring</C> and <C>terminal</C>. <C>range</C> is <C>24h</C>, <C>7d</C>,{" "}
+        <C>30d</C> or <C>all</C>. <C>limit</C> is 1 to 100 and defaults to 50. The answer has <C>items</C>,{" "}
+        <C>nextCursor</C> and <C>total</C>. Pass <C>nextCursor</C> back as <C>cursor</C> for the next page.
+      </P>
+      {code(
+        "Terminal",
+        `curl -H "Authorization: Bearer $NEST_TOKEN" \\\n  "https://your-egg/api/v1/activity?kind=deployments&range=24h&limit=20"`
+      )}
+
       {limits("activity-limits", [
-        ["Entries per page", "50", "Press Load more for the next 50."],
-        ["Search depth", "The newest 5000", "A search reads in batches of 200 and says when it stopped at the limit. Narrow the date range instead."],
-        ["Search text", "80 characters", "Anything longer is cut."],
-        ["CSV export", "5000 entries, 10 exports a minute", "Narrow the date range or search to export the rest."],
-        ["Retention", "No pruning", "Nest Deploy does not delete old entries. Deleting your account removes all of them."],
+        ["Entries per page", "50", "Press Load more for the next 50.", "server/activity.ts (PAGE_SIZE)"],
+        ["Search depth", "The newest 5000", "A search reads in batches of 200 and says “Searched the latest 5,000 entries.” when it stopped at the limit. Narrow the date range instead.", "server/activity-query.ts (SCAN_LIMIT, SCAN_BATCH)"],
+        ["Search text", "80 characters", "Anything longer is cut.", "server/activity.ts (MAX_QUERY)"],
+        ["CSV export size", "5000 entries", "The file stops there and x-export-truncated is true. Narrow the date range or search to export the rest.", "server/export-csv.ts (EXPORT_ROW_LIMIT)"],
+        ["CSV export rate", "10 a minute per account", "“Too many exports. Wait <n> second(s) and try again.”", "server/export-csv-data.ts (EXPORT_RATE)"],
+        ["API page", "1 to 100, default 50", "A value outside the range is a 400.", "server/api-v1-more.ts (activity query)"],
+        ["Detail length", "200 characters", "A longer detail is cut with an ellipsis.", "server/activity.ts (MAX_VALUE)"],
+        ["Retention", "No pruning", "Egg does not delete old entries. Deleting your account removes all of them.", "server/account.ts"],
       ])}
 
       {wrong("activity-wrong", [
         ["No activity yet", "Nothing has been recorded for your account yet. Make a change and it appears."],
-        ["Nothing in this range yet", "Pick a longer date range, or set Kind back to All."],
-        ["Could not load more", "Press Load more again. If it keeps failing, reload the page."],
+        ["Nothing in this range yet", "Pick a longer date range, or set Kind back to All. Press Clear filters."],
+        ["Could not load more", "Press Try again. If it keeps failing, reload the page. Your filters stay as they were."],
+        ["Searched the latest 5,000 entries.", "An older match may exist. Narrow the date range and search again."],
+        ["Too many exports. Wait <n> second(s) and try again.", "429. 10 exports a minute for your account."],
+        ["A row shows the action name instead of a sentence", "The entry is of a kind this version has no wording for. Its time, target and details are still right."],
       ])}
 
       {example("activity-example", {
@@ -339,9 +802,24 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
           </>
         ),
       })}
+      {example("activity-example-export", {
+        title: "Keep a record of one month",
+        given: "You want every token and sign-in change from the last 30 days in a spreadsheet.",
+        steps: [
+          { title: "Set the filters", body: "Set Kind to Access and tokens and Date range to Last 30 days." },
+          { title: "Export", body: "Press Export CSV." },
+        ],
+        result: (
+          <>
+            A file named for activity downloads with one row per entry, newest first. The Access token column names
+            the token that made a change, and is empty for changes you made in the browser.
+          </>
+        ),
+      })}
       {related([
         ["account", "Account"],
         ["api", "Access tokens and the API"],
+        ["monitoring", "Monitoring and uptime"],
       ])}
     </Section>
   ),
@@ -350,49 +828,76 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
   account: () => (
     <Section
       id="account"
-      intro="Your Hack Club sign-in, the browsers that are signed in, and how to delete your account."
+      intro="Your Hack Club sign-in, the browsers that are signed in, the cards on the Account page, and how to delete your account."
     >
       <P>
-        Open Account from the account menu. It has cards for Profile, GitHub, Container permissions, Signed-in
-        browsers and Delete Account. Profile shows your name and email from Hack Club and is read only: change them
-        there. GitHub lists the accounts where the Nest Deploy app is installed, each with a “Manage on GitHub” link.
-        Container permissions are covered on the{" "}
-        <InternalLink href={docsHref("container")}>container</InternalLink> page.
+        Open Account from the account menu. It has cards for Profile, GitHub, Container permissions, Webhooks,
+        Signed-in browsers and Delete Account.
       </P>
-      <H3 id="account-signin" />
+      <List>
+        <li>
+          <B>Profile</B> shows your Name and Email from Hack Club, or “Not shared” when there is no email. It is
+          read only: change them at Hack Club.
+        </li>
+        <li>
+          <B>GitHub</B> lists the accounts where the GitHub app is installed, each with a “Manage on GitHub” link.
+          With none installed it says “Not connected yet. Import a project to install the app.”
+        </li>
+        <li>
+          <B>Container permissions</B> are covered on the{" "}
+          <InternalLink href={docsHref("container")}>container</InternalLink> page.
+        </li>
+        <li>
+          <B>Webhooks</B> send a signed message to your own code when a deployment starts, succeeds or fails. They
+          are covered on the <InternalLink href={docsHref("notifications")}>notifications</InternalLink> page.
+        </li>
+      </List>
+      <H2 id="account-signin" />
       {steps("account-signin-steps", "Sign in", [
-        { title: "Open the login page", body: "Its heading is “Log in to Nest Deploy”." },
+        { title: "Open the login page", body: "Its heading is “Log in to Egg”." },
         { title: "Press Continue with Hack Club", body: "Approve at Hack Club." },
-        { title: "Land on Projects", body: "Nest Deploy sets a session cookie that lasts 30 days." },
+        { title: "Land on Projects", body: "Egg sets a session cookie that lasts 30 days." },
       ])}
       <P>
         The account menu has <B>Sign out</B>. It ends this browser’s session and closes every terminal your account
         has open. Some switches ask you to confirm with Hack Club again. That is a second sign-in that counts for 5
-        minutes, and it must be the same Hack Club account.
+        minutes, and it must be the same Hack Club account. A copy of Egg running in local mode has no Hack Club
+        account, so it skips the confirmation.
       </P>
-      <H3 id="account-sessions" />
+      {why(
+        <>
+          Egg never stores a password. Hack Club proves who you are, and Egg keeps only a hash of its own session
+          token. The second confirmation exists because turning on a root shell is the one change that should not
+          ride on a session cookie someone else may have borrowed from a laptop left open.
+        </>
+      )}
+      <H2 id="account-sessions" />
       <P>
         The Signed-in browsers card lists each session with a label such as “Chrome on Windows” and when it was
         signed in. This one has a “This browser” badge. Press <B>Sign out</B> on another to end it, or{" "}
-        <B>Sign out everywhere else</B> to end them all. Ending another session closes your open terminals.
+        <B>Sign out everywhere else</B> to end them all. Ending another session closes every terminal your account
+        has open, because a terminal belongs to the account and not to one browser.
       </P>
-      <H3 id="account-delete" />
+      <H2 id="account-delete" />
       {steps("account-delete-steps", "Delete your account", [
         { title: "Open the Delete Account card", body: "It is at the bottom of Account." },
         { title: "Type your name", body: "Type it exactly as Profile shows it. Spaces at the start and end are ignored." },
         { title: "Press Delete account", body: "Your terminals close first, then your records are deleted." },
       ])}
       <P>
-        This deletes your projects, servers, domains, keys, access tokens, sessions and your activity log. Apps
-        already on your container keep running, but nothing manages them any more. Delete the key on the SSH Keys page
-        of the Nest dashboard as well, so Nest Deploy’s old key does not stay on your container.
+        This deletes your projects, servers, domains, keys, access tokens, webhooks, sessions and your activity log.
+        Apps already on your container keep running, but nothing manages them any more. Delete the key on the SSH
+        Keys page of the Nest dashboard as well, so Egg’s old key does not stay on your container.
       </P>
 
       {limits("account-limits", [
-        ["Session", "30 days", "Sign in again."],
-        ["Fresh sign-in", "5 minutes", "It matters only for turning on Terminal or File changes."],
-        ["Servers", "5 per account", "“You can connect up to 5 servers.”"],
-        ["Access tokens", "25 active", "Revoke one to make another."],
+        ["Session", "30 days", "Sign in again.", "server/auth/session.ts (SESSION_DAYS)"],
+        ["Fresh sign-in", "5 minutes", "It matters only for turning on Terminal or File changes.", "server/auth/session.ts (REAUTH_WINDOW_MS)"],
+        ["Sign-in handshake", "10 minutes", "Start again from the login page, in one browser.", "app/api/auth/login/route.ts (maxAge)"],
+        ["Sign-in attempts", "20 a minute per address", "A redirect to the login page. Wait a minute.", "server/rate-limit.ts (RATE_LIMITS.signIn)"],
+        ["Servers", "5 per account", "“You can connect up to 5 servers.”", "server/servers.ts (MAX_SERVERS_PER_USER)"],
+        ["Access tokens", "25 active", "Revoke one to make another.", "server/api-tokens.ts (MAX_TOKENS_PER_USER)"],
+        ["Webhooks", "10 per account", "“You can have up to 10 webhooks. Delete one first.”", "server/webhooks.ts (MAX_WEBHOOKS_PER_USER)"],
       ])}
 
       {wrong("account-wrong", [
@@ -401,9 +906,13 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         ["That sign-in link was not valid. Please try again.", "Start again from the login page."],
         ["The sign-in took too long or came from another browser. Please try again.", "Start and finish in one browser within 10 minutes."],
         ["Hack Club could not sign you in. Please try again in a moment.", "Wait a minute and try again."],
-        ["Something went wrong signing in.", "Try again. If it repeats, open an issue on GitHub."],
+        ["Something went wrong signing in.", "Try again. It also shows after more than 20 attempts in a minute from one address: wait a minute. If it keeps happening, open an issue on GitHub."],
         ["That is the session you are using. Sign out instead.", "Use Sign out in the account menu for this browser."],
+        ["Session not found", "That session already ended. Reload the page."],
         ["Type your name exactly to confirm.", "Copy your name from the Profile card."],
+        ["Could not delete the account", "Nothing was deleted. Try again."],
+        ["Could not sign that browser out", "Try again."],
+        ["Could not sign the others out", "Try again."],
         [
           "A switch stays off after confirming",
           "You signed in with a different Hack Club account, so you land back on Account with no message. Sign in with the same account and flip the switch again.",
@@ -419,9 +928,20 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         ],
         result: "The row disappears and any terminal that session had open closes. This browser stays signed in.",
       })}
+      {example("account-example-everywhere", {
+        title: "Start clean after a scare",
+        given: "You think a token or a cookie may have leaked.",
+        steps: [
+          { title: "Sign out everywhere else", body: "Press it on the Signed-in browsers card. Every other session ends and your terminals close." },
+          { title: "Revoke the tokens", body: "On the Developer page, press Revoke on each token you do not recognise." },
+          { title: "Read Activity", body: "Set Kind to Access and tokens and look for entries you did not make." },
+        ],
+        result: "Only this browser stays signed in, no token works, and Activity shows what happened and when.",
+      })}
       {related([
         ["activity", "Activity"],
         ["security", "Security"],
+        ["api", "Access tokens and the API"],
       ])}
     </Section>
   ),
@@ -430,7 +950,7 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
   container: () => (
     <Section
       id="container"
-      intro="Three switches decide what Nest Deploy may do inside your container beyond deploying. All three start off."
+      intro="Three switches decide what Egg may do inside your container beyond deploying. All three start off."
     >
       <P>
         You need a connected server. The switches live in Account, under Container permissions, one card per server
@@ -438,7 +958,7 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         session, so turning one off stops the very next call. Turning a switch on or off never restarts an app.
       </P>
 
-      <H3 id="container-switches" />
+      <H2 id="container-switches" />
       <Table
         caption="The three container permission switches"
         head={["Switch", "Default", "Fresh sign-in"]}
@@ -450,10 +970,10 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
       />
       {steps("container-switches-steps", "Turn a switch on", [
         { title: "Open Account", body: "Find Container permissions and the card for your server.", path: ["Account", "Container permissions"] },
-        { title: "Flip a switch", body: "It saves at once and a message names the switch and the server." },
+        { title: "Flip a switch", body: "It saves at once and a message names the switch and the server, for example “Terminal turned on”." },
         {
           title: "Confirm if asked",
-          body: "Terminal and File changes send you to Hack Club and back to Account, where the switch is applied. Turning any switch off never asks.",
+          body: "Terminal and File changes send you to Hack Club and back to Account, where the switch is applied. Turning any switch off never asks. Turning Terminal off closes your open terminals on that server, and says so.",
         },
       ])}
       <P>
@@ -471,7 +991,7 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         rows={[
           [
             <B key="t">Terminal</B>,
-            "Anything the container user can touch, including apps and files Nest Deploy did not create. It is a root shell, and anyone signed in to your account can use it while it is on.",
+            "Anything the container user can touch, including apps and files Egg did not create. It is a root shell, and anyone signed in to your account can use it while it is on.",
           ],
           [
             <B key="f">File changes</B>,
@@ -484,40 +1004,79 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
           [
             <B key="r">Removing leftovers</B>,
             <>
-              Nest Deploy services (<C>nd-*.service</C>) that no project uses, and whole folders under{" "}
-              <C>~/.nest-deploy</C> that no project uses, including their <C>shared/</C> data.
+              Egg services (<C>egg-*.service</C>) that no project uses, and whole folders under{" "}
+              <C>~/.egg</C> that no project uses, including their <C>shared/</C> data.
             </>,
           ],
         ]}
       />
+      {why(
+        <>
+          All three switches start off because each one reaches past “deploy my app”. The server enforces them, not
+          just the page: a request to a feature that is off is refused with a 403 before any SSH connection is
+          opened, and an access token cannot turn a switch on. A switch that is off is the only part of this you do
+          not have to trust Egg about.
+        </>
+      )}
 
-      <H3 id="container-page" />
+      <H2 id="container-page" />
       <P>
         Container in the sidebar reads your container in one read-only SSH round trip and shows what is running and
-        what Nest Deploy left behind. Pick a server if you have more than one, and press <B>Refresh</B> to read it
-        again.
+        what Egg left behind. Pick a server if you have more than one, and press <B>Refresh</B> to read it again.
       </P>
       <List>
         <li>
-          <B>Disk used</B> shows the percentage and how much of it is Nest Deploy folders.
+          <B>Disk used</B> shows the percentage and how much of it is Egg folders.
         </li>
         <li>
           <B>Projects</B> shows each project’s service (Running, Starting, Crashed, Stopped, or No service yet), its
           port, folder size and previews. If another program holds a project’s port you see “Port &lt;n&gt; is held
-          by &lt;x&gt;, not by &lt;project&gt;” with a “Change the port” link.
+          by &lt;x&gt;, not by &lt;project&gt;” with a “Change the port” link. The next deploy of that project fails
+          its health check until the clash is sorted.
         </li>
         <li>
           <B>Orphans</B> lists leftovers, described next.
         </li>
         <li>
-          <B>Other ports</B> lists programs listening that Nest Deploy did not start. It is read only.
+          <B>Other ports</B> lists programs listening that Egg did not start, with “This container only” or “Open
+          to the network”. It is read only. Without <C>ss</C> or <C>netstat</C> on the container it says so.
         </li>
       </List>
-
-      <H3 id="container-leftovers" />
+      <H3 id="container-build-memory" title="Build memory" />
       <P>
-        A leftover is a service named <C>nd-&lt;project&gt;.service</C> or a preview unit that no project uses, or a
-        folder under <C>~/.nest-deploy</C> that is not a project. It usually appears after you delete a project with
+        Builds run on the Egg side in a sandbox, not on your container. The sandbox gets 2048 MB by default, and the
+        limit belongs to the server, so every project on that server builds with the same amount. The Build memory
+        card on the Container page has a field, <B>Build memory (MB)</B>, and a <B>Save</B> button. The allowed range
+        is 512 MB up to the memory your server reported the last time you pressed Test connection, or up to 8192 MB
+        when it reported none. The hint under the field shows the range for this server.
+      </P>
+      {steps("container-build-memory-steps", "Change the build memory", [
+        { title: "Open Container", body: "Pick the server from the list if you have more than one.", path: ["Container", "Build memory"] },
+        { title: "Type a number in Build memory (MB)", body: "A whole number of MB inside the range in the hint. Save stays off until the number differs from the saved one." },
+        { title: "Press Save", body: "A message says “Build memory set to <n> MB”. The next build on that server uses it. A build already running keeps the old limit." },
+        { title: "Go back to the default", body: "Press Use 2048 MB, then Save. The button shows only while the saved value is not 2048." },
+      ], 3)}
+      <P>
+        A value outside the range is refused with “Build memory must be a whole number of MB from 512 to &lt;max&gt;.”
+        A build that needs more than the limit stops with “The build ran out of memory (limit &lt;n&gt; MB). Raise the
+        build memory for this server on the Container page, or make the build use less.” Raise it and deploy again.
+        The setting is changed in the browser only: no access token or agent call can change it. Each change is
+        recorded in Activity as “Changed the build memory limit for”.
+      </P>
+      {why(
+        <>
+          A standard Nest container is happy with 2048 MB, so that is the default. The limit is per server because
+          servers differ: some can use more, and a build that fits a small server should not be given more than that
+          server could ever offer. The top of the range follows what the server reported, so the page does not let you
+          ask for memory the server does not have. Swap is capped at the same size so the limit is a real one and a
+          build cannot slip past it by swapping.
+        </>
+      )}
+
+      <H2 id="container-leftovers" />
+      <P>
+        A leftover is a service named <C>egg-&lt;project&gt;.service</C> or a preview unit that no project uses, or a
+        folder under <C>~/.egg</C> that is not a project. It usually appears after you delete a project with
         “Also stop the service and delete releases” unticked, or after a failed cleanup.
       </P>
       {steps("container-leftovers-steps", "Remove a leftover", [
@@ -533,36 +1092,43 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         },
       ])}
       <P>
-        Nest Deploy knows what it made by two markers. A service file starts with a comment{" "}
-        <C>nest-deploy:managed</C>, and a project folder holds a file named <C>.nest-deploy-managed</C>. An older
-        folder without that file counts only if it holds nothing but <C>releases</C>, <C>incoming</C>,{" "}
-        <C>shared</C>, <C>current</C> and <C>current.new</C> and has no <C>.git</C>. Anything without a marker is
-        never overwritten, stopped, moved or deleted: a deploy refuses, cleanup refuses and project deletion leaves
-        it.
+        Egg knows what it made by two markers. A service file starts with a comment <C>egg:managed</C>, and a
+        project folder holds a file named <C>.egg-managed</C>. An older folder without that file counts only
+        if it holds nothing but <C>releases</C>, <C>incoming</C>, <C>shared</C>, <C>current</C> and{" "}
+        <C>current.new</C> and has no <C>.git</C>. Anything without a marker is never overwritten, stopped, moved or
+        deleted: a deploy refuses, cleanup refuses and project deletion leaves it.
       </P>
       <P>
         Every request is checked again against a fresh read of the container. A row that now belongs to a project,
         that is a symbolic link, or that has no marker is refused, even if you press Remove. Access tokens and the MCP
-        endpoint cannot remove leftovers at all.
+        endpoint cannot remove leftovers at all, and one request removes at most 50 items.
       </P>
+      {why(
+        <>
+          Another account on the same Nest username family can own services whose names also start with{" "}
+          <C>egg-</C>, and a folder you made by hand can sit in <C>~/.egg</C>. A name alone proves nothing,
+          so Egg trusts only its own marker, and checks it again at the moment you press Remove instead of
+          trusting the list you were looking at.
+        </>
+      )}
 
-      <H3 id="container-adopt" />
+      <H2 id="container-adopt" />
       <P>
-        If an app of yours already runs on the container, Nest Deploy can check what the new project would collide
-        with before it touches anything. In New Project the check runs by itself once the name, server and port are
+        If an app of yours already runs on the container, Egg can check what the new project would collide with
+        before it touches anything. In New Project the check runs by itself once the name, server and port are
         valid, and again at the start of every deploy. It never stops, moves or deletes anything.
       </P>
       <List>
         <li>
-          <B>Blocks the deploy:</B> a service called <C>nd-&lt;name&gt;.service</C> that Nest Deploy did not create;
-          the project folder being a link, a file, someone else’s git checkout, or a folder with other files in it;
-          the port used by another program; a program or service already running from the project folder; and, for the
+          <B>Blocks the deploy:</B> a service called <C>egg-&lt;name&gt;.service</C> that Egg did not create; the
+          project folder being a link, a file, someone else’s git checkout, or a folder with other files in it; the
+          port used by another program; a program or service already running from the project folder; and, for the
           first production deploy only, the same repository already running by hand from another checkout.
         </li>
         <li>
           <B>Good to know, does not block:</B> a stopped service for the same repository, a checkout that is only
-          sitting there, leftovers from an earlier Nest Deploy project of the same name (they are reused), and ports
-          the container would not let it read.
+          sitting there, leftovers from an earlier Egg project of the same name (they are reused), and ports the
+          container would not let it read.
         </li>
       </List>
       <P>
@@ -573,93 +1139,149 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         <B>Deploy automatically on push</B>.
       </P>
 
-      <H3 id="container-terminal" />
+      <H2 id="container-terminal" />
       <P>
         The terminal is a live shell on your container in the browser, started in{" "}
-        <C>~/.nest-deploy/&lt;project&gt;</C>. It is off until you turn it on for a server, and turning it on needs a
+        <C>~/.egg/&lt;project&gt;</C>. It is off until you turn it on for a server, and turning it on needs a
         Hack Club sign-in from the last 5 minutes. Anything you type runs for real.
       </P>
       {steps("container-terminal-steps", "Open a terminal", [
         { title: "Turn on Terminal", body: "In Account, under Container permissions, then confirm with Hack Club." },
         {
           title: "Open the project’s Terminal tab",
-          body: "With the switch off the page says “The terminal is turned off for this server.” and links to Account.",
+          body: "With the switch off the page says “The terminal is turned off for this server.” and links to Account with a Go to Account button.",
         },
-        { title: "Press Open terminal", body: "It shows who the shell runs as, for example “This shell runs as root on <host>.”" },
-        { title: "Type, then press Close", body: "A countdown shows the time left. Close ends the shell." },
+        { title: "Press Open terminal", body: "It shows who the shell runs as, for example “Connected as root” on the host name." },
+        {
+          title: "Type, then press Close terminal",
+          body: "A “Time left” countdown shows the time before the shell closes. Close terminal ends it.",
+        },
       ])}
       <List>
-        <li>It closes after 10 minutes without input. Output does not count as activity.</li>
-        <li>It closes after 60 minutes in total, whatever you are doing.</li>
+        <li>It closes after 10 minutes without input. Output does not count as activity, and neither does resizing.</li>
+        <li>It closes after 60 minutes in total, whatever you are doing. A banner warns “This terminal closes in under a minute.”</li>
         <li>
           It closes when you sign out, when another of your sessions is ended, when you delete your account, when you
           switch the terminal off, and when the connection drops or the shell exits.
         </li>
+        <li>
+          Leaving the page keeps the terminal open until it times out. Come back and press <B>Resume terminal</B>,
+          which replays the last 64 KB of output, or <B>Close it</B>.
+        </li>
+        <li>
+          The terminal takes every key while it has focus, including Tab. Press Escape, then Tab, to move focus to
+          Close terminal. Copy with Ctrl+Shift+C and paste with Ctrl+V.
+        </li>
         <li>Only the opening and closing are recorded, with the duration and the reason. Keystrokes and output never are.</li>
       </List>
+      <Table
+        caption="How a terminal ends"
+        head={["Title on the page", "Why", "Button"]}
+        rows={[
+          ["Terminal closed after a pause", "10 minutes without typing.", "Reopen terminal"],
+          ["Terminal reached its time limit", "60 minutes in total.", "Reopen terminal"],
+          ["Terminal closed", "You pressed Close terminal.", "Open a new terminal"],
+          ["The shell ended", "The shell exited, for example after typing exit.", "Open a new terminal"],
+          ["The connection dropped", "The link to your container was lost.", "Open a new terminal"],
+          ["The terminal stopped", "The shell stopped unexpectedly.", "Open a new terminal"],
+          ["This terminal is no longer open", "It closed or timed out while you were away.", "Open a new terminal"],
+        ]}
+      />
 
-      <H3 id="container-files" />
+      <H2 id="container-files" />
       <P>
-        The project’s Files tab browses <C>~/.nest-deploy/&lt;project&gt;</C>. Reading and downloading need no switch.
+        The project’s Files tab browses <C>~/.egg/&lt;project&gt;</C>. Reading and downloading need no switch.
         Creating, uploading, editing, renaming and deleting need File changes on, and work only inside{" "}
         <C>shared/</C>. The live release <C>current/</C> is always read only, as are <C>releases/</C> and{" "}
-        <C>incoming/</C>. <C>shared</C> itself cannot be renamed or deleted.
+        <C>incoming/</C>. <C>shared</C> itself cannot be renamed or deleted. A release’s <C>.env</C> is not shown or
+        downloaded.
       </P>
+      <Table
+        caption="The top-level folders of a project"
+        head={["Folder", "What it is", "Can you change it"]}
+        rows={[
+          [<C key="s">shared/</C>, "Survives deploys. Keep uploads and databases here.", "Yes, with File changes on."],
+          [<C key="c">current/</C>, "The live release. Replaced on the next deploy.", "Never."],
+          [<C key="r">releases/</C>, "Every deployed version, newest last.", "No."],
+          [<C key="i">incoming/</C>, "Archives on their way to a release.", "No."],
+        ]}
+      />
       {steps("container-files-steps", "Change a file", [
         { title: "Turn on File changes", body: "In Account, then confirm with Hack Club." },
-        { title: "Open shared/", body: "Uploads and edits are refused anywhere else." },
+        { title: "Open shared/", body: "Uploads and edits are refused anywhere else. Elsewhere the page says “Uploads are not allowed here” and “Open shared/ first.”" },
         {
           title: "Act",
-          body: "Use New folder or Upload, or select a file, edit it and save. Renaming and deleting are in the row. Deleting a folder asks you to type its name.",
+          body: "Use New folder or Upload (or drop files on the list), or select a file and press Edit, change it and press Save. Discard throws the edit away. Rename (or F2) and Delete are in the row. Deleting a folder asks you to type its name.",
+        },
+        {
+          title: "Restart if the app needs to re-read it",
+          body: "A change does not restart the app. Press Restart on the Service card when your app reads the file only at start.",
         },
       ])}
       <P>
         Code changes belong in your repository, then a deploy. Files that must last, like data or settings, belong in{" "}
-        <C>shared/</C>, which deploys never touch.
+        <C>shared/</C>, which deploys never touch. A file you upload over an existing name asks before it replaces
+        it. A link is never written through, and a link to a folder opens as a folder.
       </P>
+      {why(
+        <>
+          <C>current/</C> is read only even with File changes on because it is the code your app runs: editing it
+          would put code on your container that is in no repository and that the next deploy silently erases.{" "}
+          <C>shared/</C> is the one place a deploy never touches, so it is the one place a change can safely last.
+        </>
+      )}
 
       {limits("container-limits", [
-        ["Terminal idle", "10 minutes", "“Terminal closed after a pause”. Anything running in it was stopped."],
-        ["Terminal total", "60 minutes", "“Terminal reached its time limit”."],
-        ["Terminals open", "1 per project per person, 50 on the server", "“A terminal is already open for this project. Resume or close it first.” or “Too many terminals are open right now. Try again soon.”"],
-        ["Terminal input", "8 KB a request, 300 requests a minute", "“Too many requests for terminal input.” Wait and retry."],
-        ["Terminal size", "20 to 400 columns, 5 to 200 rows", "“The terminal size must be 20 to 400 columns and 5 to 200 rows.”"],
-        ["Terminal output kept", "The last 64 KB", "A reload resumes with that much."],
-        ["File preview and edit", "The first 1 MB", "A larger file shows “Too large to preview”."],
-        ["File upload and download", "50 MB", "“That file is over the 50 MB limit.”"],
-        ["Folder listing", "3000 entries", "More are not shown."],
-        ["File changes", "60 a minute", "“Too many requests for file changes.” Wait and retry."],
-        ["Leftover removal", "50 items a request, 10 requests a minute", "“Remove at most 50 items at a time.”"],
-        ["Container reads", "60 seconds a read, 120 seconds for a removal", "The read fails with the SSH message. Press Refresh."],
-        ["Conflict checks", "20 a minute", "“Too many checks. Wait <n> second(s) and try again.”"],
+        ["Terminal idle", "10 minutes", "“Terminal closed after a pause”. Anything running in it was stopped.", "server/terminal.ts (TERMINAL_LIMITS.idleMs)"],
+        ["Terminal total", "60 minutes", "“Terminal reached its time limit”.", "server/terminal.ts (TERMINAL_LIMITS.maxAgeMs)"],
+        ["Terminals open", "1 per project per person, 5 per account, 50 on the server", "“A terminal is already open for this project. Resume or close it first.”, “You can have 5 terminals open at once. Close one first.” or “Too many terminals are open right now. Try again soon.”", "server/terminal.ts (TERMINAL_LIMITS.maxSessionsPerUser, maxSessions)"],
+        ["Terminal input", "8 KB a request, 300 requests a minute", "“Send at most 8192 bytes at a time.” or “Too many requests for terminal input.” Wait and retry.", "server/terminal.ts (inputBytes), server/rate-limit.ts (RATE_LIMITS.terminalInput)"],
+        ["Terminal size", "20 to 400 columns, 5 to 200 rows", "“The terminal size must be 20 to 400 columns and 5 to 200 rows.”", "server/terminal.ts (TERMINAL_LIMITS.minCols to maxRows)"],
+        ["Terminal output kept", "The last 64 KB", "A reload resumes with that much.", "server/terminal.ts (TERMINAL_LIMITS.bufferBytes)"],
+        ["File preview and edit", "The first 1 MB", "A larger file shows “Too large to preview”.", "server/files-paths.ts (READ_LIMIT)"],
+        ["File upload and download", "50 MB", "“That file is over the 50 MB limit.” The row says “Over 50 MB”.", "server/files-paths.ts (UPLOAD_LIMIT, DOWNLOAD_LIMIT)"],
+        ["Folder listing", "3000 entries", "More are not shown.", "server/files.ts (LIST_LIMIT)"],
+        ["Path", "1024 characters, and 255 bytes in one name", "“Path is longer than 1024 characters.” or “A name in the path is longer than 255 bytes.”", "server/files-paths.ts (MAX_PATH_LENGTH, MAX_SEGMENT_BYTES)"],
+        ["File reads", "120 a minute", "“Too many file requests.” Wait and retry.", "server/files.ts (FILE_READ_LIMIT)"],
+        ["File changes", "60 a minute", "“Too many requests for file changes.” Wait and retry.", "server/rate-limit.ts (RATE_LIMITS.fileWrite)"],
+        ["File operation time", "30 seconds, 120 for upload, download and delete", "The request fails with the container’s answer. Try again.", "server/files.ts (timeoutMs)"],
+        ["Leftover removal", "50 items a request, 10 requests a minute", "“Remove at most 50 items at a time.”", "server/inventory.ts (MAX_ORPHANS_PER_REQUEST), server/rate-limit.ts (RATE_LIMITS.orphanRemoval)"],
+        ["Container reads", "60 seconds a read, 120 seconds for a removal", "The read fails with the SSH message. Press Refresh.", "server/inventory.ts (timeoutMs)"],
+        ["Conflict checks", "20 a minute", "“Too many checks. Wait <n> second(s) and try again.”", "app/api/projects/conflicts/route.ts (LIMIT)"],
+        ["Build memory", "512 MB to the server’s memory, default 2048 MB", "“Build memory must be a whole number of MB from 512 to <max>.”", "lib/build-memory.ts (DEFAULT_BUILD_MEMORY_MB, buildMemoryRange)"],
       ])}
 
       {wrong("container-wrong", [
-        ["The terminal is turned off for this server. Turn it on in Account, under Container permissions.", "Turn on Terminal in Account."],
-        ["Changing files is turned off for this server. Turn it on in Account, under Container permissions.", "Turn on File changes. Reading still works without it."],
-        ["Removing leftovers is turned off for this server. Turn it on in Account, under Container permissions.", "Turn on Removing leftovers. Leftovers stay listed while it is off."],
-        ["This server has not been verified yet. Run Test connection on the Connect page first.", "The host key is not pinned yet. Press Test connection."],
-        ["The terminal was closed before it opened.", "You signed out or switched the terminal off while it was connecting. Open it again."],
-        ["This project has no folder on your container yet. Deploy it first.", "Deploy the project once, then open Files."],
-        ["This location is read only. Files in shared/ can be changed. The live release (current/) cannot.", "Open shared/ and work there."],
-        ["The upload arrived incomplete. Nothing was saved.", "Upload again."],
-        ["Nest Deploy did not create this, so it was left alone.", "The leftover has no marker. If you are sure, remove it yourself in a terminal."],
+        ...SWITCH_OFF,
+        ...TERMINAL_PROBLEMS.slice(0, 5),
+        ...FILE_PROBLEMS.slice(0, 5),
+        ["Egg did not create this, so it was left alone.", "The leftover has no marker. If you are sure, remove it yourself in a terminal."],
         ["This belongs to one of your projects, so it was left alone.", "It is not a leftover. Delete the project first if you want it gone."],
         ["The container’s answer was cut short, so nothing was classified.", "Press Refresh."],
+        ["Remove at most 50 items at a time.", "400. Remove in batches."],
         ["Nothing was changed on your container. <details>", "The conflict check refused. The details say what is in the way: choose another name or port, or stop that program yourself."],
+        ["Could not read the container.", "The page could not reach the container. Check it is running, then press Refresh."],
+        ["Build memory must be a whole number of MB from 512 to <max>.", "400. Type a whole number inside the range in the hint under Build memory (MB). The top of the range is the memory the server reported at its last Test connection."],
+        ["The build ran out of memory (limit <n> MB). Raise the build memory for this server on the Container page, or make the build use less.", "The build was stopped with exit 137. Raise Build memory (MB), press Save and deploy again, or make the build use less memory."],
+        ["Could not read the build memory.", "The Build memory card could not load the setting. Reload the page. It does not need the container to be reachable."],
+        ["Could not save the build memory.", "The change did not go through. Try Save again."],
       ])}
+      <P>
+        The rest of the terminal and file messages, with their fixes, are on the{" "}
+        <InternalLink href={docsHref("troubleshooting")}>troubleshooting</InternalLink> page.
+      </P>
 
       {example("container-example-leftover", {
         title: "Remove a leftover service",
         given: (
           <>
-            You deleted a project named old-api with “Also stop the service” unticked, so <C>nd-old-api.service</C>{" "}
+            You deleted a project named old-api with “Also stop the service” unticked, so <C>egg-old-api.service</C>{" "}
             still runs.
           </>
         ),
         steps: [
           { title: "Turn on Removing leftovers", path: ["Account", "Container permissions", "Removing leftovers"] },
-          { title: "Find the row", body: "Open Container and look under Orphans for nd-old-api.service." },
+          { title: "Find the row", body: "Open Container and look under Orphans for egg-old-api.service." },
           { title: "Remove it", body: "Press Remove, then confirm with Remove service." },
         ],
         result: (
@@ -682,10 +1304,25 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
           </>
         ),
       })}
+      {example("container-example-config", {
+        title: "Edit a settings file without a deploy",
+        given: (
+          <>
+            An app that reads <C>shared/config.json</C> when it starts, and File changes switched on.
+          </>
+        ),
+        steps: [
+          { title: "Open the file", body: "In the Files tab open shared/ and select config.json." },
+          { title: "Edit and save", body: "Press Edit, change the value, press Save." },
+          { title: "Restart", body: "Press Restart on the Service card so the app reads it." },
+        ],
+        result: "The app runs with the new setting. The change is in Activity as “Saved a file on” with the path and no contents.",
+      })}
       {related([
         ["account", "Account"],
         ["security", "Security"],
         ["api", "Access tokens and the API"],
+        ["troubleshooting", "Troubleshooting"],
       ])}
     </Section>
   ),
@@ -694,90 +1331,149 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
   limits: () => (
     <Section
       id="limits"
-      intro="Every number Nest Deploy enforces, grouped by what it limits. Each one comes from the code that applies it."
+      intro="Every number Egg enforces, grouped by what it limits, with the place in the code that sets it."
     >
-      <H3 id="limits-deploys" />
+      <P>
+        Each table has a third column with the setting or constant that holds the number. Paths are inside{" "}
+        <C>web/src</C>. If a number here ever disagrees with what you see, the code is right and the page is the bug.
+      </P>
+      <H2 id="limits-deploys" />
       <Table
         caption="Projects and deploys"
-        head={["What", "Limit"]}
+        head={["What", "Limit", "Set in"]}
         rows={[
-          ["Servers per account", "5."],
-          ["Project name", "1 to 60 characters. The slug uses lowercase letters, digits and hyphens, 1 to 40 characters."],
-          ["Port", "1024 to 65535, and not 20000 to 29999, which previews use."],
-          ["Commands", "500 characters each, on one line."],
-          ["Root directory", "200 characters, relative, no .."],
-          ["Deployments at once", "One per project. Two at a time overall by default."],
-          ["Clone", "5 minutes."],
-          ["Build", "15 minutes by default (900 seconds)."],
-          ["Build output", "500 MB."],
-          ["Health wait", "45 seconds after the switch. A failed production deploy puts the previous release back."],
-          ["Production releases kept", "The 5 newest ready ones, plus the live one."],
-          ["Previews kept", "The 2 newest."],
-          ["Preview ports", "20000 to 29999, one per preview."],
-          ["Environment variables", "100 per project, names up to 100 characters, values up to 10,000."],
+          ["Servers per account", "5.", <C key="1">MAX_SERVERS_PER_USER, server/servers.ts</C>],
+          ["Project name", "1 to 60 characters.", <C key="2">createProjectInput, server/projects.ts</C>],
+          ["Project slug", "Lowercase letters, digits and hyphens, 1 to 40 characters, not starting or ending with a hyphen.", <C key="3">SLUG, server/deploy/layout.ts</C>],
+          ["Port", "1024 to 65535, and not 20000 to 29999, which previews use.", <C key="4">port, server/projects.ts</C>],
+          ["Commands", "500 characters each, on one line.", <C key="5">command, server/projects.ts</C>],
+          ["Root directory", "200 characters, relative, no ..", <C key="6">rootDir, server/projects.ts</C>],
+          ["Branch name", "200 characters. Letters, digits, dots, underscores, hyphens and slashes, not starting with a hyphen.", <C key="7">branch, server/projects.ts</C>],
+          ["Deployments at once", "One per project. Two at a time overall by default.", <C key="8">WORKER_CONCURRENCY, instrumentation.ts</C>],
+          ["Clone", "5 minutes.", <C key="9">server/deploy/build.ts</C>],
+          ["Build", "15 minutes by default (900 seconds).", <C key="10">BUILD_TIMEOUT_SECONDS, server/config.ts</C>],
+          ["Build output", "500 MB.", <C key="11">MAX_ARCHIVE_BYTES, server/deploy/build.ts</C>],
+          ["Build sandbox", "2 CPUs and 2048 processes. Memory is 2048 MB by default, set for each server.", <C key="12">dockerBuildArgs, server/deploy/build.ts</C>],
+          ["Build memory", "512 MB up to the server’s reported memory, or 8192 MB when it reports none.", <C key="12b">lib/build-memory.ts</C>],
+          ["Build log", "20,000 lines, 4000 characters each.", <C key="13">MAX_LOG_ROWS, server/deploy/logger.ts</C>],
+          ["Health wait", "45 seconds after the switch. A failed production deploy puts the previous release back.", <C key="14">healthTimeoutSeconds, server/deploy/pipeline.ts</C>],
+          ["Production releases kept", "The 5 newest ready ones, plus the live one.", <C key="15">KEEP_RELEASES, server/deploy/layout.ts</C>],
+          ["Previews kept", "The 2 newest.", <C key="16">KEEP_PREVIEWS, server/deploy/layout.ts</C>],
+          ["Preview ports", "20000 to 29999, one per preview.", <C key="17">PREVIEW_PORT_MIN, PREVIEW_PORT_MAX, server/projects.ts</C>],
+          ["Environment variables", "100 per project, names up to 100 characters, values up to 10,000.", <C key="18">envInput, server/projects.ts</C>],
+          ["Bulk cancel or delete of previews", "50 per request.", <C key="19">MAX_BULK, server/deployments-bulk.ts</C>],
         ]}
       />
-      <H3 id="limits-container" />
+      <H2 id="limits-container" />
       <Table
         caption="Container features"
-        head={["What", "Limit"]}
+        head={["What", "Limit", "Set in"]}
         rows={[
-          ["Terminal", "Closes after 10 minutes without input or 60 minutes in total. One per project per person, 50 on the server."],
-          ["Terminal input", "8 KB a request, 300 requests a minute."],
-          ["File preview and edit", "The first 1 MB."],
-          ["File upload and download", "50 MB."],
-          ["Folder listing", "3000 entries."],
-          ["File changes", "60 a minute."],
-          ["Leftover removal", "50 items a request, 10 requests a minute."],
-          ["Conflict checks", "20 a minute."],
-          ["Bulk cancel or delete of previews", "50 per request."],
+          ["Terminal", "Closes after 10 minutes without input or 60 minutes in total.", <C key="1">TERMINAL_LIMITS, server/terminal.ts</C>],
+          ["Terminals open", "1 per project per person, 5 per account, 50 on the server.", <C key="2">TERMINAL_LIMITS, server/terminal.ts</C>],
+          ["Terminal input", "8 KB a request, 300 requests a minute.", <C key="3">inputBytes, RATE_LIMITS.terminalInput</C>],
+          ["Terminal output kept", "The last 64 KB.", <C key="4">bufferBytes, server/terminal.ts</C>],
+          ["File preview and edit", "The first 1 MB.", <C key="5">READ_LIMIT, server/files-paths.ts</C>],
+          ["File upload and download", "50 MB.", <C key="6">UPLOAD_LIMIT, DOWNLOAD_LIMIT, server/files-paths.ts</C>],
+          ["Folder listing", "3000 entries.", <C key="7">LIST_LIMIT, server/files.ts</C>],
+          ["File reads", "120 a minute.", <C key="8">FILE_READ_LIMIT, server/files.ts</C>],
+          ["File changes", "60 a minute.", <C key="9">RATE_LIMITS.fileWrite, server/rate-limit.ts</C>],
+          ["Leftover removal", "50 items a request, 10 requests a minute.", <C key="10">MAX_ORPHANS_PER_REQUEST, server/inventory.ts</C>],
+          ["Conflict checks", "20 a minute.", <C key="11">app/api/projects/conflicts/route.ts</C>],
         ]}
       />
-      <H3 id="limits-api" />
+      <H2 id="limits-api" />
       <Table
         caption="Access tokens and the API"
-        head={["What", "Limit"]}
+        head={["What", "Limit", "Set in"]}
         rows={[
-          ["Active tokens", "25 per account. Revoked and expired ones do not count."],
-          ["Token life", "7, 30, 90 or 365 days. 90 is the default."],
-          ["Terminal or file changes", "A token holding either lives 7 days at most."],
-          ["Reads", "120 a minute per token."],
-          ["Changes", "30 a minute per token."],
-          ["Calls that open a session to your container", "10 a minute per token."],
-          ["Terminal input through the API", "300 a minute per token."],
-          ["Request body", "16 KB. A file write takes 4 MB and the MCP endpoint 64 KB."],
-          ["File write through the API", "1 MB. A download is 2 MB."],
+          ["Active tokens", "25 per account. Revoked and expired ones do not count.", <C key="1">MAX_TOKENS_PER_USER, server/api-tokens.ts</C>],
+          ["Token name", "1 to 60 characters.", <C key="2">createTokenInput, server/api-tokens.ts</C>],
+          ["Token life", "7, 30, 90 or 365 days. 90 is the default.", <C key="3">createTokenInput, server/api-tokens.ts</C>],
+          ["Terminal or file changes", "A token holding either lives 7 days at most.", <C key="4">SHORT_LIVED_MAX_DAYS, server/api-tokens.ts</C>],
+          ["Reads", "120 a minute per token.", <C key="5">API_LIMITS.read, server/api-v1-kit.ts</C>],
+          ["Changes", "30 a minute per token.", <C key="6">API_LIMITS.write</C>],
+          ["Calls that open a session to your container", "10 a minute per token.", <C key="7">API_LIMITS.ssh</C>],
+          ["Terminal input through the API", "300 a minute per token.", <C key="8">API_LIMITS.input</C>],
+          ["Invalid tokens", "60 a minute per address.", <C key="9">RATE_LIMITS.badToken, server/rate-limit.ts</C>],
+          ["Request body", "16 KB. A file write takes 4 MB, terminal input 64 KB, webhooks 4 KB and the MCP endpoint 64 KB.", <C key="10">DEFAULT_MAX_BODY_BYTES, server/api-v1-kit.ts</C>],
+          ["File write through the API", "1 MB. A download is 2 MB.", <C key="11">server/api-v1-shell.ts</C>],
+          ["List sizes", "Deployments 1 to 100, runtime log lines 1 to 1000, build log lines 1 to 1000, activity 1 to 100, analytics 1 to 90 days, resource history 1 to 168 hours.", <C key="12">query fields in server/api-v1*.ts</C>],
+          ["Webhooks", "10 per account.", <C key="13">MAX_WEBHOOKS_PER_USER, server/webhooks.ts</C>],
         ]}
       />
-      <H3 id="limits-watch" />
+      <H2 id="limits-watch" />
       <Table
         caption="Watching and history"
-        head={["What", "Limit"]}
+        head={["What", "Limit", "Set in"]}
         rows={[
-          ["Uptime checks", "Every 5 minutes by default. Down after 2 failed checks in a row, which you can set from 1 to 10 per project."],
-          ["Resource history", "Sampled every 5 minutes, kept 7 days, shown for 24 hours or 7 days."],
-          ["Runtime logs", "Up to 300 lines shown. A search or the Warnings and errors level reads the newest 1000 first."],
-          ["Alert history", "The newest 50 shown, kept 90 days."],
-          ["Analytics history", "90 days."],
-          ["Status page", "30 days and the latest 10 outages."],
-          ["Deployments page", "The newest 100, shown 25 at a time."],
-          ["Activity", "50 a page. A search reads the newest 5000."],
+          ["Uptime checks", "Every 5 minutes by default. Down after 2 failed checks in a row, which you can set from 1 to 10 per project.", <C key="1">MONITOR_INTERVAL_MS, server/jobs.ts</C>],
+          ["Alert limits", "Disk, memory and CPU 1 to 100, default 90. Slow response 50 to 60000 ms.", <C key="2">server/notify.ts</C>],
+          ["Resource history", "Sampled every 5 minutes, kept 7 days, shown for 24 hours or 7 days.", <C key="3">SAMPLE_KEEP_MS, server/monitor.ts</C>],
+          ["Runtime logs", "Up to 300 lines shown. A search or the Warnings and errors level reads the newest 1000 first.", <C key="4">components/logs-view.tsx</C>],
+          ["Alert history", "The newest 50 shown, kept 90 days.", <C key="5">ALERT_KEEP_MS, server/notify.ts</C>],
+          ["Analytics history", "90 days.", <C key="6">PAGEVIEW_KEEP_MS, server/analytics.ts</C>],
+          ["Funnel", "2 to 6 steps.", <C key="7">MIN_STEPS, MAX_STEPS, server/analytics-config.ts</C>],
+          ["Analytics events", "30 per 10 seconds per project and address.", <C key="8">server/analytics-events.ts</C>],
+          ["Status page", "30 days and the latest 10 outages.", <C key="9">server/status-page.ts</C>],
+          ["Webhook delivery", "3 attempts, 5 seconds each, history kept 30 days.", <C key="10">MAX_ATTEMPTS, DELIVERY_RETENTION_MS, server/webhooks.ts</C>],
+          ["Deployments page", "The newest 100, shown 25 at a time.", <C key="11">server/queries.ts, components/deployments-view.tsx</C>],
+          ["Activity", "50 a page. A search reads the newest 5000. An export is 5000 entries and 10 a minute.", <C key="12">PAGE_SIZE, SCAN_LIMIT, EXPORT_ROW_LIMIT</C>],
         ]}
       />
-      <H3 id="limits-account" />
+      <H2 id="limits-account" />
       <Table
         caption="Sign-in"
-        head={["What", "Limit"]}
+        head={["What", "Limit", "Set in"]}
         rows={[
-          ["Session", "30 days."],
-          ["Fresh sign-in", "5 minutes."],
-          ["Sign-in handshake", "10 minutes."],
+          ["Session", "30 days.", <C key="1">SESSION_DAYS, server/auth/session.ts</C>],
+          ["Fresh sign-in", "5 minutes.", <C key="2">REAUTH_WINDOW_MS, server/auth/session.ts</C>],
+          ["Sign-in handshake", "10 minutes.", <C key="3">app/api/auth/login/route.ts</C>],
+          ["Sign-in attempts", "20 a minute per address.", <C key="4">RATE_LIMITS.signIn, server/rate-limit.ts</C>],
         ]}
       />
+      {why(
+        <>
+          Each allowance is counted against the thing that can misbehave. An access token has its own counts, so one
+          noisy script cannot use up the allowance of another script or of you in the browser. Terminal and file
+          requests are counted per account because the container behind them is shared by every project you have.
+          Bad tokens are counted per address, because a token that does not check out has no account to count against.
+          The counters live in the memory of the running process, so a restart of Egg clears them, and a copy of Egg
+          that runs several processes counts in each one.
+        </>
+      )}
+      {wrong("limits-wrong", [
+        ["Too many requests for this token. Wait <n> second(s) and try again.", "429. A token went over its reads, changes, container sessions or terminal input. Wait for the seconds in the Retry-After header."],
+        ["Too many requests for unrecognised access tokens. Wait <n> second(s) and try again.", "429. 60 tokens that did not check out came from one address in a minute. Fix the token your script sends."],
+        ["Too many requests for terminal input. Wait <n> second(s) and try again.", "429. 300 input requests a minute for your account."],
+        ["Too many file requests. Wait <n> second(s) and try again.", "429. Listing, reading and downloading are 120 a minute."],
+        ["Too many requests for file changes. Wait <n> second(s) and try again.", "429. Creating, writing, renaming and deleting are 60 a minute."],
+        ["Too many exports. Wait <n> second(s) and try again.", "429. 10 CSV exports a minute."],
+        ["Too many checks. Wait <n> second(s) and try again.", "429. 20 conflict checks a minute."],
+        ["You can connect up to 5 servers.", "Disconnect one you no longer use."],
+        ["You can have up to 25 active tokens. Revoke one first.", "Revoke a token you no longer use."],
+        ["You can have up to 10 webhooks. Delete one first.", "Delete a webhook you no longer use."],
+        ["A project can have up to 100 variables.", "Delete a variable you do not need."],
+      ])}
       <Callout tone="note" title="Your container’s size">
-        How much CPU, memory and disk your Nest container has is set by Nest, not by Nest Deploy. Test connection and
-        the Container page show what it has.
+        How much CPU, memory and disk your Nest container has is set by Nest, not by Egg. Test connection and the
+        Container page show what it has.
       </Callout>
+      {example("limits-example", {
+        title: "Poll a deploy without hitting a limit",
+        given: "A script that starts a deploy and waits for it to finish.",
+        steps: [
+          { title: "Start it", body: "One POST to the deployments endpoint is one of your 30 changes a minute." },
+          { title: "Poll", body: "List the project’s deployments every 2 seconds. That is 30 reads a minute, a quarter of the 120 allowed." },
+          { title: "Back off", body: "On a 429, wait for the seconds in the Retry-After header, then carry on." },
+        ],
+        result: "The script finishes a normal build without a 429. Fetching the build log counts against the smaller 10 a minute allowance, so ask for it once the deploy is done.",
+      })}
+      {related([
+        ["security", "Security"],
+        ["api", "Access tokens and the API"],
+        ["container", "Container, terminal and files"],
+      ])}
     </Section>
   ),
 
@@ -785,14 +1481,18 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
   selfhost: () => (
     <Section
       id="selfhost"
-      intro="Nest Deploy is open source. You can run your own copy, with your own database, secret and worker."
+      intro="Egg is open source. You can run your own copy, with your own database, secret and worker."
     >
       <P>
         You need Node.js, pnpm and, for real builds, Docker. This page lists what the code reads. The{" "}
+        <ExternalLink href={repoLink("docs/selfhost/README.md")}>self-hosting guide</ExternalLink> walks through a
+        private install on your own computer, the{" "}
+        <ExternalLink href={repoLink("docs/selfhost/customising.md")}>customising guide</ExternalLink> lists the
+        files to change for the name and the wording, and the{" "}
         <ExternalLink href={setupDoc}>backend setup guide</ExternalLink> has the Hack Club and GitHub registration
         steps in full.
       </P>
-      <H3 id="selfhost-start" />
+      <H2 id="selfhost-start" />
       {steps("selfhost-start-steps", "Start it locally", [
         {
           title: "Install and set up",
@@ -805,11 +1505,22 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
           code: { label: "Terminal", code: "cd web\npnpm install\npnpm setup" },
         },
         {
+          title: "Pick a way to sign in",
+          body: (
+            <>
+              Add <C>LOCAL_MODE=1</C> to <C>.env.local</C> for a private copy with no account: the login page gets a
+              <B> Sign in on this computer</B> button. Or set the Hack Club values to use Hack Club sign-in.{" "}
+              <C>pnpm setup</C> also writes <C>DEV_LOGIN=1</C>, which shows a Development sign-in form in{" "}
+              <C>pnpm dev</C> only.
+            </>
+          ),
+        },
+        {
           title: "Start it",
           body: (
             <>
               Setup turns on <C>RUN_WORKER=1</C>, so the queue runs in the same process. Open{" "}
-              <C>http://localhost:3000</C> and use the Development sign-in form.
+              <C>http://localhost:3000</C> and sign in.
             </>
           ),
           code: { label: "Terminal", code: "pnpm dev" },
@@ -819,35 +1530,56 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
           body: (
             <>
               Run <C>pnpm fake-nest</C> in a second terminal and set the three values it prints:{" "}
-              <C>NEST_HOST</C>, <C>NEST_PORT</C> and <C>UNIT_DIR</C>. It is for development only.
+              <C>NEST_HOST</C>, <C>NEST_PORT</C> and <C>UNIT_DIR</C>. It is for trying things out only, never a
+              substitute for a real Nest container.
             </>
           ),
         },
       ])}
+      <P>
+        For a copy you keep running, use <C>pnpm build</C> and then <C>pnpm start</C>. The database changes apply the
+        first time a new version opens the file.
+      </P>
+      {why(
+        <>
+          Local mode is off unless you set <C>LOCAL_MODE=1</C>, because it has no password and no account: whoever can
+          press the button is the owner. That is why it also refuses to start unless <C>APP_URL</C> is localhost,{" "}
+          <C>127.0.0.1</C> or <C>::1</C>, and why each sign-in request has to arrive on a local address too, since the
+          server may listen on every network interface even when <C>APP_URL</C> says localhost.{" "}
+          <C>LOCAL_MODE_ALLOW_REMOTE=1</C> exists for a copy behind a VPN or an access proxy you control, where
+          something else decides who can reach the site.
+        </>
+      )}
 
-      <H3 id="selfhost-config" />
+      <H2 id="selfhost-config" />
       <Table
         caption="Settings the code reads"
         head={["Setting", "What it does"]}
         rows={[
           [<C key="1">APP_SECRET</C>, "Required, 32 or more characters. Seals SSH keys and variables. Back it up: losing or changing it makes stored keys unreadable."],
           [<C key="2">APP_URL</C>, "The public address. Used for sign-in redirects, hook URLs and links. Default http://localhost:3000."],
-          [<C key="3">DATABASE_URL</C>, "The SQLite file. Default file:./data/nest-deploy.db. Migrations apply on startup."],
-          [<C key="4">HACKCLUB_CLIENT_ID, HACKCLUB_CLIENT_SECRET</C>, "From a Hack Club Auth app. Without them the login button is off."],
-          [<C key="5">DEV_LOGIN</C>, "1 shows a fake sign-in. It is ignored in a production build."],
-          [<C key="6">GITHUB_APP_ID, GITHUB_APP_SLUG, GITHUB_APP_CLIENT_ID, GITHUB_APP_CLIENT_SECRET, GITHUB_APP_PRIVATE_KEY, GITHUB_WEBHOOK_SECRET</C>, "All six are needed for private repositories, the repository picker and deploys on push. The private key may use \\n escapes."],
-          [<C key="7">RUN_WORKER</C>, "1 runs the queue inside the web process. Anything else means no builds run there. Use pnpm worker."],
-          [<C key="8">WORKER_CONCURRENCY</C>, "Deployments at once. Default 2. One project never builds twice at a time."],
-          [<C key="9">BUILD_RUNNER</C>, "docker (default) isolates builds. local runs them on the host with no isolation and prints a warning."],
-          [<C key="10">BUILD_IMAGE_NODE, BUILD_IMAGE_PYTHON</C>, "Sandbox images. Defaults node:22-bookworm and python:3.12-bookworm."],
-          [<C key="11">BUILD_TIMEOUT_SECONDS</C>, "How long a build may run. Default 900."],
-          [<C key="12">DEPLOY_WORK_DIR</C>, "Where builds are cloned. Default ./data/work."],
-          [<C key="13">MONITOR_INTERVAL_MS</C>, "How often uptime and usage are checked. Default 300000. 0 turns the checks off."],
-          [<C key="14">NEST_HOST, NEST_PORT, UNIT_DIR</C>, "Nest’s SSH host (hackclub.app, 22) and where systemd units are written (/etc/systemd/system). Change only for testing."],
+          [<C key="3">DATABASE_URL</C>, "The SQLite file. Default file:./data/egg.db. Migrations apply on startup."],
+          [<C key="4">HACKCLUB_CLIENT_ID, HACKCLUB_CLIENT_SECRET</C>, "From a Hack Club Auth app. Without them the Continue with Hack Club button is off."],
+          [<C key="5">LOCAL_MODE</C>, "1 or true adds a Sign in on this computer button that signs you in as one owner, with no external account. Off by default. Refused unless APP_URL is localhost, 127.0.0.1 or ::1, and each sign-in request must arrive on a local address."],
+          [<C key="6">LOCAL_MODE_ALLOW_REMOTE</C>, "1 lets LOCAL_MODE run on another address. Use it only behind a VPN or access proxy you control, because anyone who can reach the site could sign in as the owner."],
+          [<C key="7">DEV_LOGIN</C>, "1 shows a fake sign-in in pnpm dev. It is ignored in a production build."],
+          [<C key="8">GITHUB_APP_ID, GITHUB_APP_SLUG, GITHUB_APP_CLIENT_ID, GITHUB_APP_CLIENT_SECRET, GITHUB_APP_PRIVATE_KEY, GITHUB_WEBHOOK_SECRET</C>, "All six are needed for private repositories, the repository picker and deploys on push. The private key may use \\n escapes."],
+          [<C key="9">RUN_WORKER</C>, "1 runs the queue inside the web process. Anything else means no builds run there. Use pnpm worker."],
+          [<C key="10">WORKER_CONCURRENCY</C>, "Deployments at once. Default 2. One project never builds twice at a time. Read by the worker, not by config.ts."],
+          [<C key="11">BUILD_RUNNER</C>, "docker (default) isolates builds, with the memory limit you set for each server. local runs them on the host with no isolation and no memory limit, and prints a warning."],
+          [<C key="12">BUILD_IMAGE_NODE, BUILD_IMAGE_PYTHON</C>, "Sandbox images. Defaults node:22-bookworm and python:3.12-bookworm."],
+          [<C key="13">BUILD_TIMEOUT_SECONDS</C>, "How long a build may run. Default 900."],
+          [<C key="14">DEPLOY_WORK_DIR</C>, "Where builds are cloned. Default ./data/work."],
+          [<C key="15">MONITOR_INTERVAL_MS</C>, "How often uptime and usage are checked. Default 300000. 0 turns the checks off."],
+          [<C key="16">NEST_HOST, NEST_PORT, UNIT_DIR</C>, "Nest’s SSH host (hackclub.app, 22) and where systemd units are written (/etc/systemd/system). Change only for testing."],
         ]}
       />
+      <P>
+        Build memory is not a setting in the file. It is per server, on that server’s Container page. See{" "}
+        <InternalLink href={docsHref("container")}>Container, terminal and files</InternalLink>.
+      </P>
 
-      <H3 id="selfhost-worker" />
+      <H2 id="selfhost-worker" />
       <P>
         The worker takes queued deployments and runs the uptime monitor. It polls every second and never runs two jobs
         of one project at once. With <C>RUN_WORKER=1</C> it lives inside the web process. For production you can set{" "}
@@ -860,16 +1592,25 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         If <C>RUN_WORKER</C> is not <C>1</C> and no <C>pnpm worker</C> is running, deployments stay queued, and uptime
         checks and resource history do not run.
       </Callout>
+      {why(
+        <>
+          The queue is a table in the database, and a job is claimed with one conditional update, so two workers can
+          share it and neither takes the same job. Builds are kept off the web process on purpose when you can: a
+          long build then cannot slow the pages. One process is still enough for one person, which is why setup
+          turns the embedded worker on.
+        </>
+      )}
 
-      <H3 id="selfhost-database" />
+      <H2 id="selfhost-database" />
       <P>
         The database is one SQLite file at <C>DATABASE_URL</C>. Users, servers, projects, deployments, logs, jobs and
         history are all in it. Back up the file together with <C>APP_SECRET</C>: the file alone cannot open your sealed
-        keys, and the secret alone has nothing to open. Foreign keys are on, so disconnecting a server deletes its
-        projects.
+        keys, and the secret alone has nothing to open. Keep them in different places if the backup leaves your
+        machine. Stop Egg before you copy the file, and copy any <C>-wal</C> or <C>-shm</C> files beside it. Foreign
+        keys are on, so deleting a server record deletes its projects.
       </P>
 
-      <H3 id="selfhost-apps" />
+      <H2 id="selfhost-apps" />
       <List>
         <li>
           <B>Hack Club Auth.</B> Make an app at <C>auth.hackclub.com/developer/apps</C> with the redirect URI{" "}
@@ -884,18 +1625,27 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
       </List>
 
       {limits("selfhost-limits", [
-        ["Concurrent deployments", "2 by default", "Set WORKER_CONCURRENCY to change it."],
-        ["Build time", "900 seconds by default", "“The build timed out.”"],
-        ["Build memory and CPU", "2 GB and 2 CPUs", "The build is stopped by Docker."],
-        ["Uptime check", "Every 300000 ms by default", "Set MONITOR_INTERVAL_MS to 0 to stop checks."],
+        ["Concurrent deployments", "2 by default", "Set WORKER_CONCURRENCY to change it.", "instrumentation.ts (WORKER_CONCURRENCY)"],
+        ["Build time", "900 seconds by default", "“The build timed out.”", "server/config.ts (BUILD_TIMEOUT_SECONDS)"],
+        ["Build memory and CPU", "2048 MB by default for each server, and 2 CPUs", "The build is stopped by Docker. With memory, exit 137 and “The build ran out of memory (limit <n> MB). Raise the build memory for this server on the Container page, or make the build use less.”", "server/deploy/build.ts (dockerBuildArgs), lib/build-memory.ts"],
+        ["Uptime check", "Every 300000 ms by default", "Set MONITOR_INTERVAL_MS to 0 to stop checks.", "server/jobs.ts (MONITOR_INTERVAL_MS)"],
+        ["Secret length", "32 characters at least", "“APP_SECRET must be at least 32 characters”", "server/config.ts (APP_SECRET)"],
       ])}
 
       {wrong("selfhost-wrong", [
         ["Invalid environment configuration", "The first request or the worker start checks every setting, and the lines under it name the one that is wrong. Fix it, or run pnpm setup."],
         ["APP_SECRET must be at least 32 characters", "Use a longer secret. pnpm setup makes one."],
+        [
+          "LOCAL_MODE signs anyone in as the owner, so APP_URL must be localhost or 127.0.0.1. Set APP_URL to a local address, or set LOCAL_MODE_ALLOW_REMOTE=1 if you control who can reach the site.",
+          "Set APP_URL=http://localhost:3000, or read the override above before you set LOCAL_MODE_ALLOW_REMOTE.",
+        ],
+        ["Local sign-in only works from this computer", "403. You opened Egg through a network address. Open http://localhost:3000."],
+        ["The login page has no Sign in on this computer button", "LOCAL_MODE is not 1 or true, or Egg was not restarted after the change. Edit .env.local and restart."],
         ["The GitHub App is not configured.", "Set all six GITHUB_APP settings and GITHUB_WEBHOOK_SECRET."],
         ["webhook not configured", "The webhook route answers 503 until GITHUB_WEBHOOK_SECRET is set."],
-        ["Hack Club sign-in is not set up on this installation yet.", "Set HACKCLUB_CLIENT_ID and HACKCLUB_CLIENT_SECRET."],
+        ["Hack Club sign-in is not set up on this installation yet.", "Set HACKCLUB_CLIENT_ID and HACKCLUB_CLIENT_SECRET, or use local mode."],
+        ["A build fails at once with a Docker error", "Docker is not running or not installed. Start it, or set BUILD_RUNNER=local for code you trust."],
+        ["Deployments stay Queued", "No worker is running. Set RUN_WORKER=1, or start pnpm worker."],
       ])}
 
       {example("selfhost-example", {
@@ -909,9 +1659,22 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         result:
           "Your servers and variables open as before. With a different APP_SECRET, stored keys cannot be read and you would have to make new keys.",
       })}
+      {example("selfhost-example-local", {
+        title: "Run a private copy on your laptop",
+        given: "A laptop with Node.js, pnpm and Docker, and a Nest container to deploy to.",
+        steps: [
+          { title: "Set up", body: "Run pnpm install and pnpm setup in the web folder." },
+          { title: "Turn on local mode", body: "Add LOCAL_MODE=1 to .env.local." },
+          { title: "Build and start", body: "Run pnpm build, then pnpm start." },
+          { title: "Sign in", body: "Open http://localhost:3000/login and press Sign in on this computer." },
+        ],
+        result:
+          "You land on Projects as the owner. Connect your Nest username, paste the key into the Nest dashboard, press Test connection, and deploy as usual.",
+      })}
       {related([
         ["security", "Security"],
         ["limits", "Limits"],
+        ["troubleshooting", "Troubleshooting"],
       ])}
     </Section>
   ),
@@ -920,18 +1683,23 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
   troubleshooting: () => (
     <Section
       id="troubleshooting"
-      intro="One entry per message Nest Deploy shows, with the fix. Find the heading for what you were doing."
+      intro="One entry per message Egg shows, with the fix. Find the heading for what you were doing."
     >
+      <P>
+        Messages are quoted as the product prints them. A part in angle brackets, such as <C>&lt;n&gt;</C>, is filled
+        in with a name or a number. Where a message comes with a status code, the code is the first thing in the fix.
+      </P>
       {wrong(
         "troubleshooting-connection",
         [
           ["Nest rejected the key. Check that you pasted the public key on the SSH Keys page of the Nest dashboard, and that the username is exactly your Nest username.", "Paste the public key again, exactly as shown. After New key, the old one is dead. Check the username."],
           ["Timed out connecting to Nest. Your container may be stopped or starting; try again in a minute.", "Wait a minute and press Test connection again."],
           ["Could not reach the Nest SSH host (<reason>).", "The reason is the network error. Try again later."],
-          ["The host key of <host> changed (was <old>, now <new>). Nothing was sent. If you expected this, reconnect the server.", "This stops on purpose. Disconnect and add the server again, knowing Disconnect deletes the server’s projects here."],
+          ["The host key of <host> changed (was <old>, now <new>). Nothing was sent. If you expected this, reconnect the server.", "This stops on purpose. Disconnect and add the server again. The box asks whether to keep or delete the server’s projects."],
           ["SSH error: <message>", "Anything else. Read the message, then try again."],
           ["That does not look like a Nest username. Use the name you log in with, for example sam-r.", "Use letters, digits, dot, underscore and hyphen, starting with a letter or digit, up to 32 characters."],
           ["<name> is already connected.", "One server per Nest username. Use the one you have."],
+          ["<name> is disconnected. Connect it again to manage its projects.", "409. You disconnected it and kept its projects. Connect the same username again."],
           ["You can connect up to 5 servers.", "Disconnect one you no longer use."],
         ],
         subsectionTitle("troubleshooting-connection")
@@ -944,16 +1712,19 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
       {wrong(
         "troubleshooting-build",
         [
-          ["Could not clone the repository. Check the branch name and that Nest Deploy has access to it.", "Check the production branch in Settings and, for a private repository, that the GitHub app is installed on it."],
+          ["Could not clone the repository. Check the branch name and that Egg has access to it.", "Check the production branch in Settings and, for a private repository, that the GitHub app is installed on it."],
           ["The root directory \"<dir>\" does not exist in this repository.", "Fix Root directory in Settings, Build and Run."],
           ["The build failed (exit <code>).", "Read the log above it. The usual causes are a missing lockfile or build script, the wrong root directory, or a command that needs a variable you have not set."],
           ["The build timed out.", "A build may run 15 minutes by default. Make it faster."],
+          ["The build ran out of memory (limit <n> MB). Raise the build memory for this server on the Container page, or make the build use less.", "Exit 137. Raise Build memory (MB) on the Container page, or use less memory in the build."],
+          ["Build memory must be a whole number of MB from 512 to <max>. Change it on the Container page.", "The saved build memory no longer fits the range, for example after the server reported less memory. Open Container, set Build memory (MB) inside the range and press Save."],
           ["The output folder \"<dir>\" was not created by the build.", "Set Output directory to the folder your build really writes."],
           ["The build output is <n> MB, over the 500 MB limit.", "Leave out what the app does not need to run."],
           ["Set a start command for this project (for example ./my-binary).", "A Custom command project needs a Start command."],
           ["Static sites need Python 3 or Node.js on your Nest container to be served.", "Install one of them on the container."],
           ["The worker stopped while this deployment was running. Try again.", "Press Redeploy. The worker restarted during the build."],
           ["No free preview ports on this server.", "All of 20000 to 29999 are in use. Delete old previews."],
+          ["Further log output was dropped: this deployment reached its log limit.", "The log holds 20,000 lines. Make the build print less. The build itself carried on."],
         ],
         subsectionTitle("troubleshooting-build")
       )}
@@ -972,28 +1743,29 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         fails.
       </P>
 
-      <H3 id="troubleshooting-adopt" />
+      <H2 id="troubleshooting-adopt" />
       {wrong(
         "troubleshooting-adopt-list",
         [
           ["Nothing was changed on your container. <details>", "The conflict check refused. The details say what is in the way. Choose another name or port, or stop that program yourself first."],
-          ["A service called nd-<slug>.service already exists and Nest Deploy did not create it. It will not be replaced. Choose another project name.", "Rename the project."],
-          ["Port <n> is already in use by <process>. Nest Deploy will not stop it. Choose another port, or stop that program yourself first.", "Pick another port, or stop that program."],
-          ["<path> already exists and was not created by Nest Deploy, so it was left alone.", "Pick another name, or move that folder yourself."],
+          ["A service called egg-<slug>.service already exists and Egg did not create it. It will not be replaced. Choose another project name.", "Rename the project."],
+          ["Port <n> is already in use by <process>. Egg will not stop it. Choose another port, or stop that program yourself first.", "Pick another port, or stop that program."],
+          ["<path> already exists and was not created by Egg, so it was left alone.", "Pick another name, or move that folder yourself."],
           ["Could not check this container just now: <reason>. The deploy checks again before it changes anything.", "Try again in a moment."],
+          ["Too many checks. Wait <n> second(s) and try again.", "429. The check is 20 a minute for your account."],
         ],
         "The conflict check",
         3
       )}
 
-      <H3 id="troubleshooting-project" />
+      <H2 id="troubleshooting-project" />
       {wrong(
         "troubleshooting-project-list",
         [
           ["You already have a project called \"<slug>\".", "Pick another name."],
           ["Port <n> is already used by another project on this server.", "Pick another port. In Settings the same refusal reads “Port <n> is already used on this server.”"],
           ["Ports 20000 to 29999 are reserved for previews", "Choose a port from 1024 to 19999 or 30000 to 65535."],
-          ["Use lowercase letters, numbers and hyphens.", "Fix the name. The slug is at most 40 characters."],
+          ["The project name must use lowercase letters, digits and hyphens (up to 40).", "Fix the name. The slug is at most 40 characters."],
           ["Only plain https repository URLs are supported.", "Use an https URL. Only github.com is supported."],
           ["The project was created, but <NAME> was not saved: <reason>. Press Deploy to try again.", "The project exists. Fix the variable in Settings and deploy."],
           ["Could not remove the project from your container.", "Your records are kept so you can try again."],
@@ -1006,7 +1778,7 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         API. Import it through the GitHub app for push deploys.
       </P>
 
-      <H3 id="troubleshooting-rollback" />
+      <H2 id="troubleshooting-rollback" />
       {wrong(
         "troubleshooting-rollback-list",
         [
@@ -1016,27 +1788,32 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
           ["That deployment never finished, so there is nothing to roll back to.", "Choose one that was Ready."],
           ["The older release did not become healthy, so nothing was changed.", "The release that was live is still live. Check the older release’s logs."],
           ["That deployment is already finished.", "Cancel works only while a deployment is Queued, Building or Deploying."],
+          ["Only old previews that are not live or removed can be deleted in bulk.", "409. Pick previews that are finished and not the current one."],
         ],
         "Rollback and cancel messages",
         3
       )}
 
-      <H3 id="troubleshooting-env" />
+      <H2 id="troubleshooting-env" />
       {wrong(
         "troubleshooting-env-list",
         [
           ["Names use letters, digits and underscores, and do not start with a digit", "Rename the variable."],
-          ["That name is set by Nest Deploy", "PORT, HOST, PATH, HOME and NEST_DEPLOY are reserved."],
+          ["That name is set by Egg", "PORT, HOST, PATH, HOME and EGG are reserved."],
           ["A project can have up to 100 variables.", "Delete one you do not need."],
           ["No example env file (such as .env.example) was found in the repository.", "Add .env.example, or type the names by hand."],
         ],
         "Variable messages",
         3
       )}
-      <P>A saved change reaches your app at the next deployment. Redeploy to apply it.</P>
+      <P>
+        A saved change reaches your app at the next deployment. Redeploy to apply it. A variable with an empty value
+        is left out of the app’s environment rather than set to an empty string.
+      </P>
 
+      <H2 id="troubleshooting-domain" />
       {wrong(
-        "troubleshooting-domain",
+        "troubleshooting-domain-list",
         [
           ["No CNAME found yet. Create one pointing to <target>. DNS changes can take a few minutes.", "Add the CNAME at your DNS provider, wait, and press Check."],
           ["The CNAME points to <x>. It should point to <target>.", "Change the CNAME value."],
@@ -1045,70 +1822,156 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
           ["<domain> is already added.", "A domain can be added once across all accounts."],
           ["Certificate not verified yet", "The app check found no trusted certificate. Wait for Nest to issue one, then press Check again."],
         ],
-        subsectionTitle("troubleshooting-domain")
+        "Domain messages",
+        3
       )}
 
+      <H2 id="troubleshooting-hook-409" />
       {wrong(
-        "troubleshooting-hook-409",
+        "troubleshooting-hook-list",
         [
           ["A deployment is already running for this project.", "The hook answers 409 while any deployment of the project is queued, building or deploying. Try again when it finishes."],
           ["Unknown hook", "The URL is wrong or was replaced. Make a new URL."],
           ["Request body must be JSON", "Send valid JSON, or no body. The only field is branch."],
         ],
-        subsectionTitle("troubleshooting-hook-409")
+        "Deploy hook messages",
+        3
       )}
 
-      <H3 id="troubleshooting-pr-comment" />
+      <H2 id="troubleshooting-pr-comment" />
       <P>
         The pull request must come from the same repository, must not be a draft, and its branch must not be your
         production branch. The GitHub app needs Pull requests read and write and the Pull request event. When a
         comment fails the deploy is unaffected and nothing is shown to you. A pull request from a fork is never built.
       </P>
 
+      <H2 id="troubleshooting-alerts" />
       {wrong(
-        "troubleshooting-alerts",
+        "troubleshooting-alerts-list",
         [
           ["Add a webhook URL first.", "Save a Discord or Slack webhook URL in Notifications."],
           ["Use the plain https webhook URL from Discord or Slack.", "Remove ports, queries and credentials."],
           ["Only Discord and Slack incoming webhook URLs are supported.", "Use a discord.com, discordapp.com or hooks.slack.com URL."],
           ["Discord answered <status>.", "Slack gives the same message with its own name. The webhook was deleted or the URL is wrong. Make a new one."],
+          ["Failed checks must be a whole number from 1 to 10.", "Fix the number in Settings, Alerts."],
+          ["The response time limit must be at least 50 ms.", "Use 50 to 60000, or leave it empty to turn the limit off."],
+          ["Could not load alert settings", "Press Try again."],
         ],
-        subsectionTitle("troubleshooting-alerts")
+        "Notification and alert messages",
+        3
       )}
       <P>
         If the test arrives but alerts do not, check three things. An app is reported down only after 2 failed checks
         in a row by default. Alerts may be paused for the project. And the channel you want may be switched off.
       </P>
-
-      <H3 id="troubleshooting-container" />
+      {wrong(
+        "troubleshooting-webhooks",
+        [
+          ["The URL must start with https://.", "A signed webhook goes to an https address only."],
+          ["Use the standard https port (443).", "Remove the port from the address."],
+          ["Use a domain name, not an IP address.", "Use a full public domain name."],
+          ["Use a full public domain name.", "A name with no dot, such as localhost, is refused."],
+          ["Remove the user name and password from the URL.", "Credentials in an address are never accepted."],
+          ["Remove the # part from the URL.", "Take off the fragment."],
+          ["You can have up to 10 webhooks. Delete one first.", "409. Delete a webhook you no longer use."],
+          ["Test message delivered", "The receiver answered with a 2xx status. The delivery is listed under Recent deliveries."],
+        ],
+        "Webhook messages",
+        3
+      )}
       <P>
-        These refusals are on the <InternalLink href={docsHref("container")}>container</InternalLink> page: the
-        terminal, files and leftovers switches, and the messages they give.
+        A delivery that fails shows a short code instead of a message from your receiver, because the response is never
+        stored. <C>http_500</C> (or another <C>http_</C> status) means your receiver answered that status. <C>timeout</C>{" "}
+        means it did not answer within 5 seconds. <C>redirect</C> means it answered with a redirect, which is not
+        followed. <C>blocked_address</C> means the name points at a private or internal address. <C>dns_failed</C>{" "}
+        means the name did not resolve. <C>network</C> means the connection failed. <C>interrupted</C> means a
+        restart cut the delivery off. A status of 500 and above, 429, 408, a timeout, a network failure and a failed
+        lookup are tried again up to 3 times in all, with pauses of 2 and 10 seconds. Any other 4xx status is not.
       </P>
 
+      <H2 id="troubleshooting-container" />
+      <P>
+        These refusals are about the terminal, files and leftovers. The{" "}
+        <InternalLink href={docsHref("container")}>container</InternalLink> page explains the switches.
+      </P>
+      {wrong("troubleshooting-container-switches", [...SWITCH_OFF, ...TERMINAL_PROBLEMS], "Terminal messages", 3)}
+      {wrong("troubleshooting-container-files", FILE_PROBLEMS, "File messages", 3)}
+
+      <H2 id="troubleshooting-token" />
+      {wrong("troubleshooting-token-list", TOKEN_PROBLEMS, "API and token messages", 3)}
       {wrong(
-        "troubleshooting-token",
+        "troubleshooting-mcp",
         [
-          ["Send an access token as an Authorization: Bearer ndp_... header.", "401. Add the header."],
-          ["That access token is not valid.", "401. Missing, revoked, expired and unknown tokens all look the same. Make a new one."],
-          ["This token does not have the <scope> permission.", "403. Edit the token on the Developer page and tick it."],
-          ["No such item, or it belongs to someone else.", "404. Check the id."],
-          ["Too many requests for this token. Wait <n> second(s) and try again.", "429. Wait for the number of seconds in the Retry-After header."],
-          ["The request body is too large.", "413. The limit is 16 KB for most calls, 4 MB for a file write and 64 KB for MCP."],
-          ["A token with the terminal or file change permission expires in 7 days at most. Pick 7 days, or remove that permission.", "Pick 7 days."],
-          ["You can have up to 25 active tokens. Revoke one first.", "Revoke a token you no longer use."],
+          ["Parse error", "400. The body was not JSON."],
+          ["Not a JSON-RPC 2.0 message.", "400. Send { \"jsonrpc\": \"2.0\", \"id\": 1, \"method\": ..., \"params\": ... }."],
+          ["Batches are not supported. Send one message per request.", "400. Send one message at a time."],
+          ["Method not found: <method>", "Use initialize, ping, tools/list or tools/call."],
+          ["Unknown tool: <name>", "The MCP endpoint does not have that tool. Call tools/list."],
+          ["tools/call needs a tool name.", "Send params with a name."],
+          ["Tool arguments must be an object.", "Send arguments as { … }."],
+          ["<code>: <message>", "A tool that fails comes back as a result with isError set, and the text starts with the error code, for example forbidden: This token does not have the files:write permission."],
         ],
-        subsectionTitle("troubleshooting-token")
+        "Agent endpoint messages",
+        3
       )}
 
-      <H3 id="troubleshooting-signin" />
+      <H2 id="troubleshooting-signin" />
       <P>
         The sign-in messages and their fixes are on the <InternalLink href={docsHref("account")}>account</InternalLink>{" "}
         page.
       </P>
+
+      <H2 id="troubleshooting-watch" title="Monitoring, the status page and analytics" />
+      {wrong(
+        "troubleshooting-watch-list",
+        [
+          ["Could not read the service from your container.", "The Service card could not reach the container within 20 seconds. Press Check now, and check the container is running."],
+          ["The service is running but nothing answered on its health path.", "The app starts but the health path gives no answer. Fix the path in Settings, Build and Run, or the app."],
+          ["The health path answered HTTP <code>.", "A status of 500 or above counts as down. A 404 does not."],
+          ["The health path took <ms> ms to answer, over your limit of <n> ms.", "Raise the Slow response limit, or make the page faster."],
+          ["No data yet", "A status page says this until the first check has run. Wait for the next 5 minute pass."],
+          ["Not responding", "The app has stopped answering, by the same check as the alerts."],
+          ["Not enough data", "Percentages and medians need 50 visits behind them. The counts are shown."],
+          ["A funnel needs at least 2 steps", "Add a second step, or leave the funnel empty."],
+          ["A funnel has at most 6 steps", "Remove a step."],
+          ["Nothing is counted on a page", "The snippet is missing or the page was not redeployed. Nothing is counted for Do Not Track or Global Privacy Control, on localhost, or for known bots."],
+        ],
+        "What you see",
+        3
+      )}
+
+      {why(
+        <>
+          Each entry quotes the message word for word so you can search this page for the text you saw. The status
+          code leads the fix because it tells you what kind of problem it is: a 4xx means the request needs to
+          change, a 429 means wait for the Retry-After seconds, and a 502 or 503 means Egg could not reach your
+          container or has no room right now, so check the container and try again.
+        </>
+      )}
+      {example("troubleshooting-example", {
+        title: "Fix a build that stops with exit 137",
+        given: (
+          <>
+            A project named recipe-api whose deployment fails with “The build ran out of memory (limit 2048 MB).
+            Raise the build memory for this server on the Container page, or make the build use less.”
+          </>
+        ),
+        steps: [
+          { title: "Open Container", body: "Pick the server that holds recipe-api, then find the Build memory card.", path: ["Container", "Build memory"] },
+          { title: "Raise the number", body: "Read the range in the hint under Build memory (MB). Type 3072 if the hint allows it, then press Save." },
+          { title: "Deploy again", body: "Open the project and press Redeploy, or push a commit." },
+        ],
+        result: (
+          <>
+            The message “Build memory set to 3072 MB” appears, the next build runs with that limit and finishes, and
+            Activity lists “Changed the build memory limit for” the server. If the hint stops at 2048, the server
+            reports no more memory than that: make the build use less instead.
+          </>
+        ),
+      }, 2)}
       <Callout tone="note" title="Still stuck?">
         Look at <InternalLink href="/projects">your dashboard</InternalLink> or open an issue on{" "}
-        <ExternalLink href={REPO_URL}>GitHub</ExternalLink>.
+        <ExternalLink href={REPO_URL}>GitHub</ExternalLink>. Leave real keys, tokens and variable values out of it.
       </Callout>
     </Section>
   ),
@@ -1120,84 +1983,153 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
       intro="Access tokens let a script or an AI agent act for you, with only the permissions you pick."
     >
       <P>
-        You make tokens on the Developer page. A token is a bearer secret that starts with <C>ndp_</C>. Everything
-        here is also in the OpenAPI description.
+        You make tokens on the Developer page. A token is a bearer secret that starts with <C>egg_</C>. The API is
+        under <C>/api/v1</C>, the agent endpoint is <C>/api/mcp</C>, and everything here is also in the OpenAPI
+        description at <C>/api/v1/openapi.json</C>. A token can do nothing its permissions do not name, and a few
+        things it can never do at all.
       </P>
-      <H3 id="api-tokens" />
+      <H2 id="api-tokens" />
       {steps("api-tokens-steps", "Make a token", [
         { title: "Open Developer", body: "Press Create token to open the New token dialog.", path: ["Developer", "Access tokens", "Create token"] },
-        { title: "Name it", body: "A name is 1 to 60 characters. Pick one you will recognise later." },
-        { title: "Tick Permissions", body: "Read only ticks every read permission. Deploy ticks what a deploy script needs." },
-        { title: "Choose Expires after", body: "7, 30, 90 or 365 days. 90 is the default." },
-        { title: "Copy the secret", body: "It is shown once: “Copy it now. It will not be shown again.”" },
+        { title: "Name it", body: "A name is 1 to 60 characters. Pick one you will recognise later. It is what Activity shows for anything the token does." },
+        { title: "Tick Permissions", body: "Read only ticks every read permission. Deploy ticks projects:read, deployments:read, deployments:write and logs:read." },
+        { title: "Choose Expires after", body: "7, 30, 90 or 365 days. 90 is the default. With a terminal or file permission ticked only 7 days is allowed." },
+        { title: "Copy the secret", body: "It is shown once: “Copy it now. It is shown once.” Store it in a secret store, not in code." },
       ])}
       <P>
-        Each active token has Edit and Revoke. Edit changes the name, the permissions and the expiry, counted from
-        now. A revoked token is final. Dropping the deploy permission warns that deploys will stop working for
-        anything that uses the token.
+        The list groups tokens as Active, Expired and Revoked, and flags an active token that ends within 7 days.
+        Each shows when it was last used, at most once an hour, or “Never”. Each active token has Edit and Revoke.
+        Edit changes the name, the permissions and the expiry, counted from now, and takes effect on the next
+        request. Revoke asks you to confirm with “Revoke token”: anything using the token stops working at once
+        and any terminal it opened closes. A revoked token is final. Dropping the deploy permission warns that
+        deploys will stop working for anything that uses the token.
       </P>
+      {why(
+        <>
+          The secret is shown once because only its SHA-256 is stored, so it cannot be shown again, even to Egg. An
+          expired, revoked or unknown token is rejected with the same message so nobody can use the API to find out
+          which tokens once existed. Names matter because Activity shows them: a log that says “a token” cannot tell
+          you which script did it.
+        </>
+      )}
 
-      <H3 id="api-scopes" />
+      <H2 id="api-scopes" />
       <Table
         caption="Token permissions"
-        head={["Permission", "What it allows"]}
+        head={["Permission", "What it allows", "Calls"]}
         rows={[
-          [<C key="1">projects:read</C>, "Read projects, their settings and status page."],
-          [<C key="2">projects:write</C>, "Create, change and delete projects, including build and start commands."],
-          [<C key="3">deployments:read</C>, "Read deployments and build output."],
-          [<C key="4">deployments:write</C>, "Deploy, redeploy, cancel and roll back, and replace or revoke the deploy hook."],
-          [<C key="5">logs:read</C>, "Read runtime logs."],
-          [<C key="6">env:read</C>, "List variable names. Never their values."],
-          [<C key="7">env:write</C>, "Set and remove variables."],
-          [<C key="8">domains:read</C>, "Read domains."],
-          [<C key="9">domains:write</C>, "Add, check and remove domains."],
-          [<C key="10">notifications:read</C>, "Read notification settings and send a test message."],
-          [<C key="11">alerts:read</C>, "Read alert settings and history."],
-          [<C key="12">analytics:read</C>, "Read visitor analytics."],
-          [<C key="13">activity:read</C>, "Read your activity log."],
-          [<C key="14">resources:read</C>, "Read CPU, memory and disk, now and over time."],
-          [<C key="15">container:read</C>, "List servers and see what is on the container. Read only."],
-          [<C key="16">files:read</C>, "List and read files in a project’s folder."],
-          [<C key="17">files:write</C>, "Create, change, rename and delete files in a project’s shared/ folder."],
-          [<C key="18">terminal:use</C>, "Open and use a shell on the container."],
+          [<C key="1">projects:read</C>, "Read projects, their settings and status page.", "list_projects, get_project, get_status_page"],
+          [<C key="2">projects:write</C>, "Create, change and delete projects, including build and start commands.", "create_project, update_project, delete_project"],
+          [<C key="3">deployments:read</C>, "Read deployments and build output.", "list_deployments, get_deployment, get_deployment_logs"],
+          [<C key="4">deployments:write</C>, "Deploy, redeploy, cancel and roll back, and replace or revoke the deploy hook.", "deploy_branch, redeploy, cancel_deployment, rollback_deployment, rotate_deploy_hook, revoke_deploy_hook"],
+          [<C key="5">logs:read</C>, "Read runtime logs.", "get_logs"],
+          [<C key="6">env:read</C>, "List variable names. Never their values.", "list_env_vars"],
+          [<C key="7">env:write</C>, "Set and remove variables.", "set_env_var, delete_env_var"],
+          [<C key="8">domains:read</C>, "Read domains.", "list_domains"],
+          [<C key="9">domains:write</C>, "Add, check and remove domains.", "add_domain, verify_domain, remove_domain"],
+          [<C key="10">notifications:read</C>, "Read notification settings and send a test message.", "get_notifications, test_notification"],
+          [<C key="11">alerts:read</C>, "Read alert settings and history.", "get_alerts"],
+          [<C key="12">analytics:read</C>, "Read visitor analytics.", "get_analytics"],
+          [<C key="13">activity:read</C>, "Read your activity log.", "get_activity"],
+          [<C key="14">resources:read</C>, "Read CPU, memory and disk, now and over time.", "get_server_usage, get_resource_history, get_project_resources"],
+          [<C key="15">container:read</C>, "List servers and see what is on the container. Read only.", "list_servers, get_container_inventory"],
+          [<C key="16">files:read</C>, "List and read files in a project’s folder.", "list_files, read_file, download_file"],
+          [<C key="17">files:write</C>, "Create, change, rename and delete files in a project’s shared/ folder.", "write_file, make_folder, rename_file, delete_file"],
+          [<C key="18">terminal:use</C>, "Open and use a shell on the container.", "terminal_status, terminal_open, terminal_send, terminal_read, terminal_resize, terminal_close"],
+          [<C key="19">webhooks:read</C>, "Read your webhooks and their recent deliveries, never their secrets.", "GET /webhooks routes"],
+          [<C key="20">webhooks:write</C>, "Create, change, delete and test webhooks, and replace a webhook secret.", "POST, PATCH, DELETE /webhooks routes"],
         ]}
       />
       <P>
-        Only projects, deployments, environment variables and domains have a write permission. Notifications, alerts,
-        analytics, resources, activity, the container and logs are read only, and no permission changes notification
-        or alert settings. Those stay in the browser.
+        Projects, deployments, variables, domains, files and webhooks have a write permission, and{" "}
+        <C>terminal:use</C> runs commands. Notifications, alerts, analytics, resources, activity, the container and
+        logs are read only, and no permission changes notification or alert settings. Those stay in the browser.{" "}
+        <C>test_notification</C> needs only <C>notifications:read</C> but posts a real message to your channel, so an
+        agent should send it only when you ask.
       </P>
 
-      <H3 id="api-limits" />
+      <H2 id="api-limits" />
       <P>
         Terminal and file changes are off until you switch them on for a server, and switching them on asks you to
         sign in with Hack Club again. A token can use them only while that switch is on. A token that holds{" "}
         <C>terminal:use</C> or <C>files:write</C> expires within 7 days, whatever length you picked, and the form shows
-        that as you tick it. If you send no expiry, it gets 7 days.
+        that as you tick it. If you send no expiry, it gets 7 days. Adding either permission to a longer-lived token
+        is refused unless the same edit sets the expiry to 7 days.
       </P>
       <P>
         Some things stay with you in the browser. A token cannot remove leftovers, change the container permissions,
-        manage your account or sessions, or create other tokens.
+        manage your account or sessions, or create other tokens. Files in <C>current/</C> stay read only, and a
+        release’s <C>.env</C> is never returned.
       </P>
+      {why(
+        <>
+          A terminal can run any command and a file change can alter the code your app runs, so a leaked token with
+          either is the worst case. Capping its life at 7 days, and tying it to a switch you turned on with a recent
+          Hack Club sign-in, keeps that case short. The token does not sign in again: it can use the terminal until
+          its 7 days end or you switch the terminal off.
+        </>
+      )}
 
-      <H3 id="api-mcp" />
+      <H2 id="api-mcp" />
       <P>
         The API is under <C>/api/v1</C> and takes the token as a bearer header. The description of every call is at{" "}
         <C>/api/v1/openapi.json</C>. Start with <C>/api/v1/me</C>. It needs no permission, so any valid token can call
         it. It returns the token’s name, permissions and expiry and how many servers and projects there are, and never
         an email address.
       </P>
+      <List>
+        <li>
+          <B>Requests.</B> Send JSON. A body field the call does not know is refused with an “Unknown field” message that lists the allowed ones, so a typo cannot silently do nothing. A value in the path wins over a body field of the same
+          name.
+        </li>
+        <li>
+          <B>Answers.</B> A success is <C>200</C>, or <C>201</C> for something new, or <C>202</C> for a deployment
+          that is queued and will finish later. An error is always <C>{"{ \"error\": { \"code\", \"message\" } }"}</C>.
+          Authenticated answers are never cached.
+        </li>
+        <li>
+          <B>Secrets are write-only.</B> Variable values, notification URLs and token secrets are never returned. A
+          deploy hook URL comes back once, from the call that makes it.
+        </li>
+        <li>
+          <B>Cross-origin use.</B> The API allows any origin and never reads cookies, so a page on another site can
+          call it only with a token it holds. Do not put a token in a public page.
+        </li>
+      </List>
       <P>
-        AI agents connect to <C>/api/mcp</C> instead. It speaks JSON-RPC 2.0 with one message per request, no
-        sessions and no batches, and it offers the same calls as tools, with the same permissions and limits. An
-        agent should call the <C>get_me</C> tool first. A tool error comes back as a result with <C>isError</C> set.
+        AI agents connect to <C>/api/mcp</C> instead. It speaks JSON-RPC 2.0 over POST, with one message per request,
+        no sessions and no batches, and it offers the same calls as tools, with the same permissions and limits. It
+        answers <C>initialize</C>, <C>ping</C>, <C>tools/list</C> and <C>tools/call</C>. An agent should call the{" "}
+        <C>get_me</C> tool first. A tool error comes back as a result with <C>isError</C> set and text that starts with
+        the error code. A <C>GET</C> to the address is a 405.
       </P>
       <P>
         Deploys, redeploys, rollbacks, cancels and file or terminal actions made with a token are recorded in{" "}
         <InternalLink href={docsHref("activity")}>Activity</InternalLink> with the token’s name.
       </P>
+      <Table
+        caption="Every API call"
+        head={["Tool", "Method and path", "Permission", "Allowance"]}
+        rows={CALLS.map(([tool, method, path, scope, allowance]) => [
+          <C key={tool}>{tool}</C>,
+          <C key={`${tool}-p`}>{`${method} ${path}`}</C>,
+          scope ? <C key={`${tool}-s`}>{scope}</C> : "None",
+          allowance,
+        ])}
+      />
+      <P>
+        Webhooks are plain routes under <C>/api/v1/webhooks</C> rather than tools: <C>GET</C> and <C>POST</C> on{" "}
+        <C>/webhooks</C>, <C>GET</C>, <C>PATCH</C> and <C>DELETE</C> on <C>/webhooks/{"{webhookId}"}</C>, and{" "}
+        <C>POST</C> on <C>/webhooks/{"{webhookId}"}/rotate</C> and <C>/webhooks/{"{webhookId}"}/test</C>. Creating
+        one takes <C>url</C>, an optional <C>events</C> list of <C>deployment.started</C>,{" "}
+        <C>deployment.succeeded</C> and <C>deployment.failed</C>, and an optional <C>projectId</C>. The answer carries
+        the signing secret once. The body is 4 KB at most, and the test call uses the container-session allowance.
+        They are not in the OpenAPI description or the agent tool list. How a receiver checks the{" "}
+        <C>X-Egg-Signature</C> header, what a delivery carries and how failed deliveries are tried again are on
+        the <InternalLink href={docsHref("notifications")}>Notifications</InternalLink> page.
+      </P>
 
-      <H3 id="api-examples" />
+      <H2 id="api-examples" />
       <P>
         Ready-made starting points live in the repository. Each says which permissions it needs. Every example uses a
         placeholder like <C>{TOKEN_PLACEHOLDER}</C>, so keep your real token in an environment variable or a secret
@@ -1210,42 +2142,146 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
             <ExternalLink href={repoLink(r.path)}>{r.title}</ExternalLink>. {r.summary} {scopeNeeds(r)}
           </li>
         ))}
+        <li>
+          <ExternalLink href={repoLink("docs/developers/cli.md")}>Egg command line</ExternalLink> (the script is{" "}
+          <ExternalLink href={repoLink("web/scripts/egg-cli.mjs")}>egg-cli.mjs</ExternalLink>). Use Egg from a
+          terminal: <C>egg whoami</C>, <C>egg projects list</C>, <C>egg deploy &lt;slug&gt;</C>,{" "}
+          <C>egg logs &lt;deployment-id&gt; --follow</C>, <C>egg rollback &lt;deployment-id&gt;</C>,{" "}
+          <C>egg env names &lt;slug&gt;</C>, <C>egg domains list</C> and <C>egg status</C>. It reads{" "}
+          <C>EGG_TOKEN</C> and <C>EGG_URL</C> from the environment and never prints the token. Exit code 0 is done, 1
+          is failed and 2 is wrong use.
+        </li>
       </List>
+      {steps("api-examples-steps", "Common calls", [
+        {
+          title: "Check the token",
+          body: "Needs no permission. It shows what the token may do and when it ends.",
+          code: { label: "Terminal", code: `curl -H "Authorization: Bearer $NEST_TOKEN" https://your-egg/api/v1/me` },
+        },
+        {
+          title: "List projects and find an id",
+          body: <>Needs <C>projects:read</C>.</>,
+          code: { label: "Terminal", code: `curl -H "Authorization: Bearer $NEST_TOKEN" https://your-egg/api/v1/projects` },
+        },
+        {
+          title: "Deploy a branch",
+          body: <>Needs <C>deployments:write</C>. Leave the body out to deploy the production branch. Any other branch becomes a preview. The answer is 202 with the queued deployment.</>,
+          code: {
+            label: "Terminal",
+            code: `curl -X POST -H "Authorization: Bearer $NEST_TOKEN" \\\n  -H "Content-Type: application/json" \\\n  -d '{"branch":"pricing-page"}' \\\n  https://your-egg/api/v1/projects/PROJECT_ID/deployments`,
+          },
+        },
+        {
+          title: "Watch it finish",
+          body: <>Needs <C>deployments:read</C>. The newest deployment comes first, and its <C>state</C> moves from queued to building to deploying and then to ready, error or canceled.</>,
+          code: { label: "Terminal", code: `curl -H "Authorization: Bearer $NEST_TOKEN" \\\n  "https://your-egg/api/v1/projects/PROJECT_ID/deployments?limit=1"` },
+        },
+        {
+          title: "Read why it failed",
+          body: <>Needs <C>deployments:read</C>. Pass the last line’s id as <C>after</C> to continue. It uses the container-session allowance of 10 a minute.</>,
+          code: { label: "Terminal", code: `curl -H "Authorization: Bearer $NEST_TOKEN" \\\n  "https://your-egg/api/v1/deployments/DEPLOYMENT_ID/logs?after=0&limit=200"` },
+        },
+        {
+          title: "Set a variable",
+          body: <>Needs <C>env:write</C>. <C>target</C> is <C>all</C>, <C>production</C> or <C>preview</C>. The value reaches the app at the next deploy and is never returned.</>,
+          code: { label: "Terminal", code: `curl -X PUT -H "Authorization: Bearer $NEST_TOKEN" \\\n  -H "Content-Type: application/json" \\\n  -d '{"value":"sk_test_123","target":"production"}' \\\n  https://your-egg/api/v1/projects/PROJECT_ID/env/STRIPE_KEY` },
+        },
+        {
+          title: "Roll back",
+          body: <>Needs <C>deployments:write</C>. Pass the id of an earlier production deployment whose release is still on the server.</>,
+          code: { label: "Terminal", code: `curl -X POST -H "Authorization: Bearer $NEST_TOKEN" \\\n  https://your-egg/api/v1/deployments/DEPLOYMENT_ID/rollback` },
+        },
+        {
+          title: "Wait out a 429",
+          body: "A rate-limited call answers 429 with a Retry-After header. Wait that many seconds, then repeat the call.",
+          code: {
+            label: "Node.js",
+            code: `async function call(path, init) {\n  const res = await fetch("https://your-egg/api/v1" + path, {\n    ...init,\n    headers: { Authorization: "Bearer " + process.env.NEST_TOKEN, ...init?.headers },\n  });\n  if (res.status === 429) {\n    await new Promise((r) => setTimeout(r, Number(res.headers.get("retry-after") ?? 5) * 1000));\n    return call(path, init);\n  }\n  const body = await res.json();\n  if (!res.ok) throw new Error(body.error.code + ": " + body.error.message);\n  return body;\n}`,
+          },
+        },
+        {
+          title: "Use the typed client",
+          body: "Copy the one file into your project. Each method names its permission and throws an error that carries the status, the code and Retry-After.",
+          code: {
+            label: "TypeScript",
+            code: `import { Egg } from "./egg";\n\nconst nest = new Egg({ token: process.env.NEST_TOKEN!, baseUrl: "https://your-egg" });\n\nconst me = await nest.me();\nconsole.log(me.token.scopes);\n\nconst { projects } = await nest.listProjects();\nfor (const p of projects) console.log(p.name, p.state);`,
+          },
+        },
+        {
+          title: "Call a tool over MCP",
+          body: "One JSON-RPC message per POST.",
+          code: {
+            label: "Terminal",
+            code: `curl -X POST -H "Authorization: Bearer $NEST_TOKEN" \\\n  -H "Content-Type: application/json" \\\n  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_me","arguments":{}}}' \\\n  https://your-egg/api/mcp`,
+          },
+        },
+      ])}
 
-      <H3 id="api-addresses" />
+      <H2 id="api-addresses" />
       <Table
         caption="Addresses"
         head={["For", "Address"]}
         rows={[
-          ["API calls", <C key="1">https://your-nest-deploy/api/v1</C>],
-          ["Client generators and API tools", <C key="2">https://your-nest-deploy/api/v1/openapi.json</C>],
-          ["AI agents", <C key="3">https://your-nest-deploy/api/mcp</C>],
+          ["API calls", <C key="1">https://your-egg/api/v1</C>],
+          ["Client generators and API tools", <C key="2">https://your-egg/api/v1/openapi.json</C>],
+          ["AI agents", <C key="3">https://your-egg/api/mcp</C>],
         ]}
       />
       <P>
-        Replace <C>your-nest-deploy</C> with the address of your Nest Deploy. All three take the same token in an{" "}
-        <C>Authorization: Bearer</C> header, and none of them reads cookies.
+        Replace <C>your-egg</C> with the address of your Egg. All three take the same token in an{" "}
+        <C>Authorization: Bearer</C> header, and none of them reads cookies. The OpenAPI document is public and holds
+        no data. A client that connects over MCP uses the same address and header:
       </P>
+      {code(
+        "MCP client config",
+        `{\n  "mcpServers": {\n    "egg": {\n      "type": "http",\n      "url": "https://your-egg/api/mcp",\n      "headers": { "Authorization": "Bearer ${TOKEN_PLACEHOLDER}" }\n    }\n  }\n}`
+      )}
 
       {limits("api-rates", [
-        ["Reads", "120 a minute per token", "429 with a Retry-After header."],
-        ["Changes", "30 a minute", "429."],
-        ["Calls that open a session to your container (build logs, resource history, the inventory, files)", "10 a minute", "429."],
-        ["Terminal input", "300 a minute", "429."],
-        ["Request body", "16 KB (4 MB for a file write, 64 KB for MCP)", "413 “The request body is too large.”"],
-        ["File write and download", "1 MB and 2 MB", "413 “The API writes files of up to 1 MB. Upload larger files in the dashboard.”"],
+        ["Reads", "120 a minute per token", "429 with a Retry-After header.", "server/api-v1-kit.ts (API_LIMITS.read)"],
+        ["Changes", "30 a minute", "429.", "server/api-v1-kit.ts (API_LIMITS.write)"],
+        ["Calls that open a session to your container (build logs, resource history, project resources, the inventory, opening a terminal, files)", "10 a minute", "429.", "server/api-v1-kit.ts (API_LIMITS.ssh)"],
+        ["Terminal input", "300 a minute", "429.", "server/api-v1-kit.ts (API_LIMITS.input)"],
+        ["Invalid tokens", "60 a minute per address", "429 “Too many requests for unrecognised access tokens.”", "server/rate-limit.ts (RATE_LIMITS.badToken)"],
+        ["Request body", "16 KB (4 MB for a file write, 64 KB for terminal input and for MCP, 4 KB for webhooks)", "413 “The request body is too large.”", "server/api-v1-kit.ts (DEFAULT_MAX_BODY_BYTES), server/api-v1-shell.ts, app/api/mcp/route.ts, server/webhooks-http.ts"],
+        ["File write and download", "1 MB and 2 MB", "413 “The API writes files of up to 1 MB. Upload larger files in the dashboard.”", "server/api-v1-shell.ts"],
+        ["Active tokens", "25", "400 “You can have up to 25 active tokens. Revoke one first.”", "server/api-tokens.ts (MAX_TOKENS_PER_USER)"],
+        ["Token life", "7, 30, 90 or 365 days; 7 with terminal or files:write", "400 naming the 7 day rule.", "server/api-tokens.ts (createTokenInput, SHORT_LIVED_MAX_DAYS)"],
+        ["List sizes", "Deployments 1 to 100, runtime log lines 1 to 1000, build log lines 1 to 1000, activity 1 to 100, analytics 1 to 90 days, resource history 1 to 168 hours", "400 for a value outside the range.", "server/api-v1.ts, server/api-v1-more.ts (query fields)"],
       ])}
 
-      {wrong("api-wrong", [
-        ["Send an access token as an Authorization: Bearer ndp_... header.", "401. Add the header."],
-        ["That access token is not valid.", "401. A missing, revoked, expired or unknown token looks the same. Make a new one."],
-        ["This token does not have the <scope> permission.", "403. Edit the token on the Developer page and tick the permission."],
-        ["That file holds the project's environment variable values, which are never returned by the API.", "403. The API never reads .env files. Use env:read for names."],
-        ["Too many requests for this token. Wait <n> second(s) and try again.", "429. Wait for the Retry-After seconds."],
-        ["Unknown field \"<name>\". Allowed: ...", "400. Remove the field. Unknown body fields are refused."],
-        ["Unknown tool: <name>", "The MCP endpoint does not have that tool. Call tools/list."],
-      ])}
+      {wrong("api-wrong", TOKEN_PROBLEMS.slice(0, 12), undefined, 2)}
+      <Table
+        caption="Status codes"
+        head={["Status", "Meaning"]}
+        rows={[
+          [<C key="400">400</C>, "The request was invalid. The message says which field."],
+          [<C key="401">401</C>, "Missing or invalid token. The response has a WWW-Authenticate: Bearer header."],
+          [<C key="403">403</C>, "The token lacks the permission, or the switch for terminal, files or leftovers is off."],
+          [<C key="404">404</C>, "No such item, or it belongs to someone else."],
+          [<C key="405">405</C>, "The agent endpoint takes POST only."],
+          [<C key="409">409</C>, "The item is in a state that does not allow this."],
+          [<C key="413">413</C>, "The request body or the file is too large."],
+          [<C key="429">429</C>, "Too many requests. Wait the seconds in Retry-After."],
+          [<C key="502">502</C>, "Your container could not be reached."],
+          [<C key="503">503</C>, "Too many terminals are open on the service right now."],
+        ]}
+      />
 
+      {wrong(
+        "api-cli-wrong",
+        [
+          ["Set EGG_TOKEN to your personal access token (it starts with egg_).", "Exit 2. Export EGG_TOKEN with a token from the Developer page."],
+          ["Set EGG_URL to your Egg address, such as https://deploy.example.com.", "Exit 2. Export EGG_URL with the address of your Egg."],
+          ["Unknown command \"<name>\".", "Exit 2. Run egg --help for the list."],
+          ["Unknown option <name>.", "Exit 2. The options are --json, --follow, --branch and --help."],
+          ["egg <command> needs <argument>.", "Exit 2. Add the project slug or deployment id the command asks for."],
+          ["No project with the slug \"<slug>\". Run egg projects list to see yours.", "Exit 1. Check the slug against the list."],
+          ["Error: <message>", "Exit 1. The API refused the call. The message is the one from the tables above. With --json the error is printed as an object with status, code and message."],
+        ],
+        "Command line messages",
+        3
+      )}
       {example("api-example", {
         title: "List your projects with curl",
         given: "A token with projects:read, kept in an environment variable.",
@@ -1254,16 +2290,27 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
             title: "Call the projects endpoint",
             code: {
               label: "Terminal",
-              code: `export NEST_TOKEN=ndp_...\ncurl -H "Authorization: Bearer $NEST_TOKEN" https://your-nest-deploy/api/v1/projects`,
+              code: `export NEST_TOKEN=egg_...\ncurl -H "Authorization: Bearer $NEST_TOKEN" https://your-egg/api/v1/projects`,
             },
           },
         ],
         result: "A JSON list of your projects. A token without the permission gets 403 naming it.",
       })}
+      {example("api-example-deploy", {
+        title: "Deploy from a script and wait",
+        given: "A token with projects:read, deployments:read and deployments:write, and a project whose id you found with the call above.",
+        steps: [
+          { title: "Start the deploy", body: "POST to the project’s deployments endpoint with no body." },
+          { title: "Poll", body: "List deployments with limit=1 every few seconds until state is ready, error or canceled." },
+          { title: "On error, read the log", body: "Fetch the deployment’s logs and print the last lines." },
+        ],
+        result: "The POST answers 202 with the queued deployment. When state reads ready, the release is live. Activity shows “Started a deployment of” with the token’s name.",
+      })}
       {related([
         ["security", "Security"],
         ["limits", "Limits"],
         ["container", "Container, terminal and files"],
+        ["notifications", "Notifications"],
       ])}
     </Section>
   ),

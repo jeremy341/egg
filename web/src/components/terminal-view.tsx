@@ -404,7 +404,7 @@ function OpenCard({
         <ul className="mt-4 max-w-[62ch] list-disc space-y-1 pl-5 text-sm text-muted-foreground">
           <li>It closes after 10 minutes without typing, or after 60 minutes in total.</li>
           <li>Only one terminal per project can be open at a time.</li>
-          <li>Nest Deploy records when a terminal opens and closes. It never records what you type or see.</li>
+          <li>Egg records when a terminal opens and closes. It never records what you type or see.</li>
         </ul>
         {error ? (
           <Alert tone="error" role="alert" className="mt-4">

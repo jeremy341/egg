@@ -23,7 +23,7 @@ export function headers(token: string, extra: Record<string, string> = {}) {
   return {
     accept: "application/vnd.github+json",
     "x-github-api-version": "2022-11-28",
-    "user-agent": "nest-deploy",
+    "user-agent": "egg",
     authorization: `Bearer ${token}`,
     ...extra,
   };
@@ -151,7 +151,7 @@ export async function installationsForCode(
   }
   const tokenRes = await fetchImpl("https://github.com/login/oauth/access_token", {
     method: "POST",
-    headers: { accept: "application/json", "content-type": "application/json", "user-agent": "nest-deploy" },
+    headers: { accept: "application/json", "content-type": "application/json", "user-agent": "egg" },
     body: JSON.stringify({
       client_id: c.GITHUB_APP_CLIENT_ID,
       client_secret: c.GITHUB_APP_CLIENT_SECRET,
@@ -188,7 +188,7 @@ export async function saveInstallations(
       .where(eq(schema.githubInstallations.id, i.id))
       .get();
     if (existing && existing.userId !== userId) {
-      // An installation belongs to one Nest Deploy user: the first to link it.
+      // An installation belongs to one Egg user: the first to link it.
       continue;
     }
     if (existing) {

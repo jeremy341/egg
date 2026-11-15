@@ -2,15 +2,15 @@
 // List your projects, then follow the build log of a project's latest deployment.
 // Needs Node 20+ and no packages. Token scopes: projects:read, deployments:read.
 //
-//   NEST_URL=https://your-nest-deploy NEST_TOKEN=ndp_... node tail-logs.mjs [project-id]
+//   NEST_URL=https://your-egg NEST_TOKEN=egg_... node tail-logs.mjs [project-id]
 //
 // The token is read from the environment so it never ends up in your shell history
 // or in the file. Do not paste a real token into this script.
 
 const base = (process.env.NEST_URL ?? "").replace(/\/+$/, "");
 const token = process.env.NEST_TOKEN ?? "";
-if (!base || !token.startsWith("ndp_")) {
-  console.error("Set NEST_URL (your Nest Deploy address) and NEST_TOKEN (a token that starts with ndp_).");
+if (!base || !token.startsWith("egg_")) {
+  console.error("Set NEST_URL (your Egg address) and NEST_TOKEN (a token that starts with egg_).");
   process.exit(2);
 }
 

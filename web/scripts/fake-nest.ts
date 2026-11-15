@@ -1,15 +1,15 @@
-// A stand-in for a Nest container, for trying Nest Deploy without a Nest account.
+// A stand-in for a Nest container, for trying Egg without a Nest account.
 //
 //   pnpm fake-nest
 //
 // It accepts the public key of every server saved in the local database, and
-// runs the commands Nest Deploy sends in a scratch directory on Linux (WSL on
+// runs the commands Egg sends in a scratch directory on Linux (WSL on
 // Windows). A fake systemd starts your app as a background process.
 //
-// Point Nest Deploy at it in .env.local:
+// Point Egg at it in .env.local:
 //   NEST_HOST=127.0.0.1
 //   NEST_PORT=2222
-//   UNIT_DIR=<home>/.nd-fake-nest/units   (printed below)
+//   UNIT_DIR=<home>/.egg-fake-nest/units   (printed below)
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -26,7 +26,7 @@ const onWindows = process.platform === "win32";
 const realHome = onWindows
   ? spawnSync("wsl.exe", ["-d", DISTRO, "-e", "bash", "-c", "echo $HOME"]).stdout.toString().trim()
   : os.homedir();
-const HOME = `${realHome}/.nd-fake-nest`;
+const HOME = `${realHome}/.egg-fake-nest`;
 const PORT = Number(process.env.FAKE_NEST_PORT ?? 2222);
 const keyFile = path.resolve("data/fake-nest-host-key");
 

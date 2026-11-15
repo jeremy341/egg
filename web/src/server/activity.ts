@@ -250,7 +250,7 @@ export function isSecretKey(key: string): boolean {
 }
 
 const SECRET_PREFIX =
-  /^(nd_|ghp_|gho_|ghu_|ghs_|ghr_|github_pat_|sk[-_]|pk_live|rk_live|xox[abpsr]-|akia|aiza|eyj|bearer\s|basic\s|-----begin)/i;
+  /^(egg_|ghp_|gho_|ghu_|ghs_|ghr_|github_pat_|sk[-_]|pk_live|rk_live|xox[abpsr]-|akia|aiza|eyj|bearer\s|basic\s|-----begin)/i;
 const SECRET_ASSIGNMENT = /(password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key)\s*[=:]\s*\S+/i;
 const URL_USERINFO = /:\/\/[^/\s:@]+:[^/\s@]+@/;
 const URL_SECRET_QUERY = /[?&](token|key|secret|sig|signature|password|pass|auth|access_token|api_key)=/i;

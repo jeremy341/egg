@@ -126,7 +126,7 @@ export function DetectedSummary({
           {d.packageManager ? (
             <Row label="Package manager">
               {PM_NAMES[d.packageManager]}
-              {d.packageManagerSupported ? null : " (not built by Nest Deploy yet)"}
+              {d.packageManagerSupported ? null : " (not built by Egg yet)"}
             </Row>
           ) : null}
           <Row label="Runtime">

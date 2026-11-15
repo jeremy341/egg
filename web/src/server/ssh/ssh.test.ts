@@ -10,8 +10,8 @@ import { startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
 
 describe("keys", () => {
   it("generates a dedicated ed25519 key with a matching fingerprint", () => {
-    const key = generateServerKey("nest-deploy:sam-r");
-    expect(key.publicKey).toMatch(/^ssh-ed25519 [A-Za-z0-9+/=]+ nest-deploy:sam-r$/);
+    const key = generateServerKey("egg:sam-r");
+    expect(key.publicKey).toMatch(/^ssh-ed25519 [A-Za-z0-9+/=]+ egg:sam-r$/);
     expect(key.privateKey).toContain("BEGIN OPENSSH PRIVATE KEY");
     expect(key.fingerprint).toMatch(/^SHA256:[A-Za-z0-9+/]{43}$/);
     expect(fingerprintOfPublicKey(key.publicKey)).toBe(key.fingerprint);
@@ -137,7 +137,7 @@ describe("NestSession against a mock Nest", () => {
 
   it("uploads a file over a plain exec channel", async () => {
     const s = await connect();
-    const local = path.join(tmpdir(), `nd-upload-${Date.now()}.bin`);
+    const local = path.join(tmpdir(), `egg-upload-${Date.now()}.bin`);
     writeFileSync(local, Buffer.from([0, 1, 2, 250, 251, 252, 10, 13]));
     await s.uploadFile(local, `${mock.home}/remote.bin`);
     const back = await s.exec(`od -An -tu1 ${mock.home}/remote.bin`);

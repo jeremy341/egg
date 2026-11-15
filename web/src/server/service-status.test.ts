@@ -14,17 +14,17 @@ import { startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
 
 describe("parseServiceStatus", () => {
   const running = [
-    "ND_ACTIVE=active",
-    "ND_LoadState=loaded",
-    "ND_ActiveState=active",
-    "ND_SubState=running",
-    "ND_MainPID=4242",
-    "ND_NRestarts=2",
-    "ND_MemoryCurrent=88080384",
-    "ND_CPUUsageNSec=2500000000",
-    "ND_ActiveEnterTimestampMonotonic=1000000000",
-    "ND_UPTIME=1000.50",
-    "ND_HTTP=200 0.0123",
+    "EGG_ACTIVE=active",
+    "EGG_LoadState=loaded",
+    "EGG_ActiveState=active",
+    "EGG_SubState=running",
+    "EGG_MainPID=4242",
+    "EGG_NRestarts=2",
+    "EGG_MemoryCurrent=88080384",
+    "EGG_CPUUsageNSec=2500000000",
+    "EGG_ActiveEnterTimestampMonotonic=1000000000",
+    "EGG_UPTIME=1000.50",
+    "EGG_HTTP=200 0.0123",
   ].join("\n");
 
   it("reads a healthy service", () => {
@@ -44,26 +44,26 @@ describe("parseServiceStatus", () => {
 
   it("calls a service that failed, failed", () => {
     const s = parseServiceStatus(
-      "ND_ActiveState=failed\nND_SubState=failed\nND_MainPID=0\nND_MemoryCurrent=18446744073709551615\nND_HTTP=000 0.000"
+      "EGG_ActiveState=failed\nEGG_SubState=failed\nEGG_MainPID=0\nEGG_MemoryCurrent=18446744073709551615\nEGG_HTTP=000 0.000"
     );
     expect(s).toMatchObject({ state: "failed", pid: null, memoryMb: null, uptimeSeconds: null });
     expect(s.http).toEqual({ code: 0, ms: null });
   });
 
   it("tells a missing unit from a stopped one", () => {
-    expect(parseServiceStatus("ND_LoadState=not-found\nND_ActiveState=inactive").state).toBe("not_deployed");
-    expect(parseServiceStatus("ND_LoadState=loaded\nND_ActiveState=inactive").state).toBe("stopped");
-    expect(parseServiceStatus("ND_ActiveState=activating\nND_SubState=auto-restart").state).toBe("starting");
+    expect(parseServiceStatus("EGG_LoadState=not-found\nEGG_ActiveState=inactive").state).toBe("not_deployed");
+    expect(parseServiceStatus("EGG_LoadState=loaded\nEGG_ActiveState=inactive").state).toBe("stopped");
+    expect(parseServiceStatus("EGG_ActiveState=activating\nEGG_SubState=auto-restart").state).toBe("starting");
   });
 
   it("copes with garbage and with a missing curl", () => {
-    const s = parseServiceStatus("hello\nND_MemoryCurrent=[not set]\nND_MainPID=abc\nND_HTTP=oops");
+    const s = parseServiceStatus("hello\nEGG_MemoryCurrent=[not set]\nEGG_MainPID=abc\nEGG_HTTP=oops");
     expect(s).toMatchObject({ state: "unknown", memoryMb: null, pid: null, http: null });
     expect(parseServiceStatus("").state).toBe("unknown");
   });
 
   it("ignores lines that are not ours", () => {
-    expect(parseServiceStatus("ActiveState=active\nND_ACTIVE=failed").state).toBe("failed");
+    expect(parseServiceStatus("ActiveState=active\nEGG_ACTIVE=failed").state).toBe("failed");
   });
 });
 
@@ -141,7 +141,7 @@ describe("fetchServiceStatus on a mock Nest", () => {
   });
 
   it("notices when the service has stopped", async () => {
-    await sh("systemctl stop nd-status-app.service");
+    await sh("systemctl stop egg-status-app.service");
     const s = await fetchServiceStatus(userId, project.id);
     expect(["failed", "stopped"]).toContain(s.state);
     expect(s.http?.code).toBe(0);

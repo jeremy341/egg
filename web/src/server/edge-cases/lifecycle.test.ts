@@ -22,7 +22,7 @@ class FakeShell implements ShellHandle {
   }
 }
 
-const MANAGER_KEY = Symbol.for("nest-deploy.terminal-manager");
+const MANAGER_KEY = Symbol.for("egg.terminal-manager");
 
 let ctx: Awaited<ReturnType<typeof useFreshDb>>;
 let manager: TerminalManager;
@@ -77,6 +77,21 @@ describe("disconnecting a server", () => {
     // The server row and its key are gone, so a root shell that used the key must not stay open.
     expect(manager.size).toBe(0);
     expect(shells[0].closed).toBeGreaterThan(0);
+  });
+
+  it("closes the terminals whether or not the projects are deleted", async () => {
+    for (const deleteProjects of [false, true]) {
+      freshManager();
+      const tag = `edge-s2-${deleteProjects}`;
+      const { user, server, project } = await userWithProject(tag, tag, deleteProjects ? 3205 : 3204);
+      await manager.open(user.id, project.id, { cols: 80, rows: 24 });
+      expect(manager.size).toBe(1);
+
+      await deleteServer(user.id, server.id, { deleteProjects });
+
+      expect(manager.size).toBe(0);
+      expect(shells[0].closed).toBeGreaterThan(0);
+    }
   });
 });
 

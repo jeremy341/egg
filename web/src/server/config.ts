@@ -9,37 +9,63 @@ const bool = z
   .default("0")
   .transform((v) => v === "1" || v === "true");
 
-const schema = z.object({
-  APP_URL: z.string().url().default("http://localhost:3000"),
-  /** Master secret for encrypting SSH keys and env vars. 32+ characters. */
-  APP_SECRET: z.string().min(32, "APP_SECRET must be at least 32 characters"),
-  DATABASE_URL: z.string().default("file:./data/nest-deploy.db"),
+/** True for localhost, any 127.x.x.x address and ::1. Anything else is a remote address. */
+export function isLoopbackHost(host: string): boolean {
+  const h = host.trim().toLowerCase().replace(/^\[|\]$/g, "");
+  return h === "localhost" || h === "::1" || /^127(\.\d{1,3}){3}$/.test(h);
+}
 
-  HACKCLUB_CLIENT_ID: z.string().optional(),
-  HACKCLUB_CLIENT_SECRET: z.string().optional(),
-  /** Local development only: sign in as a fake user without Hack Club Auth. */
-  DEV_LOGIN: bool,
+const schema = z
+  .object({
+    APP_URL: z.string().url().default("http://localhost:3000"),
+    /** Master secret for encrypting SSH keys and env vars. 32+ characters. */
+    APP_SECRET: z.string().min(32, "APP_SECRET must be at least 32 characters"),
+    DATABASE_URL: z.string().default("file:./data/egg.db"),
 
-  GITHUB_APP_ID: z.string().optional(),
-  GITHUB_APP_SLUG: z.string().optional(),
-  GITHUB_APP_CLIENT_ID: z.string().optional(),
-  GITHUB_APP_CLIENT_SECRET: z.string().optional(),
-  /** PEM text. "\n" escape sequences are accepted. */
-  GITHUB_APP_PRIVATE_KEY: z.string().optional(),
-  GITHUB_WEBHOOK_SECRET: z.string().optional(),
+    HACKCLUB_CLIENT_ID: z.string().optional(),
+    HACKCLUB_CLIENT_SECRET: z.string().optional(),
+    /** Local development only: sign in as a fake user without Hack Club Auth. */
+    DEV_LOGIN: bool,
+    /**
+     * Self-hosting on your own computer: sign in without any external account.
+     * Off unless set. Refused when APP_URL is not a local address, because anyone
+     * who can reach the site could then sign in as the owner.
+     */
+    LOCAL_MODE: bool,
+    /** Explicit override that lets LOCAL_MODE run on a non-local APP_URL. Use only behind your own access control. */
+    LOCAL_MODE_ALLOW_REMOTE: bool,
 
-  /** docker isolates builds; local runs them on this machine (dev only). */
-  BUILD_RUNNER: z.enum(["docker", "local"]).default("docker"),
-  BUILD_IMAGE_NODE: z.string().default("node:22-bookworm"),
-  BUILD_IMAGE_PYTHON: z.string().default("python:3.12-bookworm"),
-  BUILD_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(900),
-  DEPLOY_WORK_DIR: z.string().default("./data/work"),
-  /** Where systemd units are written on the container. Only change for testing. */
-  UNIT_DIR: z.string().default("/etc/systemd/system"),
-  /** Where Nest's SSH bastion lives. */
-  NEST_HOST: z.string().default("hackclub.app"),
-  NEST_PORT: z.coerce.number().int().positive().default(22),
-});
+    GITHUB_APP_ID: z.string().optional(),
+    GITHUB_APP_SLUG: z.string().optional(),
+    GITHUB_APP_CLIENT_ID: z.string().optional(),
+    GITHUB_APP_CLIENT_SECRET: z.string().optional(),
+    /** PEM text. "\n" escape sequences are accepted. */
+    GITHUB_APP_PRIVATE_KEY: z.string().optional(),
+    GITHUB_WEBHOOK_SECRET: z.string().optional(),
+
+    /** docker isolates builds; local runs them on this machine (dev only). */
+    BUILD_RUNNER: z.enum(["docker", "local"]).default("docker"),
+    BUILD_IMAGE_NODE: z.string().default("node:22-bookworm"),
+    BUILD_IMAGE_PYTHON: z.string().default("python:3.12-bookworm"),
+    BUILD_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(900),
+    DEPLOY_WORK_DIR: z.string().default("./data/work"),
+    /** Where systemd units are written on the container. Only change for testing. */
+    UNIT_DIR: z.string().default("/etc/systemd/system"),
+    /** Where Nest's SSH bastion lives. */
+    NEST_HOST: z.string().default("hackclub.app"),
+    NEST_PORT: z.coerce.number().int().positive().default(22),
+  })
+  .superRefine((c, ctx) => {
+    if (!c.LOCAL_MODE || c.LOCAL_MODE_ALLOW_REMOTE) return;
+    if (isLoopbackHost(new URL(c.APP_URL).hostname)) return;
+    ctx.addIssue({
+      code: "custom",
+      path: ["LOCAL_MODE"],
+      message:
+        "LOCAL_MODE signs anyone in as the owner, so APP_URL must be localhost or 127.0.0.1. " +
+        "Set APP_URL to a local address, or set LOCAL_MODE_ALLOW_REMOTE=1 if you control who can reach the site.",
+    });
+  });
 
 export type Config = z.infer<typeof schema>;
 
@@ -70,6 +96,10 @@ export function config(): Config {
 /** For tests: drop the cached config so a changed process.env is re-read. */
 export function resetConfigForTests() {
   cached = undefined;
+}
+
+export function localModeEnabled() {
+  return config().LOCAL_MODE;
 }
 
 export function hackClubConfigured() {

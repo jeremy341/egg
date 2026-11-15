@@ -3,7 +3,7 @@
 Rule: default deny. Anything that can run code, change files, delete things or
 publish information starts off, and the person turns it on on purpose. People
 already run apps on their container, so a default must never stop, restart,
-overwrite or delete something Nest Deploy did not create.
+overwrite or delete something Egg did not create.
 
 Date of this review: 2026-11-05. Code references are to `web/src`.
 
@@ -18,8 +18,8 @@ Date of this review: 2026-11-05. Code references are to `web/src`.
 | Removing leftovers | `allow_orphan_removal` | true | false | OFF |
 
 **Terminal.** Can: a root shell, so any command, including stopping or editing
-apps Nest Deploy did not deploy, and reading every secret the account can read.
-Exposure: anyone signed in to the Nest Deploy account while it is on. Works on a
+apps Egg did not deploy, and reading every secret the account can read.
+Exposure: anyone signed in to the Egg account while it is on. Works on a
 container with other apps: yes, and that is exactly the risk. Turning it on needs
 a Hack Club sign-in from the last 5 minutes (`reauth_required`), and the page asks
 for the server name. Turning it off closes the owner's open terminals on that
@@ -34,18 +34,17 @@ never reaches a folder that is not a project of ours. Same fresh sign-in rule as
 the terminal. Enforcement: the four write routes and the API v1 write calls read
 the stored value per request (tests in `permissions-routes.test.ts`).
 
-**Removing leftovers.** Can: stop, disable and delete `nd-*.service` units, and
-`rm -rf` folders directly under `~/.nest-deploy` that no project uses. This is the
+**Removing leftovers.** Can: stop, disable and delete `egg-*.service` units, and
+`rm -rf` folders directly under `~/.egg` that no project uses. This is the
 only switch that deletes. Works on a container with other apps: only safe if
 "ours" is a reliable test. The marker check:
 
-- Before this review the only test was the name: `nd-<slug>.service` and any
-  folder with a valid slug in `~/.nest-deploy`. There was no marker, so a unit or
+- Before this review the only test was the name: `egg-<slug>.service` and any
+  folder with a valid slug in `~/.egg`. There was no marker, so a unit or
   folder a person made with a matching name looked like a leftover.
 - A marker is now being added by another change set in the same tree (not by this
-  one): `# nest-deploy:managed` in the unit, `.nest-deploy-managed` in the project
-  folder, and a legacy rule for older units (description starts `Nest Deploy: `)
-  and older folders (only releases, incoming, shared, current, no `.git`).
+  one): `# egg:managed` in the unit, `.egg-managed` in the project
+  folder, and a rule for folders without the file (only releases, incoming, shared, current, no `.git`).
   `removeOrphans` then refuses anything unmarked (`notOurs`).
 - Verdict: removal stays OFF by default whether or not that lands. With it on,
   removal still needs a click to confirm each time, 10 requests a minute at most,
@@ -142,9 +141,9 @@ this plan updates a row.
   refuses anything unmarked, a deploy refuses to overwrite a unit or folder of the
   same name that is not ours, and file changes only ever write inside `shared/` of
   a project we deployed.
-- An app Nest Deploy did not deploy is never restarted by Nest Deploy. The
+- An app Egg did not deploy is never restarted by Egg. The
   terminal is the exception only in that you can type anything into it yourself.
-- Deleting your Nest Deploy account leaves every app running.
+- Deleting your Egg account leaves every app running.
 
 ## 5. Gaps and open decisions
 

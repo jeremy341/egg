@@ -71,7 +71,7 @@ export function AccountView({ name, sessions }: { name: string; sessions: Sessio
       <Card
         id="sessions-heading"
         title="Signed-in browsers"
-        description="Anywhere you are signed in to Nest Deploy. Sign out any you do not recognise."
+        description="Anywhere you are signed in to Egg. Sign out any you do not recognise."
       >
         <ul className="hairline-y overflow-hidden rounded-md shadow-border-base">
           {visible.map((s) => (
@@ -130,7 +130,7 @@ export function AccountView({ name, sessions }: { name: string; sessions: Sessio
       <Card
         id="delete-account-heading"
         title="Delete Account"
-        description="Removes your projects, servers, domains, keys and history from Nest Deploy. Apps already running on your Nest container keep running, but nothing manages them any more. Delete the SSH key in your Nest dashboard too."
+        description="Removes your projects, servers, domains, keys and history from Egg. Apps already running on your Nest container keep running, but nothing manages them any more. Delete the SSH key in your Nest dashboard too."
         tone="danger"
         footer={
           <>

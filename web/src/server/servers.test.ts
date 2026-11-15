@@ -6,13 +6,17 @@ import {
   connectToServer,
   createServer,
   deleteServer,
+  disconnectBody,
   getServerForUser,
+  listServers,
   publicServer,
   rotateServerKey,
   testServer,
   validateNestUsername,
 } from "@/server/servers";
 import { upsertUser } from "@/server/auth/session";
+import { createProject, deployBranch } from "@/server/projects";
+import { serverViews } from "@/server/queries";
 import { startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
 import { useFreshDb } from "@/server/test/db";
 
@@ -80,6 +84,135 @@ describe("server lifecycle", () => {
     const row = await createServer(otherUserId, "kim-del");
     await deleteServer(otherUserId, row.id);
     await expect(getServerForUser(otherUserId, row.id)).rejects.toMatchObject({ status: 404 });
+  });
+});
+
+describe("disconnecting a server", () => {
+  let seq = 0;
+  const newUser = async () =>
+    (await upsertUser({ id: `dc-${++seq}`, name: `Dc ${seq}`, email: null, slackId: null })).id;
+
+  async function serverWithProject(owner: string, nest: string, port: number) {
+    const server = await createServer(owner, nest);
+    const project = await createProject(owner, {
+      serverId: server.id,
+      name: `App ${nest}`,
+      repoUrl: `https://github.com/example/${nest}`,
+      runtime: "node",
+      port,
+    });
+    const deployment = await deployBranch(owner, project.id);
+    await ctx.db
+      .insert(schema.deploymentLogs)
+      .values({ deploymentId: deployment.id, at: new Date(), level: "info", message: "built" });
+    return { server, project, deployment };
+  }
+
+  const rowsFor = async (projectId: string, deploymentId: string) => ({
+    project: await ctx.db.select().from(schema.projects).where(eq(schema.projects.id, projectId)),
+    deployment: await ctx.db.select().from(schema.deployments).where(eq(schema.deployments.id, deploymentId)),
+    logs: await ctx.db.select().from(schema.deploymentLogs).where(eq(schema.deploymentLogs.deploymentId, deploymentId)),
+  });
+
+  it("keeps the projects, their deployments and their logs by default", async () => {
+    const owner = await newUser();
+    const { server, project, deployment } = await serverWithProject(owner, "keep-me", 3301);
+
+    await deleteServer(owner, server.id);
+
+    const rows = await rowsFor(project.id, deployment.id);
+    expect(rows.project).toHaveLength(1);
+    expect(rows.deployment).toHaveLength(1);
+    expect(rows.logs).toHaveLength(1);
+    // Egg's key is gone and the server is not listed as connected any more.
+    expect((await listServers(owner)).map((s) => s.id)).not.toContain(server.id);
+    const kept = await ctx.db.select().from(schema.servers).where(eq(schema.servers.id, server.id)).get();
+    expect(kept?.status).toBe("disconnected");
+    expect(kept?.publicKey).toBe("");
+    expect(kept?.keyFingerprint).toBe("");
+    expect(kept?.hostKeyFingerprint).toBeNull();
+    expect(open(kept!.privateKeyEnc, `server:${server.id}`)).not.toContain("OPENSSH");
+  });
+
+  it("never opens an SSH session for a project whose server was disconnected", async () => {
+    const owner = await newUser();
+    const { server } = await serverWithProject(owner, "no-connect", 3302);
+    await deleteServer(owner, server.id, { deleteProjects: false });
+    const row = await ctx.db.select().from(schema.servers).where(eq(schema.servers.id, server.id)).get();
+    await expect(connectToServer(row!)).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("removes the projects, their deployments and their logs when asked", async () => {
+    const owner = await newUser();
+    const { server, project, deployment } = await serverWithProject(owner, "drop-me", 3303);
+
+    await deleteServer(owner, server.id, { deleteProjects: true });
+
+    const rows = await rowsFor(project.id, deployment.id);
+    expect(rows.project).toHaveLength(0);
+    expect(rows.deployment).toHaveLength(0);
+    expect(rows.logs).toHaveLength(0);
+    await expect(getServerForUser(owner, server.id)).rejects.toMatchObject({ status: 404 });
+  });
+
+  it("only touches the projects on the server being disconnected", async () => {
+    const owner = await newUser();
+    const a = await serverWithProject(owner, "iso-a", 3304);
+    const b = await serverWithProject(owner, "iso-b", 3305);
+
+    await deleteServer(owner, a.server.id, { deleteProjects: true });
+
+    expect((await rowsFor(b.project.id, b.deployment.id)).project).toHaveLength(1);
+  });
+
+  it("counts the projects on each server for the confirmation", async () => {
+    const owner = await newUser();
+    const { server } = await serverWithProject(owner, "count-me", 3306);
+    await createProject(owner, {
+      serverId: server.id,
+      name: "Second",
+      repoUrl: "https://github.com/example/second",
+      runtime: "node",
+      port: 3307,
+    });
+    const views = await serverViews(owner);
+    expect(views.find((v) => v.id === server.id)?.projectCount).toBe(2);
+  });
+
+  it("reuses the kept server when the same Nest account is connected again, so the projects return", async () => {
+    const owner = await newUser();
+    const { server, project } = await serverWithProject(owner, "come-back", 3308);
+    await deleteServer(owner, server.id);
+
+    const again = await createServer(owner, "come-back");
+
+    expect(again.id).toBe(server.id);
+    expect(again.status).toBe("pending");
+    expect(again.publicKey).toMatch(/^ssh-ed25519 /);
+    expect(open(again.privateKeyEnc, `server:${again.id}`)).toContain("BEGIN OPENSSH PRIVATE KEY");
+    const projects = await ctx.db.select().from(schema.projects).where(eq(schema.projects.id, project.id));
+    expect(projects[0].serverId).toBe(again.id);
+  });
+
+  it("does not count a kept server against the limit of five", async () => {
+    const owner = await newUser();
+    const kept = await createServer(owner, "kept-0");
+    await createProject(owner, {
+      serverId: kept.id,
+      name: "Kept",
+      repoUrl: "https://github.com/example/kept",
+      runtime: "node",
+      port: 3309,
+    });
+    await deleteServer(owner, kept.id);
+    for (let i = 1; i <= 5; i++) await createServer(owner, `kept-${i}`);
+    expect(await listServers(owner)).toHaveLength(5);
+  });
+
+  it("reads the delete-projects choice from the request, defaulting to keep", () => {
+    expect(disconnectBody.parse({})).toEqual({ deleteProjects: false });
+    expect(disconnectBody.parse({ deleteProjects: true })).toEqual({ deleteProjects: true });
+    expect(() => disconnectBody.parse({ deleteProjects: "yes" })).toThrow();
   });
 });
 

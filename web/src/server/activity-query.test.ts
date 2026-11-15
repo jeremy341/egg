@@ -154,7 +154,7 @@ describe("queryActivity", () => {
       id: tokenId,
       userId: me.id,
       name: "ci-deploy",
-      prefix: "nd_abcd",
+      prefix: "egg_abcd",
       hash: "h".repeat(64),
       scopes: JSON.stringify(["deployments:write"]),
       createdAt: NOW,
@@ -184,13 +184,13 @@ describe("queryActivity", () => {
     await row(me.id, "project.update", hoursAgo(0.2), projectId, {
       fields: "branch",
       apiKey: "super-secret-value",
-      note: "nd_3f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c",
+      note: "egg_3f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c",
       webhook: "https://discord.com/api/webhooks/1/abc",
     });
     const page = await queryActivity(me.id, f({ q: "settings" }), { now: NOW });
     const json = JSON.stringify(page);
     expect(json).not.toContain("super-secret-value");
-    expect(json).not.toContain("nd_3f9a8b7c");
+    expect(json).not.toContain("egg_3f9a8b7c");
     expect(json).not.toContain("discord.com");
     const hit = await queryActivity(me.id, f({ q: "super-secret-value" }), { now: NOW });
     expect(hit.items).toEqual([]);

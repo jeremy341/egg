@@ -370,9 +370,9 @@ async function deliver(
           url,
           {
             "Content-Type": "application/json",
-            "User-Agent": "NestDeploy-Webhooks/1",
-            "X-NestDeploy-Event": payload.event,
-            "X-NestDeploy-Delivery": deliveryId,
+            "User-Agent": "Egg-Webhooks/1",
+            "X-Egg-Event": payload.event,
+            "X-Egg-Delivery": deliveryId,
             [SIGNATURE_HEADER]: signWebhook(secret, body, timestamp),
           },
           body,

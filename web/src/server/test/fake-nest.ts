@@ -64,7 +64,7 @@ export function fakeBuilder(
 ): Builder {
   return async (req) => {
     hooks.onBuild?.(req);
-    const work = mkdtempSync(path.join(tmpdir(), "nd-build-"));
+    const work = mkdtempSync(path.join(tmpdir(), "egg-build-"));
     const src = path.join(work, "src");
     mkdirSync(src, { recursive: true });
     for (const [name, content] of Object.entries(files())) {

@@ -32,11 +32,11 @@ function num(value: string | undefined): number | null {
   return Number(value);
 }
 
-/** Turn the script's ND_KEY=value lines into a status. Pure, so it is easy to test. */
+/** Turn the script's EGG_KEY=value lines into a status. Pure, so it is easy to test. */
 export function parseServiceStatus(stdout: string, at = new Date()): ServiceStatus {
   const kv = new Map<string, string>();
   for (const line of stdout.split(/\r?\n/)) {
-    const m = /^ND_([A-Za-z]+)=(.*)$/.exec(line.trim());
+    const m = /^EGG_([A-Za-z]+)=(.*)$/.exec(line.trim());
     if (m) kv.set(m[1], m[2].trim());
   }
 

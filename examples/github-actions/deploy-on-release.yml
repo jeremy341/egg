@@ -1,18 +1,18 @@
-# Deploy to Nest Deploy whenever you publish a GitHub release.
+# Deploy to Egg whenever you publish a GitHub release.
 #
 # Copy this file to .github/workflows/ in your repository.
 # Needs no API token. It uses the project's deploy hook: a secret URL that starts a deployment.
-# Create it in the project's settings in Nest Deploy (it is shown once), then save it in
-# GitHub under Settings > Secrets and variables > Actions as NEST_DEPLOY_HOOK.
-name: Deploy to Nest Deploy
+# Create it in the project's settings in Egg (it is shown once), then save it in
+# GitHub under Settings > Secrets and variables > Actions as EGG_HOOK.
+name: Deploy to Egg
 
 on:
   release:
     types: [published]
 
-# One deploy at a time. Nest Deploy answers 409 while a deployment is already running.
+# One deploy at a time. Egg answers 409 while a deployment is already running.
 concurrency:
-  group: nest-deploy
+  group: egg
   cancel-in-progress: false
 
 permissions: {}
@@ -24,18 +24,18 @@ jobs:
     steps:
       - name: Start the deployment
         env:
-          NEST_DEPLOY_HOOK: ${{ secrets.NEST_DEPLOY_HOOK }}
+          EGG_HOOK: ${{ secrets.EGG_HOOK }}
         run: |
           set -eu
-          if [ -z "$NEST_DEPLOY_HOOK" ]; then
-            echo "The NEST_DEPLOY_HOOK secret is not set." >&2
+          if [ -z "$EGG_HOOK" ]; then
+            echo "The EGG_HOOK secret is not set." >&2
             exit 1
           fi
           # Deploys the project's production branch. To build a different branch as a preview instead,
           # add: -H "Content-Type: application/json" --data '{"branch":"my-branch"}'
           # -sS hides progress but keeps errors; the URL itself is never printed.
-          status=$(curl -sS -o response.json -w '%{http_code}' -X POST "$NEST_DEPLOY_HOOK")
-          echo "Nest Deploy answered $status"
+          status=$(curl -sS -o response.json -w '%{http_code}' -X POST "$EGG_HOOK")
+          echo "Egg answered $status"
           if [ "$status" != "202" ]; then
             cat response.json >&2 || true
             exit 1

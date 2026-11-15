@@ -105,9 +105,9 @@ export async function startMockSsh(opts: MockSshOptions): Promise<MockSsh> {
   if (opts.home) {
     home = opts.home;
   } else if (wslEnabled()) {
-    home = `/tmp/nd-home-${randomBytes(5).toString("hex")}`;
+    home = `/tmp/egg-home-${randomBytes(5).toString("hex")}`;
   } else {
-    home = mkdtempSync(path.join(tmpdir(), "nd-home-")).replace(/\\/g, "/");
+    home = mkdtempSync(path.join(tmpdir(), "egg-home-")).replace(/\\/g, "/");
   }
   runSync(home, "mkdir -p \"$HOME/.shims\"");
 

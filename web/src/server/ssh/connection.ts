@@ -171,7 +171,7 @@ export class NestSession {
           settled = true;
           if (timer) clearTimeout(timer);
           stream.close();
-          reject(new SshError("The container printed more output than Nest Deploy will read.", "exec"));
+          reject(new SshError("The container printed more output than Egg will read.", "exec"));
         };
 
         const flush = (buf: string, which: "stdout" | "stderr", final: boolean) => {

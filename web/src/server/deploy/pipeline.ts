@@ -30,6 +30,7 @@ import { dispatchDeploymentEvent } from "@/server/webhooks";
 import { connectToServer, type ServerRow } from "@/server/servers";
 import { shellQuote, type NestSession } from "@/server/ssh/connection";
 import { probeSession, type NestProbe } from "@/server/ssh/probe";
+import { reportedMemoryMb } from "@/lib/build-memory";
 
 export class DeployError extends Error {}
 
@@ -153,7 +154,7 @@ async function run(
   if (res.code === remote.NOT_OURS_EXIT) {
     // Something on the container is not ours. The script says what, in plain words.
     throw new DeployError(
-      res.stderr.trim().slice(0, 300) || `${label} stopped: it would overwrite something Nest Deploy did not create.`
+      res.stderr.trim().slice(0, 300) || `${label} stopped: it would overwrite something Egg did not create.`
     );
   }
   if (res.code !== 0) {
@@ -348,6 +349,8 @@ export async function runDeployJob(
         sha: dep.source === "redeploy" ? dep.commitSha : null,
       },
       env,
+      memoryMb: server.buildMemoryMb,
+      serverMemoryMb: reportedMemoryMb(server.probe),
       log: log.log,
       signal,
     });
@@ -433,7 +436,7 @@ export async function runDeployJob(
       `${deps.unitDir}/${unitInfo.unit}`,
       remote.unitFile({
         slug: project.slug,
-        description: `Nest Deploy: ${project.name}${dep.env === "preview" ? ` (preview ${dep.releaseId.slice(0, 8)})` : ""}`,
+        description: `Egg: ${project.name}${dep.env === "preview" ? ` (preview ${dep.releaseId.slice(0, 8)})` : ""}`,
         workDir: unitInfo.workDir,
         envFile: unitInfo.envFile,
         port: dep.port,

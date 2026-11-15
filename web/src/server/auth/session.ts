@@ -2,8 +2,8 @@ import { and, eq, gt, lt } from "drizzle-orm";
 import { getDb, schema } from "@/server/db";
 import { newId, randomToken, sha256Hex } from "@/server/crypto";
 
-export const SESSION_COOKIE = "nd_session";
-export const OAUTH_COOKIE = "nd_oauth";
+export const SESSION_COOKIE = "egg_session";
+export const OAUTH_COOKIE = "egg_oauth";
 export const SESSION_DAYS = 30;
 
 export type SessionUser = {

@@ -31,13 +31,13 @@ export type ShellHandle = {
 /** Give up if the server never answers the shell request. */
 const SHELL_OPEN_TIMEOUT_MS = 15_000;
 
-// Same shapes deploy/layout.ts produces: <home>/.nest-deploy/<slug>.
+// Same shapes deploy/layout.ts produces: <home>/.egg/<slug>.
 const SAFE_DIR = /^\/[A-Za-z0-9._/-]+$/;
 
 /**
  * Accepts only a project folder as deploy/layout.ts builds it: absolute, plain
  * characters (so nothing can break out of the quoting below), no "." or ".."
- * segments, and ending in /.nest-deploy/<valid slug>.
+ * segments, and ending in /.egg/<valid slug>.
  */
 export function assertShellDir(dir: string): string {
   if (!SAFE_DIR.test(dir) || dir.includes("//")) {
@@ -49,7 +49,7 @@ export function assertShellDir(dir: string): string {
   }
   const slug = parts[parts.length - 1];
   const marker = parts[parts.length - 2];
-  if (marker !== ".nest-deploy" || !isValidSlug(slug)) {
+  if (marker !== ".egg" || !isValidSlug(slug)) {
     throw new Error("Invalid project folder");
   }
   return dir;

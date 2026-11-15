@@ -5,6 +5,6 @@ export default defineConfig({
   schema: "./src/server/db/schema.ts",
   out: "./drizzle",
   dbCredentials: {
-    url: process.env.DATABASE_URL ?? "file:./data/nest-deploy.db",
+    url: process.env.DATABASE_URL ?? "file:./data/egg.db",
   },
 });

@@ -16,7 +16,7 @@ let repo: string;
 let outside: string;
 
 beforeAll(() => {
-  dir = mkdtempSync(path.join(tmpdir(), "nd-build-sec-"));
+  dir = mkdtempSync(path.join(tmpdir(), "egg-build-sec-"));
   repo = path.join(dir, "repo");
   outside = path.join(dir, "outside");
   mkdirSync(path.join(repo, "app", "dist"), { recursive: true });

@@ -46,7 +46,7 @@ const usage = (over: Partial<Record<string, number | null>> = {}) => ({
 });
 
 const status = (lines: string[]) => parseServiceStatus(lines.join("\n"));
-const running = ["ND_LoadState=loaded", "ND_ActiveState=active", "ND_SubState=running"];
+const running = ["EGG_LoadState=loaded", "EGG_ActiveState=active", "EGG_SubState=running"];
 
 describe("readResources", () => {
   it("reports each resource as a whole percent against its own limit", () => {
@@ -156,7 +156,7 @@ describe("the down rule", () => {
   });
 
   it("counts an answer slower than the limit as a failed check", () => {
-    const slow = status([...running, "ND_HTTP=200 1.20"]);
+    const slow = status([...running, "EGG_HTTP=200 1.20"]);
     expect(isSlow(slow, 1000)).toBe(true);
     expect(isHealthy(slow, 1000)).toBe(false);
     expect(isHealthy(slow, 2000)).toBe(true);
@@ -166,7 +166,7 @@ describe("the down rule", () => {
 
   it("ignores the limit when there is no timing", () => {
     expect(isHealthy(status(running), 100)).toBe(true);
-    expect(isSlow(status([...running, "ND_HTTP=000 0.00"]), 100)).toBe(false);
+    expect(isSlow(status([...running, "EGG_HTTP=000 0.00"]), 100)).toBe(false);
   });
 });
 

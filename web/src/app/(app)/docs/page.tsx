@@ -6,7 +6,7 @@ import { StartHere } from "./_components/start-here";
 export const metadata = {
   title: "Docs",
   description:
-    "How Nest Deploy works: connecting a Nest server, deploying from GitHub, environment variables, domains, monitoring, analytics, security and limits.",
+    "How Egg works: connecting a Nest server, deploying from GitHub, environment variables, domains, monitoring, analytics, security and limits.",
 };
 
 /** The docs home: where to start, then one index of every page, grouped like the sidebar. */

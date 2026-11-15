@@ -73,7 +73,7 @@ describe("classifyInventory", () => {
   it("calls a unit with a matching project managed, and one without an orphan", () => {
     const inv = classifyInventory(
       raw({
-        units: [unit("nd-blog.service"), unit("nd-old.service", { state: "failed" })],
+        units: [unit("egg-blog.service"), unit("egg-old.service", { state: "failed" })],
         folders: [
           { name: "blog", sizeKb: 2048, isLink: false },
           { name: "old", sizeKb: 512, isLink: false },
@@ -87,17 +87,17 @@ describe("classifyInventory", () => {
     expect(inv.projects).toHaveLength(1);
     expect(inv.projects[0]).toMatchObject({
       slug: "blog",
-      service: { unit: "nd-blog.service", state: "running" },
+      service: { unit: "egg-blog.service", state: "running" },
       folderKb: 2048,
       portStatus: "free",
     });
     expect(inv.orphans.map((o) => [o.id, o.kind])).toEqual([
       ["old", "folder"],
-      ["nd-old.service", "service"],
+      ["egg-old.service", "service"],
     ]);
     // The project's own folder and unit are never offered for removal.
-    expect(inv.orphans.some((o) => o.id === "blog" || o.id === "nd-blog.service")).toBe(false);
-    // A folder whose name Nest Deploy could not have made is not a candidate at all.
+    expect(inv.orphans.some((o) => o.id === "blog" || o.id === "egg-blog.service")).toBe(false);
+    // A folder whose name Egg could not have made is not a candidate at all.
     expect(inv.orphans.some((o) => o.id === "Not_A_Slug")).toBe(false);
   });
 
@@ -117,28 +117,28 @@ describe("classifyInventory", () => {
       { projectId: blog.id, releaseId: "0a1b2c3d-0000-4000-8000-000000000000", port: 20001, branch: "feat" },
     ];
     const units = [
-      unit("nd-blog.service"),
-      unit("nd-blog-pv-0a1b2c3d.service"), // has a deployment record
-      unit("nd-blog-pv-deadbeef.service"), // project exists, no record
-      unit("nd-ghost-pv-12345678.service"), // no such project
+      unit("egg-blog.service"),
+      unit("egg-blog-pv-0a1b2c3d.service"), // has a deployment record
+      unit("egg-blog-pv-deadbeef.service"), // project exists, no record
+      unit("egg-ghost-pv-12345678.service"), // no such project
     ];
 
     it("matches previews to deployments and flags the rest as orphan previews", () => {
       const inv = classifyInventory(raw({ units }), [blog], previews, server);
       expect(inv.projects[0].previews).toEqual([
-        expect.objectContaining({ unit: "nd-blog-pv-0a1b2c3d.service", branch: "feat", port: 20001 }),
+        expect.objectContaining({ unit: "egg-blog-pv-0a1b2c3d.service", branch: "feat", port: 20001 }),
       ]);
       expect(inv.orphans.map((o) => [o.id, o.kind])).toEqual([
-        ["nd-blog-pv-deadbeef.service", "preview"],
-        ["nd-ghost-pv-12345678.service", "preview"],
+        ["egg-blog-pv-deadbeef.service", "preview"],
+        ["egg-ghost-pv-12345678.service", "preview"],
       ]);
     });
 
     it("does not let a project slug that looks like a preview be mistaken for one", () => {
       const odd: ProjectInfo = { id: "p-odd", slug: "blog-pv-deadbeef", name: "Odd", port: 3005 };
-      const inv = classifyInventory(raw({ units: [unit("nd-blog-pv-deadbeef.service")] }), [blog, odd], [], server);
+      const inv = classifyInventory(raw({ units: [unit("egg-blog-pv-deadbeef.service")] }), [blog, odd], [], server);
       expect(inv.orphans).toEqual([]);
-      expect(inv.projects.find((p) => p.slug === odd.slug)?.service?.unit).toBe("nd-blog-pv-deadbeef.service");
+      expect(inv.projects.find((p) => p.slug === odd.slug)?.service?.unit).toBe("egg-blog-pv-deadbeef.service");
     });
   });
 
@@ -147,13 +147,13 @@ describe("classifyInventory", () => {
       const inv = classifyInventory(
         raw({
           units: [
-            unit("nd-blog.service", { mainPid: 100 }),
-            unit("nd-shop.service", { controlGroup: "/system.slice/nd-shop.service" }),
-            unit("nd-old.service", { mainPid: 300 }),
+            unit("egg-blog.service", { mainPid: 100 }),
+            unit("egg-shop.service", { controlGroup: "/system.slice/egg-shop.service" }),
+            unit("egg-old.service", { mainPid: 300 }),
           ],
           ports: [
             listening(3000, { pid: 100, process: "node" }),
-            listening(3001, { pid: 201, process: "node", cgroups: ["/system.slice/nd-shop.service/app"] }),
+            listening(3001, { pid: 201, process: "node", cgroups: ["/system.slice/egg-shop.service/app"] }),
             listening(4000, { pid: 300, process: "python3" }),
           ],
         }),
@@ -164,7 +164,7 @@ describe("classifyInventory", () => {
       expect(inv.ports.map((p) => p.owner.type)).toEqual(["project", "project", "orphan"]);
       expect(inv.conflicts).toEqual([]);
       expect(inv.projects.map((p) => p.portStatus)).toEqual(["own", "own"]);
-      expect(inv.orphans.find((o) => o.id === "nd-old.service")?.ports).toEqual([4000]);
+      expect(inv.orphans.find((o) => o.id === "egg-old.service")?.ports).toEqual([4000]);
       expect(inv.otherPorts).toEqual([]); // everything is accounted for
     });
 
@@ -185,7 +185,7 @@ describe("classifyInventory", () => {
     it("warns when a project's port is held by something that is not its own unit", () => {
       const inv = classifyInventory(
         raw({
-          units: [unit("nd-blog.service", { mainPid: 100 })],
+          units: [unit("egg-blog.service", { mainPid: 100 })],
           ports: [listening(3000, { process: "ruby", pid: 777, cgroups: ["/user.slice"] })],
         }),
         [blog],
@@ -202,7 +202,7 @@ describe("classifyInventory", () => {
     it("warns when the port is taken and the project's service is not running", () => {
       const inv = classifyInventory(
         raw({
-          units: [unit("nd-blog.service", { state: "stopped" })],
+          units: [unit("egg-blog.service", { state: "stopped" })],
           ports: [listening(3000)], // no process name readable
         }),
         [blog],
@@ -217,7 +217,7 @@ describe("classifyInventory", () => {
       const inv = classifyInventory(
         raw({
           portsHaveProcesses: false,
-          units: [unit("nd-blog.service")],
+          units: [unit("egg-blog.service")],
           ports: [listening(3000)],
         }),
         [blog],
@@ -231,14 +231,14 @@ describe("classifyInventory", () => {
     it("flags a project port held by an orphan service", () => {
       const inv = classifyInventory(
         raw({
-          units: [unit("nd-old.service", { mainPid: 300 })],
+          units: [unit("egg-old.service", { mainPid: 300 })],
           ports: [listening(3000, { pid: 300, process: "node" })],
         }),
         [blog],
         [],
         server
       );
-      expect(inv.conflicts[0].heldBy).toEqual({ kind: "orphan", label: "nd-old.service", pid: 300 });
+      expect(inv.conflicts[0].heldBy).toEqual({ kind: "orphan", label: "egg-old.service", pid: 300 });
     });
 
     it("reports whether ports could be read at all", () => {
@@ -251,7 +251,7 @@ describe("classifyInventory", () => {
 describe("portConflicts", () => {
   const ports = classifyInventory(
     raw({
-      units: [unit("nd-blog.service", { mainPid: 100 })],
+      units: [unit("egg-blog.service", { mainPid: 100 })],
       ports: [listening(3000, { pid: 100, process: "node" }), listening(8080, { pid: 5, process: "nginx" })],
     }),
     [blog],
@@ -273,7 +273,7 @@ describe("portConflicts", () => {
   it("treats another project's service as a conflict", () => {
     const moved = { ...shop, port: 3000 };
     const [c] = portConflicts([moved], { ports });
-    expect(c.heldBy).toMatchObject({ kind: "project", label: "nd-blog" });
+    expect(c.heldBy).toMatchObject({ kind: "project", label: "egg-blog" });
   });
 
   it("is quiet when the port is free", () => {
@@ -282,11 +282,11 @@ describe("portConflicts", () => {
 });
 
 describe("parseOrphanId", () => {
-  it("accepts unit names and folder names Nest Deploy could have made", () => {
-    expect(parseOrphanId("nd-blog.service")).toEqual({ kind: "unit", unit: "nd-blog.service" });
-    expect(parseOrphanId("nd-blog-pv-0a1b2c3d.service")).toEqual({
+  it("accepts unit names and folder names Egg could have made", () => {
+    expect(parseOrphanId("egg-blog.service")).toEqual({ kind: "unit", unit: "egg-blog.service" });
+    expect(parseOrphanId("egg-blog-pv-0a1b2c3d.service")).toEqual({
       kind: "unit",
-      unit: "nd-blog-pv-0a1b2c3d.service",
+      unit: "egg-blog-pv-0a1b2c3d.service",
     });
     expect(parseOrphanId("blog")).toEqual({ kind: "folder", name: "blog" });
     expect(parseOrphanId("my-app-2")).toEqual({ kind: "folder", name: "my-app-2" });
@@ -302,14 +302,14 @@ describe("parseOrphanId", () => {
       "a/b",
       "/etc/passwd",
       "blog/../../x",
-      "nd-../x.service",
-      "nd-a/b.service",
-      "nd-.service",
-      "nd--x.service",
-      "nd-x-.service",
+      "egg-../x.service",
+      "egg-a/b.service",
+      "egg-.service",
+      "egg--x.service",
+      "egg-x-.service",
       "ssh.service",
-      "nd-blog.service/..",
-      "nd-blog.service ",
+      "egg-blog.service/..",
+      "egg-blog.service ",
       " blog",
       "blog;rm -rf /",
       "$(id)",
@@ -317,7 +317,7 @@ describe("parseOrphanId", () => {
       "-rf",
       "Blog",
       "blog\n",
-      "nd-blog.service\nnd-other.service",
+      "egg-blog.service\negg-other.service",
       "x".repeat(200),
     ];
     for (const id of bad) expect(parseOrphanId(id), JSON.stringify(id)).toBeNull();
@@ -378,16 +378,16 @@ esac`
     startCommand: "node server.js",
     port: 3100,
   });
-  const unitBody = '# nest-deploy:managed project=x\n[Service]\nExecStart=/bin/bash -lc "exec node old.js"\n';
-  for (const name of ["nd-blog.service", "nd-old.service", "nd-ghost-pv-12345678.service"]) {
+  const unitBody = '# egg:managed project=x\n[Service]\nExecStart=/bin/bash -lc "exec node old.js"\n';
+  for (const name of ["egg-blog.service", "egg-old.service", "egg-ghost-pv-12345678.service"]) {
     mock.writeFile(`${mock.home}/units/${name}`, unitBody);
   }
   // Looks like ours by name, but the user made it: no marker.
-  mock.writeFile(`${mock.home}/units/nd-oldish.service`, '[Service]\nExecStart=/usr/bin/true\n');
-  mock.writeFile(`${mock.home}/.nest-deploy/oldish/my-notes.txt`, "keep me");
-  mock.writeFile(`${mock.home}/.nest-deploy/mycheckout/.git/config`, "[core]\n");
+  mock.writeFile(`${mock.home}/units/egg-oldish.service`, '[Service]\nExecStart=/usr/bin/true\n');
+  mock.writeFile(`${mock.home}/.egg/oldish/my-notes.txt`, "keep me");
+  mock.writeFile(`${mock.home}/.egg/mycheckout/.git/config`, "[core]\n");
   for (const dir of ["blog/releases/r1", "old/releases/r1", "stray/shared"]) {
-    mock.writeFile(`${mock.home}/.nest-deploy/${dir}/file.txt`, "hello world");
+    mock.writeFile(`${mock.home}/.egg/${dir}/file.txt`, "hello world");
   }
 });
 
@@ -407,18 +407,18 @@ describe("getInventory on a container", () => {
     expect(inv.serverName).toBe("127.0.0.1");
     expect(inv.disk?.totalMb).toBeGreaterThan(0);
     expect(inv.projects.map((p) => [p.slug, p.service?.unit ?? null, p.folderKb !== null])).toEqual([
-      ["blog", "nd-blog.service", true],
+      ["blog", "egg-blog.service", true],
     ]);
     expect(inv.orphans.map((o) => o.id).sort()).toEqual(
-      ["mycheckout", "nd-ghost-pv-12345678.service", "nd-old.service", "nd-oldish.service", "old", "oldish", "stray"].sort()
+      ["mycheckout", "egg-ghost-pv-12345678.service", "egg-old.service", "egg-oldish.service", "old", "oldish", "stray"].sort()
     );
     // Without our marker they are listed, but flagged as not ours and not removable.
     const notOurs = inv.orphans.filter((o) => o.notOurs).map((o) => [o.id, o.removable]);
     expect(notOurs.sort()).toEqual(
-      [["mycheckout", false], ["nd-oldish.service", false], ["oldish", false]].sort()
+      [["mycheckout", false], ["egg-oldish.service", false], ["oldish", false]].sort()
     );
-    expect(inv.orphans.find((o) => o.id === "nd-old.service")?.removable).toBe(true);
-    expect(inv.orphans.find((o) => o.id === "nd-old.service")?.execStart).toBe(
+    expect(inv.orphans.find((o) => o.id === "egg-old.service")?.removable).toBe(true);
+    expect(inv.orphans.find((o) => o.id === "egg-old.service")?.execStart).toBe(
       '/bin/bash -lc "exec node old.js"'
     );
   });
@@ -445,18 +445,18 @@ describe("getInventory on a container", () => {
 
 describe("removeOrphans", () => {
   it("refuses a managed project's unit and folder even when asked by name", async () => {
-    const results = await removeOrphans(userId, row.id, ["nd-blog.service", "blog"]);
+    const results = await removeOrphans(userId, row.id, ["egg-blog.service", "blog"]);
     expect(results.map((r) => r.status)).toEqual(["refused", "refused"]);
-    expect(await exists("$HOME/units/nd-blog.service")).toBe(true);
-    expect(await exists("$HOME/.nest-deploy/blog/releases/r1/file.txt")).toBe(true);
+    expect(await exists("$HOME/units/egg-blog.service")).toBe(true);
+    expect(await exists("$HOME/.egg/blog/releases/r1/file.txt")).toBe(true);
   });
 
-  it("leaves a unit, a folder and a git checkout alone when they have no Nest Deploy marker", async () => {
-    const results = await removeOrphans(userId, row.id, ["nd-oldish.service", "oldish", "mycheckout"]);
+  it("leaves a unit, a folder and a git checkout alone when they have no Egg marker", async () => {
+    const results = await removeOrphans(userId, row.id, ["egg-oldish.service", "oldish", "mycheckout"]);
     expect(results.map((r) => r.status)).toEqual(["refused", "refused", "refused"]);
-    expect(await exists("$HOME/units/nd-oldish.service")).toBe(true);
-    expect(await exists("$HOME/.nest-deploy/oldish/my-notes.txt")).toBe(true);
-    expect(await exists("$HOME/.nest-deploy/mycheckout/.git/config")).toBe(true);
+    expect(await exists("$HOME/units/egg-oldish.service")).toBe(true);
+    expect(await exists("$HOME/.egg/oldish/my-notes.txt")).toBe(true);
+    expect(await exists("$HOME/.egg/mycheckout/.git/config")).toBe(true);
   });
 
   it("the removal scripts refuse an unmarked target even when called directly", async () => {
@@ -470,50 +470,50 @@ describe("removeOrphans", () => {
         s.close();
       }
     };
-    expect(await run(removeUnitScript(`${mock.home}/units`, "nd-oldish.service"))).toBe(REMOVE_EXIT.refused);
+    expect(await run(removeUnitScript(`${mock.home}/units`, "egg-oldish.service"))).toBe(REMOVE_EXIT.refused);
     expect(await run(removeFolderScript("oldish"))).toBe(REMOVE_EXIT.refused);
     expect(await run(removeFolderScript("mycheckout"))).toBe(REMOVE_EXIT.refused);
-    expect(await exists("$HOME/units/nd-oldish.service")).toBe(true);
-    expect(await exists("$HOME/.nest-deploy/oldish/my-notes.txt")).toBe(true);
+    expect(await exists("$HOME/units/egg-oldish.service")).toBe(true);
+    expect(await exists("$HOME/.egg/oldish/my-notes.txt")).toBe(true);
   });
 
   it("rejects traversal and malformed names without touching anything", async () => {
     const before = mock.commands.length;
-    const results = await removeOrphans(userId, row.id, ["../..", "a/b", "nd-../x.service", "/etc", "Old"]);
+    const results = await removeOrphans(userId, row.id, ["../..", "a/b", "egg-../x.service", "/etc", "Old"]);
     expect(results.every((r) => r.status === "refused")).toBe(true);
     expect(mock.commands.length).toBe(before); // never even connected
-    expect(await exists("$HOME/.nest-deploy/old")).toBe(true);
+    expect(await exists("$HOME/.egg/old")).toBe(true);
   });
 
   it("will not act on another user's server", async () => {
-    await expect(removeOrphans(otherUserId, row.id, ["nd-old.service"])).rejects.toMatchObject({ status: 404 });
-    expect(await exists("$HOME/units/nd-old.service")).toBe(true);
+    await expect(removeOrphans(otherUserId, row.id, ["egg-old.service"])).rejects.toMatchObject({ status: 404 });
+    expect(await exists("$HOME/units/egg-old.service")).toBe(true);
   });
 
   it("removes orphan services and folders, one result each, and audits every one", async () => {
     const results = await removeOrphans(userId, row.id, [
-      "nd-old.service",
+      "egg-old.service",
       "old",
       "stray",
-      "nd-ghost-pv-12345678.service",
-      "nd-old.service", // duplicate is collapsed
-      "nd-gone.service", // not there at all
+      "egg-ghost-pv-12345678.service",
+      "egg-old.service", // duplicate is collapsed
+      "egg-gone.service", // not there at all
     ]);
     expect(results.map((r) => [r.id, r.status])).toEqual([
-      ["nd-old.service", "removed"],
+      ["egg-old.service", "removed"],
       ["old", "removed"],
       ["stray", "removed"],
-      ["nd-ghost-pv-12345678.service", "removed"],
-      ["nd-gone.service", "gone"],
+      ["egg-ghost-pv-12345678.service", "removed"],
+      ["egg-gone.service", "gone"],
     ]);
 
-    expect(await exists("$HOME/units/nd-old.service")).toBe(false);
-    expect(await exists("$HOME/units/nd-ghost-pv-12345678.service")).toBe(false);
-    expect(await exists("$HOME/.nest-deploy/old")).toBe(false);
-    expect(await exists("$HOME/.nest-deploy/stray")).toBe(false);
+    expect(await exists("$HOME/units/egg-old.service")).toBe(false);
+    expect(await exists("$HOME/units/egg-ghost-pv-12345678.service")).toBe(false);
+    expect(await exists("$HOME/.egg/old")).toBe(false);
+    expect(await exists("$HOME/.egg/stray")).toBe(false);
     // The project is untouched.
-    expect(await exists("$HOME/units/nd-blog.service")).toBe(true);
-    expect(await exists("$HOME/.nest-deploy/blog/releases/r1/file.txt")).toBe(true);
+    expect(await exists("$HOME/units/egg-blog.service")).toBe(true);
+    expect(await exists("$HOME/.egg/blog/releases/r1/file.txt")).toBe(true);
 
     const entries = await ctx.db.select().from(schema.auditLog).where(eq(schema.auditLog.action, "container.orphan_remove"));
     expect(entries).toHaveLength(4);
@@ -523,12 +523,12 @@ describe("removeOrphans", () => {
       expect(Object.keys(JSON.parse(e.meta!)).sort()).toEqual(["kind", "name", "server"]);
     }
     expect(entries.map((e) => JSON.parse(e.meta!).name).sort()).toEqual(
-      ["nd-ghost-pv-12345678.service", "nd-old.service", "old", "stray"].sort()
+      ["egg-ghost-pv-12345678.service", "egg-old.service", "old", "stray"].sort()
     );
 
     // Only what is not ours is left.
     const after = await getInventory(userId, row.id);
-    expect(after.orphans.map((o) => o.id).sort()).toEqual(["mycheckout", "nd-oldish.service", "oldish"]);
+    expect(after.orphans.map((o) => o.id).sort()).toEqual(["egg-oldish.service", "mycheckout", "oldish"]);
   });
 });
 
@@ -556,7 +556,7 @@ describe("the routes", () => {
     const { POST } = await import("@/app/api/servers/[id]/orphans/route");
     const before = mock.commands.length;
     expect((await GET(new NextRequest("http://localhost:3000/x"), params(row.id))).status).toBe(404);
-    expect((await POST(post(row.id, { ids: ["nd-old.service"] }), params(row.id))).status).toBe(404);
+    expect((await POST(post(row.id, { ids: ["egg-old.service"] }), params(row.id))).status).toBe(404);
     expect(mock.commands.length).toBe(before);
   });
 

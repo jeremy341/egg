@@ -4,21 +4,21 @@ import { FAILURES_BEFORE_DOWN, isHealthy, nextMonitorState } from "@/server/moni
 import { parseServiceStatus } from "@/server/service-status";
 
 const status = (lines: string[]) => parseServiceStatus(lines.join("\n"));
-const base = ["ND_LoadState=loaded", "ND_ActiveState=active", "ND_SubState=running"];
+const base = ["EGG_LoadState=loaded", "EGG_ActiveState=active", "EGG_SubState=running"];
 
 describe("isHealthy", () => {
   it("needs a running service that answers", () => {
-    expect(isHealthy(status([...base, "ND_HTTP=200 0.01"]))).toBe(true);
-    expect(isHealthy(status([...base, "ND_HTTP=404 0.01"]))).toBe(true);
+    expect(isHealthy(status([...base, "EGG_HTTP=200 0.01"]))).toBe(true);
+    expect(isHealthy(status([...base, "EGG_HTTP=404 0.01"]))).toBe(true);
   });
 
   it("fails on server errors and silence", () => {
-    expect(isHealthy(status([...base, "ND_HTTP=502 0.01"]))).toBe(false);
-    expect(isHealthy(status([...base, "ND_HTTP=000 0.00"]))).toBe(false);
+    expect(isHealthy(status([...base, "EGG_HTTP=502 0.01"]))).toBe(false);
+    expect(isHealthy(status([...base, "EGG_HTTP=000 0.00"]))).toBe(false);
   });
 
   it("fails when the service is not running, however the port answers", () => {
-    expect(isHealthy(status(["ND_LoadState=loaded", "ND_ActiveState=failed", "ND_HTTP=200 0.01"]))).toBe(false);
+    expect(isHealthy(status(["EGG_LoadState=loaded", "EGG_ActiveState=failed", "EGG_HTTP=200 0.01"]))).toBe(false);
   });
 
   it("trusts systemd when curl is missing", () => {

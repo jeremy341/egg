@@ -1,4 +1,4 @@
-import { and, count, eq } from "drizzle-orm";
+import { and, count, eq, ne } from "drizzle-orm";
 import { z } from "zod";
 import { SCOPES, type Principal } from "@/server/api-tokens";
 import { endpoint, type Endpoint } from "@/server/api-v1-kit";
@@ -24,7 +24,7 @@ export async function apiGetMe(p: Principal) {
   // The token was valid a moment ago; if either row is gone it was just revoked or the account deleted.
   if (!user || !token) throw new HttpError(401, "That access token is not valid.", "unauthorized", { "WWW-Authenticate": "Bearer" });
 
-  const [servers] = await db.select({ n: count() }).from(schema.servers).where(eq(schema.servers.userId, p.userId));
+  const [servers] = await db.select({ n: count() }).from(schema.servers).where(and(eq(schema.servers.userId, p.userId), ne(schema.servers.status, "disconnected")));
   const [projects] = await db.select({ n: count() }).from(schema.projects).where(eq(schema.projects.userId, p.userId));
   return {
     user: { name: user.name },

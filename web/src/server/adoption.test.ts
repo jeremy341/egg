@@ -35,7 +35,7 @@ const empty = (extra: Partial<AdoptionRaw> = {}): AdoptionRaw => ({
   checkouts: [],
   ...extra,
 });
-const ctx0 = { slug: "blog", unit: "nd-blog.service", port: 3000, repo: "sam/blog" };
+const ctx0 = { slug: "blog", unit: "egg-blog.service", port: 3000, repo: "sam/blog" };
 
 describe("detectConflicts", () => {
   it("finds nothing on a clean container", () => {
@@ -44,7 +44,7 @@ describe("detectConflicts", () => {
 
   it("blocks on a unit with our name that we did not write, and never calls it ours", () => {
     const [c] = detectConflicts(empty({ unitFile: { managed: false, active: "active" } }), ctx0);
-    expect(c).toMatchObject({ kind: "unit", name: "nd-blog.service", blocking: true, managedByNestDeploy: false });
+    expect(c).toMatchObject({ kind: "unit", name: "egg-blog.service", blocking: true, managedByEgg: false });
   });
 
   it("does not block on our own leftover unit and folder", () => {
@@ -56,7 +56,7 @@ describe("detectConflicts", () => {
       ctx0
     );
     expect(found).toHaveLength(2);
-    expect(found.every((c) => !c.blocking && c.managedByNestDeploy)).toBe(true);
+    expect(found.every((c) => !c.blocking && c.managedByEgg)).toBe(true);
   });
 
   it("blocks on a systemd unit of that name loaded from somewhere else", () => {
@@ -83,8 +83,8 @@ describe("detectConflicts", () => {
     const own = detectConflicts(
       empty({
         unitFile: { managed: true, active: "active" },
-        own: { pid: 50, controlGroup: "/system.slice/nd-blog.service", loaded: true },
-        ports: [{ port: 3000, address: "0.0.0.0", process: "node", pid: 51, cgroups: ["/system.slice/nd-blog.service"] }],
+        own: { pid: 50, controlGroup: "/system.slice/egg-blog.service", loaded: true },
+        ports: [{ port: 3000, address: "0.0.0.0", process: "node", pid: 51, cgroups: ["/system.slice/egg-blog.service"] }],
       }),
       ctx0
     );
@@ -114,7 +114,7 @@ describe("detectConflicts", () => {
     const found = detectConflicts(
       empty({
         own: { pid: 7, controlGroup: null, loaded: true },
-        processes: [{ pid: 7, comm: "node", cwd: ".nest-deploy/blog", sameRepo: false, inTarget: true, cgroups: [] }],
+        processes: [{ pid: 7, comm: "node", cwd: ".egg/blog", sameRepo: false, inTarget: true, cgroups: [] }],
         units: [{ name: "old.service", active: "inactive", cwd: "app", sameRepo: true, inTarget: false }],
       }),
       ctx0
@@ -150,7 +150,7 @@ describe("repoNameOf", () => {
 });
 
 describe("the adoption probe script", () => {
-  const script = adoptionScript({ unitDir: "/etc/systemd/system", slug: "blog", unit: "nd-blog.service", port: 3000, repo: "sam/blog" });
+  const script = adoptionScript({ unitDir: "/etc/systemd/system", slug: "blog", unit: "egg-blog.service", port: 3000, repo: "sam/blog" });
 
   it("only reads", () => {
     const body = script.replace(/2?>\s*\/dev\/null(\s+2>&1)?/g, "").replace(/NR>2/g, "");
@@ -165,9 +165,9 @@ describe("the adoption probe script", () => {
   });
 
   it("rejects inputs that could escape the quoting", () => {
-    const base = { unitDir: "/etc/systemd/system", slug: "blog", unit: "nd-blog.service", port: 3000, repo: null };
+    const base = { unitDir: "/etc/systemd/system", slug: "blog", unit: "egg-blog.service", port: 3000, repo: null };
     expect(() => adoptionScript({ ...base, slug: "a; rm -rf ~" })).toThrow();
-    expect(() => adoptionScript({ ...base, unit: "nd-x.service; id" })).toThrow();
+    expect(() => adoptionScript({ ...base, unit: "egg-x.service; id" })).toThrow();
     expect(() => adoptionScript({ ...base, port: 0 })).toThrow();
     expect(() => adoptionScript({ ...base, repo: "a/b; id" })).toThrow();
   });
@@ -216,8 +216,8 @@ describe("on a container", () => {
   });
 
   it("reports an unmanaged unit and folder, a checkout and a running copy, and changes nothing", async () => {
-    mock.writeFile(`${home}/units/nd-blog.service`, "[Service]\nExecStart=/usr/bin/true\n");
-    mock.writeFile(`${home}/.nest-deploy/blog/.git/config`, "[core]\n");
+    mock.writeFile(`${home}/units/egg-blog.service`, "[Service]\nExecStart=/usr/bin/true\n");
+    mock.writeFile(`${home}/.egg/blog/.git/config`, "[core]\n");
     mock.writeFile(`${home}/app/.git/config`, '[remote "origin"]\n\turl = https://x-access-token:SECRET@github.com/sam/blog.git\n');
     mock.writeFile(`${home}/units/mine.service`, `[Service]\nWorkingDirectory=${home}/app\nExecStart=/bin/bash -lc "exec sleep 300"\n`);
     await sh("systemctl start mine.service");
@@ -226,8 +226,8 @@ describe("on a container", () => {
     const found = await checkProjectConflicts(userId, row.id, { slug: "blog", port: 3000, repoFullName: "sam/blog" });
     await sh("systemctl stop mine.service");
 
-    expect(found.find((c) => c.name === "nd-blog.service")).toMatchObject({ kind: "unit", blocking: true, managedByNestDeploy: false });
-    expect(found.find((c) => c.name === "~/.nest-deploy/blog")).toMatchObject({ kind: "checkout", blocking: true });
+    expect(found.find((c) => c.name === "egg-blog.service")).toMatchObject({ kind: "unit", blocking: true, managedByEgg: false });
+    expect(found.find((c) => c.name === "~/.egg/blog")).toMatchObject({ kind: "checkout", blocking: true });
     expect(found.find((c) => c.name === "mine.service")).toMatchObject({ kind: "unit", blocking: true });
     expect(found.find((c) => c.name === "~/app")).toMatchObject({ kind: "checkout", blocking: false });
     // A token in a git remote must never reach the answer.
@@ -237,9 +237,9 @@ describe("on a container", () => {
   });
 
   it("reports a port held by another program", async () => {
-    await sh(`setsid nohup node -e "require('http').createServer(()=>{}).listen(48123,'0.0.0.0'); /* nd-conflict-listener */" >/dev/null 2>&1 < /dev/null & sleep 1`);
+    await sh(`setsid nohup node -e "require('http').createServer(()=>{}).listen(48123,'0.0.0.0'); /* egg-conflict-listener */" >/dev/null 2>&1 < /dev/null & sleep 1`);
     const found = await checkProjectConflicts(userId, row.id, { slug: "fresh", port: 48123, repoFullName: null });
-    await sh("pkill -f nd-conflict-listener || true");
+    await sh("pkill -f egg-conflict-listener || true");
     expect(found).toHaveLength(1);
     expect(found[0]).toMatchObject({ kind: "port", blocking: true });
   });

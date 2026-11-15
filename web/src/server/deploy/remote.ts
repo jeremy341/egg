@@ -23,8 +23,8 @@ const HEAD = "set -euo pipefail\n";
 export const NOT_OURS_EXIT = 30;
 
 /**
- * Create the project's folders. Refuses (exit 30) when ~/.nest-deploy/<slug>
- * is a link, or holds something Nest Deploy did not put there, such as the
+ * Create the project's folders. Refuses (exit 30) when ~/.egg/<slug>
+ * is a link, or holds something Egg did not put there, such as the
  * user's own git checkout. An empty folder is fine. Once created, the folder
  * gets a marker so later runs and the cleanup know it is ours.
  */
@@ -34,16 +34,16 @@ export function prepareDirs(home: string, slug: string) {
     HEAD +
     SH_MARKER_HELPERS +
     `p=${shellQuote(p)}\n` +
-    `if [ -L "$p" ]; then echo "$p is a link, so Nest Deploy will not write into it." >&2; exit ${NOT_OURS_EXIT}; fi\n` +
+    `if [ -L "$p" ]; then echo "$p is a link, so Egg will not write into it." >&2; exit ${NOT_OURS_EXIT}; fi\n` +
     `if [ -e "$p" ] && [ ! -d "$p" ]; then echo "$p exists and is not a folder." >&2; exit ${NOT_OURS_EXIT}; fi\n` +
-    `if [ -d "$p" ] && ! nd_dir_managed "$p" && [ -n "$(ls -A "$p")" ]; then echo "$p already exists and was not created by Nest Deploy, so it was left alone." >&2; exit ${NOT_OURS_EXIT}; fi\n` +
+    `if [ -d "$p" ] && ! egg_dir_managed "$p" && [ -n "$(ls -A "$p")" ]; then echo "$p already exists and was not created by Egg, so it was left alone." >&2; exit ${NOT_OURS_EXIT}; fi\n` +
     `mkdir -p ${shellQuote(`${p}/incoming`)} ${shellQuote(`${p}/releases`)} ${shellQuote(sharedDir(home, slug))}\n` +
     `: > ${shellQuote(`${p}/${FOLDER_MARKER}`)}\n`
   );
 }
 
 /**
- * Exit 30 when a service file with this name already exists and Nest Deploy
+ * Exit 30 when a service file with this name already exists and Egg
  * did not write it. Run before the unit is written, so a deploy never replaces
  * a service the user made.
  */
@@ -52,7 +52,7 @@ export function guardUnitFree(unitDir: string, unit: string) {
     HEAD +
     SH_MARKER_HELPERS +
     `f=${shellQuote(`${unitDir}/${unit}`)}\n` +
-    `if { [ -e "$f" ] || [ -L "$f" ]; } && ! nd_unit_marked "$f"; then echo "${unit} already exists and was not created by Nest Deploy, so it was left alone." >&2; exit ${NOT_OURS_EXIT}; fi\n`
+    `if { [ -e "$f" ] || [ -L "$f" ]; } && ! egg_unit_marked "$f"; then echo "${unit} already exists and was not created by Egg, so it was left alone." >&2; exit ${NOT_OURS_EXIT}; fi\n`
   );
 }
 
@@ -208,7 +208,7 @@ export function removePreview(args: {
   return (
     SH_MARKER_HELPERS +
     removeOwnUnit(args.unitDir, args.unit) +
-    `if nd_dir_managed ${shellQuote(projectDir(args.home, args.slug))} && [[ ${shellQuote(args.releaseId)} =~ ^[0-9a-f-]{36}$ ]]; then rm -rf ${shellQuote(releaseDir(args.home, args.slug, args.releaseId))}; fi\n` +
+    `if egg_dir_managed ${shellQuote(projectDir(args.home, args.slug))} && [[ ${shellQuote(args.releaseId)} =~ ^[0-9a-f-]{36}$ ]]; then rm -rf ${shellQuote(releaseDir(args.home, args.slug, args.releaseId))}; fi\n` +
     `true\n`
   );
 }
@@ -221,12 +221,12 @@ export function removePreview(args: {
 function removeOwnUnit(unitDir: string, unit: string) {
   const file = shellQuote(`${unitDir}/${unit}`);
   return (
-    `if nd_unit_marked ${file}; then\n` +
+    `if egg_unit_marked ${file}; then\n` +
     `  systemctl stop ${shellQuote(unit)} >/dev/null 2>&1 || true\n` +
     `  systemctl disable ${shellQuote(unit)} >/dev/null 2>&1 || true\n` +
     `  rm -f ${file}\n` +
     `  systemctl daemon-reload >/dev/null 2>&1 || true\n` +
-    `elif [ -e ${file} ] || [ -L ${file} ]; then echo ${shellQuote(`${unit} was not created by Nest Deploy, so it was left alone.`)}; fi\n`
+    `elif [ -e ${file} ] || [ -L ${file} ]; then echo ${shellQuote(`${unit} was not created by Egg, so it was left alone.`)}; fi\n`
   );
 }
 
@@ -239,7 +239,7 @@ export function removeProject(args: {
   deleteData: boolean;
 }) {
   const p = projectDir(args.home, args.slug);
-  // The folder is only touched when Nest Deploy made it: a user's own checkout
+  // The folder is only touched when Egg made it: a user's own checkout
   // at the same path is never deleted, with or without "delete data".
   const remove = args.deleteData
     ? `rm -rf ${shellQuote(p)}`
@@ -247,7 +247,7 @@ export function removeProject(args: {
   return (
     SH_MARKER_HELPERS +
     removeOwnUnit(args.unitDir, args.unit) +
-    `if nd_dir_managed ${shellQuote(p)}; then ${remove}; elif [ -e ${shellQuote(p)} ] || [ -L ${shellQuote(p)} ]; then echo ${shellQuote(`${p} was not created by Nest Deploy, so it was left alone.`)}; fi\n` +
+    `if egg_dir_managed ${shellQuote(p)}; then ${remove}; elif [ -e ${shellQuote(p)} ] || [ -L ${shellQuote(p)} ]; then echo ${shellQuote(`${p} was not created by Egg, so it was left alone.`)}; fi\n` +
     `true\n`
   );
 }
@@ -257,7 +257,7 @@ export function runtimeLogs(unit: string, lines: number, since?: string) {
 }
 
 /**
- * Print the state of a service as ND_KEY=value lines: what systemd says about
+ * Print the state of a service as EGG_KEY=value lines: what systemd says about
  * it, the machine's uptime, and one real request to the app's health path.
  * Nothing here changes anything, and every step tolerates failure so a stopped
  * or missing service still produces a readable answer.
@@ -266,12 +266,12 @@ export function serviceStatus(args: { unit: string; port: number; path: string }
   const path = args.path.startsWith("/") ? args.path : `/${args.path}`;
   return (
     `unit=${shellQuote(args.unit)}\nport=${Number(args.port)}\npath=${shellQuote(path)}\n` +
-    `echo "ND_ACTIVE=$(systemctl is-active "$unit" 2>/dev/null || true)"\n` +
+    `echo "EGG_ACTIVE=$(systemctl is-active "$unit" 2>/dev/null || true)"\n` +
     `systemctl show "$unit" -p LoadState -p ActiveState -p SubState -p MainPID -p NRestarts ` +
-    `-p MemoryCurrent -p CPUUsageNSec -p ActiveEnterTimestampMonotonic 2>/dev/null | sed 's/^/ND_/' || true\n` +
-    `echo "ND_UPTIME=$(cut -d' ' -f1 /proc/uptime 2>/dev/null || true)"\n` +
+    `-p MemoryCurrent -p CPUUsageNSec -p ActiveEnterTimestampMonotonic 2>/dev/null | sed 's/^/EGG_/' || true\n` +
+    `echo "EGG_UPTIME=$(cut -d' ' -f1 /proc/uptime 2>/dev/null || true)"\n` +
     `if command -v curl >/dev/null 2>&1; then\n` +
-    `  echo "ND_HTTP=$(curl -s -o /dev/null -w '%{http_code} %{time_total}' --max-time 3 "http://127.0.0.1:$port$path" || true)"\n` +
+    `  echo "EGG_HTTP=$(curl -s -o /dev/null -w '%{http_code} %{time_total}' --max-time 3 "http://127.0.0.1:$port$path" || true)"\n` +
     `fi\n` +
     `true\n`
   );

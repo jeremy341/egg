@@ -52,7 +52,7 @@ export function Sidebar() {
       <div className="flex h-[var(--topbar-height)] shrink-0 items-center gap-1 border-b px-2">
         <Link
           href="/projects"
-          aria-label="Nest Deploy home"
+          aria-label="Egg home"
           className="flex size-8 shrink-0 items-center justify-center rounded-md transition-colors duration-(--dur-fast) hover:bg-[var(--ds-gray-alpha-100)]"
         >
           <NestMark className="size-5" />

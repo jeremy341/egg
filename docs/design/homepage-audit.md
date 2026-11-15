@@ -9,7 +9,7 @@ Captured the nine-section page (commit d9d2217) at 1440x900 and 375x800, light a
 3. **One template, nine times.** Heading, grey paragraph, artefact, repeated. The staggered start column left 480px of bare grid beside runtimes, uptime and switches.
 4. **Decoration standing in for meaning.** A black square sat beside every hero log line, reading as redactions. The first screen also held a bullet list, two "Sample" captions and a release picker: seven competing pieces.
 5. **No spacing rule.** Two sections sat 15px apart and collided; later gaps jumped to 150 and 180px.
-6. **Weak reading.** 16px muted body, 13px grey labels, the same fact three times, and internal terms ("current", "nd-") with no reason a student should care.
+6. **Weak reading.** 16px muted body, 13px grey labels, the same fact three times, and internal terms ("current", "egg-") with no reason a student should care.
 7. **Data dumps.** All 20 token scopes in two mono columns to say one thing: a token can be narrow.
 8. **Footer repeated the nav** in three thin columns, with the theme switch alone on a row.
 

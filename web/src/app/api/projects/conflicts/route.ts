@@ -10,7 +10,7 @@ const LIMIT = { limit: 20, windowMs: 60_000 };
 
 /**
  * Ask a container whether a new project would run into something already
- * there: a service, folder or port that is not Nest Deploy's, or the same
+ * there: a service, folder or port that is not Egg's, or the same
  * repository running by hand. Read-only. 404 for a server that is not yours,
  * 429 past 20 requests a minute.
  */

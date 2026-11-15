@@ -53,7 +53,7 @@ export function TopBar() {
         ) : (
           <Link
             href="/projects"
-            aria-label="Nest Deploy home"
+            aria-label="Egg home"
             className="-ml-2 flex size-10 items-center justify-center rounded-md transition-colors duration-(--dur-fast) hover:bg-[var(--ds-gray-alpha-100)]"
           >
             <NestMark className="size-6" />

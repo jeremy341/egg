@@ -18,7 +18,7 @@ import { probeSession } from "@/server/ssh/probe";
  */
 
 const API = "https://api.github.com";
-const MARKER = "<!-- nest-deploy-preview -->";
+const MARKER = "<!-- egg-preview -->";
 const REPO = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 
 type FetchLike = typeof fetch;
@@ -44,11 +44,11 @@ export function previewComment(args: {
   const body =
     args.state === "ready"
       ? `It is running on its own port (${args.port}) on the owner's Nest container. Nest only gives it a public address once a domain is mapped to that port.`
-      : "The build log is in Nest Deploy.";
+      : "The build log is in Egg.";
   return `${head}\n\n${body}\n\n[Open the deployment](${args.link})\n\n${MARKER}`;
 }
 
-/** Create the pull request's Nest Deploy comment, or update it if it is already there. */
+/** Create the pull request's Egg comment, or update it if it is already there. */
 export async function upsertPullRequestComment(
   installationId: number,
   repo: string,

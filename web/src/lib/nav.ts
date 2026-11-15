@@ -229,7 +229,7 @@ export function navFor(pathname: string): NavContext {
 
   const known = TEAM_ITEMS.find((i) => i.active(pathname));
   return {
-    title: TEAM_TITLES[known?.href ?? "/projects"] ?? "Nest Deploy",
+    title: TEAM_TITLES[known?.href ?? "/projects"] ?? "Egg",
     backHref: pathname === "/projects" ? undefined : "/projects",
     items: TEAM_ITEMS,
   };

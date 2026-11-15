@@ -16,7 +16,7 @@ Process notes, stated plainly:
 
 **Mechanism, in one sentence.** A push to the production branch is built and started as a new release folder on the student's own Nest container, and it only goes live (the `current` link points at it) once the app answers on its port. The last five releases stay on disk, so a rollback is a switch, and nothing else on the container is touched until the student turns it on.
 
-Checked in code: `KEEP_RELEASES = 5` and `KEEP_PREVIEWS = 2` (`server/deploy/layout.ts`), release folders are UUIDs under `~/.nest-deploy/<slug>/releases/`, `current` is a link, each app is `nd-<slug>.service`, the health check waits up to `healthTimeoutSeconds: 45` by default (`server/deploy/pipeline.ts`), and a failed check puts the previous release back.
+Checked in code: `KEEP_RELEASES = 5` and `KEEP_PREVIEWS = 2` (`server/deploy/layout.ts`), release folders are UUIDs under `~/.egg/<slug>/releases/`, `current` is a link, each app is `egg-<slug>.service`, the health check waits up to `healthTimeoutSeconds: 45` by default (`server/deploy/pipeline.ts`), and a failed check puts the previous release back.
 
 **Audience scene.** A 16-year-old has a Discord bot that runs in a `tmux` session on their Nest, or a small site they started with `npm start` over SSH. It dies when the process crashes or when they change something, and they find out at lunch when a friend says the bot is offline. They have a GitHub repo, a laptop at home, and a phone at school. They have read the #nest channel and want the bot to come back on its own after a push, without learning systemd tonight. They are deciding whether to hand an SSH key to a project made by another Hack Club member.
 
@@ -31,7 +31,7 @@ Checked in code: `KEEP_RELEASES = 5` and `KEEP_PREVIEWS = 2` (`server/deploy/lay
 
 **The rut (what this category always ships).** The Vercel-style deploy landing: a centred giant headline, two pill buttons, a framed product screenshot with crosshair corners, then alternating sections with a big headline on the left and a small paragraph on the right, each topped by a small mono label, an FAQ accordion, a closing CTA. The current home page is mostly this page (see section 8).
 
-**Its opposite (also the rut).** The hacker terminal page: black ground, green monospace, an ASCII logo, a blinking cursor typing `$ nest deploy`.
+**Its opposite (also the rut).** The hacker terminal page: black ground, green monospace, an ASCII logo, a blinking cursor typing `$ egg deploy`.
 
 **Literal readings, kept off the list.** A bird's nest or eggs. The pixel grid as a game world.
 
@@ -57,7 +57,7 @@ Three of seven are screen systems (1, 2, 3), so the list spans more than three f
 
 All seven keep the brand commitments: white surface, the 30px pixel grid behind every page, Pixelify headings, the square mark. Palette roles below use tokens from `globals.css`.
 
-**1. Directory listing.** World: each page is a long `ls -l` of `~/.nest-deploy/<project>/`, each section an entry (folder, file, link), with real sizes and modes where they exist. Palette: `--background`, `--foreground`, `--muted-foreground`, `--brand` only on the link target of `current`. Type: Geist Mono dominant, Pixelify for entry names at display size. Composition: one left column of rows. Navigation: a path crumb (`~/`, `~/docs/`) as the top bar. Controls: links styled as paths. Responsive: rows wrap, paths break anywhere. First surface: the project folder listed, with `current` switching to the new release on a push. Risk: mono everywhere is the terminal rut's cousin and breaks the "mono is for code and data" rule across a whole page; long docs in mono read badly.
+**1. Directory listing.** World: each page is a long `ls -l` of `~/.egg/<project>/`, each section an entry (folder, file, link), with real sizes and modes where they exist. Palette: `--background`, `--foreground`, `--muted-foreground`, `--brand` only on the link target of `current`. Type: Geist Mono dominant, Pixelify for entry names at display size. Composition: one left column of rows. Navigation: a path crumb (`~/`, `~/docs/`) as the top bar. Controls: links styled as paths. Responsive: rows wrap, paths break anywhere. First surface: the project folder listed, with `current` switching to the new release on a push. Risk: mono everywhere is the terminal rut's cousin and breaks the "mono is for code and data" rule across a whole page; long docs in mono read badly.
 
 **2. Contribution graph.** World: the page grid read as a calendar, columns are weeks, rows are days, lit cells are pushes that became releases. Palette: ink steps of `--foreground` (no green), `--brand` for the live one. Type: Pixelify display, Geist body. Composition: a year strip across the hero, sections dated. Navigation: top bar plus month labels. Controls: a cell shows its commit on focus or hover. Responsive: the strip scrolls inside its own frame. First surface: a sample year of pushes with the newest lit as current. Risk: invites fake activity data and reads as a GitHub imitation; a day's count is not a release, so the metaphor bends the truth.
 
@@ -75,7 +75,7 @@ All seven keep the brand commitments: white surface, the 30px pixel grid behind 
 
 ## 3. The build: candidate 6, "the board readout"
 
-**Thesis.** The public site is a dot-matrix panel on a white board. The 30px hairline grid behind every page is the unlit matrix. Nest Deploy's state is drawn by lighting cells of that same grid: which release is live, which permissions are on, which scopes a token holds, what happened to a push. The page refuses the rut's framed screenshot and its label-headline-paragraph sections; it shows the product by switching cells on.
+**Thesis.** The public site is a dot-matrix panel on a white board. The 30px hairline grid behind every page is the unlit matrix. Egg's state is drawn by lighting cells of that same grid: which release is live, which permissions are on, which scopes a token holds, what happened to a push. The page refuses the rut's framed screenshot and its label-headline-paragraph sections; it shows the product by switching cells on.
 
 **White-surface translation (named).** An LED glows on a dark board. The owner rejected dark-heavy looks, so the panel is read as a reflective display: a lit cell is an ink-filled square, an unlit cell is the hairline cell itself (the ghost). This is how a calculator LCD or an e-paper badge shows state on a pale ground.
 
@@ -151,7 +151,7 @@ Docs keep the panel quiet: Pixelify h1 and h2, the lit-cell nav marker, square b
 - **Cephalopod raise.** The readouts are not boxes placed on the grid. They are drawn on the page's own ruling cells, in place, with no frame, so the background is the display. Each viewport holds one accent cell at most: the live one.
 - **Fold raise.** One line organises the home page: the route spine. A single column of cells in the desktop left rail starts at the hero's commit and runs down through sections 3 to 6, with one ink-lit cell where each section's h2 begins, in the order a push lives (push, build, port check, live, failure, watched). It ends after section 6. It is static: no scroll-linked motion.
 - **Specimen raise.** Type and display are one system. The h1 sits on whole cells (line-height 90px desktop, 60px phone), its top and baseline on ruling lines, and the Pixelify size is chosen so a font pixel divides the cell evenly. **[visual]** Measure Pixelify's pixel unit at the chosen size before locking it.
-- **Catalog raise.** Every product object on the public site carries its real identifier, in Geist Mono, in the same position: a release by its short commit, a service by its unit name (`nd-pixel-garden.service`), a page by its path, a scope by its literal string, a port by its number. Releases are UUID folders, so never number them ("release 4") on a page.
+- **Catalog raise.** Every product object on the public site carries its real identifier, in Geist Mono, in the same position: a release by its short commit, a service by its unit name (`egg-pixel-garden.service`), a page by its path, a scope by its literal string, a port by its number. Releases are UUID folders, so never number them ("release 4") on a page.
 
 ### 3.11 Honest risks
 

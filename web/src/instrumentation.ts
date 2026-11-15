@@ -7,8 +7,8 @@ export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
   if (process.env.RUN_WORKER !== "1") return;
 
-  const g = globalThis as unknown as { __nestDeployWorker?: unknown };
-  if (g.__nestDeployWorker) return;
+  const g = globalThis as unknown as { __eggWorker?: unknown };
+  if (g.__eggWorker) return;
 
   const { startWorker } = await import("@/server/jobs");
   const { config } = await import("@/server/config");
@@ -17,7 +17,7 @@ export async function register() {
       "WARNING: BUILD_RUNNER=local runs project builds on this machine with no isolation."
     );
   }
-  g.__nestDeployWorker = startWorker({
+  g.__eggWorker = startWorker({
     concurrency: Number(process.env.WORKER_CONCURRENCY ?? 2),
     onError: (err) => console.error("worker error", err),
   });

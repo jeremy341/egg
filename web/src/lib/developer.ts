@@ -199,7 +199,7 @@ export const TOKEN_LIMITED = [
   "Change files, only in a project's shared/ folder, only if you switched file changes on, and only for 7 days at most.",
 ] as const;
 
-export const TOKEN_PLACEHOLDER = "ndp_...";
+export const TOKEN_PLACEHOLDER = "egg_...";
 
 const trimSlash = (origin: string) => origin.replace(/\/+$/, "");
 
@@ -217,7 +217,7 @@ export function mcpConfigSnippet(origin: string): string {
   return JSON.stringify(
     {
       mcpServers: {
-        "nest-deploy": {
+        "egg": {
           type: "http",
           url: mcpUrl(origin),
           headers: { Authorization: `Bearer ${TOKEN_PLACEHOLDER}` },
@@ -249,7 +249,7 @@ export const BUILD_RESOURCES: readonly BuildResource[] = [
     id: "sdk",
     title: "TypeScript client",
     summary: "One file, no dependencies. Typed methods for projects, deployments, logs, domains, environment names, analytics, usage, alerts and the status page. Runs on Node 20 and in the browser.",
-    path: "web/src/lib/sdk/nest-deploy.ts",
+    path: "web/src/lib/sdk/egg.ts",
     scopes: [],
     noScopeNote: "Depends on the method. Each one names its permission.",
   },
@@ -310,9 +310,9 @@ export function meExample(origin: string): string {
 /** A first program with the TypeScript client. The token comes from the environment. */
 export function sdkExample(origin: string): string {
   return [
-    'import { NestDeploy } from "./nest-deploy";',
+    'import { Egg } from "./egg";',
     "",
-    "const nest = new NestDeploy({",
+    "const nest = new Egg({",
     "  token: process.env.NEST_TOKEN!,",
     `  baseUrl: "${trimSlash(origin)}",`,
     "});",

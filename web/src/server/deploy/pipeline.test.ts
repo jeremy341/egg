@@ -125,15 +125,15 @@ describe("deploy pipeline", () => {
 
   it("writes the service file, a locked-down env file and the current symlink", async () => {
     const home = mock.home.replace(/\\/g, "/");
-    const unit = await sh(`cat ${home}/units/nd-demo-app.service`);
+    const unit = await sh(`cat ${home}/units/egg-demo-app.service`);
     expect(unit).toContain(`Environment=PORT=${project.port}`);
     expect(unit).toContain("Environment=HOST=0.0.0.0");
     expect(unit).toContain('ExecStart=/bin/bash -lc "exec node server.js"');
     expect(unit).toContain("Restart=always");
 
-    const envFile = await sh(`cat ${home}/.nest-deploy/demo-app/releases/${v1.releaseId}/.env`);
+    const envFile = await sh(`cat ${home}/.egg/demo-app/releases/${v1.releaseId}/.env`);
     expect(envFile).toBe('GREETING="hello-secret-value"');
-    const link = await sh(`readlink ${home}/.nest-deploy/demo-app/current`);
+    const link = await sh(`readlink ${home}/.egg/demo-app/current`);
     expect(link.replace(/\\/g, "/")).toContain(v1.releaseId);
   });
 
@@ -220,7 +220,7 @@ describe("deploy pipeline", () => {
       await deploy();
     }
     const home = mock.home.replace(/\\/g, "/");
-    const dirs = (await sh(`ls ${home}/.nest-deploy/demo-app/releases`)).split(/\s+/).filter(Boolean);
+    const dirs = (await sh(`ls ${home}/.egg/demo-app/releases`)).split(/\s+/).filter(Boolean);
     const rows = await ctx.db.select().from(schema.deployments).where(eq(schema.deployments.projectId, project.id));
     const live = rows.find((r) => r.env === "production" && r.isCurrent)!;
     expect(dirs).toContain(live.releaseId);
@@ -252,7 +252,7 @@ describe("deploy state races", () => {
     expect(row?.state).toBe("canceled");
     expect(row?.isCurrent).toBe(false);
     const home = mock.home.replace(/\\/g, "/");
-    const dirs = await sh(`ls ${home}/.nest-deploy/demo-app/releases`);
+    const dirs = await sh(`ls ${home}/.egg/demo-app/releases`);
     expect(dirs).not.toContain(dep.releaseId);
     expect(await answer(project.port)).not.toBe("never-ships:hello-secret-value");
   });

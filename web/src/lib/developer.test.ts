@@ -147,9 +147,9 @@ describe("snippets", () => {
 
   it("shows a curl request with a placeholder token, never a real one", () => {
     const curl = curlExample(origin);
-    expect(curl).toContain('Authorization: Bearer ndp_..."');
+    expect(curl).toContain('Authorization: Bearer egg_..."');
     expect(curl).toContain("https://nest.example.com/api/v1/");
-    expect(curl).not.toMatch(/ndp_[A-Za-z0-9]{6,}/);
+    expect(curl).not.toMatch(/egg_[A-Za-z0-9]{6,}/);
   });
 
   it("builds an MCP config that parses and points at the agent endpoint", () => {
@@ -157,11 +157,11 @@ describe("snippets", () => {
     const json = JSON.parse(text) as {
       mcpServers: Record<string, { type: string; url: string; headers: Record<string, string> }>;
     };
-    const server = json.mcpServers["nest-deploy"];
+    const server = json.mcpServers["egg"];
     expect(server.type).toBe("http");
     expect(server.url).toBe("https://nest.example.com/api/mcp");
-    expect(server.headers.Authorization).toBe("Bearer ndp_...");
-    expect(text).not.toMatch(/ndp_[A-Za-z0-9]{6,}/);
+    expect(server.headers.Authorization).toBe("Bearer egg_...");
+    expect(text).not.toMatch(/egg_[A-Za-z0-9]{6,}/);
   });
 });
 

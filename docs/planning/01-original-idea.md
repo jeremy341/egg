@@ -5,7 +5,7 @@ community: hack-club
 status: idea
 ---
 
-# Nest Deploy
+# Egg
 
 Make deploying projects on Nest easier with a Vercel-inspired experience. Preserve the capabilities of Nest while exploring additions such as resource monitoring, deployment history and the Git commit behind a running project.
 
@@ -64,7 +64,7 @@ Rather than creating a whole new hosting platform, I would initially design this
 
 A deployment controller could receive authorized requests and coordinate a restricted agent in the user’s Nest container. That agent would build and run the application and report status. This is a possible future architecture, subject to Nest permissions and a sound security model.
 
-The first version is a website people log into. They connect a Nest server and GitHub, then deploy and manage projects from one dashboard. The full scope is in [[Nest Deploy Decided Feature Scope]].
+The first version is a website people log into. They connect a Nest server and GitHub, then deploy and manage projects from one dashboard. The full scope is in [[Egg Decided Feature Scope]].
 
 ### Biggest challenges
 
@@ -104,7 +104,7 @@ A builder deploys a small web app from a chosen commit, checks its health and lo
 
 ### A useful first version
 
-Build the website in [[Nest Deploy Decided Feature Scope]]: sign in, connect a Nest server, and deploy and manage projects from one dashboard. Prove the flow end to end with one documented Node.js app first.
+Build the website in [[Egg Decided Feature Scope]]: sign in, connect a Nest server, and deploy and manage projects from one dashboard. Prove the flow end to end with one documented Node.js app first.
 
 ### First steps
 
@@ -120,11 +120,11 @@ A new user can follow the documented flow to deploy a sample app, identify its c
 
 ### After the first version
 
-Use [[UI and Design Inspiration]] for the dashboard design. Items beyond Version 1 are listed in [[Nest Deploy Decided Feature Scope]].
+Use [[UI and Design Inspiration]] for the dashboard design. Items beyond Version 1 are listed in [[Egg Decided Feature Scope]].
 
 ## Updated product vision: one dashboard for each Nest server
 
-Nest Deploy is a shared website where a person connects GitHub and their own Nest environment, then manages deployments and understands what is happening on their server. Each connected server has its own workspace and projects. Applications run inside the user's Nest environment; the shared website is a separate service that must be hosted and maintained.
+Egg is a shared website where a person connects GitHub and their own Nest environment, then manages deployments and understands what is happening on their server. Each connected server has its own workspace and projects. Applications run inside the user's Nest environment; the shared website is a separate service that must be hosted and maintained.
 
 ### The experience
 
@@ -180,7 +180,7 @@ A rollback restores a previously retained build or release and its compatible co
 ## Detailed feature planning
 
 - [[Vercel Feature Inventory]] — research snapshot of Vercel product areas and their documentation.
-- [[Nest Deploy Requirements]] — prioritized requirements, capability mapping, open questions and pilot acceptance.
+- [[Egg Requirements]] — prioritized requirements, capability mapping, open questions and pilot acceptance.
 
 See [[Vercel Feature Comparison]] for detailed feature recommendations.
 
@@ -191,12 +191,12 @@ Start at [[Vercel Docs Coverage and Audit Index]] for the sitemap-checked invent
 
 ## Final feature scope
 
-See [[Nest Deploy Decided Feature Scope]] for the reviewed list of core features, later additions, and out-of-scope Vercel products.
+See [[Egg Decided Feature Scope]] for the reviewed list of core features, later additions, and out-of-scope Vercel products.
 
 
-The implementation is split into [[Nest Deploy Decided Feature Scope#Version 1 private Nest deployment dashboard|Version 1]] and [[Nest Deploy Decided Feature Scope#Version 2 broader server management|Version 2]].
+The implementation is split into [[Egg Decided Feature Scope#Version 1 private Nest deployment dashboard|Version 1]] and [[Egg Decided Feature Scope#Version 2 broader server management|Version 2]].
 
 
 ### Version 1 experience
 
-Sign in with Hack Club Auth if approved, pair each Nest server, connect selected GitHub repositories, then deploy and manage supported projects from one dashboard. HCA authenticates identity; a separate, scoped agent connection is needed to control the user’s Nest container. See [[Nest Deploy Decided Feature Scope]].
+Sign in with Hack Club Auth if approved, pair each Nest server, connect selected GitHub repositories, then deploy and manage supported projects from one dashboard. HCA authenticates identity; a separate, scoped agent connection is needed to control the user’s Nest container. See [[Egg Decided Feature Scope]].

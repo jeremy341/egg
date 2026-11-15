@@ -6,7 +6,7 @@ import { assertRateRoom, clientIp, enforceRateLimit } from "@/server/rate-limit"
 
 /**
  * HTTP glue for the public API and the MCP endpoint. The ONLY credential
- * accepted here is `Authorization: Bearer ndp_...`. Cookies are never read, so
+ * accepted here is `Authorization: Bearer egg_...`. Cookies are never read, so
  * a signed-in browser session cannot act through the API.
  */
 
@@ -18,7 +18,7 @@ export async function authenticate(req: Request): Promise<Principal> {
   if (secret === null) {
     throw new HttpError(
       401,
-      "Send an access token as an Authorization: Bearer ndp_... header.",
+      "Send an access token as an Authorization: Bearer egg_... header.",
       "unauthorized",
       WWW_AUTHENTICATE
     );

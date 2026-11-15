@@ -1,14 +1,14 @@
-> Scope decisions and final dispositions for every earlier “Could need” item are now in [[Nest Deploy Decided Feature Scope]].
+> Scope decisions and final dispositions for every earlier “Could need” item are now in [[Egg Decided Feature Scope]].
 
-See [[Vercel to Nest Deploy Feature Review]] for the consolidated decision matrix and detailed catalogs.
+See [[Vercel to Egg Feature Review]] for the consolidated decision matrix and detailed catalogs.
 
-# Vercel Feature Comparison for Nest Deploy
+# Vercel Feature Comparison for Egg
 
-Research snapshot: 28 October 2026. Related: [[Nest - Deploy]], [[Vercel Feature Inventory]], [[Nest Deploy Requirements]].
+Research snapshot: 28 October 2026. Related: [[Nest - Deploy]], [[Vercel Feature Inventory]], [[Egg Requirements]].
 
 See [[Platform Feature Synthesis]] for the grouped recommendations based on 941 retrieved platform-documentation URLs, and [[audit-platform-batches]] for captured page text and exact URL-level evidence. Retrieval coverage does not establish semantic completeness: each captured body is limited to 4,500 characters.
 
-This is a comparison of documented product areas and selected features, **not an exhaustive audit of every Vercel documentation page or setting**. The recommendations are our judgments for Nest Deploy; they do not claim the feature exists in Nest Deploy. Vercel availability and plans vary.
+This is a comparison of documented product areas and selected features, **not an exhaustive audit of every Vercel documentation page or setting**. The recommendations are our judgments for Egg; they do not claim the feature exists in Egg. Vercel availability and plans vary.
 
 **Need** means important to the intended product, not necessarily the first release. **Could need** means useful depending on demand and feasibility. **Do not need** means outside the current goal; revisit if that goal changes.
 
@@ -138,7 +138,7 @@ Source: [Vercel documentation index](https://vercel.com/docs).
 | MCP integration | Could need | Optional automation after API and security mature. |
 | Vercel Connect / token brokering | Could need | Potential integration; needs a security design. |
 | Vercel for Platforms | Do not need | Separate platform product from user-owned server management. |
-| AI integrations, Token Pass and eve | Do not need | Not necessary for the current Nest Deploy goal. |
+| AI integrations, Token Pass and eve | Do not need | Not necessary for the current Egg goal. |
 
 ## Additional Nest-specific requirements
 
@@ -167,7 +167,7 @@ See [[Vercel Documentation Page Inventory]] for the sitemap-based page list and 
 - [[audit-connect-eve]] — Connect and eve documentation.
 
 
-- [[REST API Feature Catalog]] — individual operation pages grouped by REST API family with Nest Deploy relevance.
+- [[REST API Feature Catalog]] — individual operation pages grouped by REST API family with Egg relevance.
 
-See [[Nest Deploy Full Feature Requirements]] for the single combined Need/Could feature and general requirements document.
+See [[Egg Full Feature Requirements]] for the single combined Need/Could feature and general requirements document.
 

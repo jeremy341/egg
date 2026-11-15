@@ -7,12 +7,12 @@ import { removeOrphans } from "@/server/inventory";
 type Ctx = { params: Promise<{ id: string }> };
 
 const body = z.object({
-  /** Unit names (nd-foo.service) or folder names (foo). Each one is validated again on the server. */
+  /** Unit names (egg-foo.service) or folder names (foo). Each one is validated again on the server. */
   ids: z.array(z.string().max(200)).min(1).max(50),
 });
 
 /**
- * Stop and remove orphaned Nest Deploy services and delete orphaned folders.
+ * Stop and remove orphaned Egg services and delete orphaned folders.
  * Returns one result per id. Anything that belongs to a project is refused.
  * 403 when the owner has leftover removal off; 429 past 10 requests a minute.
  */

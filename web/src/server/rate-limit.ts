@@ -82,7 +82,7 @@ export const RATE_LIMITS = {
 
 export type RateBucket = keyof typeof RATE_LIMITS;
 
-const KEY = Symbol.for("nest-deploy.rate-limiter");
+const KEY = Symbol.for("egg.rate-limiter");
 
 /** One limiter per process, shared by separately bundled route modules. */
 export function rateLimiter(): SlidingWindowLimiter {

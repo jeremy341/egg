@@ -47,7 +47,8 @@ describe("security page numbers match the code", () => {
     expect(build).toMatch(flag("--pids-limit", F.buildProcesses));
     expect(build).toMatch(/"--cap-drop",\s+"ALL",/);
     expect(build).toContain("no-new-privileges");
-    expect(build).toMatch(flag("--memory", `${HOME_FACTS.buildMemoryGb}g`));
+    expect(build).toContain('"--memory",');
+    expect(build).toContain("`${memoryMb}m`");
   });
 
   it("sends the headers the page lists", () => {
@@ -65,5 +66,14 @@ describe("security page numbers match the code", () => {
     ]) {
       expect(cfg).toContain(h);
     }
+  });
+
+  it("describes disconnecting as the owner's choice, not as deleting every project", () => {
+    const page = src("src/app/(marketing)/security/page.tsx").replace(/\s+/g, " ");
+    expect(page).not.toContain("with it every project on that server");
+    expect(page).toContain("Whether the projects on that server go too is your choice");
+    expect(page).toContain("Also delete the projects on this server");
+    // The code the sentence describes: the choice defaults to keeping the projects.
+    expect(src("src/server/servers.ts")).toContain("deleteProjects: z.boolean().default(false)");
   });
 });
