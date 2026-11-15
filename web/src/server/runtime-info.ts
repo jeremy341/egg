@@ -7,6 +7,8 @@ import { removePreview, removeProject, runtimeLogs, startUnit } from "@/server/d
 import { journalSince, type LogLevel, type LogRange } from "@/lib/log-filter";
 import { decodeLogCursor, pageLogLines } from "@/lib/log-page";
 import { HttpError } from "@/server/http";
+import { removeUnits } from "@/server/deploy/jobs-remote";
+import { jobUnitNames } from "@/server/scheduled-jobs";
 import { getProjectForUser } from "@/server/projects";
 import { getServerForUser, withServerSession } from "@/server/servers";
 import { SshError } from "@/server/ssh/connection";
@@ -147,7 +149,12 @@ export async function fetchUsage(userId: string, serverId: string): Promise<Usag
 export async function removeProjectFromServer(
   userId: string,
   projectId: string,
-  options: { deleteData?: boolean; unitDir?: string } = {}
+  options: {
+    deleteData?: boolean;
+    unitDir?: string;
+    /** Only the project delete uses this: it connects while its own cleanup reservation exists. */
+    connect?: { allowDuringCleanup?: boolean; cleanupExecutor?: boolean };
+  } = {}
 ) {
   const project = await getProjectForUser(userId, projectId);
   const server = await getServerForUser(userId, project.serverId);
@@ -180,6 +187,9 @@ export async function removeProjectFromServer(
         { timeoutMs: 60_000 }
       );
     }
+    // Timers first, so none of them starts a job in a release that is about to be deleted.
+    const jobUnits = await jobUnitNames(project.id, project.slug);
+    if (jobUnits.length > 0) await s.script(removeUnits(unitDir, jobUnits), { timeoutMs: 60_000 });
     const res = await s.script(
       removeProject({
         home: probe.home,
@@ -193,7 +203,7 @@ export async function removeProjectFromServer(
     if (res.code !== 0) {
       throw new HttpError(502, "Could not remove the project from your container.", "upstream");
     }
-  });
+  }, options.connect);
 
   await db
     .update(schema.deployments)

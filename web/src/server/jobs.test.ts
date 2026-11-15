@@ -5,13 +5,13 @@ import { schema } from "@/server/db";
 import type { PipelineDeps } from "@/server/deploy/pipeline";
 import {
   claimNextJob,
-  failOrphanedJobs,
+  countOrphanedJobs,
   recoverStaleJobs,
   startWorker,
 } from "@/server/jobs";
 import { cancelDeployment, createProject, deployBranch, type ProjectRow } from "@/server/projects";
 import { connectToServer, createServer, getServerForUser } from "@/server/servers";
-import { fakeBuilder, freePort, installFakeSystemd, nodeApp } from "@/server/test/fake-nest";
+import { fakeBuilder, freePort, containerReadyFacts, installFakeContainerBuild, installFakeSystemd, nodeApp } from "@/server/test/fake-nest";
 import { useFreshDb } from "@/server/test/db";
 import { startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
 
@@ -65,6 +65,26 @@ describe("queue", () => {
     await ctx.db.update(schema.jobs).set({ state: "done" });
   });
 
+  it("does not let concurrent workers claim separate jobs for one project", async () => {
+    const one = await deployBranch(userId, a.id);
+    const two = await deployBranch(userId, a.id);
+    const claims = await Promise.all([claimNextJob("race-1"), claimNextJob("race-2")]);
+    expect(claims.filter(Boolean)).toHaveLength(1);
+    expect(claims.find(Boolean)?.deploymentId).toBe(one.id);
+    expect(two.id).not.toBe(one.id);
+    await ctx.db.update(schema.jobs).set({ state: "done" });
+  });
+
+  it("skips a blocked queue prefix so an idle project's job can run", async () => {
+    for (let i = 0; i < 26; i++) await deployBranch(userId, a.id, `blocked-${i}`);
+    const idle = await deployBranch(userId, b.id, "idle-project");
+    const first = await claimNextJob("prefix-blocker");
+    expect(first).toBeTruthy();
+    const next = await claimNextJob("idle-worker");
+    expect(next?.deploymentId).toBe(idle.id);
+    await ctx.db.update(schema.jobs).set({ state: "done" });
+  });
+
   it("does not run a canceled deployment", async () => {
     const dep = await deployBranch(userId, b.id);
     await cancelDeployment(userId, dep.id);
@@ -73,7 +93,7 @@ describe("queue", () => {
     expect(row?.state).toBe("canceled");
   });
 
-  it("fails jobs left running by a dead worker and tells the user", async () => {
+  it("keeps jobs from a stopped worker blocking until manual confirmation", async () => {
     const dep = await deployBranch(userId, a.id);
     const job = await claimNextJob("dead-worker");
     expect(job).toBeTruthy();
@@ -82,13 +102,13 @@ describe("queue", () => {
       .set({ state: "building" })
       .where(eq(schema.deployments.id, dep.id));
 
-    expect(await failOrphanedJobs("dead-worker")).toBe(1);
+    expect(await countOrphanedJobs("dead-worker")).toBe(1);
     const row = await ctx.db.select().from(schema.deployments).where(eq(schema.deployments.id, dep.id)).get();
-    expect(row?.state).toBe("error");
-    expect(row?.error).toContain("worker restarted");
+    expect(row?.state).toBe("building");
+    expect(await claimNextJob("replacement-worker")).toBeNull();
   });
 
-  it("recovers jobs that have been running far too long", async () => {
+  it("keeps expired leases blocking until an operator confirms remote work stopped", async () => {
     const dep = await deployBranch(userId, b.id);
     const job = await claimNextJob("slow");
     await ctx.db
@@ -97,7 +117,8 @@ describe("queue", () => {
       .where(eq(schema.jobs.id, job!.id));
     expect(await recoverStaleJobs()).toBe(1);
     const row = await ctx.db.select().from(schema.deployments).where(eq(schema.deployments.id, dep.id)).get();
-    expect(row?.state).toBe("error");
+    expect(row?.state).toBe("queued");
+    expect(await claimNextJob("replacement-worker")).toBeNull();
   });
 });
 
@@ -133,6 +154,7 @@ describe("worker", () => {
     const srv = await createServer(userId, "sam-w", { host: "127.0.0.1", port: 1 });
     mock = await startMockSsh({ authorizedKeys: [srv.publicKey] });
     installFakeSystemd(mock);
+    installFakeContainerBuild(mock);
     await ctx.db.update(schema.servers).set({ port: mock.port, hostKeyFingerprint: mock.hostKeyFingerprint }).where(eq(schema.servers.id, srv.id));
     const refreshed = await getServerForUser(userId, srv.id);
 
@@ -145,7 +167,9 @@ describe("worker", () => {
     const dep = await deployBranch(userId, project.id);
 
     const deps: PipelineDeps = {
-      build: fakeBuilder(() => nodeApp("worker")),
+      preflight: () => async () => containerReadyFacts,
+      lockPollMs: 50,
+      sourceBuild: fakeBuilder(() => nodeApp("worker")),
       connect: connectToServer,
       unitDir: `${mock.home}/units`,
       healthTimeoutSeconds: 8,

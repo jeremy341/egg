@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
-import { createReadStream, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
+import { createReadStream, createWriteStream, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statfsSync } from "node:fs";
 import { spawn } from "node:child_process";
+import { Transform } from "node:stream";
+import { pipeline as pipelineStream } from "node:stream/promises";
 import { StringDecoder } from "node:string_decoder";
 import path from "node:path";
 import * as tar from "tar";
@@ -12,7 +14,6 @@ import {
   type RuntimeSpec,
 } from "@/server/deploy/runtime";
 import { maskSecrets, secretNeedles } from "@/server/deploy/redact";
-import { DEFAULT_BUILD_MEMORY_MB, checkBuildMemory } from "@/lib/build-memory";
 
 export type LogFn = (level: "info" | "warn" | "error", message: string) => void;
 
@@ -29,10 +30,6 @@ export type BuildRequest = {
   };
   /** Variables for the build step. Never printed. */
   env: Record<string, string>;
-  /** Memory limit of the build sandbox in MB: the server's setting. Defaults to 2048. */
-  memoryMb?: number;
-  /** Total memory the server reported, if it did. Sets the top of the allowed range. */
-  serverMemoryMb?: number | null;
   log: LogFn;
   signal?: AbortSignal;
 };
@@ -51,6 +48,15 @@ export type BuildResult = {
 export type Builder = (req: BuildRequest) => Promise<BuildResult>;
 
 export const MAX_ARCHIVE_BYTES = 500 * 1024 * 1024;
+/** Also bound total source bytes and paths while packaging, not just final gzip size. */
+export const MAX_SOURCE_UNPACKED_BYTES = 2 * 1024 * 1024 * 1024;
+export const MAX_SOURCE_ENTRIES = 200_000;
+/** The working tree plus git's own data (the .git folder) while cloning. */
+export const MAX_CLONE_BYTES = MAX_SOURCE_UNPACKED_BYTES + MAX_ARCHIVE_BYTES;
+/** Keep this much free on the disk that holds the work folder. */
+export const MIN_FREE_BYTES = 1024 * 1024 * 1024;
+/** How often the clone folder is measured while git runs. */
+export const CLONE_WATCH_MS = 2000;
 
 export class BuildError extends Error {}
 
@@ -78,9 +84,9 @@ const within = (root: string, full: string) => full === root || full.startsWith(
 
 /**
  * Resolve a user-supplied folder inside `base`, refusing `..` escapes and
- * links. A cloned repository (or a build that ran in it) can hold a link to any
- * path on this machine; the folder that gets archived is read here, not in the
- * sandbox, so the real location must stay inside `base` too.
+ * links. A cloned repository can hold a link to any path on this machine; the
+ * folder that gets archived is read here, so the real location must stay inside
+ * `base` too.
  */
 export function resolveInside(base: string, rel: string): string {
   const full = path.resolve(base, rel || ".");
@@ -117,40 +123,22 @@ export function assertGitRef(ref: string): string {
 
 /** A full commit hash (SHA-1 or SHA-256), the only thing we pass to `git fetch` by value. */
 export function assertGitSha(sha: string): string {
-  if (typeof sha !== "string" || !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(sha)) {
+  if (typeof sha !== "string" || !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i.test(sha)) {
     throw new BuildError("The commit hash is not valid.");
   }
-  return sha;
+  return sha.toLowerCase();
 }
 
-/** Variables that change how the docker command, git or a TLS client behaves rather than what the build sees. */
-const CLI_SENSITIVE_ENV =
-  /^(?:DOCKER_|LD_|DYLD_|SSH_|SSL_|CURL_|XDG_|GIT_|BASH_ENV$|ENV$|HOME$|PATH$|PATHEXT$|COMSPEC$|SYSTEMROOT$|TMPDIR$|TEMP$|TMP$|USERPROFILE$|(?:HTTPS?|ALL|NO|FTP)_PROXY$)/i;
-
-/**
- * The environment of the `docker run` command, and its `-e` arguments.
- *
- * Project variables reach the container by name (`-e KEY`), which means they
- * sit in the docker command's own environment, where a name like DOCKER_HOST,
- * LD_PRELOAD or HTTPS_PROXY would change how that command runs on this machine.
- * Those names are passed by value on the command line instead (`-e KEY=value`),
- * so the container still gets them and the command does not.
- */
-export function buildCliEnv(
-  vars: Record<string, string>,
-  base: Record<string, string | undefined>
-): { env: NodeJS.ProcessEnv; argv: string[] } {
-  const env = { ...base } as NodeJS.ProcessEnv;
-  const argv: string[] = [];
-  for (const [key, value] of Object.entries(vars)) {
-    if (CLI_SENSITIVE_ENV.test(key)) {
-      argv.push("-e", `${key}=${value}`);
-    } else {
-      env[key] = value;
-      argv.push("-e", key);
-    }
+/** Configure Git authentication through its environment, keeping the token out of argv. */
+export function gitEnvironment(token?: string | null): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_ASKPASS: "echo" };
+  if (token) {
+    const basic = Buffer.from(`x-access-token:${token}`).toString("base64");
+    env.GIT_CONFIG_COUNT = "1";
+    env.GIT_CONFIG_KEY_0 = "http.https://github.com/.extraheader";
+    env.GIT_CONFIG_VALUE_0 = `AUTHORIZATION: basic ${basic}`;
   }
-  return { env, argv };
+  return env;
 }
 
 type RunOptions = {
@@ -159,8 +147,6 @@ type RunOptions = {
   onLine?: (line: string) => void;
   timeoutMs?: number;
   signal?: AbortSignal;
-  /** Called with the child so callers can kill a container on timeout. */
-  onTimeout?: () => void;
 };
 
 /** Spawn a process, stream its output by line, and resolve with the exit code. */
@@ -180,12 +166,10 @@ export function runProcess(
     const timer = opts.timeoutMs
       ? setTimeout(() => {
           timedOut = true;
-          opts.onTimeout?.();
           child.kill("SIGKILL");
         }, opts.timeoutMs)
       : undefined;
     const abort = () => {
-      opts.onTimeout?.();
       child.kill("SIGKILL");
     };
     opts.signal?.addEventListener("abort", abort, { once: true });
@@ -222,18 +206,16 @@ export function runProcess(
   });
 }
 
-function bashPath() {
-  return process.platform === "win32" ? "C:\\Program Files\\Git\\bin\\bash.exe" : "bash";
-}
-
 export function detectFiles(dir: string): ProjectFiles {
   const has = (f: string) => existsSync(path.join(dir, f));
   let hasBuildScript = false;
+  let nodeEngine: string | null = null;
   const hasPackageJson = has("package.json");
   if (hasPackageJson) {
     try {
       const pkg = JSON.parse(readFileSync(path.join(dir, "package.json"), "utf8"));
       hasBuildScript = typeof pkg?.scripts?.build === "string";
+      if (typeof pkg?.engines?.node === "string") nodeEngine = pkg.engines.node.trim().slice(0, 200) || null;
     } catch {
       /* a broken package.json is reported by the build itself */
     }
@@ -249,12 +231,42 @@ export function detectFiles(dir: string): ProjectFiles {
     hasPackageJson,
     hasBuildScript,
     hasRequirements: has("requirements.txt"),
+    nodeEngine,
   };
 }
 
 function redactor(secrets: string[]) {
   const list = secretNeedles(secrets);
   return (line: string) => maskSecrets(line, list);
+}
+
+/** Refuse to silently substitute a branch tip for an explicitly requested commit. */
+export function assertRequestedCommit(requested: string, actual: string): string {
+  requested = assertGitSha(requested);
+  assertGitSha(actual);
+  if (actual.toLowerCase() !== requested.toLowerCase()) {
+    throw new BuildError(`Could not build requested commit ${requested.slice(0, 7)}. The branch tip was not used.`);
+  }
+  return requested.toLowerCase();
+}
+
+/** Fetch, check out and re-verify one exact SHA before any build step runs. */
+export async function ensureRequestedCommit(
+  requested: string,
+  ops: { readHead: () => Promise<string>; fetch: () => Promise<number>; checkout: () => Promise<number> }
+): Promise<string> {
+  requested = assertGitSha(requested);
+  let actual = await ops.readHead();
+  if (actual.toLowerCase() !== requested.toLowerCase()) {
+    if ((await ops.fetch()) !== 0) {
+      throw new BuildError(`Could not fetch requested commit ${requested.slice(0, 7)}. The branch tip was not used.`);
+    }
+    if ((await ops.checkout()) !== 0) {
+      throw new BuildError(`The requested commit checkout failed for ${requested.slice(0, 7)}. The branch tip was not used.`);
+    }
+    actual = await ops.readHead();
+  }
+  return assertRequestedCommit(requested, actual);
 }
 
 async function sha256File(file: string): Promise<string> {
@@ -268,8 +280,277 @@ async function sha256File(file: string): Promise<string> {
   return hash.digest("hex");
 }
 
-/** Clone, build in a sandbox, and pack the result. */
-export const defaultBuilder: Builder = async (req) => {
+export type CloneLimits = { maxBytes: number; minFreeBytes: number; intervalMs: number };
+
+const NEARLY_FULL_MESSAGE = "Egg's disk is nearly full, so the repository was not cloned. Try again later.";
+
+/** Bytes used by files under `dir`, not following symbolic links. Stops counting once the total passes `stopAt`. */
+export function directorySize(dir: string, stopAt: number): number {
+  let total = 0;
+  const pending = [dir];
+  while (pending.length) {
+    const current = pending.pop()!;
+    let names: string[];
+    try {
+      names = readdirSync(current);
+    } catch {
+      continue;
+    }
+    for (const name of names) {
+      const full = path.join(current, name);
+      let info;
+      try {
+        info = lstatSync(full);
+      } catch {
+        continue; // removed while reading
+      }
+      if (info.isSymbolicLink()) continue;
+      if (info.isDirectory()) {
+        pending.push(full);
+      } else if (info.isFile()) {
+        total += info.size;
+        if (total > stopAt) return total;
+      }
+    }
+  }
+  return total;
+}
+
+/** A BuildError when the disk holding `dir` has less than `minFreeBytes` free. Null when it is fine or cannot be read. */
+function nearlyFullError(dir: string, minFreeBytes: number): BuildError | null {
+  let freeBytes: number;
+  try {
+    const fs = statfsSync(dir);
+    freeBytes = fs.bavail * fs.bsize;
+  } catch {
+    return null;
+  }
+  return freeBytes < minFreeBytes ? new BuildError(NEARLY_FULL_MESSAGE) : null;
+}
+
+/**
+ * Check `dir` every `limits.intervalMs`. Calls `onExceed` once and stops when the folder is over `maxBytes`
+ * or the disk is below `minFreeBytes`.
+ */
+export function watchCloneSize(
+  dir: string,
+  limits: CloneLimits,
+  onExceed: (error: BuildError) => void
+): { stop(): void } {
+  let timer: NodeJS.Timeout | undefined;
+  const stop = () => {
+    if (timer) clearInterval(timer);
+    timer = undefined;
+  };
+  const check = () => {
+    let error: BuildError | null = null;
+    if (directorySize(dir, limits.maxBytes) > limits.maxBytes) {
+      error = new BuildError(
+        `The repository is larger than ${Math.round(limits.maxBytes / (1024 * 1024))} MB, so it was not cloned.`
+      );
+    } else {
+      error = nearlyFullError(dir, limits.minFreeBytes);
+    }
+    if (error) {
+      stop();
+      onExceed(error);
+    }
+  };
+  timer = setInterval(check, limits.intervalMs);
+  timer.unref();
+  return { stop };
+}
+
+/**
+ * Clone the repository into `srcDir` (the branch tip, or the exact commit asked for) and read the commit,
+ * after the checks on the URL, branch and commit and before git runs. The work folder is watched while git
+ * runs, and git is stopped if it grows past the limit or the disk runs low.
+ */
+export async function cloneSource(
+  req: BuildRequest,
+  srcDir: string,
+  log: LogFn,
+  line: (l: string) => void,
+  limits: Partial<CloneLimits> = {}
+): Promise<BuildResult["commit"]> {
+  assertCloneUrl(req.source.cloneUrl);
+  assertGitRef(req.source.branch);
+  if (req.source.sha) assertGitSha(req.source.sha);
+  const resolved: CloneLimits = {
+    maxBytes: limits.maxBytes ?? MAX_CLONE_BYTES,
+    minFreeBytes: limits.minFreeBytes ?? MIN_FREE_BYTES,
+    intervalMs: limits.intervalMs ?? CLONE_WATCH_MS,
+  };
+  const workDir = path.dirname(srcDir);
+  const lowDisk = nearlyFullError(workDir, resolved.minFreeBytes);
+  if (lowDisk) throw lowDisk;
+
+  log("info", `Cloning ${req.source.cloneUrl} (branch ${req.source.branch})`);
+  const gitEnv = gitEnvironment(req.source.token);
+  const watched: { error: BuildError | null } = { error: null };
+  const controller = new AbortController();
+  const signal = AbortSignal.any(
+    [controller.signal, req.signal].filter((s): s is AbortSignal => s !== undefined)
+  );
+  const watcher = watchCloneSize(workDir, resolved, (error) => {
+    watched.error = error;
+    controller.abort();
+  });
+  try {
+    let cloneCode: number;
+    try {
+      cloneCode = await runProcess(
+        "git",
+        [
+          "clone",
+          "--depth",
+          "1",
+          "--branch",
+          req.source.branch,
+          "--single-branch",
+          "--no-tags",
+          "--",
+          req.source.cloneUrl,
+          srcDir,
+        ],
+        { env: gitEnv, onLine: line, timeoutMs: 5 * 60_000, signal }
+      );
+    } catch (error) {
+      throw watched.error ?? error;
+    }
+    if (watched.error) throw watched.error;
+    if (cloneCode !== 0) {
+      throw new BuildError(
+        "Could not clone the repository. Check the branch name and that Egg has access to it."
+      );
+    }
+
+    if (req.source.sha) {
+      try {
+        await ensureRequestedCommit(req.source.sha, {
+          readHead: async () => {
+            const output: string[] = [];
+            const code = await runProcess("git", ["rev-parse", "HEAD"], {
+              cwd: srcDir,
+              env: gitEnv,
+              onLine: (l) => output.push(l.trim()),
+              timeoutMs: 30_000,
+              signal: req.signal,
+            });
+            if (code !== 0 || !output[0]) throw new BuildError("Could not verify the requested commit. The branch tip was not used.");
+            return output[0];
+          },
+          fetch: () => runProcess("git", ["fetch", "--depth", "1", "origin", assertGitSha(req.source.sha!)], {
+            cwd: srcDir,
+            env: gitEnv,
+            onLine: line,
+            timeoutMs: 3 * 60_000,
+            signal,
+          }),
+          checkout: () => runProcess("git", ["checkout", "--detach", "FETCH_HEAD"], {
+            cwd: srcDir,
+            env: gitEnv,
+            onLine: line,
+            timeoutMs: 30_000,
+            signal,
+          }),
+        });
+      } catch (error) {
+        throw watched.error ?? error;
+      }
+    }
+  } finally {
+    watcher.stop();
+  }
+
+  const info: string[] = [];
+  await runProcess("git", ["log", "-1", "--format=%H%n%an%n%s"], {
+    cwd: srcDir,
+    env: gitEnv,
+    onLine: (l) => info.push(l),
+  });
+  const commit = {
+    sha: info[0] ?? "",
+    author: info[1] ?? "",
+    message: info.slice(2).join(" ").slice(0, 300),
+  };
+  log("info", `Commit ${commit.sha.slice(0, 7)}: ${commit.message}`);
+  return commit;
+}
+
+/** Pack `root` into a gzipped tar and refuse one over the size limit. Returns the size in bytes. */
+export async function packArchive(
+  root: string,
+  archivePath: string,
+  excludeNodeModules: boolean,
+  what: string,
+  log: LogFn,
+  limits: { maxArchiveBytes?: number; maxUnpackedBytes?: number; maxEntries?: number } = {}
+): Promise<number> {
+  const maxArchiveBytes = limits.maxArchiveBytes ?? MAX_ARCHIVE_BYTES;
+  const maxUnpackedBytes = limits.maxUnpackedBytes ?? MAX_SOURCE_UNPACKED_BYTES;
+  const maxEntries = limits.maxEntries ?? MAX_SOURCE_ENTRIES;
+  let unpackedBytes = 0;
+  let entries = 0;
+  let size = 0;
+  const included = new Set<string>();
+  const cap = new Transform({
+    transform(chunk: Buffer, _encoding, callback) {
+      size += chunk.length;
+      if (size > maxArchiveBytes) {
+        callback(new BuildError(`${what} compressed source archive exceeds the ${maxArchiveBytes} byte limit.`));
+      } else callback(null, chunk);
+    },
+  });
+  let limitError: BuildError | null = null;
+  // The filter runs after an asynchronous stat, so `pack` is always assigned by the time it is used.
+  const pack: tar.Pack = tar.create({
+    gzip: true,
+    cwd: root,
+    portable: true,
+    filter: (p, entry) => {
+      const normalized = p.replace(/^\.\//, "").replace(/\\/g, "/");
+      const parts = normalized.split("/");
+      if (parts[0] === ".git") return false;
+      if (excludeNodeModules && parts.includes("node_modules")) return false;
+      if (parts[0] === ".next" && parts[1] === "cache") return false;
+      if (included.has(normalized)) return true;
+      included.add(normalized);
+      entries++;
+      if (entries > maxEntries) {
+        limitError = new BuildError(`${what} contains more than ${maxEntries} source entries.`);
+        pack.destroy(limitError);
+        return false;
+      }
+      if ("isFile" in entry && entry.isFile()) {
+        unpackedBytes += entry.size;
+        if (unpackedBytes > maxUnpackedBytes) {
+          limitError = new BuildError(`${what} exceeds the ${maxUnpackedBytes} byte unpacked source limit.`);
+          pack.destroy(limitError);
+          return false;
+        }
+      }
+      return true;
+    },
+  }, ["."]);
+  try {
+    await pipelineStream(pack, cap, createWriteStream(archivePath, { flags: "wx", mode: 0o600 }));
+  } catch (error) {
+    rmSync(archivePath, { force: true });
+    if (limitError) throw limitError;
+    if (error instanceof BuildError) throw error;
+    throw new BuildError(`${what} could not be packaged safely: ${error instanceof Error ? error.message : "unknown error"}`);
+  }
+  log("info", `Packed source: ${(size / 1e6).toFixed(1)} MB`);
+  return size;
+}
+
+/**
+ * Clone and pack the source only. No install and no build run on this machine: the archive is the
+ * project folder as it is in the repository, and the build runs later on the Nest container.
+ * The GitHub token is used for the clone here and never leaves this machine.
+ */
+export const defaultSourceBuilder: Builder = async (req) => {
   const c = config();
   const workDir = path.resolve(c.DEPLOY_WORK_DIR, req.deploymentId);
   const srcDir = path.join(workDir, "src");
@@ -283,132 +564,19 @@ export const defaultBuilder: Builder = async (req) => {
   const line = (l: string) => log("info", l);
 
   try {
-    // 1. Clone
-    assertCloneUrl(req.source.cloneUrl);
-    assertGitRef(req.source.branch);
-    if (req.source.sha) assertGitSha(req.source.sha);
-    log("info", `Cloning ${req.source.cloneUrl} (branch ${req.source.branch})`);
-    const gitArgs: string[] = [];
-    if (req.source.token) {
-      const basic = Buffer.from(`x-access-token:${req.source.token}`).toString("base64");
-      gitArgs.push("-c", `http.https://github.com/.extraheader=AUTHORIZATION: basic ${basic}`);
-    }
-    const gitEnv = { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_ASKPASS: "echo" };
-    const cloneCode = await runProcess(
-      "git",
-      [
-        ...gitArgs,
-        "clone",
-        "--depth",
-        "1",
-        "--branch",
-        req.source.branch,
-        "--single-branch",
-        "--no-tags",
-        "--",
-        req.source.cloneUrl,
-        srcDir,
-      ],
-      { env: gitEnv, onLine: line, timeoutMs: 5 * 60_000, signal: req.signal }
-    );
-    if (cloneCode !== 0) {
-      throw new BuildError(
-        "Could not clone the repository. Check the branch name and that Egg has access to it."
-      );
-    }
+    const commit = await cloneSource(req, srcDir, log, line);
 
-    if (req.source.sha) {
-      let head = "";
-      await runProcess("git", ["rev-parse", "HEAD"], {
-        cwd: srcDir,
-        env: gitEnv,
-        onLine: (l) => (head = l.trim()),
-      });
-      if (head !== req.source.sha) {
-        const f = await runProcess("git", [...gitArgs, "fetch", "--depth", "1", "origin", req.source.sha], {
-          cwd: srcDir,
-          env: gitEnv,
-          onLine: line,
-          timeoutMs: 3 * 60_000,
-          signal: req.signal,
-        });
-        if (f === 0) {
-          await runProcess("git", ["checkout", "--detach", "FETCH_HEAD"], { cwd: srcDir, env: gitEnv, onLine: line });
-        } else {
-          log("warn", `Could not fetch ${req.source.sha.slice(0, 7)}; building the branch tip instead.`);
-        }
-      }
-    }
-
-    const info: string[] = [];
-    await runProcess("git", ["log", "-1", "--format=%H%n%an%n%s"], {
-      cwd: srcDir,
-      env: gitEnv,
-      onLine: (l) => info.push(l),
-    });
-    const commit = {
-      sha: info[0] ?? "",
-      author: info[1] ?? "",
-      message: info.slice(2).join(" ").slice(0, 300),
-    };
-    log("info", `Commit ${commit.sha.slice(0, 7)}: ${commit.message}`);
-
-    // 2. Build
     const appDir = resolveInside(srcDir, req.rootDir);
     if (!existsSync(appDir)) {
       throw new BuildError(`The root directory "${req.rootDir}" does not exist in this repository.`);
     }
     const files = detectFiles(appDir);
     const spec = resolveRuntime(req.runtime, files);
+    // The output folder is made by the build on the container; one that leads outside the project is refused now.
+    resolveInside(appDir, spec.archiveRoot);
 
-    const script = [spec.buildInstall, spec.buildCommand]
-      .filter((s): s is string => Boolean(s))
-      .join(" && ");
-    if (script) {
-      log("info", `Building: ${script}`);
-      const code = await runBuildScript(script, appDir, srcDir, req, line);
-      if (code !== 0) {
-        const oomKillable = c.BUILD_RUNNER !== "local";
-        throw new BuildError(
-          oomKillable ? buildFailureMessage(code, req.memoryMb ?? DEFAULT_BUILD_MEMORY_MB) : buildFailureMessage(code, null)
-        );
-      }
-    } else {
-      log("info", "No build step for this project.");
-    }
-
-    // 3. Pack
-    const root = resolveInside(appDir, spec.archiveRoot);
-    if (!existsSync(root)) {
-      throw new BuildError(
-        `The output folder "${spec.archiveRoot}" was not created by the build.`
-      );
-    }
-    const archivePath = path.join(workDir, "release.tar.gz");
-    await tar.create(
-      {
-        gzip: true,
-        file: archivePath,
-        cwd: root,
-        portable: true,
-        filter: (p) => {
-          const parts = p.replace(/^\.\//, "").split("/");
-          if (parts[0] === ".git") return false;
-          if (spec.excludeNodeModules && parts.includes("node_modules")) return false;
-          if (parts[0] === ".next" && parts[1] === "cache") return false;
-          return true;
-        },
-      },
-      ["."]
-    );
-    const size = statSync(archivePath).size;
-    if (size > MAX_ARCHIVE_BYTES) {
-      throw new BuildError(
-        `The build output is ${(size / 1e6).toFixed(0)} MB, over the ${MAX_ARCHIVE_BYTES / 1e6} MB limit.`
-      );
-    }
-    log("info", `Packed release: ${(size / 1e6).toFixed(1)} MB`);
-
+    const archivePath = path.join(workDir, "source.tar.gz");
+    const size = await packArchive(appDir, archivePath, spec.excludeNodeModules, "The source", log);
     return {
       archivePath,
       sha256: await sha256File(archivePath),
@@ -419,125 +587,13 @@ export const defaultBuilder: Builder = async (req) => {
       workDir,
     };
   } catch (err) {
-    rmSync(workDir, { recursive: true, force: true });
+    // A stopped git can leave a child writing for a moment, so retry, and never let a failed
+    // cleanup replace the real error.
+    try {
+      rmSync(workDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    } catch {
+      log("warn", "Could not remove the work folder of this deployment.");
+    }
     throw err;
   }
 };
-
-/**
- * The message for a failed build. Docker kills a sandbox that goes over its
- * memory limit and the process exits with 137, so that case says what to do.
- */
-export function buildFailureMessage(code: number, memoryMb: number | null): string {
-  if (code === 137 && memoryMb !== null) {
-    return `The build ran out of memory (limit ${memoryMb} MB). Raise the build memory for this server on the Container page, or make the build use less.`;
-  }
-  return `The build failed (exit ${code}).`;
-}
-
-export type DockerBuildArgs = {
-  name: string;
-  srcDir: string;
-  /** The project folder relative to the clone, with forward slashes. */
-  rel: string;
-  image: string;
-  script: string;
-  /** `-e` arguments for the project variables. */
-  cliArgv: string[];
-  /** Memory limit in MB. Defaults to 2048. */
-  memoryMb?: number;
-  /** Total memory the server reported, if it did. Sets the top of the allowed range; 8192 without it. */
-  serverMemoryMb?: number | null;
-};
-
-/**
- * The arguments of the `docker run` command for a build sandbox. The memory
- * limit is the server's setting, and swap is capped at the same size so the
- * limit is a real one. A limit outside 512 MB to the server's reported memory
- * (8192 MB when none is reported) is refused, as it is when the setting is saved.
- */
-export function dockerBuildArgs(o: DockerBuildArgs): string[] {
-  const memoryMb = o.memoryMb ?? DEFAULT_BUILD_MEMORY_MB;
-  const problem = checkBuildMemory(memoryMb, o.serverMemoryMb);
-  if (problem) throw new BuildError(`${problem} Change it on the Container page.`);
-  const args = [
-    "run",
-    "--rm",
-    "--name",
-    o.name,
-    "--memory",
-    `${memoryMb}m`,
-    "--memory-swap",
-    `${memoryMb}m`,
-    "--cpus",
-    "2",
-    "--pids-limit",
-    "2048",
-    "--cap-drop",
-    "ALL",
-    "--security-opt",
-    "no-new-privileges",
-    "-v",
-    `${o.srcDir}:/src`,
-    "-w",
-    `/src/${o.rel}`.replace(/\/$/, ""),
-    "-e",
-    "HOME=/tmp",
-  ];
-  if (process.platform !== "win32" && process.getuid && process.getgid) {
-    args.push("--user", `${process.getuid()}:${process.getgid()}`);
-  }
-  args.push(...o.cliArgv, o.image, "sh", "-c", `set -e; ${o.script}`);
-  return args;
-}
-
-async function runBuildScript(
-  script: string,
-  appDir: string,
-  srcDir: string,
-  req: BuildRequest,
-  onLine: (line: string) => void
-): Promise<number> {
-  const c = config();
-  const timeoutMs = c.BUILD_TIMEOUT_SECONDS * 1000;
-  const env = { ...req.env, CI: "true" };
-
-  if (c.BUILD_RUNNER === "local") {
-    // No isolation. Development only; the worker logs a warning at startup.
-    return runProcess(bashPath(), ["-c", `set -e; ${script}`], {
-      cwd: appDir,
-      env: { ...process.env, ...env },
-      onLine,
-      timeoutMs,
-      signal: req.signal,
-    });
-  }
-
-  const image =
-    req.runtime.runtime === "python" ? c.BUILD_IMAGE_PYTHON : c.BUILD_IMAGE_NODE;
-  const rel = path.relative(srcDir, appDir).split(path.sep).join("/");
-  const name = `egg-build-${req.deploymentId.slice(0, 8)}`;
-  // Values are passed through the docker CLI's own environment, not argv, except
-  // for names that would change how the docker command itself runs.
-  const cli = buildCliEnv(env, process.env);
-  const args = dockerBuildArgs({
-    name,
-    srcDir,
-    rel,
-    image,
-    script,
-    cliArgv: cli.argv,
-    memoryMb: req.memoryMb,
-    serverMemoryMb: req.serverMemoryMb,
-  });
-
-  return runProcess("docker", args, {
-    env: cli.env,
-    onLine,
-    timeoutMs,
-    signal: req.signal,
-    onTimeout: () => {
-      void runProcess("docker", ["kill", name]).catch(() => {});
-    },
-  });
-}

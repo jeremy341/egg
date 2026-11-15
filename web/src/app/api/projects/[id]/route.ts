@@ -1,11 +1,7 @@
 import { readJsonLimited } from "@/server/body-limit";
 import { authed, handle, ok } from "@/server/http";
-import {
-  deleteProjectRecords,
-  getProjectForUser,
-  updateProject,
-} from "@/server/projects";
-import { removeProjectFromServer } from "@/server/runtime-info";
+import { deleteProject } from "@/server/project-delete";
+import { getProjectForUser, updateProject } from "@/server/projects";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -31,9 +27,6 @@ export const DELETE = handle<Ctx>(async (req, { params }) => {
   const user = await authed();
   const { id } = await params;
   const q = req.nextUrl.searchParams;
-  if (q.get("remote") === "1") {
-    await removeProjectFromServer(user.id, id, { deleteData: q.get("data") === "1" });
-  }
-  await deleteProjectRecords(user.id, id);
+  await deleteProject(user.id, id, { remote: q.get("remote") === "1", deleteData: q.get("data") === "1" });
   return ok({ ok: true });
 });

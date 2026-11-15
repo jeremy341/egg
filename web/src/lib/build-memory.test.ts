@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_BUILD_MEMORY_MB,
+  DEFAULT_BUILD_CPUS,
   buildMemoryRange,
+  buildCpuRange,
+  checkBuildCpu,
   checkBuildMemory,
   reportedMemoryMb,
+  reportedCpus,
 } from "@/lib/build-memory";
 
 describe("build memory range", () => {
@@ -43,5 +47,33 @@ describe("reported memory", () => {
     expect(reportedMemoryMb(JSON.stringify({ memTotalMb: null }))).toBeNull();
     expect(reportedMemoryMb("not json")).toBeNull();
     expect(reportedMemoryMb(null)).toBeNull();
+  });
+});
+
+describe("build CPU range", () => {
+  it("defaults to two cores and caps the saved setting to a smaller reported Nest server", () => {
+    expect(DEFAULT_BUILD_CPUS).toBe(2);
+    expect(buildCpuRange(8)).toEqual({ min: 0.5, max: 8, default: 2 });
+    expect(buildCpuRange(1)).toEqual({ min: 0.5, max: 1, default: 1 });
+  });
+
+  it("keeps the current two-core cap when the probe is missing", () => {
+    expect(buildCpuRange(null)).toEqual({ min: 0.5, max: 2, default: 2 });
+    expect(buildCpuRange(0)).toEqual({ min: 0.5, max: 2, default: 2 });
+  });
+
+  it("accepts quarter-core increments only within the reported capacity", () => {
+    expect(checkBuildCpu(1.25, 4)).toBeNull();
+    expect(checkBuildCpu(1.1, 4)).toMatch(/0.25/);
+    expect(checkBuildCpu(0.25, 4)).toMatch(/0.5/);
+    expect(checkBuildCpu(4.25, 4)).toMatch(/4/);
+  });
+});
+
+describe("reported CPU capability", () => {
+  it("reads a positive core count from the server probe", () => {
+    expect(reportedCpus(JSON.stringify({ cpus: 8 }))).toBe(8);
+    expect(reportedCpus(JSON.stringify({ cpus: 0 }))).toBeNull();
+    expect(reportedCpus("not json")).toBeNull();
   });
 });

@@ -1,16 +1,20 @@
 import { rmSync } from "node:fs";
-import { and, desc, eq, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, ne } from "drizzle-orm";
 import { open } from "@/server/crypto";
+import { receiveGithubRelease } from "@/server/builds/release";
+import { GithubBuildError, discardUpload } from "@/server/builds/uploads";
 import { config, githubConfigured } from "@/server/config";
 import { installationToken } from "@/server/github/app";
 import { getDb, schema } from "@/server/db";
-import { defaultBuilder, type Builder } from "@/server/deploy/build";
+import { defaultSourceBuilder, type Builder } from "@/server/deploy/build";
+import { BuildLockError } from "@/server/deploy/build-lock";
+import { ContainerBuildError, checkContainerReady, discardBuildScript, runContainerBuild } from "@/server/deploy/container-build";
+import { preflightNeeds, sessionPreflight, type PreflightRunner } from "@/server/deploy/container-probe";
 import {
   DEFAULT_UNIT_DIR,
   KEEP_PREVIEWS,
   KEEP_RELEASES,
   currentLink,
-  incomingArchive,
   releaseDir,
   unitName,
 } from "@/server/deploy/layout";
@@ -30,12 +34,19 @@ import { dispatchDeploymentEvent } from "@/server/webhooks";
 import { connectToServer, type ServerRow } from "@/server/servers";
 import { shellQuote, type NestSession } from "@/server/ssh/connection";
 import { probeSession, type NestProbe } from "@/server/ssh/probe";
-import { reportedMemoryMb } from "@/lib/build-memory";
+import { buildCpuRange, reportedCpus, reportedMemoryMb } from "@/lib/build-memory";
 
 export class DeployError extends Error {}
 
 export type PipelineDeps = {
-  build: Builder;
+  /** Clone and pack the source only; the install and build run on the container. Defaults to the real one. */
+  sourceBuild?: Builder;
+  /** The check run on the container before anything is uploaded. Defaults to the real script. */
+  preflight?: (session: NestSession) => PreflightRunner;
+  /** How often a build waits to look at the container's build lock again, in ms. */
+  lockPollMs?: number;
+  /** GitHub builds: how long a deployment waits for the release to arrive, and how often it looks. Defaults: 60 minutes, 10 seconds. */
+  githubWait?: { timeoutMs?: number; pollMs?: number };
   connect: (server: ServerRow) => Promise<NestSession>;
   /** Short-lived GitHub token for a private repo, if the App is set up. */
   installationToken?: (installationId: number) => Promise<string>;
@@ -45,8 +56,8 @@ export type PipelineDeps = {
 
 export function defaultDeps(): PipelineDeps {
   return {
-    build: defaultBuilder,
-    connect: connectToServer,
+    sourceBuild: defaultSourceBuilder,
+    connect: (server) => connectToServer(server, { allowDuringCleanup: true }),
     installationToken: githubConfigured() ? (id) => installationToken(id) : undefined,
     unitDir: config().UNIT_DIR || DEFAULT_UNIT_DIR,
     healthTimeoutSeconds: 45,
@@ -80,6 +91,23 @@ async function load(deploymentId: string) {
 }
 
 /** Decrypted variables for one environment, minus names we reserve. */
+export function mergeEnvForDeployment(
+  rows: Array<{ key: string; target: "all" | "production" | "preview"; value: string }>,
+  env: "production" | "preview"
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  const specificity = new Map<string, number>();
+  for (const row of rows) {
+    if (!ENV_KEY.test(row.key) || RESERVED_ENV.has(row.key)) continue;
+    if (row.target !== "all" && row.target !== env) continue;
+    const rank = row.target === env ? 1 : 0;
+    if ((specificity.get(row.key) ?? -1) > rank) continue;
+    out[row.key] = row.value;
+    specificity.set(row.key, rank);
+  }
+  return out;
+}
+
 export async function envForDeployment(
   projectId: string,
   env: "production" | "preview"
@@ -89,13 +117,10 @@ export async function envForDeployment(
     .select()
     .from(schema.envVars)
     .where(eq(schema.envVars.projectId, projectId));
-  const out: Record<string, string> = {};
-  for (const r of rows) {
-    if (r.target !== "all" && r.target !== env) continue;
-    if (!ENV_KEY.test(r.key) || RESERVED_ENV.has(r.key)) continue;
-    out[r.key] = open(r.valueEnc, `env:${projectId}:${r.key}:${r.target}`);
-  }
-  return out;
+  return mergeEnvForDeployment(
+    rows.map((r) => ({ ...r, value: open(r.valueEnc, `env:${projectId}:${r.key}:${r.target}`) })),
+    env
+  );
 }
 
 /**
@@ -139,16 +164,35 @@ async function stateOf(id: string) {
   )?.s;
 }
 
+/** Atomically win the activation boundary against a concurrent user cancel. */
+async function beginActivation(id: string): Promise<boolean> {
+  const db = await getDb();
+  const moved = await db
+    .update(schema.deployments)
+    .set({ activationStartedAt: new Date() })
+    .where(
+      and(
+        eq(schema.deployments.id, id),
+        eq(schema.deployments.state, "deploying"),
+        isNull(schema.deployments.activationStartedAt)
+      )
+    )
+    .returning({ id: schema.deployments.id });
+  return moved.length === 1;
+}
+
 /** Run a script on the container, streaming output into the log. */
 async function run(
   session: NestSession,
   log: DeploymentLogger,
   label: string,
   script: string,
-  timeoutMs = 120_000
+  timeoutMs = 120_000,
+  signal?: AbortSignal
 ) {
   const res = await session.script(script, {
     timeoutMs,
+    signal,
     onLine: (l, stream) => (stream === "stderr" ? log.warn(l) : log.info(l)),
   });
   if (res.code === remote.NOT_OURS_EXIT) {
@@ -289,8 +333,17 @@ async function cleanup(
   }
   for (const r of seen) keep.add(r);
 
+  // A build of this project that is running right now keeps its variables file. (A project has one
+  // deploy at a time, so this is normally empty; the file of an interrupted build is removed.)
+  const building = (
+    await db
+      .select({ releaseId: schema.deployments.releaseId })
+      .from(schema.deployments)
+      .where(and(eq(schema.deployments.projectId, project.id), inArray(schema.deployments.state, ["building", "deploying"])))
+  ).map((d) => d.releaseId);
+
   await session
-    .script(remote.pruneReleases(home, project.slug, [...keep]), {
+    .script(remote.pruneReleases(home, project.slug, [...keep], building), {
       timeoutMs: 120_000,
       onLine: (l) => log.info(l),
     })
@@ -316,63 +369,93 @@ export async function runDeployJob(
   let workDir: string | null = null;
   let session: NestSession | null = null;
   let previewUnitWritten = false;
+  let productionUnitWritten = false;
+  let productionActivated = false;
+  let productionUnitName: string | null = null;
+  let previousUnitFile: string | null = null;
+  let nextProductionUnitFile: string | null = null;
+  // A GitHub build: the release is uploaded by the project's workflow, and nothing is cloned or built here.
+  const githubBuild = project.buildLocation === "github";
+  let ownsUpload = false;
 
   try {
     if ((await stateOf(deploymentId)) !== "queued") return;
     if (!(await setState(deploymentId, "building", { startedAt: new Date() }))) return;
+    ownsUpload = githubBuild;
     log.info(
       `Deploying ${project.name} (${dep.env}) to ${server.nestUsername}@${server.host}`
     );
 
     const env = await envForDeployment(project.id, dep.env);
     const token =
-      project.installationId && deps.installationToken
+      !githubBuild && project.installationId && deps.installationToken
         ? await deps.installationToken(project.installationId)
         : null;
     log.setSecrets([...Object.values(env), token ?? ""]);
 
-    // ---- build (off the Nest container)
-    const built = await deps.build({
-      deploymentId,
-      runtime: {
-        runtime: project.runtime,
-        installCommand: project.installCommand,
-        buildCommand: project.buildCommand,
-        startCommand: project.startCommand,
-        outputDir: project.outputDir,
-      },
-      rootDir: project.rootDir,
-      source: {
-        cloneUrl: project.repoUrl,
-        token,
-        branch: dep.branch,
-        sha: dep.source === "redeploy" ? dep.commitSha : null,
-      },
-      env,
-      memoryMb: server.buildMemoryMb,
-      serverMemoryMb: reportedMemoryMb(server.probe),
-      log: log.log,
-      signal,
-    });
-    workDir = built.workDir;
+    // ---- source (on this machine). Egg only clones and packs the source here; the install and build
+    // run later on the Nest container, under a memory and CPU cap. No project is built on Egg's machine.
+    const built = githubBuild
+      ? await receiveGithubRelease({
+          deploymentId,
+          commit: dep.commitSha,
+          branch: dep.branch,
+          runtime: {
+            runtime: project.runtime,
+            installCommand: project.installCommand,
+            buildCommand: project.buildCommand,
+            startCommand: project.startCommand,
+            outputDir: project.outputDir,
+          },
+          log,
+          signal,
+          // Anything but "building" (canceled, or the deployment removed) ends the wait.
+          isCanceled: async () => (await stateOf(deploymentId)) !== "building",
+          wait: deps.githubWait,
+        })
+      : await (deps.sourceBuild ?? defaultSourceBuilder)({
+        deploymentId,
+        runtime: {
+          runtime: project.runtime,
+          installCommand: project.installCommand,
+          buildCommand: project.buildCommand,
+          startCommand: project.startCommand,
+          outputDir: project.outputDir,
+        },
+        rootDir: project.rootDir,
+        source: {
+          cloneUrl: project.repoUrl,
+          token,
+          branch: dep.branch,
+          sha: dep.source === "redeploy" ? dep.commitSha : null,
+        },
+        env,
+        log: log.log,
+        signal,
+      });
+    workDir = built.workDir || null;
     throwIfCanceled(signal);
     await db
       .update(schema.deployments)
       .set({
         commitSha: built.commit.sha,
-        commitMessage: built.commit.message,
+        commitMessage: githubBuild
+          ? dep.commitMessage || `Built on GitHub Actions (run ${"run" in built ? built.run : ""})`
+          : built.commit.message,
         author: built.commit.author || dep.author,
         archiveBytes: built.sizeBytes,
       })
       .where(eq(schema.deployments.id, deploymentId));
 
     // ---- release on Nest
-    if (!(await setState(deploymentId, "deploying"))) throw new DeployError("The deployment was canceled.");
+    // The deployment stays "building" until the build has finished on the container.
     log.info("Connecting to your Nest container");
     session = await deps.connect(server);
+    throwIfCanceled(signal);
     const probe = await getProbe(session, server);
     const home = probe.home;
     const unitInfo = unitPaths(project, dep, home);
+    productionUnitName = unitInfo.unit;
 
     let startCommand: string;
     try {
@@ -405,36 +488,53 @@ export async function runDeployJob(
       );
     }
 
-    await run(session, log, "Preparing folders", remote.prepareDirs(home, project.slug));
-    await run(session, log, "Checking the service name", remote.guardUnitFree(deps.unitDir, unitInfo.unit));
-    log.info(`Uploading ${(built.sizeBytes / 1e6).toFixed(1)} MB`);
-    await session.uploadFile(built.archivePath, incomingArchive(home, project.slug, dep.releaseId));
     throwIfCanceled(signal);
+    // A GitHub release is already built, so the user's own install command plays no part in what the container needs.
+    const needs = preflightNeeds(githubBuild ? { runtime: project.runtime, installCommand: null } : project, built.files, built.spec);
+    const preflight = deps.preflight ? deps.preflight(session) : sessionPreflight(session);
+    // Look at the container before anything is uploaded or created: one fix line, nothing changed.
+    await checkContainerReady({ preflight, needs, home, slug: project.slug, log, signal });
+    await run(session, log, "Preparing folders", remote.prepareDirs(home, project.slug), 120_000, signal);
+    await run(session, log, "Checking the service name", remote.guardUnitFree(deps.unitDir, unitInfo.unit), 120_000, signal);
 
-    await run(
+    // Install and build in the new release folder, under a cap, while the running app keeps serving.
+    await runContainerBuild({
       session,
       log,
-      "Unpacking the release",
-      remote.unpackRelease({
-        home,
-        slug: project.slug,
-        releaseId: dep.releaseId,
-        sha256: built.sha256,
-        remoteInstall: built.spec.remoteInstall,
-      }),
-      15 * 60_000
-    );
+      serverId: server.id,
+      deploymentId,
+      home,
+      slug: project.slug,
+      releaseId: dep.releaseId,
+      built,
+      env,
+      memoryMb: server.buildMemoryMb,
+      cpuCores: Math.min(server.buildCpuQuarters / 4, buildCpuRange(probe.cpus ?? reportedCpus(server.probe)).max),
+      containerMemoryMb: probe.memTotalMb ?? reportedMemoryMb(server.probe),
+      appRunning: Boolean(await currentProduction(project.id, dep.id)),
+      needs,
+      preflight,
+      signal,
+      lockPollMs: deps.lockPollMs,
+      artifact: githubBuild ? "the release built on GitHub" : undefined,
+    });
+    throwIfCanceled(signal);
+    if (!(await setState(deploymentId, "deploying"))) {
+      // Canceled while the build ran: nothing was switched, so remove the release folder it made.
+      await session
+        .script(discardBuildScript({ home, slug: project.slug, releaseId: dep.releaseId }), { timeoutMs: 60_000 })
+        .catch(() => {});
+      throw new DeployError("The deployment was canceled.");
+    }
 
     const relDir = releaseDir(home, project.slug, dep.releaseId);
-    await session.writeFile(`${relDir}/.env`, renderEnvFile(env), "600");
+    await session.writeFile(`${relDir}/.env`, renderEnvFile(env), "600", { signal });
 
     const venv =
       project.runtime === "python" && built.files.hasRequirements
         ? `${unitInfo.workDir}/.venv/bin`
         : undefined;
-    await session.writeFile(
-      `${deps.unitDir}/${unitInfo.unit}`,
-      remote.unitFile({
+    const unitFile = remote.unitFile({
         slug: project.slug,
         description: `Egg: ${project.name}${dep.env === "preview" ? ` (preview ${dep.releaseId.slice(0, 8)})` : ""}`,
         workDir: unitInfo.workDir,
@@ -442,22 +542,42 @@ export async function runDeployJob(
         port: dep.port,
         startCommand,
         pathPrefix: venv,
-      })
-    );
-    previewUnitWritten = dep.env === "preview";
-    await run(session, log, "Registering the service", remote.installUnit(deps.unitDir, unitInfo.unit));
-    throwIfCanceled(signal);
+      });
+    if (dep.env === "production") {
+      const currentUnit = await session.exec(`cat ${shellQuote(`${deps.unitDir}/${unitInfo.unit}`)}`);
+      previousUnitFile = currentUnit.code === 0 ? currentUnit.stdout : null;
+      nextProductionUnitFile = unitFile;
+    }
+    if (dep.env === "preview") {
+      await session.writeFile(`${deps.unitDir}/${unitInfo.unit}`, unitFile, "644", { signal });
+      previewUnitWritten = true;
+      await run(session, log, "Registering the service", remote.installUnit(deps.unitDir, unitInfo.unit), 120_000, signal);
+      throwIfCanceled(signal);
+    }
 
     // ---- switch over, with automatic revert
     const previous = dep.env === "production" ? await currentProduction(project.id, dep.id) : null;
+    throwIfCanceled(signal);
+    if (!(await beginActivation(deploymentId))) throw new DeployError("The deployment was canceled before activation.");
 
     if (dep.env === "production") {
+      await session.writeFile(`${deps.unitDir}/${unitInfo.unit}`, unitFile, "644");
+      productionUnitWritten = true;
+      await run(session, log, "Registering the service", remote.installUnit(deps.unitDir, unitInfo.unit));
       await run(
         session,
         log,
         "Switching the release",
-        remote.activateProduction({ home, slug: project.slug, releaseId: dep.releaseId, unit: unitInfo.unit })
+        remote.activateProduction({
+          home,
+          slug: project.slug,
+          releaseId: dep.releaseId,
+          unit: unitInfo.unit,
+          unitDir: deps.unitDir,
+          restoreUnitFile: previousUnitFile,
+        })
       );
+      productionActivated = true;
     } else {
       await run(session, log, "Starting the preview", remote.startUnit(unitInfo.unit));
     }
@@ -485,6 +605,9 @@ export async function runDeployJob(
             slug: project.slug,
             releaseId: previous.releaseId,
             unit: unitInfo.unit,
+            unitDir: deps.unitDir,
+            unitFile: previousUnitFile,
+            restoreUnitFile: nextProductionUnitFile,
           })
         ).catch((e) => log.error(String(e.message ?? e)));
         const back = await healthy(session, log, unitInfo.unit, previous.port, project.healthPath, 20);
@@ -515,7 +638,7 @@ export async function runDeployJob(
     const message = err instanceof Error ? err.message : String(err);
     log.error(message);
     await log.flush().catch(() => {});
-    const canceled = signal.aborted || (await stateOf(deploymentId)) === "canceled";
+    const canceled = (await stateOf(deploymentId)) === "canceled";
     if (previewUnitWritten && session) {
       // A preview that did not come up must not stay behind as an enabled, restarting service.
       const home = (await getProbe(session, server).catch(() => null))?.home;
@@ -538,17 +661,23 @@ export async function runDeployJob(
         }
       }
     }
+    if (dep.env === "production" && productionUnitWritten && !productionActivated && session) {
+      if (productionUnitName) {
+        await session.script(remote.restoreUnit(deps.unitDir, productionUnitName, previousUnitFile), { timeoutMs: 30_000 }).catch(() => {});
+      }
+    }
     await setState(deploymentId, canceled ? "canceled" : "error", {
       error: log.mask(message).slice(0, 500),
       finishedAt: new Date(),
     });
-    if (!(err instanceof DeployError) && !canceled) {
+    if (!(err instanceof DeployError) && !(err instanceof ContainerBuildError) && !(err instanceof BuildLockError) && !(err instanceof GithubBuildError) && !canceled) {
       // Unexpected failures are still reported to the user, but also logged.
       console.error(`Deployment ${deploymentId} failed`, err);
     }
   } finally {
     session?.close();
     if (workDir) rmSync(workDir, { recursive: true, force: true });
+    if (ownsUpload) discardUpload(deploymentId);
     await log.flush().catch(() => {});
   }
 }
@@ -556,7 +685,8 @@ export async function runDeployJob(
 /** Switch production back to an earlier release that is still on the server. */
 export async function runRollbackJob(
   deploymentId: string,
-  deps: PipelineDeps = defaultDeps()
+  deps: PipelineDeps = defaultDeps(),
+  signal: AbortSignal = new AbortController().signal
 ): Promise<void> {
   const { dep, project, server } = await load(deploymentId);
   const log = new DeploymentLogger(deploymentId);
@@ -564,17 +694,21 @@ export async function runRollbackJob(
 
   try {
     if ((await stateOf(deploymentId)) !== "queued") return;
-    await setState(deploymentId, "deploying", { startedAt: new Date() });
+    if (!(await setState(deploymentId, "deploying", { startedAt: new Date() }))) return;
+    throwIfCanceled(signal);
     log.info(`Rolling ${project.name} back to release ${dep.releaseId.slice(0, 8)}`);
 
     session = await deps.connect(server);
+    throwIfCanceled(signal);
     const probe = await getProbe(session, server);
     const home = probe.home;
     const unit = unitName(project.slug);
     const previous = await currentProduction(project.id, dep.id);
 
+    throwIfCanceled(signal);
     const exists = await session.exec(
-      `test -d ${shellQuote(releaseDir(home, project.slug, dep.releaseId))}`
+      `test -d ${shellQuote(releaseDir(home, project.slug, dep.releaseId))}`,
+      { signal }
     );
     if (exists.code !== 0) {
       throw new DeployError(
@@ -582,11 +716,23 @@ export async function runRollbackJob(
       );
     }
 
+    throwIfCanceled(signal);
+    const oldUnit = await session.exec(`cat ${shellQuote(`${deps.unitDir}/${unit}`)}`);
+    const previousUnitFile = oldUnit.code === 0 ? oldUnit.stdout : null;
+    throwIfCanceled(signal);
+    if (!(await beginActivation(deploymentId))) throw new DeployError("The rollback was canceled before activation.");
     await run(
       session,
       log,
       "Switching the release",
-      remote.activateProduction({ home, slug: project.slug, releaseId: dep.releaseId, unit })
+      remote.activateProduction({
+        home,
+        slug: project.slug,
+        releaseId: dep.releaseId,
+        unit,
+        unitDir: deps.unitDir,
+        restoreUnitFile: previousUnitFile,
+      })
     );
     const ok = await healthy(session, log, unit, dep.port, project.healthPath, deps.healthTimeoutSeconds);
     if (!ok) {
@@ -597,21 +743,30 @@ export async function runRollbackJob(
           session,
           log,
           "Restoring",
-          remote.activateProduction({ home, slug: project.slug, releaseId: previous.releaseId, unit })
+          remote.activateProduction({
+            home,
+            slug: project.slug,
+            releaseId: previous.releaseId,
+            unit,
+            unitDir: deps.unitDir,
+            restoreUnitFile: previousUnitFile,
+          })
         ).catch((e) => log.error(String(e.message ?? e)));
       }
       throw new DeployError("The older release did not become healthy, so nothing was changed.");
     }
 
+    // Once switched and healthy, cancellation is too late to undo production.
     await markCurrent(project.id, dep.id);
     log.info("Rollback complete. Database changes are not reversed.");
     await log.flush();
-    await setState(deploymentId, "ready", { finishedAt: new Date() });
+    await setState(deploymentId, "ready", { finishedAt: new Date() }, true);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     log.error(message);
     await log.flush().catch(() => {});
-    await setState(deploymentId, "error", { error: message.slice(0, 500), finishedAt: new Date() });
+    const canceled = (await stateOf(deploymentId)) === "canceled";
+    await setState(deploymentId, canceled ? "canceled" : "error", { error: message.slice(0, 500), finishedAt: new Date() });
     if (!(err instanceof DeployError)) console.error(`Rollback ${deploymentId} failed`, err);
   } finally {
     session?.close();

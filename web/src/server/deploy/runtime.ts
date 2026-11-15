@@ -8,6 +8,8 @@ export type ProjectFiles = {
   hasPackageJson: boolean;
   hasBuildScript: boolean;
   hasRequirements: boolean;
+  /** The `engines.node` range in package.json, if there is one. */
+  nodeEngine?: string | null;
 };
 
 export type RuntimeInput = {

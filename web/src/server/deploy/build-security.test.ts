@@ -7,7 +7,7 @@ import {
   assertCloneUrl,
   assertGitRef,
   assertGitSha,
-  buildCliEnv,
+  gitEnvironment,
   resolveInside,
 } from "@/server/deploy/build";
 
@@ -72,33 +72,14 @@ describe("git arguments", () => {
   });
 });
 
-describe("buildCliEnv", () => {
-  it("keeps ordinary variables out of argv and in the environment", () => {
-    const { env, argv } = buildCliEnv({ API_KEY: "abc123", NODE_ENV: "x" }, { PATH: "/bin" });
-    expect(env.API_KEY).toBe("abc123");
-    expect(argv).toEqual(["-e", "API_KEY", "-e", "NODE_ENV"]);
-  });
-
-  it("never lets a project variable change how the docker command itself runs", () => {
-    const dangerous = {
-      DOCKER_HOST: "ssh://evil",
-      DOCKER_CONFIG: "/tmp/x",
-      LD_PRELOAD: "/tmp/evil.so",
-      LD_LIBRARY_PATH: "/tmp",
-      BASH_ENV: "/tmp/x",
-      SSH_AUTH_SOCK: "/tmp/agent",
-      HTTPS_PROXY: "http://evil",
-      SSL_CERT_FILE: "/tmp/ca",
-      GIT_SSH_COMMAND: "evil",
-      docker_host: "lowercase",
-    };
-    const base = { PATH: "/bin" };
-    const { env, argv } = buildCliEnv(dangerous, base);
-    for (const k of Object.keys(dangerous)) expect(env[k], k).toBeUndefined();
-    expect(env.PATH).toBe("/bin");
-    // They still reach the build container, as explicit values.
-    expect(argv).toContain("DOCKER_HOST=ssh://evil");
-    expect(argv).toContain("LD_PRELOAD=/tmp/evil.so");
-    expect(argv).toContain("docker_host=lowercase");
+describe("gitEnvironment", () => {
+  it("configures GitHub auth through environment instead of process arguments", () => {
+    const token = "ghs-private-token";
+    const env = gitEnvironment(token);
+    expect(env.GIT_CONFIG_KEY_0).toBe("http.https://github.com/.extraheader");
+    expect(env.GIT_CONFIG_VALUE_0).toBe(
+      `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`
+    );
+    expect(env.GIT_CONFIG_COUNT).toBe("1");
   });
 });
