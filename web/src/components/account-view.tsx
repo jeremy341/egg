@@ -129,7 +129,7 @@ export function AccountView({ name, sessions }: { name: string; sessions: Sessio
 
       <Card
         id="delete-account-heading"
-        title="Delete Account"
+        title="Delete account"
         description="Removes your projects, servers, domains, keys and history from Egg. Apps already running on your Nest container keep running, but nothing manages them any more. Delete the SSH key in your Nest dashboard too."
         tone="danger"
         footer={
