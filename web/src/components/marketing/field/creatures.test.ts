@@ -55,11 +55,16 @@ describe("the chicken", () => {
     expect(chick.count).toEqual([1, 1, 1]);
   });
 
-  it("is ink grey in the light theme and not a colour", () => {
-    for (const hex of chick.ramp.light) {
-      const [r, g, b] = hexToRgb(hex);
-      expect(Math.max(r, g, b) - Math.min(r, g, b), hex).toBeLessThanOrEqual(2);
+  it("is yellow in both themes, and the light core is the deepest so it does not wash out", () => {
+    for (const theme of ["dark", "light"] as const) {
+      for (const hex of chick.ramp[theme]) {
+        const [r, g, b] = hexToRgb(hex);
+        expect(r, hex).toBeGreaterThan(g);
+        expect(g, hex).toBeGreaterThan(b);
+      }
     }
+    const lum = (hex: string) => contrast(hexToRgb(hex), [255, 255, 255] as RGB);
+    expect(lum(chick.ramp.light[4])).toBeGreaterThan(lum(chick.ramp.light[0]));
   });
 
   it("gives every action enough poses to read as one movement", () => {
