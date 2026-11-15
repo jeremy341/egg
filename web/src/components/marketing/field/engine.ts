@@ -354,8 +354,8 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean, params:
     w = nw;
     h = nh;
     dpr = ndpr;
-    // Cells small enough to move in fine steps and big enough to read as characters: 8 pixels on a desktop, 6 on a phone.
-    u = w < 640 ? 6 : 8;
+    // As big as Orry: the body is 18 rows, so 7 pixel cells make it about 126 pixels tall on a desktop and 4 pixel cells about 72 on a phone.
+    u = w < 640 ? 4 : 7;
     if (resized) {
       canvas.width = Math.round(w * dpr);
       canvas.height = Math.round(h * dpr);
