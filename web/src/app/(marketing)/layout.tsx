@@ -47,7 +47,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
 
       {/* 60px tall: two grid cells, so the bar sits on the grid. */}
       <SiteHeader>
-        <div className="mx-auto flex h-15 max-w-[1400px] items-center gap-3 px-6 md:gap-6 lg:gap-8">
+        <div className="board-col flex h-15 items-center gap-3 md:gap-6 lg:gap-8">
           <Link href="/" aria-label="Egg, home" className="touch-target flex shrink-0 items-center gap-2 rounded-md outline-offset-4">
             <NestMark className="size-6" />
             <span className="font-pixel text-[21px] leading-none font-semibold whitespace-nowrap">Egg</span>
@@ -78,8 +78,8 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
       <FooterSwitch
         full={
           <footer>
-            <div className="mx-auto grid max-w-[1400px] gap-12 px-6 py-16 md:grid-cols-[1.5fr_1fr_1fr_1fr]">
-              <div>
+            <div className="board-col grid gap-12 py-16 md:grid-cols-[1.5fr_1fr_1fr_1fr] max-md:grid-cols-2 max-md:gap-x-6 max-md:gap-y-10">
+              <div className="max-md:col-span-2">
                 <Link href="/" className="touch-target flex w-fit items-center gap-2 rounded-md">
                   <NestMark className="size-6" />
                   <span className="font-pixel text-[21px] leading-none font-semibold">Egg</span>
@@ -97,7 +97,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
                   </a>
                 ))}
               </nav>
-              <nav aria-label="Resources" className="flex flex-col text-[14px]">
+              <nav aria-label="Resources" className="flex flex-col text-[14px] max-md:col-span-2 max-md:order-last">
                 <p className="mb-2 font-medium">Resources</p>
                 <Link href="/security" className={footerLink}>
                   How Egg protects your container
