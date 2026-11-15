@@ -362,7 +362,7 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean): Field 
     for (let i = 0; i < 40; i++) {
       const x = margin + random() * Math.max(1, w - margin * 2);
       const y = lo + random() * Math.max(1, hi - lo);
-      const open = clearOf(x, y - bodyH() * 0.5, rects, u * 5, 1);
+      const open = clearOf(x, y - bodyH() * 0.5, rects, bodyW() * 0.4, 1);
       let gap = Infinity;
       for (const c of list) {
         if (c === near) continue;
@@ -682,7 +682,7 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean): Field 
             wy += (dy / d) * speed * near * (c.eat ? 1.25 : 1);
           }
           if (c.rest <= 0 && c.peck <= 0) {
-            const [fx, fy] = pushOut(c.x, c.y - bodyH() * 0.5, rects, u * 7);
+            const [fx, fy] = pushOut(c.x, c.y - bodyH() * 0.5, rects, bodyW() * 0.45);
             wx += fx * speed * 1.5;
             wy += fy * speed * 1.5;
           }

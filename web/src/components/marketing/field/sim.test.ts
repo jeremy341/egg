@@ -49,8 +49,17 @@ describe("the bigger sprite", () => {
     return out;
   };
 
-  it("draws a lone cell as four", () => {
+  it("draws a lone cell as four, or nine", () => {
     expect(cellsOf(parse(["5"], 2)).size).toBe(4);
+    expect(cellsOf(parse(["5"], 3)).size).toBe(9);
+  });
+
+  it("rounds a block more at three times the size, still keeping its edges", () => {
+    const big = cellsOf(parse(["555", "555", "555"], 3));
+    expect(big.size).toBeLessThan(81);
+    expect(big.size).toBeGreaterThan(66);
+    expect(big.has("0,0")).toBe(false);
+    for (const edge of ["4,0", "0,4", "8,4", "4,8", "4,4"]) expect(big.has(edge), edge).toBe(true);
   });
 
   it("rounds the four corners of a block and nothing else", () => {

@@ -50,9 +50,16 @@ describe("the chicken", () => {
     expect(chick.glow).toBeGreaterThanOrEqual(1);
   });
 
-  it("is few and big: a handful on the page, each drawn at least twice the sprite size", () => {
-    expect(chick.scale).toBeGreaterThanOrEqual(2);
-    expect(chick.count[2]).toBeLessThanOrEqual(4);
+  it("is one big chicken, drawn at least three times the sprite size", () => {
+    expect(chick.scale).toBeGreaterThanOrEqual(3);
+    expect(chick.count).toEqual([1, 1, 1]);
+  });
+
+  it("is ink grey in the light theme and not a colour", () => {
+    for (const hex of chick.ramp.light) {
+      const [r, g, b] = hexToRgb(hex);
+      expect(Math.max(r, g, b) - Math.min(r, g, b), hex).toBeLessThanOrEqual(2);
+    }
   });
 
   it("gives every action enough poses to read as one movement", () => {
