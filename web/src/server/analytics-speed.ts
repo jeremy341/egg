@@ -4,6 +4,7 @@ import {
   VITALS,
   VITAL_NAMES,
   VITAL_RATING_LABELS,
+  VITAL_THRESHOLDS,
   VITAL_UNITS,
   median,
   percentile,
@@ -13,7 +14,7 @@ import {
 } from "@/server/analytics-fields";
 import { lastDays, sinceDay } from "@/server/analytics-events";
 import { getDb, schema } from "@/server/db";
-import { getProjectForUser } from "@/server/projects";
+import { getReadableProject } from "@/server/projects";
 import { MIN_SAMPLE } from "@/server/stats";
 
 /**
@@ -128,31 +129,53 @@ export function summariseVitals(rows: readonly VitalRow[], days = 30): SpeedSumm
   };
 }
 
-/** The most reports one read looks at, newest first, so a very busy site does not load the table. */
-const MAX_REPORTS = 20_000;
-
 export async function speedSummary(userId: string, projectId: string, days = 30, now = new Date()): Promise<SpeedSummary> {
-  const project = await getProjectForUser(userId, projectId);
+  const project = await getReadableProject(userId, projectId);
   const db = await getDb();
-  const rows = await db
-    .select({
-      at: schema.analyticsVitals.at,
-      lcp: schema.analyticsVitals.lcp,
-      cls: schema.analyticsVitals.cls,
-      inp: schema.analyticsVitals.inp,
-      fcp: schema.analyticsVitals.fcp,
-      ttfb: schema.analyticsVitals.ttfb,
-    })
-    .from(schema.analyticsVitals)
-    .where(
-      and(
-        eq(schema.analyticsVitals.projectId, project.id),
-        gte(schema.analyticsVitals.at, new Date(`${sinceDay(days, now)}T00:00:00Z`))
+  const start = new Date(`${sinceDay(days, now)}T00:00:00Z`).getTime();
+  const [total] = await db.all<{ n: number }>(sql`select count(*) as n from analytics_vitals where project_id = ${project.id} and at >= ${start}`);
+  const metrics: SpeedSummary["metrics"] = [];
+  for (const metric of VITALS) {
+    const column = schema.analyticsVitals[metric];
+    const [good, poor] = VITAL_THRESHOLDS[metric];
+    type Aggregate = { day: string | null; samples: number; median: number; p75: number; good: number; needs: number; poor: number };
+    // Window functions sort in SQLite; only one aggregate per day and one overall
+    // crosses into the application, regardless of the number of reports.
+    const rows = await db.all<Aggregate>(sql`
+      with source as (
+        select ${column} as value, strftime('%Y-%m-%d', at / 1000, 'unixepoch') as day
+        from analytics_vitals where project_id = ${project.id} and at >= ${start} and ${column} is not null
+      ), ranked as (
+        select value, day, row_number() over (order by value) as r,
+          count(*) over () as n, row_number() over (partition by day order by value) as dr,
+          count(*) over (partition by day) as dn from source
       )
-    )
-    .orderBy(desc(schema.analyticsVitals.at))
-    .limit(MAX_REPORTS);
-  return summariseVitals(rows, days);
+      select null as day, count(*) as samples,
+        avg(case when r in ((n+1)/2, (n+2)/2) then value end) as median,
+        max(case when r = (3*n+3)/4 then value end) as p75,
+        sum(case when value <= ${good} then 1 else 0 end) as good,
+        sum(case when value > ${good} and value <= ${poor} then 1 else 0 end) as needs,
+        sum(case when value > ${poor} then 1 else 0 end) as poor from ranked
+      union all
+      select day, count(*) as samples,
+        avg(case when dr in ((dn+1)/2, (dn+2)/2) then value end) as median,
+        null, null, null, null from ranked group by day having count(*) >= ${MIN_DAILY_REPORTS}
+    `);
+    const overall = rows[0];
+    const samples = Number(overall.samples);
+    const enough = samples >= MIN_SAMPLE;
+    const p75 = enough ? Number(overall.p75) : null;
+    const rating = p75 === null ? null : rateVital(metric, p75);
+    const counts = [Number(overall.good ?? 0), Number(overall.needs ?? 0), Number(overall.poor ?? 0)];
+    const shares = bandShares(counts);
+    metrics.push({ metric, name: VITAL_NAMES[metric], unit: VITAL_UNITS[metric], samples,
+      median: enough ? Number(overall.median) : null, p75, rating,
+      ratingLabel: rating ? VITAL_RATING_LABELS[rating] : null,
+      bands: BAND_ORDER.map((band, i) => ({ rating: band, label: VITAL_RATING_LABELS[band], reports: counts[i], percent: enough ? shares[i] : null })),
+      daily: rows.slice(1).map((r) => ({ day: r.day!, median: Number(r.median), reports: Number(r.samples) })).sort((a, b) => a.day.localeCompare(b.day)),
+    });
+  }
+  return { days, reports: Number(total.n), minimum: MIN_SAMPLE, metrics };
 }
 
 export type ErrorsSummary = {
@@ -167,7 +190,7 @@ const errorDay = sql<string>`strftime('%Y-%m-%d', ${schema.analyticsErrors.at} /
 
 /** The most frequent errors of the last `days` days: the same message from the same file and line counts together. */
 export async function errorsSummary(userId: string, projectId: string, days = 30, now = new Date()): Promise<ErrorsSummary> {
-  const project = await getProjectForUser(userId, projectId);
+  const project = await getReadableProject(userId, projectId);
   const db = await getDb();
   const where = and(
     eq(schema.analyticsErrors.projectId, project.id),

@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, lt, sql } from "drizzle-orm";
 import { getDb, schema } from "@/server/db";
+import { isUniqueViolation } from "@/server/db/errors";
 import { runMonitorPass } from "@/server/monitor";
 import { runStatusProbes } from "@/server/nest-status";
+import { withMaintenanceLease } from "@/server/maintenance-leases";
 import {
   defaultDeps,
   runDeployJob,
@@ -19,7 +21,10 @@ const STALE_AFTER_MS = 60_000;
 /**
  * Atomically claim the oldest queued job whose project has no running job.
  * The eligibility check and state change happen in one UPDATE, so two workers
- * cannot claim separate jobs for the same project.
+ * cannot claim separate jobs for the same project. The claim also stamps the
+ * job with its project, so `jobs_running_project_idx` is a second guard: if
+ * it ever refuses the claim, another worker already holds that project, and
+ * the job is simply left queued (this returns null) for a later tick.
  */
 export async function claimNextJob(workerId: string): Promise<Job | null> {
   const db = await getDb();
@@ -30,6 +35,7 @@ export async function claimNextJob(workerId: string): Promise<Job | null> {
       state: "running",
       lockedBy: workerId,
       lockedAt: now,
+      projectId: sql`(SELECT claimed_deployment.project_id FROM deployments AS claimed_deployment WHERE claimed_deployment.id = ${schema.jobs.deploymentId})`,
       attempts: sql`${schema.jobs.attempts} + 1`,
     })
     .where(
@@ -69,7 +75,11 @@ export async function claimNextJob(workerId: string): Promise<Job | null> {
         )`
       )
     )
-    .returning();
+    .returning()
+    .catch((err: unknown) => {
+      if (isUniqueViolation(err)) return [];
+      throw err;
+    });
   return claimed[0] ?? null;
 }
 
@@ -245,7 +255,7 @@ export function startWorker(options: {
       ? setInterval(() => {
           if (monitoring || stopped) return;
           monitoring = true;
-          void runMonitorPass(options.onError)
+          void withMaintenanceLease("monitor-schedule", () => runMonitorPass(options.onError), 60_000, monitorMs)
             .catch(options.onError)
             .finally(() => {
               monitoring = false;
@@ -260,7 +270,7 @@ export function startWorker(options: {
       ? setInterval(() => {
           if (probing || stopped) return;
           probing = true;
-          void runStatusProbes()
+          void withMaintenanceLease("status-probe-schedule", () => runStatusProbes(), 60_000, statusMs)
             .catch(options.onError)
             .finally(() => {
               probing = false;

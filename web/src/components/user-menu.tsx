@@ -1,8 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { BookOpenIcon, GearSixIcon, PlusIcon, SignOutIcon, UserCircleIcon } from "@phosphor-icons/react";
+import { useRouter } from "next/navigation";
+import { BookOpenIcon, CompassIcon, GearSixIcon, PlusIcon, SignOutIcon, UserCircleIcon } from "@phosphor-icons/react";
 import { useAccount } from "@/components/account-context";
+import { api } from "@/components/api";
+import { requestReplay } from "@/components/onboarding/replay";
 import { CharacterAvatar } from "@/components/ui/character-avatar";
 import {
   DropdownMenu,
@@ -14,11 +17,26 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { replayTarget } from "@/lib/onboarding-flow";
 import { cn } from "@/lib/utils";
 
 /** Account row at the bottom of the sidebar. */
 export function UserMenu({ className }: { className?: string }) {
-  const { user } = useAccount();
+  const { user, servers, projects } = useAccount();
+  const router = useRouter();
+
+  /** Clear the tour marks, then open the page where the tour picks up from where the account stands. */
+  async function showTour() {
+    const target = replayTarget({ serverStatuses: servers.map((s) => s.status), projectCount: projects.length });
+    try {
+      await api("/api/onboarding", { method: "DELETE" });
+    } catch {
+      // The marks stay as they were; the tour still opens, because a replay ignores them.
+    }
+    requestReplay(target);
+    router.push(target.path);
+    router.refresh();
+  }
 
   return (
     <DropdownMenu>
@@ -48,6 +66,10 @@ export function UserMenu({ className }: { className?: string }) {
         <DropdownMenuItem render={<Link href="/connect" />}>
           <PlusIcon />
           Connect a server
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => void showTour()}>
+          <CompassIcon />
+          Show the setup tour
         </DropdownMenuItem>
         <DropdownMenuItem
           render={

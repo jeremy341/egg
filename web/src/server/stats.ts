@@ -1,4 +1,4 @@
-import { and, count, countDistinct, eq, gt, gte, inArray, isNotNull, isNull, like, lt, sql } from "drizzle-orm";
+import { and, count, countDistinct, eq, gt, gte, inArray, isNotNull, isNull, like, sql } from "drizzle-orm";
 import { formatCount, type Count, type Direction } from "@/lib/stats-format";
 import { getDb, schema } from "@/server/db";
 
@@ -288,15 +288,11 @@ export async function computeStats(now = new Date()): Promise<PublicStats> {
   const thisWeek = new Date(now.getTime() - GROWTH_DAYS * DAY_MS);
   const lastWeek = new Date(now.getTime() - 2 * GROWTH_DAYS * DAY_MS);
 
-  const [users] = await db.select({ n: count() }).from(schema.users);
-  const [newThisWeek] = await db
-    .select({ n: count() })
-    .from(schema.users)
-    .where(and(gte(schema.users.createdAt, thisWeek), lt(schema.users.createdAt, now)));
-  const [newLastWeek] = await db
-    .select({ n: count() })
-    .from(schema.users)
-    .where(and(gte(schema.users.createdAt, lastWeek), lt(schema.users.createdAt, thisWeek)));
+  const [users] = await db.select({
+    n: count(),
+    current: sql<number>`count(case when ${schema.users.createdAt} >= ${thisWeek.getTime()} and ${schema.users.createdAt} < ${now.getTime()} then 1 end)`,
+    previous: sql<number>`count(case when ${schema.users.createdAt} >= ${lastWeek.getTime()} and ${schema.users.createdAt} < ${thisWeek.getTime()} then 1 end)`,
+  }).from(schema.users);
   const [servers] = await db
     .select({ n: countDistinct(schema.servers.id) })
     .from(schema.servers)
@@ -354,17 +350,23 @@ export async function computeStats(now = new Date()): Promise<PublicStats> {
     .from(schema.deployments)
     .where(inWindow)
     .groupBy(schema.deployments.env);
-  const timings = await db
-    .select({ startedAt: schema.deployments.startedAt, finishedAt: schema.deployments.finishedAt })
-    .from(schema.deployments)
-    .where(
-      and(
-        inWindow,
-        inArray(schema.deployments.state, ["ready", "error"]),
-        isNotNull(schema.deployments.startedAt),
-        isNotNull(schema.deployments.finishedAt)
-      )
-    );
+  // Keep timing rows inside SQLite. Only the four order statistics needed for
+  // exact interpolated percentiles cross the database boundary.
+  const [timings] = await db.all<{ n: number; m0: number | null; m1: number | null; p0: number | null; p1: number | null }>(sql`
+    with durations as (
+      select finished_at - started_at as duration from deployments
+      where created_at >= ${start.getTime()} and state in ('ready', 'error')
+        and started_at is not null and finished_at is not null and finished_at >= started_at
+    ), ranked as (
+      select duration, row_number() over (order by duration) as r, count(*) over () as n from durations
+    )
+    select count(*) as n,
+      max(case when r = cast((n-1)*0.5 as integer)+1 then duration end) as m0,
+      max(case when r = cast((n-1)*0.5 as integer)+2 then duration end) as m1,
+      max(case when r = cast((n-1)*0.9 as integer)+1 then duration end) as p0,
+      max(case when r = cast((n-1)*0.9 as integer)+2 then duration end) as p1
+    from ranked
+  `);
   const perRuntime = await db
     .select({ runtime: schema.projects.runtime, n: count() })
     .from(schema.projects)
@@ -381,13 +383,19 @@ export async function computeStats(now = new Date()): Promise<PublicStats> {
   const ready = stateCount("ready");
   const failed = stateCount("error");
   const share = successShare(ready, failed);
-  const builds = buildTimes(timings.map((t) => (t.finishedAt as Date).getTime() - (t.startedAt as Date).getTime()));
+  const sample = Number(timings.n);
+  const interpolate = (lower: number | null, upper: number | null, fraction: number) =>
+    Math.round((Number(lower) + (Number(upper) - Number(lower)) * fraction) / 1000);
+  const builds = { sample,
+    medianSeconds: sample >= MIN_BUILDS ? interpolate(timings.m0, timings.m1, ((sample - 1) * 0.5) % 1) : null,
+    p90Seconds: sample >= MIN_BUILDS ? interpolate(timings.p0, timings.p1, ((sample - 1) * 0.9) % 1) : null,
+  };
   const weekdays = bucketWeekdays(perWeekday);
   const hours = bucketHours(perHour);
   const up = perMonitor.find((r) => r.state === "up")?.n ?? 0;
   const down = perMonitor.find((r) => r.state === "down")?.n ?? 0;
   const monitored = percentShare(up, down, MIN_CHECKED);
-  const growth = growthDirection(newThisWeek.n, newLastWeek.n);
+  const growth = growthDirection(users.current, users.previous);
 
   return {
     generatedAt: now.toISOString(),
@@ -395,8 +403,8 @@ export async function computeStats(now = new Date()): Promise<PublicStats> {
     accounts: roundCount(users.n),
     growth: {
       windowDays: GROWTH_DAYS,
-      last: roundCount(newThisWeek.n),
-      previous: roundCount(newLastWeek.n),
+      last: roundCount(users.current),
+      previous: roundCount(users.previous),
       direction: growth.direction,
       percentChange: growth.percentChange,
       minimumForPercent: MIN_GROWTH_BASE,

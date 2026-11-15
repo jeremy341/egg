@@ -86,7 +86,7 @@ export function BuildLogs({
   const visible = q ? lines.filter((l) => l.message.toLowerCase().includes(q)) : lines;
 
   return (
-    <section className="overflow-hidden rounded-lg bg-card shadow-border-small">
+    <section data-tour="build-logs" className="overflow-hidden rounded-lg bg-card shadow-border-small">
       <button
         type="button"
         aria-expanded={open}

@@ -191,6 +191,13 @@ export async function deleteServer(
   const deleteProjects = options.deleteProjects === true;
   let projectCount = 0;
   await db.transaction(async (tx) => {
+    const current = await tx.select({ status: schema.servers.status }).from(schema.servers)
+      .where(and(eq(schema.servers.id, server.id), eq(schema.servers.userId, userId))).get();
+    if (!current) throw notFound("Server not found");
+    const adoption = await tx.select({ id: schema.adoptionPlans.id }).from(schema.adoptionPlans)
+      .innerJoin(schema.projects, eq(schema.projects.id, schema.adoptionPlans.projectId))
+      .where(and(eq(schema.projects.serverId, server.id), eq(schema.adoptionPlans.state, "executing"))).get();
+    if (adoption) throw new HttpError(409, "An app cutover is in progress on this server.", "adoption_in_progress");
     // A cleanup can start while the terminal manager is closing its sessions.
     // Recheck alongside the destructive write so cleanup keeps its keys and records.
     const cleanup = await tx.select({ id: schema.cleanupJobs.id }).from(schema.cleanupJobs)
@@ -198,6 +205,9 @@ export async function deleteServer(
       .where(and(eq(schema.cleanupJobs.userId, userId), inArray(schema.cleanupJobs.state, ["draining", "running", "failed"]),
         sql`(${schema.cleanupJobs.scope} = 'account' or ${schema.cleanupItems.serverId} = ${server.id})`)).get();
     if (cleanup) throw new HttpError(409, "Cleanup is in progress for this server. Remote access is temporarily paused.", "cleanup_in_progress");
+    const operation = await tx.select({ id: schema.cleanupOperations.id }).from(schema.cleanupOperations)
+      .where(eq(schema.cleanupOperations.serverId, server.id)).get();
+    if (operation) throw new HttpError(409, "An SSH operation is still open on this server. Wait for it to finish before disconnecting.", "remote_operation_active");
     const projects = await tx.select({ id: schema.projects.id }).from(schema.projects)
       .where(eq(schema.projects.serverId, server.id));
     projectCount = projects.length;
@@ -242,7 +252,7 @@ export const HOST_KEY_FINGERPRINT = /^SHA256:[A-Za-z0-9+/]{43}$/;
  */
 export async function connectToServer(
   server: ServerRow,
-  opts: { confirmHostKey?: string; allowDuringCleanup?: boolean; cleanupExecutor?: boolean } = {}
+  opts: { confirmHostKey?: string; allowDuringCleanup?: boolean; cleanupExecutor?: boolean; adoptionExecutor?: boolean } = {}
 ): Promise<NestSession> {
   if (server.status === "disconnected") {
     throw new HttpError(
@@ -268,6 +278,22 @@ export async function connectToServer(
     for (let attempt = 0; ; attempt++) {
       try {
         await db.transaction(async (tx) => {
+          const current = await tx.select({ status: schema.servers.status }).from(schema.servers)
+            .where(and(eq(schema.servers.id, server.id), eq(schema.servers.userId, server.userId))).get();
+          if (!current) throw notFound("Server not found");
+          if (current.status === "disconnected") {
+            throw new HttpError(
+              409,
+              `${server.nestUsername} is disconnected. Connect it again to manage its projects.`,
+              "disconnected"
+            );
+          }
+          if (!opts.adoptionExecutor) {
+            const adoption = await tx.select({ id: schema.adoptionPlans.id }).from(schema.adoptionPlans)
+              .innerJoin(schema.projects, eq(schema.projects.id, schema.adoptionPlans.projectId))
+              .where(and(eq(schema.projects.serverId, server.id), eq(schema.adoptionPlans.state, "executing"))).get();
+            if (adoption) throw new HttpError(409, "An app cutover is in progress on this server.", "adoption_in_progress");
+          }
           if (!opts.allowDuringCleanup) {
             const active = await tx.select({ id: schema.cleanupJobs.id }).from(schema.cleanupJobs)
               .leftJoin(schema.cleanupItems, eq(schema.cleanupItems.cleanupJobId, schema.cleanupJobs.id))

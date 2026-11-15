@@ -17,7 +17,27 @@ export const DOCS_NAV: DocsGroup[] = [
         title: "How it works",
         subsections: [{ id: "overview-push", title: "What happens on a push" }],
       },
+      {
+        id: "getting-started",
+        title: "Getting started",
+        subsections: [
+          { id: "getting-started-connect", title: "1. Connect your container" },
+          { id: "getting-started-import", title: "2. Import a repository" },
+          { id: "getting-started-deploy", title: "3. Watch the first deployment" },
+          { id: "getting-started-address", title: "4. Give it an address" },
+        ],
+      },
       { id: "quickstart", title: "Quick start", subsections: [] },
+      {
+        id: "run-yourself",
+        title: "Run Egg yourself",
+        subsections: [
+          { id: "run-yourself-modes", title: "Pick your setup" },
+          { id: "run-yourself-signin", title: "Signing in without Hack Club" },
+          { id: "run-yourself-target", title: "Where your apps run" },
+          { id: "run-yourself-more", title: "The full guide" },
+        ],
+      },
     ],
   },
   {
@@ -76,6 +96,7 @@ export const DOCS_NAV: DocsGroup[] = [
         subsections: [
           { id: "github-push", title: "Deploying on push" },
           { id: "github-pr-previews", title: "Pull request previews" },
+          { id: "github-actions", title: "Building on GitHub Actions" },
         ],
       },
       { id: "hooks", title: "Deploy hooks", subsections: [] },

@@ -346,7 +346,7 @@ describe("the app's service file", () => {
       slug: "demo",
       description: "Egg: demo",
       workDir: "/root/.egg/demo/current",
-      envFile: "/root/.egg/demo/current/.env",
+      envFile: "/root/.egg/demo/current.env",
       port: 3000,
       startCommand: "npm start",
     });

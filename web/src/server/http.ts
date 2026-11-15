@@ -5,6 +5,7 @@ import { getCurrentUser } from "@/server/auth/current";
 import type { SessionUser } from "@/server/auth/session";
 import { readJsonLimited } from "@/server/body-limit";
 import { config } from "@/server/config";
+import { measureBackendRequest } from "@/server/backend-metrics";
 
 export class HttpError extends Error {
   constructor(
@@ -92,7 +93,7 @@ export function handle<C = unknown>(
   fn: Handler<C>,
   options: { skipOriginCheck?: boolean } = {}
 ): Handler<C> {
-  return async (req, ctx) => {
+  return async (req, ctx) => measureBackendRequest(new URL(req.url).pathname, async () => {
     try {
       if (!options.skipOriginCheck) assertSameOrigin(req);
       await enforceRequestMaintenance(req);
@@ -119,5 +120,5 @@ export function handle<C = unknown>(
         { status: 500 }
       );
     }
-  };
+  });
 }

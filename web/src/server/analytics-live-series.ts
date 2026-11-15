@@ -1,6 +1,6 @@
 import { and, eq, gte, lte, sql } from "drizzle-orm";
 import { getDb, schema } from "@/server/db";
-import { getProjectForUser } from "@/server/projects";
+import { getReadableProject } from "@/server/projects";
 
 /**
  * Page views per minute for the "on the site now" chart. Reads the page views table only.
@@ -17,7 +17,7 @@ export type LiveSeries = {
 };
 
 export async function liveSeries(userId: string, projectId: string, minutes = 30, now = new Date()): Promise<LiveSeries> {
-  const project = await getProjectForUser(userId, projectId);
+  const project = await getReadableProject(userId, projectId);
   const span = Math.min(LIVE_SERIES_MAX_MINUTES, Math.max(1, Math.floor(minutes)));
   const db = await getDb();
   const lastMinute = Math.floor(now.getTime() / MINUTE_MS);

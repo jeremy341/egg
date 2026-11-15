@@ -118,11 +118,11 @@ beforeEach(async () => {
   vi.mocked(getCurrentUser).mockResolvedValue(user);
   project = await newProject(`P${port}`, { buildLocation: "github" });
   creds = await createBuildCredentials(project.id);
-  token = creds.uploadToken;
+  token = creds.productionUploadToken;
   for (const f of filesInUploads()) rmSync(path.join(uploadsDir(), f), { force: true });
 });
 
-const allTokens = () => [creds.uploadToken, creds.previewEnvToken, creds.productionEnvToken];
+const allTokens = () => [creds.previewUploadToken, creds.productionUploadToken, creds.previewEnvToken, creds.productionEnvToken];
 
 /** Every way a credential can be bad must produce this exact answer. */
 async function expectSame401(res: Response) {
@@ -136,7 +136,8 @@ function ownerReq(id: string, method: string, headers: Record<string, string> = 
 
 describe("the build credentials", () => {
   it("look like egg_build_<scope>_ plus 43 characters of base64url (32 random bytes), one per scope", () => {
-    expect(creds.uploadToken).toMatch(/^egg_build_upload_[A-Za-z0-9_-]{43}$/);
+    expect(creds.previewUploadToken).toMatch(/^egg_build_upload_preview_[A-Za-z0-9_-]{43}$/);
+    expect(creds.productionUploadToken).toMatch(/^egg_build_upload_production_[A-Za-z0-9_-]{43}$/);
     expect(creds.previewEnvToken).toMatch(/^egg_build_env_preview_[A-Za-z0-9_-]{43}$/);
     expect(creds.productionEnvToken).toMatch(/^egg_build_env_production_[A-Za-z0-9_-]{43}$/);
   });
@@ -165,28 +166,28 @@ describe("the build credentials", () => {
   it("belong to one project and verify to its id", async () => {
     const other = await newProject(`Other${port}`, { buildLocation: "github" });
     const otherCreds = await createBuildCredentials(other.id);
-    expect(await verifyBuildCredential(token, "upload")).toBe(project.id);
-    expect(await verifyBuildCredential(otherCreds.uploadToken, "upload")).toBe(other.id);
+    expect(await verifyBuildCredential(token, "upload_production")).toBe(project.id);
+    expect(await verifyBuildCredential(otherCreds.productionUploadToken, "upload_production")).toBe(other.id);
   });
 
   it("are replaced by new ones: the old three stop working at once", async () => {
     const second = await createBuildCredentials(project.id);
-    expect(second.uploadToken).not.toBe(token);
-    expect(await verifyBuildCredential(token, "upload")).toBeNull();
+    expect(second.productionUploadToken).not.toBe(token);
+    expect(await verifyBuildCredential(token, "upload_production")).toBeNull();
     expect(await verifyBuildCredential(creds.productionEnvToken, "env_production")).toBeNull();
     expect(await verifyBuildCredential(creds.previewEnvToken, "env_preview")).toBeNull();
-    expect(await verifyBuildCredential(second.uploadToken, "upload")).toBe(project.id);
+    expect(await verifyBuildCredential(second.productionUploadToken, "upload_production")).toBe(project.id);
     await expectSame401(await upload(token, goodRelease()));
     await expectSame401(await envGet(creds.productionEnvToken));
     await expectSame401(await envGet(creds.previewEnvToken, "?env=preview"));
   });
 
   it("are refused when the wrong shape, unknown, or a byte changed", async () => {
-    expect(await verifyBuildCredential("", "upload")).toBeNull();
-    expect(await verifyBuildCredential("egg_build_upload_short", "upload")).toBeNull();
-    expect(await verifyBuildCredential(token.slice(0, -1) + (token.endsWith("A") ? "B" : "A"), "upload")).toBeNull();
-    expect(await verifyBuildCredential("egg_build_upload_" + "x".repeat(43), "upload")).toBeNull();
-    expect(await verifyBuildCredential(sha256Hex(token), "upload")).toBeNull();
+    expect(await verifyBuildCredential("", "upload_production")).toBeNull();
+    expect(await verifyBuildCredential("egg_build_upload_production_short", "upload_production")).toBeNull();
+    expect(await verifyBuildCredential(token.slice(0, -1) + (token.endsWith("A") ? "B" : "A"), "upload_production")).toBeNull();
+    expect(await verifyBuildCredential("egg_build_upload_production_" + "x".repeat(43), "upload_production")).toBeNull();
+    expect(await verifyBuildCredential(sha256Hex(token), "upload_production")).toBeNull();
   });
 
   it("are compared in constant time", async () => {
@@ -198,8 +199,8 @@ describe("the build credentials", () => {
   });
 
   it("stop working at the moment they expire", async () => {
-    expect(await verifyBuildCredential(token, "upload", new Date(creds.expiresAt.getTime() - 1))).toBe(project.id);
-    expect(await verifyBuildCredential(token, "upload", creds.expiresAt)).toBeNull();
+    expect(await verifyBuildCredential(token, "upload_production", new Date(creds.expiresAt.getTime() - 1))).toBe(project.id);
+    expect(await verifyBuildCredential(token, "upload_production", creds.expiresAt)).toBeNull();
   });
 
   it("an expired credential gets the 401 from the route, not a 202 or a 409", async () => {
@@ -217,9 +218,9 @@ describe("the build credentials", () => {
     await expireAll(project.id);
     await createBuildCredentials(project.id);
     const mine = await ctx.db.select().from(schema.buildCredentials).where(eq(schema.buildCredentials.projectId, project.id));
-    expect(mine).toHaveLength(3);
+    expect(mine.map(r => r.scope).sort()).toEqual(["env_preview", "env_production", "upload_preview", "upload_production"]);
     expect(mine.every((r) => r.expiresAt.getTime() > Date.now())).toBe(true);
-    expect(await verifyBuildCredential(otherCreds.uploadToken, "upload")).toBe(other.id);
+    expect(await verifyBuildCredential(otherCreds.productionUploadToken, "upload_production")).toBe(other.id);
   });
 });
 
@@ -283,13 +284,13 @@ describe("a bad credential gets the same 401 whatever is wrong with it", () => {
       { name: "no header", call: () => upload(null, goodRelease()) },
       { name: "garbage", call: () => upload("nonsense", goodRelease()) },
       { name: "truncated", call: () => upload(token.slice(0, 20), goodRelease()) },
-      { name: "unknown", call: () => upload("egg_build_upload_" + "x".repeat(43), goodRelease()) },
-      { name: "replaced", call: () => upload(stale.uploadToken, goodRelease()) },
+      { name: "unknown", call: () => upload("egg_build_upload_production_" + "x".repeat(43), goodRelease()) },
+      { name: "replaced", call: () => upload(stale.productionUploadToken, goodRelease()) },
       { name: "env token on upload", call: () => upload(stale.productionEnvToken, goodRelease()) },
       { name: "env no header", call: () => envGet(null) },
       { name: "env garbage", call: () => envGet("nonsense") },
       { name: "env replaced production", call: () => envGet(stale.productionEnvToken) },
-      { name: "env upload token", call: () => envGet(stale.uploadToken) },
+      { name: "env upload token", call: () => envGet(stale.productionUploadToken) },
     ];
     const bodies = new Set<string>();
     for (const b of bad) {
@@ -330,21 +331,22 @@ describe("/api/projects/[id]/build-credentials", () => {
   const read = (id: string) => credentialsGet(ownerReq(id, "GET"), params(id));
   const revoke = (id: string, headers: Record<string, string> = {}) => credentialsDelete(ownerReq(id, "DELETE", headers), params(id));
 
-  it("POST shows the three credentials once to the owner, replaces the earlier set and records it in the audit log", async () => {
+  it("POST shows the four credentials once to the owner, replaces the earlier set and records it in the audit log", async () => {
     const res = await make(project.id);
     expect(res.status).toBe(201);
     expect(res.headers.get("cache-control")).toBe("no-store");
     const body = await res.json();
-    expect(body.uploadToken).toMatch(/^egg_build_upload_/);
+    expect(body.previewUploadToken).toMatch(/^egg_build_upload_preview_/);
+    expect(body.productionUploadToken).toMatch(/^egg_build_upload_production_/);
     expect(body.previewEnvToken).toMatch(/^egg_build_env_preview_/);
     expect(body.productionEnvToken).toMatch(/^egg_build_env_production_/);
     expect(Date.parse(body.expiresAt) - Date.parse(body.createdAt)).toBe(90 * ONE_DAY);
-    expect(await verifyBuildCredential(body.uploadToken, "upload")).toBe(project.id);
+    expect(await verifyBuildCredential(body.productionUploadToken, "upload_production")).toBe(project.id);
     expect(await verifyBuildCredential(body.productionEnvToken, "env_production")).toBe(project.id);
-    expect(await verifyBuildCredential(token, "upload")).toBeNull();
+    expect(await verifyBuildCredential(token, "upload_production")).toBeNull();
     const log = await ctx.db.select().from(schema.auditLog);
     expect(log.filter((r) => r.action === "build_credentials.create").length).toBeGreaterThan(0);
-    for (const t of [body.uploadToken, body.previewEnvToken, body.productionEnvToken]) {
+    for (const t of [body.previewUploadToken, body.productionUploadToken, body.previewEnvToken, body.productionEnvToken]) {
       expect(JSON.stringify(log)).not.toContain(t);
     }
   });
@@ -356,7 +358,7 @@ describe("/api/projects/[id]/build-credentials", () => {
     const text = await res.text();
     const body = JSON.parse(text);
     expect(body.configured).toBe(true);
-    expect(body.credentials.map((c: { scope: string }) => c.scope)).toEqual(["upload", "env_preview", "env_production"]);
+    expect(body.credentials.map((c: { scope: string }) => c.scope)).toEqual(["upload_preview", "upload_production", "env_preview", "env_production"]);
     for (const c of body.credentials) {
       expect(Object.keys(c).sort()).toEqual(["createdAt", "expired", "expiresAt", "scope"]);
       expect(c.expired).toBe(false);
@@ -373,14 +375,14 @@ describe("/api/projects/[id]/build-credentials", () => {
     expect(await (await read(fresh.id)).json()).toEqual({ configured: false, credentials: [] });
     await expireAll(project.id);
     const body = await (await read(project.id)).json();
-    expect(body.credentials).toHaveLength(3);
+    expect(body.credentials).toHaveLength(4);
     expect(body.credentials.every((c: { expired: boolean }) => c.expired)).toBe(true);
   });
 
-  it("DELETE revokes all three at once and records it", async () => {
+  it("DELETE revokes all four at once and records it", async () => {
     const res = await revoke(project.id);
     expect(res.status).toBe(200);
-    for (const [t, scope] of [[token, "upload"], [creds.previewEnvToken, "env_preview"], [creds.productionEnvToken, "env_production"]] as const) {
+    for (const [t, scope] of [[creds.previewUploadToken, "upload_preview"], [token, "upload_production"], [creds.previewEnvToken, "env_preview"], [creds.productionEnvToken, "env_production"]] as const) {
       expect(await verifyBuildCredential(t, scope)).toBeNull();
     }
     expect(await ctx.db.select().from(schema.buildCredentials).where(eq(schema.buildCredentials.projectId, project.id))).toHaveLength(0);
@@ -395,7 +397,7 @@ describe("/api/projects/[id]/build-credentials", () => {
     expect((await read(project.id)).status).toBe(404);
     expect((await revoke(project.id)).status).toBe(404);
     vi.mocked(getCurrentUser).mockResolvedValue(user);
-    expect(await verifyBuildCredential(token, "upload")).toBe(project.id);
+    expect(await verifyBuildCredential(token, "upload_production")).toBe(project.id);
     expect(await verifyBuildCredential(creds.productionEnvToken, "env_production")).toBe(project.id);
   });
 
@@ -407,7 +409,7 @@ describe("/api/projects/[id]/build-credentials", () => {
     vi.mocked(getCurrentUser).mockResolvedValue(user);
     expect((await make(project.id, { origin: "https://evil.example" })).status).toBe(403);
     expect((await revoke(project.id, { origin: "https://evil.example" })).status).toBe(403);
-    expect(await verifyBuildCredential(token, "upload")).toBe(project.id);
+    expect(await verifyBuildCredential(token, "upload_production")).toBe(project.id);
   });
 });
 
@@ -440,6 +442,60 @@ describe("parseUploadHeaders", () => {
     for (const over of cases) {
       expect(() => parseUploadHeaders(h(over)), JSON.stringify(over)).toThrow();
     }
+  });
+});
+
+describe("POST /api/builds/upload: a credential only delivers a build to its own environment", () => {
+  const waitingPreview = (commit = COMMIT, branch = "feature/x") =>
+    enqueueDeployment(project, { env: "preview", source: "webhook", branch, commitSha: commit, triggeredBy: user.id });
+
+  it("takes a preview upload credential for a preview deployment", async () => {
+    const dep = await waitingPreview();
+    const res = await upload(creds.previewUploadToken, goodRelease(), { "x-egg-branch": "feature/x" });
+    expect(res.status).toBe(202);
+    expect(await res.json()).toEqual({ deployment: { id: dep.id } });
+  });
+
+  it("refuses a preview upload credential for the production deployment, with 403, and attaches nothing", async () => {
+    const dep = await waitingFor(project);
+    const res = await upload(creds.previewUploadToken, goodRelease());
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error.code).toBe("wrong_upload_credential");
+    expect(body.error.message).toMatch(/production credential from the egg-production environment/);
+    expect(filesInUploads()).toEqual([]);
+    expect(await readUpload(dep.id)).toBeNull();
+    // The right credential still works afterwards: the refusal did not use the deployment up.
+    expect((await upload(token, goodRelease())).status).toBe(202);
+  });
+
+  it("refuses a production upload credential for a preview deployment, with 403", async () => {
+    await waitingPreview();
+    const res = await upload(token, goodRelease(), { "x-egg-branch": "feature/x" });
+    expect(res.status).toBe(403);
+    expect((await res.json()).error.code).toBe("wrong_upload_credential");
+    expect(filesInUploads()).toEqual([]);
+  });
+
+  it("cannot be fooled by naming the production branch in the header: the deployment's own environment decides", async () => {
+    // Only a preview deployment waits, on feature/x. A preview credential that claims branch main finds nothing.
+    await waitingPreview();
+    const res = await upload(creds.previewUploadToken, goodRelease(), { "x-egg-branch": "main" });
+    expect(res.status).toBe(409);
+    expect((await res.json()).error.code).toBe("no_deployment_waiting");
+    expect(filesInUploads()).toEqual([]);
+  });
+
+  it("answers an env credential on the upload route with the same 401 as any bad credential", async () => {
+    await waitingFor(project);
+    await expectSame401(await upload(creds.productionEnvToken, goodRelease()));
+    await expectSame401(await upload(creds.previewEnvToken, goodRelease()));
+  });
+
+  it("still says no deployment is waiting when there is none in either environment", async () => {
+    const res = await upload(creds.previewUploadToken, goodRelease());
+    expect(res.status).toBe(409);
+    expect((await res.json()).error.code).toBe("no_deployment_waiting");
   });
 });
 
@@ -519,6 +575,7 @@ describe("POST /api/builds/upload", () => {
     });
     const err = await acceptUpload({
       projectId: project.id,
+      environment: "production",
       headers: { commit: COMMIT, sha256: "0".repeat(64), branch: "main", run: "1" },
       body,
       contentLength: null,
@@ -594,7 +651,7 @@ describe("POST /api/builds/upload", () => {
 
   it("is refused for a project that builds on the container", async () => {
     const boxed = await newProject(`Boxed${port}`);
-    const boxedToken = (await createBuildCredentials(boxed.id)).uploadToken;
+    const boxedToken = (await createBuildCredentials(boxed.id)).productionUploadToken;
     await enqueueDeployment(boxed, { env: "production", source: "webhook", branch: "main", commitSha: COMMIT });
     const res = await upload(boxedToken, goodRelease());
     expect(res.status).toBe(409);
@@ -616,7 +673,7 @@ describe("POST /api/builds/upload", () => {
     expect(Number(res.headers.get("retry-after"))).toBeGreaterThan(0);
     // Another project is not held back by it.
     const other = await newProject(`Free${port}`, { buildLocation: "github" });
-    const otherToken = (await createBuildCredentials(other.id)).uploadToken;
+    const otherToken = (await createBuildCredentials(other.id)).productionUploadToken;
     expect((await upload(otherToken, goodRelease())).status).toBe(409);
   });
 
@@ -658,8 +715,8 @@ describe("GET /api/builds/env", () => {
       await envGet(creds.previewEnvToken, "?env=production"),
       await envGet(creds.previewEnvToken, "?env=anything-else"),
       await envGet(creds.productionEnvToken, "?env=preview"),
-      await envGet(creds.uploadToken),
-      await envGet(creds.uploadToken, "?env=preview"),
+      await envGet(creds.productionUploadToken),
+      await envGet(creds.productionUploadToken, "?env=preview"),
     ];
     for (const res of wrong) {
       const text = await res.text();

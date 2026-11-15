@@ -4,7 +4,7 @@ import { featuresForKey } from "@/server/analytics-config";
 import { BROWSER_ID, KEY_PREFIX, isBot, recordPageview, retentionCode, visitorHash } from "@/server/analytics";
 import { TRACK_NAME, VITALS, cleanEventName, cleanEventValue, cleanPath, cleanVital } from "@/server/analytics-fields";
 import { getDb, schema } from "@/server/db";
-import { getProjectForUser } from "@/server/projects";
+import { getReadableProject } from "@/server/projects";
 import { MIN_SAMPLE } from "@/server/stats";
 
 /**
@@ -186,7 +186,7 @@ export type ClicksSummary = {
 };
 
 export async function clicksSummary(userId: string, projectId: string, days = 30, now = new Date()): Promise<ClicksSummary> {
-  const project = await getProjectForUser(userId, projectId);
+  const project = await getReadableProject(userId, projectId);
   const db = await getDb();
   const where = and(
     eq(schema.analyticsEvents.projectId, project.id),
@@ -272,7 +272,7 @@ export function summariseTime(counts: Record<TimeBucket, number>): TimeSummary {
 }
 
 export async function timeSummary(userId: string, projectId: string, days = 30, now = new Date()): Promise<TimeSummary> {
-  const project = await getProjectForUser(userId, projectId);
+  const project = await getReadableProject(userId, projectId);
   const db = await getDb();
   const rows = await db
     .select({ bucket: schema.analyticsEvents.bucket, n: sql<number>`count(*)` })
@@ -304,7 +304,7 @@ export type EventsSummary = {
 
 /** Custom events by name and value for the last `days` days, the most frequent first. */
 export async function eventsSummary(userId: string, projectId: string, days = 30, now = new Date()): Promise<EventsSummary> {
-  const project = await getProjectForUser(userId, projectId);
+  const project = await getReadableProject(userId, projectId);
   const db = await getDb();
   const where = and(
     eq(schema.analyticsEvents.projectId, project.id),

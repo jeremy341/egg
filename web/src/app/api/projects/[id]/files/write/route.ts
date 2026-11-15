@@ -1,7 +1,7 @@
 import { readBytesLimited } from "@/server/body-limit";
 import { HttpError, authed, handle, ok } from "@/server/http";
 import { requireProjectFeature } from "@/server/permission-guards";
-import { enforceRateLimit } from "@/server/rate-limit";
+import { enforceIngress, enforceRateLimit } from "@/server/rate-limit";
 import { UPLOAD_LIMIT, checkProjectWrite, writeProjectFile } from "@/server/files";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -12,6 +12,7 @@ type Ctx = { params: Promise<{ id: string }> };
  * Without `overwrite=1` an existing file is left alone and the answer is 409.
  */
 export const POST = handle<Ctx>(async (req, { params }) => {
+  enforceIngress(req.headers, "all");
   const user = await authed();
   const { id } = await params;
   const path = req.nextUrl.searchParams.get("path") ?? "";

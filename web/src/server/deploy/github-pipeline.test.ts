@@ -97,6 +97,7 @@ function release(version: string, extra: RawEntry[] = []) {
 const send = (p: ProjectRow, bytes: Buffer, commit = COMMIT) =>
   acceptUpload({
     projectId: p.id,
+    environment: "production",
     headers: { commit, sha256: sha256Of(bytes), branch: "main", run: "77" },
     body: new Response(new Uint8Array(bytes)).body,
     contentLength: bytes.length,

@@ -7,6 +7,11 @@ type QueryDb = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 /** Call inside the transaction that writes project or account work. */
 export async function assertCleanupAllowsWork(db: QueryDb, userId: string, projectId?: string) {
+  if (projectId) {
+    const adoption = await db.select({ id: schema.adoptionPlans.id }).from(schema.adoptionPlans)
+      .where(and(eq(schema.adoptionPlans.projectId, projectId), eq(schema.adoptionPlans.state, "executing"))).get();
+    if (adoption) throw new HttpError(409, "An app cutover is in progress; project changes are paused.", "adoption_in_progress");
+  }
   const rows = await db.select({ scope: schema.cleanupJobs.scope, projectId: schema.cleanupJobs.projectId })
     .from(schema.cleanupJobs).where(and(eq(schema.cleanupJobs.userId, userId), inArray(schema.cleanupJobs.state, BLOCKING_STATES)));
   if (rows.some((row) => row.scope === "account" || (projectId && row.projectId === projectId))) {

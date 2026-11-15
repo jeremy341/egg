@@ -1,6 +1,6 @@
 import { and, eq, gte, lte, sql } from "drizzle-orm";
 import { getDb, schema } from "@/server/db";
-import { getProjectForUser } from "@/server/projects";
+import { getReadableProject } from "@/server/projects";
 
 /**
  * When a project's page views happen, by clock hour (UTC), for the last few days.
@@ -20,7 +20,7 @@ export type HourlyViews = {
  * hour that contains `now`. Hours with no views are zero.
  */
 export async function hourlyViews(userId: string, projectId: string, days = 30, now = new Date()): Promise<HourlyViews> {
-  const project = await getProjectForUser(userId, projectId);
+  const project = await getReadableProject(userId, projectId);
   const db = await getDb();
   const lastHour = Math.floor(now.getTime() / HOUR_MS);
   const firstHour = lastHour - days * 24 + 1;

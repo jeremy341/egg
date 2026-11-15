@@ -5,11 +5,14 @@ import { useRouter } from "next/navigation";
 import { PencilSimpleIcon, TrashIcon } from "@phosphor-icons/react";
 import { api } from "@/components/api";
 import { Swap } from "@/components/motion/swap";
+import { GithubBuildCard } from "@/components/github-build-card";
+import { HomepageFeedCard } from "@/components/homepage-feed-card";
 import { AlertsCard, DeployHookCard, NotificationsCard, StatusPageCard } from "@/components/project-automation";
 import { ScheduledJobsCard } from "@/components/scheduled-jobs-card";
 import { PageHeader } from "@/components/page-header";
 import { buildBody, ProjectBuildFields, toBuildForm, type BuildForm } from "@/components/project-build-fields";
 import { EnvImportButton } from "@/components/env-import";
+import { ENV_TARGET_LABEL, EnvHelp } from "@/components/env-help";
 import { Card, Label } from "@/components/settings-ui";
 import { SettingsNav } from "@/components/settings-nav";
 import { Alert } from "@/components/ui/alert";
@@ -244,6 +247,8 @@ export function ProjectSettings({
             </form>
           </Card>
 
+          <GithubBuildCard project={project} />
+
           <Card
             id="env-heading"
             title="Environment Variables"
@@ -287,9 +292,9 @@ export function ProjectSettings({
                   value={target}
                   onChange={(e) => setTarget(e.target.value as EnvVar["target"])}
                 >
-                  <option value="all">All</option>
-                  <option value="production">Production</option>
-                  <option value="preview">Preview</option>
+                  <option value="all">{ENV_TARGET_LABEL.all}</option>
+                  <option value="production">{ENV_TARGET_LABEL.production}</option>
+                  <option value="preview">{ENV_TARGET_LABEL.preview}</option>
                 </NativeSelect>
               </div>
               <Button type="submit" disabled={!key.trim()} loading={envSaving}>
@@ -301,6 +306,8 @@ export function ProjectSettings({
                 {envError}
               </Alert>
             ) : null}
+
+            <EnvHelp />
 
             <EnvImportButton
               projectId={project.id}
@@ -314,7 +321,7 @@ export function ProjectSettings({
                   <li key={v.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
                     <span className="min-w-0 truncate font-mono text-[13px]">{v.key}</span>
                     <span className="flex shrink-0 items-center gap-1 text-muted-foreground">
-                      <span className="mr-2 text-label capitalize">{v.target}</span>
+                      <span className="mr-2 text-label">{ENV_TARGET_LABEL[v.target]}</span>
                       <Button
                         variant="ghost"
                         size="icon-sm"
@@ -354,6 +361,7 @@ export function ProjectSettings({
           <AlertsCard project={project} />
 
           <StatusPageCard project={project} />
+          <HomepageFeedCard project={project} />
           <CleanupCard name={project.slug} projectId={project.id} />
 
           <Card

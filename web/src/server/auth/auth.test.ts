@@ -64,7 +64,7 @@ describe("Hack Club Auth", () => {
     }) as unknown as typeof fetch;
 
     const profile = await completeLogin("the-code", "the-verifier", fake);
-    expect(profile).toEqual({ id: "ident!abc", name: "Sam R", email: "sam@example.com", slackId: "U123" });
+    expect(profile).toEqual({ id: "ident!abc", name: "Sam R", email: "sam@example.com", emailVerified: false, slackId: "U123" });
 
     const body = new URLSearchParams(String(calls[0].init?.body));
     expect(body.get("grant_type")).toBe("authorization_code");
@@ -72,6 +72,17 @@ describe("Hack Club Auth", () => {
     expect(body.get("code_verifier")).toBe("the-verifier");
     expect(body.get("client_secret")).toBe("client-secret");
     expect((calls[1].init?.headers as Record<string, string>).authorization).toBe("Bearer tok");
+  });
+
+  it("trusts only a boolean verified email claim and clears stale verification on login", async () => {
+    expect(parseProfile({ sub: "v", email_verified: true }).emailVerified).toBe(true);
+    for (const value of [undefined, false, "true", 1]) {
+      expect(parseProfile({ sub: "v", email_verified: value }).emailVerified).toBe(false);
+    }
+    const user = await upsertUser({ id: "verified-login", name: "V", email: "v@example.com", slackId: null, emailVerified: true });
+    expect((await ctx.db.select().from(schema.users).where(eq(schema.users.id, user.id)).get())?.emailVerified).toBe(true);
+    await upsertUser({ id: "verified-login", name: "V", email: "v@example.com", slackId: null });
+    expect((await ctx.db.select().from(schema.users).where(eq(schema.users.id, user.id)).get())?.emailVerified).toBe(false);
   });
 
   it("fails clearly when the token exchange is rejected", async () => {

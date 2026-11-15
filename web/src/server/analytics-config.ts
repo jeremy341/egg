@@ -4,7 +4,7 @@ import { parseAnalyticsDefaults, type AnalyticsDefaults } from "@/lib/analytics-
 import { audit } from "@/server/audit";
 import { getDb, schema } from "@/server/db";
 import { HttpError } from "@/server/http";
-import { getProjectForUser } from "@/server/projects";
+import { getProjectForUser, getReadableProject } from "@/server/projects";
 import {
   EMPTY_UTM_ALLOWLIST,
   TRACK_NAME,
@@ -182,7 +182,7 @@ export async function featuresForKey(key: string): Promise<{ projectId: string; 
 }
 
 export async function featuresForUser(userId: string, projectId: string): Promise<AnalyticsFeatures> {
-  const project = await getProjectForUser(userId, projectId);
+  const project = await getReadableProject(userId, projectId);
   return getFeatures(project.id);
 }
 

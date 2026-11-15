@@ -4,7 +4,9 @@
  */
 export const SUMMARIES: Record<string, string> = {
   overview: "What Egg does, what it needs from you and the steps it takes on every push.",
+  "getting-started": "The four chapters of the guided first-project tour in text: connect your container, import a repository, watch the first deployment and give it an address.",
   quickstart: "From a new account to a deployed app in four steps, with a sample repository to follow.",
+  "run-yourself": "Run your own copy of Egg with or without a Hack Club account: the setups, how sign-in works, where your apps run, and a link to the full guide.",
   servers: "Connect your Nest account with its own SSH key, test the link, replace the key or disconnect.",
   projects: "Link a repository, choose a runtime, set the build and run commands, and see what every app can rely on.",
   deployments: "What each deployment state means, how to redeploy, roll back, cancel or restart, how many releases are kept and how branch previews work.",

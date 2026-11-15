@@ -12,10 +12,18 @@
 # Caddy replaces any X-Forwarded-For sent by the client with the real address, which is what
 # TRUST_PROXY=1 relies on. The app is never published on a port of its own: only Caddy is.
 #
-# The GitHub webhook is public and unauthenticated until its signature is checked, so Caddy
-# refuses a body over 5 MiB before the app sees it. The app holds the same cap (MAX_BODY_BYTES in
-# web/src/app/api/webhooks/github/route.ts) and also limits concurrent webhook reads, so this line
-# is a backstop, not the only check. Keep the two values equal.
+# Request body limits. Next.js holds the body of a request in memory before a route can refuse it, so
+# Caddy refuses an oversized body first (HTTP 413). Every path gets a small default, and only the routes
+# that take large bodies get more. Each value matches a constant in the app; keep them equal:
+#   /api/builds/upload                  500 MiB  MAX_ARCHIVE_BYTES, web/src/server/deploy/build.ts
+#   /api/projects/<id>/files/write       50 MiB  UPLOAD_LIMIT, web/src/server/files-paths.ts
+#   /api/webhooks/github                  5 MiB  MAX_BODY_BYTES, web/src/app/api/webhooks/github/route.ts
+#   /api/security-reports                 5 MiB  REPORT_BODY_LIMIT (4.3 MB), web/src/server/security-reports.ts
+#   everything else                       1 MiB  JSON routes allow 256 KB, a server action 1 MB
+# The GitHub webhook and the security report form are public and unauthenticated, so their caps matter
+# most. The app holds the same caps itself and also limits concurrent webhook reads, so these lines are a
+# backstop, not the only check. web/src/ingress-limits.test.ts checks that this file and the app agree.
+# The request_body lines were written from Caddy's documented syntax and not run through Caddy.
 #
 # The stock caddy:2 image cannot rate-limit requests or cap concurrent connections per path:
 # both need a third-party module, which this file does not add. For those limits, use your
@@ -23,9 +31,33 @@
 {$APP_HOST} {
 	encode zstd gzip
 
+	@builds path /api/builds/upload
+	request_body @builds {
+		max_size 500MiB
+	}
+
+	@files path_regexp ^/api/projects/[^/]+/files/write$
+	request_body @files {
+		max_size 50MiB
+	}
+
 	@github path /api/webhooks/github
 	request_body @github {
 		max_size 5MiB
+	}
+
+	@reports path /api/security-reports
+	request_body @reports {
+		max_size 5MiB
+	}
+
+	# Every other path. A request matches exactly one request_body block, so the limits never stack.
+	@small {
+		not path /api/builds/upload /api/webhooks/github /api/security-reports
+		not path_regexp ^/api/projects/[^/]+/files/write$
+	}
+	request_body @small {
+		max_size 1MiB
 	}
 
 	reverse_proxy app:3000

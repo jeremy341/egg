@@ -156,6 +156,7 @@ function ServerCard({ initial }: { initial: ServerView }) {
         </div>
         <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center">
           <Button
+            data-tour={connected ? undefined : "test-connection"}
             onClick={() => void test(undefined)}
             loading={testing}
             className="col-span-2 px-3 sm:col-span-1"
@@ -218,7 +219,9 @@ function ServerCard({ initial }: { initial: ServerView }) {
           <p className="text-muted-foreground">
             Paste this public key into the SSH Keys page of the Nest dashboard, then press Test connection.
           </p>
-          <CopyField label="Public key" value={server.publicKey} />
+          <div data-tour="public-key">
+            <CopyField label="Public key" value={server.publicKey} />
+          </div>
           <a
             href="https://dashboard.hackclub.app"
             target="_blank"
@@ -240,15 +243,20 @@ function ServerCard({ initial }: { initial: ServerView }) {
             one Nest shows for your server, then confirm. Egg sends nothing to the server until you do, and refuses any
             other key afterwards.
           </p>
-          <p className="break-all rounded-md bg-[var(--ds-gray-100)] px-3 py-2 font-mono text-[12px]">{pendingHostKey}</p>
-          <Button onClick={() => void test(pendingHostKey)} loading={testing}>
+          <p
+            data-tour="host-key"
+            className="break-all rounded-md bg-[var(--ds-gray-100)] px-3 py-2 font-mono text-[12px]"
+          >
+            {pendingHostKey}
+          </p>
+          <Button data-tour-allow="host-key" onClick={() => void test(pendingHostKey)} loading={testing}>
             {testing ? "Confirming…" : "Confirm host key"}
           </Button>
         </div>
       ) : null}
 
       {failure ? (
-        <div className="border-t p-5">
+        <div data-tour="test-failure" className="border-t p-5">
           <Alert tone="error" role="alert">
             {failure}
           </Alert>
@@ -351,6 +359,7 @@ export function ConnectFlow({ servers }: { servers: ServerView[] }) {
                   Nest username
                 </label>
                 <Input
+                  data-tour="nest-username"
                   id="nest-user"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}

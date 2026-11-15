@@ -14,12 +14,17 @@ import {
   DEFAULT_UNIT_DIR,
   KEEP_PREVIEWS,
   KEEP_RELEASES,
+  currentEnvLink,
   currentLink,
+  envFileOf,
   releaseDir,
   unitName,
 } from "@/server/deploy/layout";
 import { blockingConflicts, probeConflicts, repoNameOf } from "@/server/adoption";
+import { npmCachePlan } from "@/server/deploy/download-cache";
+import { deploymentRecorder, measureStage } from "@/server/deploy/performance";
 import { DeploymentLogger } from "@/server/deploy/logger";
+import { getProjectRole } from "@/server/project-roles";
 import * as remote from "@/server/deploy/remote";
 import {
   ENV_KEY,
@@ -196,6 +201,7 @@ async function run(
   const res = await session.script(script, {
     timeoutMs,
     signal,
+    outputTailBytes: 65536,
     onLine: (l, stream) => (stream === "stderr" ? log.warn(l) : log.info(l)),
   });
   if (res.code === remote.NOT_OURS_EXIT) {
@@ -226,7 +232,10 @@ function unitPaths(project: Project, dep: Deployment, home: string) {
   const workDir = preview
     ? releaseDir(home, project.slug, dep.releaseId)
     : currentLink(home, project.slug);
-  return { unit, workDir, envFile: `${workDir}/.env` };
+  // The variables file is never inside the release folder (a static app serves that folder).
+  // A preview reads its own file; production reads the current.env link, which follows `current`.
+  const envFile = preview ? envFileOf(home, project.slug, dep.releaseId) : currentEnvLink(home, project.slug);
+  return { unit, workDir, envFile };
 }
 
 async function healthy(
@@ -352,7 +361,7 @@ async function cleanup(
   ).map((d) => d.releaseId);
 
   await session
-    .script(remote.pruneReleases(home, project.slug, [...keep], building), {
+    .script(remote.pruneReleases(home, project.slug, [...keep], building, unitDir), {
       timeoutMs: 120_000,
       onLine: (l) => log.info(l),
     })
@@ -375,6 +384,7 @@ export async function runDeployJob(
 ): Promise<void> {
   const { db, dep, project, server } = await load(deploymentId);
   const log = new DeploymentLogger(deploymentId);
+  const recordStage = deploymentRecorder(deploymentId);
   let workDir: string | null = null;
   let session: NestSession | null = null;
   let previewUnitWritten = false;
@@ -389,6 +399,9 @@ export async function runDeployJob(
 
   try {
     if ((await stateOf(deploymentId)) !== "queued") return;
+    if (dep.triggeredBy && dep.triggeredBy !== project.userId && await getProjectRole(dep.triggeredBy, project.id) !== "developer") {
+      throw new DeployError("The deployment actor no longer has permission to deploy this project.");
+    }
     if (!(await setState(deploymentId, "building", { startedAt: new Date() }))) return;
     ownsUpload = githubBuild;
     log.info(
@@ -404,7 +417,7 @@ export async function runDeployJob(
 
     // ---- source (on this machine). Egg only clones and packs the source here; the install and build
     // run later on the Nest container, under a memory and CPU cap. No project is built on Egg's machine.
-    const built = githubBuild
+    const built = await measureStage("source", async () => githubBuild
       ? await receiveGithubRelease({
           deploymentId,
           commit: dep.commitSha,
@@ -424,6 +437,7 @@ export async function runDeployJob(
         })
       : await (deps.sourceBuild ?? defaultSourceBuilder)({
         deploymentId,
+        enableDownloadCache: project.buildCacheEnabled,
         runtime: {
           runtime: project.runtime,
           installCommand: project.installCommand,
@@ -441,7 +455,7 @@ export async function runDeployJob(
         env,
         log: log.log,
         signal,
-      });
+      }), recordStage);
     workDir = built.workDir || null;
     throwIfCanceled(signal);
     await db
@@ -526,6 +540,9 @@ export async function runDeployJob(
       signal,
       lockPollMs: deps.lockPollMs,
       artifact: githubBuild ? "the release built on GitHub" : undefined,
+      recordStage,
+      cache: npmCachePlan({ enabled: project.buildCacheEnabled, env: dep.env, lockHash: "npmLockHash" in built ? built.npmLockHash ?? null : null, buildInstall: built.spec.buildInstall, remoteInstall: built.spec.remoteInstall }),
+      npmLockHash: "npmLockHash" in built ? built.npmLockHash ?? null : null,
     });
     throwIfCanceled(signal);
     if (!(await setState(deploymentId, "deploying"))) {
@@ -536,8 +553,7 @@ export async function runDeployJob(
       throw new DeployError("The deployment was canceled.");
     }
 
-    const relDir = releaseDir(home, project.slug, dep.releaseId);
-    await session.writeFile(`${relDir}/.env`, renderEnvFile(env), "600", { signal });
+    await session.writeFile(envFileOf(home, project.slug, dep.releaseId), renderEnvFile(env), "600", { signal });
 
     const venv =
       project.runtime === "python" && built.files.hasRequirements
@@ -569,12 +585,13 @@ export async function runDeployJob(
     throwIfCanceled(signal);
     if (!(await beginActivation(deploymentId))) throw new DeployError("The deployment was canceled before activation.");
 
+    await measureStage("activation", async () => {
     if (dep.env === "production") {
-      await session.writeFile(`${deps.unitDir}/${unitInfo.unit}`, unitFile, "644");
+      await session!.writeFile(`${deps.unitDir}/${unitInfo.unit}`, unitFile, "644");
       productionUnitWritten = true;
-      await run(session, log, "Registering the service", remote.installUnit(deps.unitDir, unitInfo.unit));
+      await run(session!, log, "Registering the service", remote.installUnit(deps.unitDir, unitInfo.unit));
       await run(
-        session,
+        session!,
         log,
         "Switching the release",
         remote.activateProduction({
@@ -588,18 +605,19 @@ export async function runDeployJob(
       );
       productionActivated = true;
     } else {
-      await run(session, log, "Starting the preview", remote.startUnit(unitInfo.unit));
+      await run(session!, log, "Starting the preview", remote.startUnit(unitInfo.unit));
     }
+    }, recordStage);
 
     log.info(`Waiting for the app to answer on port ${dep.port}`);
-    const ok = await healthy(
-      session,
+    const ok = await measureStage("health", () => healthy(
+      session!,
       log,
       unitInfo.unit,
       dep.port,
       project.healthPath,
       deps.healthTimeoutSeconds
-    );
+    ), recordStage, null, Boolean);
 
     if (!ok) {
       await logJournal(session, log, unitInfo.unit);
@@ -704,6 +722,9 @@ export async function runRollbackJob(
 
   try {
     if ((await stateOf(deploymentId)) !== "queued") return;
+    if (dep.triggeredBy && dep.triggeredBy !== project.userId && await getProjectRole(dep.triggeredBy, project.id) !== "developer") {
+      throw new DeployError("The deployment actor no longer has permission to deploy this project.");
+    }
     if (!(await setState(deploymentId, "deploying", { startedAt: new Date() }))) return;
     throwIfCanceled(signal);
     log.info(`Rolling ${project.name} back to release ${dep.releaseId.slice(0, 8)}`);
@@ -783,4 +804,3 @@ export async function runRollbackJob(
     await log.flush().catch(() => {});
   }
 }
-

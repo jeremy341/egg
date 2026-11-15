@@ -43,7 +43,7 @@ import {
   envInput,
   getProjectForUser,
   listEnvVars,
-  ownedDeployment,
+  readableDeployment,
   setEnvVar,
   updateProject,
 } from "@/server/projects";
@@ -170,7 +170,7 @@ const deploymentDetailSchema = deploymentSchema
 
 export async function apiGetDeployment(p: Principal, deploymentId: string) {
   requireScope(p, "deployments:read");
-  const { dep } = await ownedDeployment(p.userId, deploymentId);
+  const { dep } = await readableDeployment(p.userId, deploymentId);
   const view = await requireView(p, deploymentId);
   return {
     deployment: {

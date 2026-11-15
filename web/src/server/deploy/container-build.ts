@@ -2,6 +2,8 @@ import { eq } from "drizzle-orm";
 import { BUILD_STEP_FLOOR_MB, CONTAINER_RESERVE_MB } from "@/lib/build-memory";
 import { getDb, schema } from "@/server/db";
 import { BuildLockError, withBuildLock, type StaleLock } from "@/server/deploy/build-lock";
+import { DOWNLOAD_CACHE_MAX_MB, npmCacheScript, type NpmCachePlan } from "@/server/deploy/download-cache";
+import { measureStage, startStage, type StageRecorder } from "@/server/deploy/performance";
 import type { BuildResult } from "@/server/deploy/build";
 import {
   evaluatePreflight,
@@ -12,6 +14,7 @@ import {
   RELEASE_ID,
   SH_MARKER_HELPERS,
   currentLink,
+  envFileOf,
   incomingArchive,
   projectDir,
   releaseDir,
@@ -247,7 +250,7 @@ export function buildSteps(spec: {
  * A `df` or `du` that is missing, fails or prints something unreadable is a warning (once), and
  * that check is skipped: the build is never stopped for what the watchdog could not read.
  */
-export function diskWatchdogStartScript(a: { scope: string }): string {
+export function diskWatchdogStartScript(a: { scope: string; cacheRoot?: string }): string {
   if (!/^egg-build-[0-9a-f]{8}$/.test(a.scope)) throw new ContainerBuildError("The build scope name is not valid.");
   const unit = shellQuote(`${a.scope}.scope`);
   const floor = BUILD_DISK_FLOOR_MB;
@@ -300,6 +303,17 @@ export function diskWatchdogStartScript(a: { scope: string }): string {
     `          if [ "$used" -gt ${budget} ]; then egg_wd_trip budget "used=\${used}MB limit=${budget}MB"; exit ${EXIT_DISK_BUDGET}; fi;;`,
     `      esac`,
     `    fi`,
+    ...(a.cacheRoot ? [
+      `    cache_root=${shellQuote(a.cacheRoot)}; cache_parent="\${cache_root%/*}"; cache_base="\${cache_parent%/*}"`,
+      `    if [ $((tick % ${DISK_SIZE_EVERY_TICKS})) -eq 0 ] && [ -d "$cache_root" ] && [ ! -L "$cache_root" ] && [ ! -L "$cache_parent" ] && [ ! -L "$cache_base" ] && [ -f "$cache_base/.egg-cache-managed" ] && [ ! -L "$cache_base/.egg-cache-managed" ]; then`,
+      `      used=0; for entry in "$cache_root"/*; do`,
+      `        [ -d "$entry" ] && [ ! -L "$entry" ] && [ -f "$entry/.egg-cache-entry-managed" ] && [ ! -L "$entry/.egg-cache-entry-managed" ] || continue`,
+      `        [[ "\${entry##*/}" =~ ^[a-f0-9]{64}$ ]] || continue`,
+      `        size=$(du -sm "$entry" 2>/dev/null | awk 'NR==1 {print $1}'); [[ "$size" =~ ^[0-9]+$ ]] && used=$((used + size))`,
+      `      done`,
+      `      if [[ "$used" =~ ^[0-9]+$ ]] && [ "$used" -gt ${DOWNLOAD_CACHE_MAX_MB} ]; then egg_wd_trip cache "used=\${used}MB limit=${DOWNLOAD_CACHE_MAX_MB}MB"; exit ${EXIT_DISK_BUDGET}; fi`,
+      `    fi`,
+    ] : []),
     `    tick=$((tick + 1))`,
     `    sleep ${DISK_WATCH_SECONDS} &`,
     `    wait $!`,
@@ -328,6 +342,7 @@ export function diskWatchdogEndScript(): string {
     `case "$disk" in`,
     `  floor) code=${EXIT_DISK_FLOOR};;`,
     `  budget) code=${EXIT_DISK_BUDGET};;`,
+    `  cache) code=${EXIT_DISK_BUDGET};;`,
     `  *) disk=""`,
     `     case "$egg_wd_status" in`,
     `       ${EXIT_DISK_FLOOR}) disk=floor; code=${EXIT_DISK_FLOOR};;`,
@@ -353,11 +368,14 @@ export function cappedBuildScript(a: {
   steps: BuildStep[];
   archiveRoot: string;
   hasEnvFile: boolean;
+  cache?: NpmCachePlan | null;
+  npmLockHash?: string | null;
 }) {
   const scope = buildScopeName(a.releaseId);
   const dir = releaseDir(a.home, a.slug, a.releaseId);
   const envFile = buildEnvFile(a.home, a.slug, a.releaseId);
   const root = safeRelative(a.archiveRoot);
+  const cacheRoot = a.cache && a.npmLockHash ? `${projectDir(a.home, a.slug)}/cache/npm/${a.cache.context}` : undefined;
 
   const inner = [
     `echo ${BUILD_OOM_SCORE_ADJUST} > /proc/self/oom_score_adj 2>/dev/null || true`,
@@ -370,7 +388,8 @@ export function cappedBuildScript(a: {
     a.hasEnvFile ? `rm -f -- ${shellQuote(envFile)}` : ``,
     `export CI=true`,
     `cd ${shellQuote(dir)}`,
-    ...a.steps.flatMap((s) => [`echo ${shellQuote(`${s.label}: ${s.command}`)}`, s.command]),
+    cacheRoot && a.npmLockHash ? npmCacheScript(cacheRoot, a.npmLockHash, dir) : ``,
+    ...a.steps.flatMap((s) => [`echo ${shellQuote(`${s.label}: ${s.command}`)}`, cacheRoot && (s.command === "npm ci" || s.command === "npm ci --omit=dev") ? s.command.replace(/^npm /, "egg_npm ") : s.command]),
   ]
     .filter((l) => l !== "")
     .join("\n");
@@ -405,11 +424,15 @@ export function cappedBuildScript(a: {
     `dir=${shellQuote(dir)}\nenvfile=${shellQuote(envFile)}\n` +
     `inner=${shellQuote(inner)}\n` +
     // The disk watchdog runs beside the build, outside its scope, and ends with it.
-    diskWatchdogStartScript({ scope }) +
+    diskWatchdogStartScript({ scope, cacheRoot }) +
     // Also remove the variables file when this script ends however it ends (a hangup, a TERM).
     `trap 'kill "$egg_wd_pid" 2>/dev/null; rm -f "$envfile"' EXIT\n` +
     `${run}\ncode=$?\n` +
     diskWatchdogEndScript() +
+    (cacheRoot ? `cache_base=${shellQuote(`${projectDir(a.home, a.slug)}/cache`)}; cache_parent="$cache_base/npm"; cache_root=${shellQuote(cacheRoot)}\n` +
+      `if [ -f "$cache_base/.egg-cache-managed" ] && [ ! -L "$cache_base/.egg-cache-managed" ] && [ ! -L "$cache_base" ] && [ ! -L "$cache_parent" ] && [ ! -L "$cache_root" ]; then\n` +
+      `  for entry in "$cache_root"/*; do [ -d "$entry" ] && [ ! -L "$entry" ] && [ -f "$entry/.egg-cache-entry-managed" ] && [ ! -L "$entry/.egg-cache-entry-managed" ] || continue; [[ "\${entry##*/}" =~ ^[a-f0-9]{64}$ ]] || continue; cache_size=$(du -sm "$entry" 2>/dev/null | awk 'NR==1 {print $1}'); if [ "$disk" = cache ] || { [[ "$cache_size" =~ ^[0-9]+$ ]] && [ "$cache_size" -gt ${DOWNLOAD_CACHE_MAX_MB} ]; }; then rm -rf -- "$entry"; fi; done\n` +
+      `fi\n` : "") +
     // Whatever is still in the scope (a build that ignored the timeout) is stopped.
     `systemctl stop ${shellQuote(`${scope}.scope`)} >/dev/null 2>&1 || true\n` +
     `rm -f "$envfile"\n` +
@@ -458,7 +481,7 @@ export function discardBuildScript(a: { home: string; slug: string; releaseId: s
     `rm -f ${shellQuote(buildEnvFile(a.home, a.slug, a.releaseId))} ${shellQuote(incomingArchive(a.home, a.slug, a.releaseId))}\n` +
     `if egg_dir_managed ${shellQuote(p)}; then\n` +
     `  live=$(readlink ${shellQuote(currentLink(a.home, a.slug))} 2>/dev/null || true)\n` +
-    `  if [ "$live" != ${shellQuote(dir)} ]; then rm -rf ${shellQuote(dir)} ${shellQuote(`${dir}.out`)}; fi\n` +
+    `  if [ "$live" != ${shellQuote(dir)} ]; then rm -rf ${shellQuote(dir)} ${shellQuote(`${dir}.out`)} ${shellQuote(envFileOf(a.home, a.slug, a.releaseId))}; fi\n` +
     `fi\n` +
     scopeStillRunningCheck(shellQuote(scope), `The build scope ${scope} is still running.`) +
     `true\n`
@@ -552,6 +575,9 @@ export type ContainerBuildInput = {
   lockStaleAfterMs?: number;
   /** What the archive is called in the log. Defaults to "source". */
   artifact?: string;
+  recordStage?: StageRecorder;
+  cache?: NpmCachePlan | null;
+  npmLockHash?: string | null;
 };
 
 /** The pre-upload check. Throws one fix line for the first thing that is missing; changes nothing. */
@@ -612,7 +638,7 @@ export async function verifyStaleBuildHolder(a: {
     const stopped = await session.script(stopAllBuildScopesScript(), {
       timeoutMs: 60_000,
       signal,
-      onLine: (l, s) => (s === "stderr" ? log.warn(l) : log.info(l)),
+      outputTailBytes: 65536, onLine: (l, s) => (s === "stderr" ? log.warn(l) : log.info(l)),
     });
     if (stopped.code !== 0) throw new BuildLockError(unconfirmedStaleMessage);
     if (target) {
@@ -642,6 +668,7 @@ export async function verifyStaleBuildHolder(a: {
  */
 export async function runContainerBuild(a: ContainerBuildInput): Promise<{ memoryCapMb: number }> {
   const { session, log, signal } = a;
+  const record = a.recordStage ?? (async () => {});
   const steps = buildSteps(a.built.spec);
   const buildWork = steps.length > 0;
   const memoryCapMb = buildWork ? containerMemoryCapMb(a.memoryMb, a.containerMemoryMb, Boolean(a.built.spec.buildCommand)) : 0;
@@ -671,9 +698,11 @@ export async function runContainerBuild(a: ContainerBuildInput): Promise<{ memor
 
   try {
     log.info(`Uploading ${(a.built.sizeBytes / 1e6).toFixed(1)} MB of ${a.artifact ?? "source"}`);
-    await session.uploadFile(a.built.archivePath, incomingArchive(a.home, a.slug, a.releaseId), { signal });
+    await measureStage("upload", () => session.uploadFile(a.built.archivePath, incomingArchive(a.home, a.slug, a.releaseId), { signal }), record, a.built.sizeBytes);
     if (signal?.aborted) throw new ContainerBuildError("The deployment was canceled.");
 
+    const finishLockWait = startStage("lock_wait", record);
+    try {
     await withBuildLock(
       a.serverId,
       a.deploymentId,
@@ -687,13 +716,14 @@ export async function runContainerBuild(a: ContainerBuildInput): Promise<{ memor
         verifyStale: (stale) => verifyStaleBuildHolder({ session, log, home: a.home, signal, stale }),
       },
       async (waited, lock) => {
+        await finishLockWait("ok");
         // Everything under the lock stops when the deployment is canceled or the lock is lost.
         const runSignal = signal ? AbortSignal.any([signal, lock.lost]) : lock.lost;
 
         const unpack = async () => {
           const res = await session.script(
             unpackSourceScript({ home: a.home, slug: a.slug, releaseId: a.releaseId, sha256: a.built.sha256 }),
-            { timeoutMs: 15 * 60_000, signal: runSignal, onLine: (l, s) => (s === "stderr" ? log.warn(l) : log.info(l)) }
+            { timeoutMs: 15 * 60_000, signal: runSignal, outputTailBytes: 65536, onLine: (l, s) => (s === "stderr" ? log.warn(l) : log.info(l)) }
           );
           if (res.code === 20) {
             throw new ContainerBuildError(describeBuildFailure(20, { memoryCapMb, appRunning: a.appRunning }));
@@ -731,14 +761,14 @@ export async function runContainerBuild(a: ContainerBuildInput): Promise<{ memor
               .script(removeLeftoverBuildEnvScript({ home: a.home, slug: a.slug, keepReleaseId: a.releaseId }), {
                 timeoutMs: 30_000,
                 signal: runSignal,
-                onLine: (l) => log.info(l),
+                outputTailBytes: 65536, onLine: (l) => log.info(l),
               })
               .catch((err) => {
                 if (runSignal.aborted) throw err;
                 log.warn("Could not look for leftover build variables files; the next deploy tries again.");
               });
           }
-          await unpack();
+          await measureStage("unpack", unpack, record);
           if (!buildWork) {
             if (lock.lost.aborted) throw lockLostMessage();
             return;
@@ -761,7 +791,8 @@ export async function runContainerBuild(a: ContainerBuildInput): Promise<{ memor
           runSignal.addEventListener("abort", stop, { once: true });
           let code: number;
           try {
-            const res = await session.script(
+            const res = await measureStage("build", async () => {
+              const result = await session.script(
               cappedBuildScript({
                 home: a.home,
                 slug: a.slug,
@@ -771,14 +802,19 @@ export async function runContainerBuild(a: ContainerBuildInput): Promise<{ memor
                 steps,
                 archiveRoot: a.built.spec.archiveRoot,
                 hasEnvFile: Object.keys(a.env).length > 0,
+                cache: a.cache,
+                npmLockHash: a.npmLockHash,
               }),
               {
                 // The script enforces the limit itself; this is the backstop if the connection hangs.
                 timeoutMs: (BUILD_TIMEOUT_SECONDS + 120) * 1000,
                 signal: runSignal,
-                onLine: (l, s) => (s === "stderr" ? log.warn(l) : log.info(l)),
+                outputTailBytes: 65536, onLine: (l, s) => (s === "stderr" ? log.warn(l) : log.info(l)),
               }
-            );
+              );
+              if (result.code !== 0) throw new ContainerBuildError(describeBuildFailure(result.code, { memoryCapMb, appRunning: a.appRunning, archiveRoot: a.built.spec.archiveRoot }));
+              return result;
+            }, record);
             code = res.code;
           } catch (err) {
             if (err instanceof SshError && err.kind === "timeout") {
@@ -811,6 +847,7 @@ export async function runContainerBuild(a: ContainerBuildInput): Promise<{ memor
         }
       }
     );
+    } finally { await finishLockWait("failed"); }
     return { memoryCapMb };
   } catch (err) {
     // Failed before or outside the lock (upload, canceled or refused while waiting): only our own files exist.

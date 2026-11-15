@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, lt } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 import { audit } from "@/server/audit";
 import { prunePageviews } from "@/server/analytics";
 import { getDb, schema } from "@/server/db";
@@ -9,6 +9,7 @@ import { withServerSession } from "@/server/servers";
 import { parseServiceStatus, type ServiceStatus } from "@/server/service-status";
 import { probeSession } from "@/server/ssh/probe";
 import { invalidateStatusPage } from "@/server/status-tags";
+import { withMaintenanceLease } from "@/server/maintenance-leases";
 
 /**
  * Uptime checks and usage history, run by the worker on a timer.
@@ -203,50 +204,33 @@ async function checkable(serverId: string): Promise<ProjectRow[]> {
   const projects = await db
     .select()
     .from(schema.projects)
-    .where(eq(schema.projects.serverId, serverId));
-  const out: ProjectRow[] = [];
-  for (const p of projects) {
-    const live = await db
-      .select({ id: schema.deployments.id })
-      .from(schema.deployments)
-      .where(
-        and(
-          eq(schema.deployments.projectId, p.id),
-          eq(schema.deployments.env, "production"),
-          eq(schema.deployments.isCurrent, true)
-        )
-      )
-      .get();
-    if (!live) continue;
-    const busy = await db
-      .select({ id: schema.deployments.id })
-      .from(schema.deployments)
-      .where(
-        and(
-          eq(schema.deployments.projectId, p.id),
-          inArray(schema.deployments.state, ["queued", "building", "deploying"])
-        )
-      )
-      .get();
-    if (!busy) out.push(p);
-  }
-  return out;
+    .where(and(eq(schema.projects.serverId, serverId),
+      sql`exists (select 1 from deployments d where d.project_id = ${schema.projects.id} and d.env = 'production' and d.is_current = 1)`,
+      sql`not exists (select 1 from deployments d where d.project_id = ${schema.projects.id} and d.state in ('queued', 'building', 'deploying'))`));
+  return projects;
 }
 
-async function checkServer(server: typeof schema.servers.$inferSelect, now: Date) {
+async function checkServer(server: typeof schema.servers.$inferSelect, now: Date, onError?: (err: unknown) => void) {
   const db = await getDb();
   const projects = await checkable(server.id);
 
   const { probe, results } = await withServerSession(server, async (s) => {
     const probe = await probeSession(s);
     const results = new Map<string, ServiceStatus>();
-    for (const p of projects) {
-      const r = await s.script(
-        serviceStatus({ unit: unitName(p.slug), port: p.port, path: p.healthPath }),
-        { timeoutMs: 20_000 }
-      );
-      if (r.code === 0) results.set(p.id, parseServiceStatus(r.stdout, now));
-    }
+    // Batch eight app probes per channel; run at most two batches per server.
+    const batches: ProjectRow[][] = [];
+    for (let i = 0; i < projects.length; i += 8) batches.push(projects.slice(i, i + 8));
+    await monitorServers(batches, async (batch) => {
+      const script = batch.map((p, i) => `printf '\\nEGG_STATUS_${i}\\n'\n` +
+        serviceStatus({ unit: unitName(p.slug), port: p.port, path: p.healthPath })).join("\n");
+      const r = await s.script(script, { timeoutMs: 20_000 * batch.length, maxOutputBytes: 64 * 1024 * batch.length });
+      if (r.code !== 0) return;
+      const parts = r.stdout.split(/\nEGG_STATUS_(\d+)\n/);
+      for (let i = 1; i < parts.length; i += 2) {
+        const p = batch[Number(parts[i])];
+        if (p) results.set(p.id, parseServiceStatus(parts[i + 1], now));
+      }
+    }, onError, 2);
     return { probe, results };
   });
 
@@ -342,6 +326,10 @@ async function checkResources(p: ProjectRow, usage: ResourceUsage, now: Date) {
 
 /** Check every connected server once. A server that cannot be reached is skipped. */
 export async function runMonitorPass(onError?: (err: unknown) => void, now?: Date) {
+  await withMaintenanceLease("monitor", () => runOwnedMonitorPass(onError, now));
+}
+
+async function runOwnedMonitorPass(onError?: (err: unknown) => void, now?: Date) {
   const db = await getDb();
   const servers = await db
     .select()
@@ -349,7 +337,7 @@ export async function runMonitorPass(onError?: (err: unknown) => void, now?: Dat
     .where(eq(schema.servers.status, "connected"));
   // Capture each server's check time as it starts, rather than assigning the
   // beginning of a long monitoring pass to every later sample.
-  await monitorServers(servers, (server) => checkServer(server, now ?? new Date()), onError);
+  await monitorServers(servers, (server) => checkServer(server, now ?? new Date(), onError), onError);
   const passFinishedAt = now ?? new Date();
   const cutoff = new Date(passFinishedAt.getTime() - SAMPLE_KEEP_MS);
   await db.delete(schema.usageSamples).where(lt(schema.usageSamples.at, cutoff));

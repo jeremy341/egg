@@ -1,7 +1,7 @@
 import { shellQuote } from "@/server/ssh/connection";
 import { toOnCalendar, type Schedule } from "@/lib/cron-schedule";
-import { SH_MARKER_HELPERS, UNIT_MARKER, UNIT_PREFIX, currentLink } from "@/server/deploy/layout";
-import { NOT_OURS_EXIT, journalTail, removeOwnUnit, systemdEscape } from "@/server/deploy/remote";
+import { SH_MARKER_HELPERS, UNIT_MARKER, UNIT_PREFIX, currentEnvLink, currentLink } from "@/server/deploy/layout";
+import { NOT_OURS_EXIT, SH_ENV_HELPERS, journalTail, migrateEnvCall, removeOwnUnit, systemdEscape } from "@/server/deploy/remote";
 
 /**
  * Scheduled jobs on the container: a systemd timer starts a oneshot service,
@@ -46,6 +46,7 @@ export function jobServiceFile(args: {
   pathPrefix?: string;
 }) {
   const link = currentLink(args.home, args.slug);
+  const envFile = currentEnvLink(args.home, args.slug);
   const path = args.pathPrefix
     ? `Environment=PATH=${args.pathPrefix}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n`
     : "";
@@ -54,7 +55,7 @@ export function jobServiceFile(args: {
     `[Unit]\nDescription=Egg job: ${args.name} (${args.slug})\nAfter=network.target\n\n` +
     `[Service]\nType=oneshot\nWorkingDirectory=${link}\n` +
     // The same variables the app runs with. The dash keeps a missing file from failing the job.
-    `EnvironmentFile=-${link}/.env\nEnvironment=NODE_ENV=production\n` +
+    `EnvironmentFile=-${envFile}\nEnvironment=NODE_ENV=production\n` +
     path +
     `ExecStart=/bin/bash -lc ${JSON.stringify(systemdEscape(args.command))}\n` +
     `TimeoutStartSec=${JOB_TIMEOUT_SECONDS}\n` +
@@ -97,7 +98,10 @@ export function installJob(args: {
   return (
     HEAD +
     SH_MARKER_HELPERS +
+    SH_ENV_HELPERS +
     `[ -d ${link} ] || { echo "Deploy the project once before adding a job: there is nothing to run it in yet." >&2; exit ${NO_RELEASE_EXIT}; }\n` +
+    // A project deployed before the variables files moved is brought to the new layout first, so the job sees them.
+    migrateEnvCall(args.home, args.slug, args.unitDir) +
     guard(service) +
     guard(timer) +
     `printf '%s' ${shellQuote(args.serviceFile)} > ${shellQuote(`${args.unitDir}/${service}`)}\n` +

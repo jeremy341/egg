@@ -195,8 +195,16 @@ A test reads every anchor name used in `lib/onboarding.ts` and fails unless a `d
 Order, with who does it (the rule used this round: Haiku for backend, Sonnet for UI, Fable plans, reviews and checks screenshots):
 
 1. **Spike (done 2026-11-13).** Driver.js kept, with a wrapper that adds the fixes listed in `onboarding-spike-results.md`. A real screen reader, Firefox and Safari are still to be tried before release.
-2. **Backend (Haiku).** Migration `0036`, `server/onboarding.ts`, the route, the facts query, tests. No UI.
-3. **Core logic (Sonnet).** `lib/onboarding.ts` with the copy above and its tests, including the anchor check.
+2. **Backend (done 2026-11-13).** Migration `0036_onboarding` (one column), `server/onboarding.ts`, `GET/PUT/DELETE /api/onboarding`, tests. Each change to the marks is one upsert statement using SQLite's JSON functions, not a transaction: two overlapping transactions fail with "busy" on this driver, and one statement cannot lose an update.
+3. **Core logic (done 2026-11-13).** `lib/onboarding.ts` (the copy, the segments per page, `selectSegment`) and `lib/onboarding-marks.ts` (the shared types), with tests. The anchor test lists all 16 `data-tour` names as not yet in the code; steps 4 and 5 must empty that list.
+
+   What the host built in steps 4 and 5 has to respect, found while writing the logic:
+   - `selectSegment` decides only what to **start**. A running segment is the host's to finish: the "Connected" step and the "Your app is running" step appear because the data changed while their segment was running.
+   - The host must save the `import` mark as `done` **before** it follows the Deploy button to the deployment page. A person with a project and no marks is treated as an existing user and gets nothing, so without that mark chapter 3 never starts.
+   - `{port}` in the chapter 3 text is a token. The host fills it with the port of the deployment on screen (`fillTokens`).
+   - The host-key step highlights the fingerprint, and the page behind the dimming layer cannot be clicked. The Confirm button must be made reachable for that step (Driver.js `allowedElements`), without being highlighted.
+   - The failed key test ("That did not work") and the "Your app is live" card are not segments: the page shows the first from its own state, and the host shows the second once after marking chapter 4 done (`LIVE_CARD_STEP`).
+   - Someone with a server that is not connected yet, on `/projects`, gets no step. They resume on `/connect`. Worth a look when chapter 1 is built.
 4. **Chapter 1 (Sonnet).** Host, wrapper, CSS, anchors on the projects and connect pages, replay link. Review with screenshots in light, dark, a custom theme and a phone width.
 5. **Chapters 2, 3 and 4 (Sonnet).** Anchors on the new-project flow, the deployment page and the domains page, the three variants, the failure step, the "What next" card.
 6. **Docs (Sonnet).** A "Getting started" page in the in-app docs that mirrors the three chapters in text, and the replay entry in the account menu.

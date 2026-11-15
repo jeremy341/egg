@@ -1,11 +1,15 @@
 import { shellQuote } from "@/server/ssh/connection";
+import { removeManagedDownloadCache } from "@/server/deploy/download-cache";
 import { APP_OOM_SCORE_ADJUST } from "@/server/deploy/container-build";
 import {
   FOLDER_MARKER,
   RELEASE_ID,
   SH_MARKER_HELPERS,
   UNIT_MARKER,
+  currentEnvLink,
   currentLink,
+  envDir,
+  envFileOf,
   projectDir,
   releaseDir,
   sharedDir,
@@ -19,6 +23,62 @@ import {
 
 const HEAD = "set -euo pipefail\n";
 
+const UUID_RE = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+
+/**
+ * Shell helpers for the runtime variables files (see layout.ts: envFileOf). Releases made before
+ * those files moved out of the release folder still have `<release>/.env`, which a static app
+ * serves over HTTP. `egg_migrate_env` moves each into `env/<release id>.env`, points the units that
+ * read it at the new path, and only then deletes the old file. It never fails the script that calls
+ * it. Needs SH_MARKER_HELPERS' UNIT_MARKER; units are matched by the project name in their marker.
+ */
+export const SH_ENV_HELPERS =
+  // Replace one exact line of a unit file, keeping its mode.
+  `egg_fix_env() { local f="$1" old="$2" new="$3" t l; [ -f "$f" ] && [ ! -L "$f" ] || return 0; grep -qxF -- "$old" "$f" || return 0; t="$f.egg-tmp-$$"; ` +
+  `while IFS= read -r l || [ -n "$l" ]; do if [ "$l" = "$old" ]; then printf '%s\\n' "$new"; else printf '%s\\n' "$l"; fi; done < "$f" > "$t" || { rm -f -- "$t"; return 0; }; ` +
+  `chmod --reference="$f" -- "$t" 2>/dev/null || chmod 644 -- "$t"; mv -f -- "$t" "$f"; }\n` +
+  // Copy a legacy file to its new place with mode 600, unless the new one already exists.
+  `egg_env_copy() { local src="$1" dst="$2" t; [ -e "$dst" ] && return 0; [ -f "$src" ] && [ ! -L "$src" ] || return 1; t="$dst.tmp-$$"; ` +
+  `( umask 077; cp -- "$src" "$t" ) && chmod 600 -- "$t" && mv -f -- "$t" "$dst"; }\n` +
+  `egg_own_unit() { [ -f "$1" ] && [ ! -L "$1" ] && grep -qE "^${UNIT_MARKER} project=$2( |\\$)" "$1" 2>/dev/null; }\n` +
+  `egg_migrate_env() {\n` +
+  `  local p="$1" unitdir="$2" slug="$3" d id cur f legacy\n` +
+  `  [ -d "$p/releases" ] || return 0\n` +
+  `  mkdir -p -- "$p/env" && chmod 700 -- "$p/env" || return 0\n` +
+  `  for d in "$p"/releases/*/; do\n` +
+  `    d=\${d%/}; id=\${d##*/}\n` +
+  `    [[ "$id" =~ ^${UUID_RE}$ ]] || continue\n` +
+  `    [ -f "$d/.env" ] && [ ! -L "$d/.env" ] || continue\n` +
+  `    egg_env_copy "$d/.env" "$p/env/$id.env" || continue\n` +
+  `    for f in "$unitdir/egg-$slug-pv-"*.service; do egg_own_unit "$f" "$slug" && egg_fix_env "$f" "EnvironmentFile=$d/.env" "EnvironmentFile=$p/env/$id.env"; done\n` +
+  `  done\n` +
+  `  cur=$(readlink "$p/current" 2>/dev/null || true); id=\${cur##*/}\n` +
+  `  if [[ "$id" =~ ^${UUID_RE}$ ]] && [ -f "$p/env/$id.env" ] && [ "$(readlink "$p/current.env" 2>/dev/null || true)" != "$p/env/$id.env" ]; then\n` +
+  `    ln -sfn -- "$p/env/$id.env" "$p/current.env.new" && mv -Tf -- "$p/current.env.new" "$p/current.env"\n` +
+  `  fi\n` +
+  `  if [ -L "$p/current.env" ]; then\n` +
+  `    for f in "$unitdir/egg-$slug.service" "$unitdir/egg-$slug-job-"*.service; do\n` +
+  `      egg_own_unit "$f" "$slug" || continue\n` +
+  `      egg_fix_env "$f" "EnvironmentFile=$p/current/.env" "EnvironmentFile=$p/current.env"\n` +
+  `      egg_fix_env "$f" "EnvironmentFile=-$p/current/.env" "EnvironmentFile=-$p/current.env"\n` +
+  `    done\n` +
+  `  fi\n` +
+  `  systemctl daemon-reload >/dev/null 2>&1 || true\n` +
+  // A legacy file goes only once its copy exists and no unit of this project still names it.
+  `  for d in "$p"/releases/*/; do\n` +
+  `    d=\${d%/}; id=\${d##*/}; legacy="$d/.env"\n` +
+  `    [[ "$id" =~ ^${UUID_RE}$ ]] || continue\n` +
+  `    [ -f "$legacy" ] && [ ! -L "$legacy" ] && [ -f "$p/env/$id.env" ] || continue\n` +
+  `    if grep -sqF -- "$legacy" "$unitdir"/egg-"$slug"*.service; then continue; fi\n` +
+  `    if [ "$cur" = "$d" ] && grep -sqF -- "$p/current/.env" "$unitdir"/egg-"$slug"*.service; then continue; fi\n` +
+  `    rm -f -- "$legacy" && echo "Moved the variables of release \${id:0:8} out of its folder"\n` +
+  `  done\n` +
+  `  return 0\n` +
+  `}\n`;
+
+export function migrateEnvCall(home: string, slug: string, unitDir: string) {
+  return `egg_migrate_env ${shellQuote(projectDir(home, slug))} ${shellQuote(unitDir)} ${shellQuote(slug)} || true\n`;
+}
 /** Exit code when a folder or service on the container is not ours and must not be touched. */
 export const NOT_OURS_EXIT = 30;
 
@@ -37,7 +97,11 @@ export function prepareDirs(home: string, slug: string) {
     `if [ -L "$p" ]; then echo "$p is a link, so Egg will not write into it." >&2; exit ${NOT_OURS_EXIT}; fi\n` +
     `if [ -e "$p" ] && [ ! -d "$p" ]; then echo "$p exists and is not a folder." >&2; exit ${NOT_OURS_EXIT}; fi\n` +
     `if [ -d "$p" ] && ! egg_dir_managed "$p" && [ -n "$(ls -A "$p")" ]; then echo "$p already exists and was not created by Egg, so it was left alone." >&2; exit ${NOT_OURS_EXIT}; fi\n` +
+    `e=${shellQuote(envDir(home, slug))}\n` +
+    `if [ -L "$e" ] || { [ -e "$e" ] && [ ! -d "$e" ]; }; then echo "$e is not a folder, so Egg will not write variables into it." >&2; exit ${NOT_OURS_EXIT}; fi\n` +
     `mkdir -p ${shellQuote(`${p}/incoming`)} ${shellQuote(`${p}/releases`)} ${shellQuote(sharedDir(home, slug))}\n` +
+    // Runtime variables live here, outside every release folder (a release folder can be served over HTTP).
+    `mkdir -p "$e" && chmod 700 "$e"\n` +
     `: > ${shellQuote(`${p}/${FOLDER_MARKER}`)}\n`
   );
 }
@@ -121,7 +185,10 @@ export function activateProduction(args: {
 }) {
   const link = currentLink(args.home, args.slug);
   const target = releaseDir(args.home, args.slug, args.releaseId);
-  const unitPath = `${args.unitDir ?? "/etc/systemd/system"}/${args.unit}`;
+  const envLink = currentEnvLink(args.home, args.slug);
+  const envFile = envFileOf(args.home, args.slug, args.releaseId);
+  const unitDir = args.unitDir ?? "/etc/systemd/system";
+  const unitPath = `${unitDir}/${args.unit}`;
   const writeUnit = args.unitFile === undefined
     ? ""
     : args.unitFile === null
@@ -132,21 +199,41 @@ export function activateProduction(args: {
     : args.restoreUnitFile === null
       ? `rm -f ${shellQuote(unitPath)}\nsystemctl disable ${shellQuote(args.unit)} >/dev/null 2>&1 || true\n`
       : `printf '%s' ${shellQuote(args.restoreUnitFile)} > ${shellQuote(unitPath)}\n`;
+  // The target's variables file is made ready before anything is switched: the one in env/, or
+  // (a release made before the files moved) a copy of its own .env. The unit then reads the
+  // current.env link, which is switched together with `current`. The legacy file is deleted only
+  // after the restart worked, by egg_migrate_env, so a failed switch can still go back.
+  const prepareEnv =
+    `mkdir -p ${shellQuote(envDir(args.home, args.slug))} && chmod 700 ${shellQuote(envDir(args.home, args.slug))}\n` +
+    `egg_env_copy ${shellQuote(`${target}/.env`)} ${shellQuote(envFile)} || true\n` +
+    `if [ ! -f ${shellQuote(envFile)} ]; then ( umask 077; : > ${shellQuote(envFile)} ); fi\n` +
+    `old_env_link=$(readlink ${shellQuote(envLink)} 2>/dev/null || true)\n` +
+    `ln -sfn ${shellQuote(envFile)} ${shellQuote(envLink + ".new")}\n` +
+    `mv -Tf ${shellQuote(envLink + ".new")} ${shellQuote(envLink)}\n` +
+    `egg_fix_env ${shellQuote(unitPath)} ${shellQuote(`EnvironmentFile=${link}/.env`)} ${shellQuote(`EnvironmentFile=${envLink}`)}\n` +
+    `systemctl daemon-reload\n`;
+  const restoreEnvLink =
+    `  if [ -n "$old_env_link" ]; then ln -sfn "$old_env_link" ${shellQuote(envLink + ".new")} && mv -Tf ${shellQuote(envLink + ".new")} ${shellQuote(envLink)}; else rm -f ${shellQuote(envLink)}; fi\n`;
   return (
     HEAD +
+    SH_MARKER_HELPERS +
+    SH_ENV_HELPERS +
     `[ -d ${shellQuote(target)} ]\n` +
     `saved_unit=""\nif [ -f ${shellQuote(unitPath)} ]; then saved_unit=${shellQuote(unitPath)}.egg-previous-$$; cp ${shellQuote(unitPath)} "$saved_unit"; fi\n` +
     writeUnit +
     `old_link=$(readlink ${shellQuote(link)} 2>/dev/null || true)\n` +
+    prepareEnv +
     `ln -sfn ${shellQuote(target)} ${shellQuote(link + ".new")}\n` +
     `mv -Tf ${shellQuote(link + ".new")} ${shellQuote(link)}\n` +
     `if ! systemctl restart ${shellQuote(args.unit)}; then\n` +
     `  if [ -n "$old_link" ]; then ln -sfn "$old_link" ${shellQuote(link + ".new")} && mv -Tf ${shellQuote(link + ".new")} ${shellQuote(link)}; else rm -f ${shellQuote(link)}; fi\n` +
+    restoreEnvLink +
     `  ${restoreUnit.trim()}\n` +
     `  systemctl daemon-reload || true\n  systemctl restart ${shellQuote(args.unit)} || true\n` +
     `  [ -z "$saved_unit" ] || rm -f "$saved_unit"\n  exit 1\nfi\n` +
     `[ -z "$saved_unit" ] || rm -f "$saved_unit"\n` +
-    `echo "Switched to release ${args.releaseId.slice(0, 8)} and restarted"\n`
+    `echo "Switched to release ${args.releaseId.slice(0, 8)} and restarted"\n` +
+    migrateEnvCall(args.home, args.slug, unitDir)
   );
 }
 
@@ -199,12 +286,33 @@ export function journalTail(unit: string, lines = 40, since?: string, until?: nu
  * that may be running, and their files are never removed. Pruning runs after a deploy is
  * activated, and a project has one deploy at a time, so in practice that list is empty.
  */
-export function pruneReleases(home: string, slug: string, keep: string[], building: string[] = []) {
+export function pruneReleases(
+  home: string,
+  slug: string,
+  keep: string[],
+  building: string[] = [],
+  /** When given, releases made before the variables files moved are brought to the new layout first. */
+  unitDir?: string
+) {
   const dir = `${projectDir(home, slug)}/releases`;
   const safeKeep = keep.filter((k) => RELEASE_ID.test(k));
   const safeBuilding = building.filter((k) => RELEASE_ID.test(k));
+  const e = shellQuote(envDir(home, slug));
+  // The variables file of a release that is gone (or never went live) goes with it. The one the
+  // current.env link names stays, whatever the lists say.
+  const pruneEnvFiles =
+    `keepenv=" ${safeKeep.join(" ")} ${safeBuilding.join(" ")} "\n` +
+    `liveenv=$(readlink ${shellQuote(currentEnvLink(home, slug))} 2>/dev/null || true)\n` +
+    `for f in ${e}/*.env; do\n` +
+    `  [ -f "$f" ] && [ ! -L "$f" ] || continue\n` +
+    `  n=\${f##*/}; id=\${n%.env}\n` +
+    `  [[ "$id" =~ ^${UUID_RE}$ ]] || continue\n` +
+    `  [ "$f" = "$liveenv" ] && continue\n` +
+    `  if [[ "$keepenv" != *" $id "* ]]; then rm -f -- "$f"; fi\n` +
+    `done\n`;
   return (
     HEAD +
+    (unitDir ? SH_MARKER_HELPERS + SH_ENV_HELPERS : "") +
     // The variables files go first: they are the only plaintext here, and the folder step below may exit early.
     `building=" ${safeBuilding.join(" ")} "\n` +
     `for f in ${shellQuote(`${projectDir(home, slug)}/incoming`)}/*.buildenv; do\n` +
@@ -212,6 +320,8 @@ export function pruneReleases(home: string, slug: string, keep: string[], buildi
     `  n=\${f##*/}; id=\${n%.buildenv}\n` +
     `  if [[ "$id" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] && [[ "$building" != *" $id "* ]]; then rm -f -- "$f"; echo "Removed a leftover build variables file"; fi\n` +
     `done\n` +
+    (unitDir ? migrateEnvCall(home, slug, unitDir) : "") +
+    pruneEnvFiles +
     `cd ${shellQuote(dir)} 2>/dev/null || exit 0\n` +
     `keep=" ${safeKeep.join(" ")} "\n` +
     `for d in */; do\n` +
@@ -238,7 +348,7 @@ export function removePreview(args: {
     removeOwnUnit(args.unitDir, args.unit) +
     `p=${shellQuote(projectDir(args.home, args.slug))}\n` +
     `if egg_dir_managed "$p"; then\n` +
-    `  if [[ ${shellQuote(args.releaseId)} =~ ^[0-9a-f-]{36}$ ]]; then rm -rf ${shellQuote(releaseDir(args.home, args.slug, args.releaseId))}; fi\n` +
+    `  if [[ ${shellQuote(args.releaseId)} =~ ^[0-9a-f-]{36}$ ]]; then rm -rf ${shellQuote(releaseDir(args.home, args.slug, args.releaseId))}; rm -f ${shellQuote(envFileOf(args.home, args.slug, args.releaseId))}; fi\n` +
     `elif [ -e "$p" ] || [ -L "$p" ]; then echo ${shellQuote(`Project folder ${projectDir(args.home, args.slug)} was not created by Egg, so it was left alone.`)} >&2; exit ${NOT_OURS_EXIT}; fi\n`
   );
 }
@@ -275,11 +385,11 @@ export function removeProject(args: {
   // at the same path is never deleted, with or without "delete data".
   const remove = args.deleteData
     ? `rm -rf ${shellQuote(p)}`
-    : `rm -rf ${shellQuote(`${p}/releases`)} ${shellQuote(`${p}/incoming`)} ${shellQuote(`${p}/current`)}`;
+    : `rm -rf ${shellQuote(`${p}/releases`)} ${shellQuote(`${p}/incoming`)} ${shellQuote(`${p}/current`)} ${shellQuote(envDir(args.home, args.slug))} ${shellQuote(currentEnvLink(args.home, args.slug))} || exit 45\n${removeManagedDownloadCache(p)}`;
   return (
     SH_MARKER_HELPERS +
     removeOwnUnit(args.unitDir, args.unit) +
-    `if egg_dir_managed ${shellQuote(p)}; then ${remove}; elif [ -e ${shellQuote(p)} ] || [ -L ${shellQuote(p)} ]; then echo ${shellQuote(`${p} was not created by Egg, so it was left alone.`)} >&2; exit ${NOT_OURS_EXIT}; fi\n`
+    `if egg_dir_managed ${shellQuote(p)}; then\n${remove}\nelif [ -e ${shellQuote(p)} ] || [ -L ${shellQuote(p)} ]; then echo ${shellQuote(`${p} was not created by Egg, so it was left alone.`)} >&2; exit ${NOT_OURS_EXIT}; fi\n`
   );
 }
 
@@ -298,7 +408,7 @@ export function cleanupOwnedProject(args: { home: string; slug: string; units: s
       return `if [ -e ${file} ]; then systemctl stop ${shellQuote(unit)} || exit 45; if systemctl is-active --quiet ${shellQuote(unit)}; then echo 'Service is still active; cleanup stopped.' >&2; exit 45; fi; systemctl disable ${shellQuote(unit)} || exit 45; rm -f -- ${file} || exit 45; fi\n`;
     }).join("") +
     `systemctl daemon-reload || exit 45\n` +
-    `if [ -d "$d" ]; then rm -rf -- "$d/releases" "$d/incoming"; rm -f -- "$d/current" "$d/current.new"; fi\n` +
+    `if [ -d "$d" ]; then rm -rf -- "$d/releases" "$d/incoming" "$d/env"; rm -f -- "$d/current" "$d/current.new" "$d/current.env" "$d/current.env.new";\n${removeManagedDownloadCache(folder)}fi\n` +
     `echo 'EGG_CLEANUP_WARNING: Shared application data was preserved. Remove it manually only after making a backup.'\n`;
 }
 

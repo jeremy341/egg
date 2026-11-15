@@ -68,6 +68,8 @@ case "$cmd" in
     alive && kill "$(cat "$pidfile")" 2>/dev/null
     wd=$(grep '^WorkingDirectory=' "$unitfile" | cut -d= -f2-)
     envfile=$(grep '^EnvironmentFile=' "$unitfile" | cut -d= -f2-)
+    # Like systemd: a missing EnvironmentFile (one without the leading dash) stops the unit from starting.
+    if [ -n "$envfile" ] && [ "${envfile#-}" = "$envfile" ] && [ ! -f "$envfile" ]; then echo "Failed to load environment files: $envfile" >&2; exit 1; fi
     port=$(grep '^Environment=PORT=' "$unitfile" | sed 's/^Environment=PORT=//')
     start=$(grep '^ExecStart=' "$unitfile" | sed -E 's/^ExecStart=\/bin\/bash -lc "(.*)"$/\1/')
     # resolve the symlink so the process does not pin the link itself (Windows)

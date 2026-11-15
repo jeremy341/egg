@@ -3,7 +3,7 @@ import { and, desc, eq, gte, isNotNull, sql } from "drizzle-orm";
 import { COUNTRY_CODE, countryName } from "@/lib/world-codes";
 import { type Count } from "@/lib/stats-format";
 import { getDb, schema } from "@/server/db";
-import { getProjectForUser } from "@/server/projects";
+import { getReadableProject } from "@/server/projects";
 import { roundCount } from "@/server/stats";
 
 /**
@@ -124,7 +124,7 @@ export async function locationsSummary(
   days = 30,
   now = new Date()
 ): Promise<LocationsSummary> {
-  const project = await getProjectForUser(userId, projectId);
+  const project = await getReadableProject(userId, projectId);
   const db = await getDb();
   const since = new Date(now.getTime() - days * 86_400_000);
   const rows = await db

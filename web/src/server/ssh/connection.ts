@@ -1,5 +1,6 @@
 import { createReadStream } from "node:fs";
 import type { Readable } from "node:stream";
+import { StringDecoder } from "node:string_decoder";
 import { Client, type ConnectConfig } from "ssh2";
 import { fingerprintOfBlob } from "@/server/ssh/keys";
 import { openShellOnClient, type ShellHandle, type ShellOptions } from "@/server/ssh/shell";
@@ -39,6 +40,8 @@ export type ExecOptions = {
    * and the call fails. Default 128 MB, room for a 50 MB file sent as base64.
    */
   maxOutputBytes?: number;
+  /** Retain only this many bytes per stream as a diagnostic tail. */
+  outputTailBytes?: number;
   /** Called with each line of stdout/stderr as it arrives. */
   onLine?: (line: string, stream: "stdout" | "stderr") => void;
 };
@@ -170,8 +173,11 @@ export class NestSession {
 
         let stdout = "";
         let stderr = "";
-        let outBuf = "";
-        let errBuf = "";
+        const outDecoder = new StringDecoder("utf8");
+        const errDecoder = new StringDecoder("utf8");
+        const lineBuffers = { stdout: "", stderr: "" };
+        const dropping = { stdout: false, stderr: false };
+        const droppingTail = { stdout: false, stderr: false };
         let settled = false;
         let timer: NodeJS.Timeout | undefined;
         let received = 0;
@@ -197,15 +203,44 @@ export class NestSession {
           requestStop(new SshError("The container printed more output than Egg will read.", "exec"));
         };
 
-        const flush = (buf: string, which: "stdout" | "stderr", final: boolean) => {
-          if (!opts.onLine) return buf;
-          const parts = buf.split(/\r?\n/);
-          const rest = final ? "" : (parts.pop() ?? "");
-          for (const line of parts) {
-            if (line.length > 0) opts.onLine(line, which);
+        const flush = (text: string, which: "stdout" | "stderr", final = false) => {
+          if (!opts.onLine) return;
+          const parts = text.split("\n");
+          for (let i = 0; i < parts.length; i++) {
+            const part = parts[i];
+            if (!dropping[which]) {
+              if (lineBuffers[which].length + part.length > 16_384) {
+                lineBuffers[which] = "";
+                dropping[which] = true;
+              } else lineBuffers[which] += part;
+            }
+            if (i < parts.length - 1 || final) {
+              if (dropping[which]) opts.onLine("[Oversized log line omitted]", which);
+              else {
+                const line = lineBuffers[which].replace(/\r$/, "");
+                if (line) opts.onLine(line, which);
+              }
+              lineBuffers[which] = "";
+              dropping[which] = false;
+            }
           }
-          if (final && rest) opts.onLine(rest, which);
-          return rest;
+        };
+        const retain = (old: string, value: string, which: "stdout" | "stderr") => {
+          if (opts.outputTailBytes === undefined) return old + value;
+          const limit = Math.max(0, Math.floor(opts.outputTailBytes));
+          if (droppingTail[which]) {
+            const newline = value.indexOf("\n");
+            if (newline < 0) return old;
+            droppingTail[which] = false;
+            value = value.slice(newline + 1);
+          }
+          const bytes = Buffer.from(old + value);
+          if (bytes.length <= limit) return bytes.toString("utf8");
+          // Never retain the suffix of a clipped line: it might be part of a
+          // secret and would no longer match the logger's full-secret mask.
+          const newline = bytes.indexOf(10, bytes.length - limit);
+          if (newline < 0) { droppingTail[which] = true; return ""; }
+          return bytes.subarray(newline + 1).toString("utf8");
         };
 
         const finish = (code: number) => {
@@ -217,8 +252,12 @@ export class NestSession {
             reject(stopError);
             return;
           }
-          flush(outBuf, "stdout", true);
-          flush(errBuf, "stderr", true);
+          const outEnd = outDecoder.end();
+          const errEnd = errDecoder.end();
+          stdout = retain(stdout, outEnd, "stdout");
+          stderr = retain(stderr, errEnd, "stderr");
+          flush(outEnd, "stdout", true);
+          flush(errEnd, "stderr", true);
           resolve({ code, stdout, stderr });
         };
 
@@ -237,16 +276,16 @@ export class NestSession {
         stream.on("data", (d: Buffer) => {
           overflow(d.length);
           if (settled || stopError) return;
-          const s = d.toString("utf8");
-          stdout += s;
-          outBuf = flush(outBuf + s, "stdout", false);
+          const s = outDecoder.write(d);
+          stdout = retain(stdout, s, "stdout");
+          flush(s, "stdout");
         });
         stream.stderr.on("data", (d: Buffer) => {
           overflow(d.length);
           if (settled || stopError) return;
-          const s = d.toString("utf8");
-          stderr += s;
-          errBuf = flush(errBuf + s, "stderr", false);
+          const s = errDecoder.write(d);
+          stderr = retain(stderr, s, "stderr");
+          flush(s, "stderr");
         });
         stream.on("close", (code: number | null) => finish(code ?? 255));
         stream.on("error", (e: Error) => {

@@ -1,6 +1,8 @@
 import { GithubError, headers, installationToken } from "@/server/github/app";
 import { cleanRootDir } from "@/server/root-detect";
 import { detectRepo, READ_FILES, type RepoDetection } from "@/server/repo-detect";
+import { readBytesLimited } from "@/server/body-limit";
+import { HttpError } from "@/server/http";
 
 /**
  * Read a repository's file tree from GitHub and run detection on it.
@@ -14,6 +16,7 @@ import { detectRepo, READ_FILES, type RepoDetection } from "@/server/repo-detect
 type FetchLike = typeof fetch;
 const API = "https://api.github.com";
 const MAX_FILE_BYTES = 200_000;
+const MAX_TREE_BYTES = 10 * 1024 * 1024;
 /** Keep paths up to this deep under the root: enough for packages/*\/package.json. */
 const MAX_DEPTH = 3;
 
@@ -32,6 +35,17 @@ export type RepoRead = {
 };
 
 const unavailable = (message: string): RepoRead => ({ status: "unavailable", message, detection: null });
+
+async function readResponse(res: Response, limit: number): Promise<Buffer> {
+  try {
+    return await readBytesLimited(res, limit);
+  } catch (err) {
+    // An oversized Content-Length is rejected before the reader is acquired.
+    // Cancel that response too so its remaining body is not downloaded.
+    await res.body?.cancel().catch(() => {});
+    throw err;
+  }
+}
 
 async function readInner(source: RepoSource, fetchImpl: FetchLike): Promise<RepoRead> {
   const dir = cleanRootDir(source.rootDir);
@@ -66,7 +80,7 @@ async function readInner(source: RepoSource, fetchImpl: FetchLike): Promise<Repo
     };
   }
   if (!treeRes.ok) return unavailable(`GitHub did not answer (${treeRes.status}). Try again later.`);
-  const tree = (await treeRes.json()) as {
+  const tree = JSON.parse((await readResponse(treeRes, MAX_TREE_BYTES)).toString("utf8")) as {
     tree?: { path?: unknown; type?: unknown }[];
     truncated?: boolean;
   };
@@ -89,8 +103,13 @@ async function readInner(source: RepoSource, fetchImpl: FetchLike): Promise<Repo
         { headers: h("application/vnd.github.raw+json"), signal: AbortSignal.timeout(8000) }
       );
       if (!res.ok) return [f, ""] as const;
-      const text = await res.text();
-      return [f, text.length <= MAX_FILE_BYTES ? text : ""] as const;
+      try {
+        const text = (await readResponse(res, MAX_FILE_BYTES)).toString("utf8");
+        return [f, text] as const;
+      } catch (err) {
+        if (err instanceof HttpError && err.status === 413) return [f, ""] as const;
+        throw err;
+      }
     })
   );
   for (const [f, text] of texts) files[f] = text;

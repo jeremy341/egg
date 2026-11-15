@@ -426,6 +426,8 @@ describe("the release's .env file is never shown", () => {
     for (const path of [
       "current/.env",
       "releases/abc123/.env",
+      "env/11111111-1111-4111-8111-111111111111.env",
+      "current.env",
       "incoming/0a1b2c3d-0000-4000-8000-000000000000.buildenv",
     ]) {
       for (const res of [

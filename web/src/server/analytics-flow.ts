@@ -1,7 +1,7 @@
 import { and, desc, eq, gte, lte } from "drizzle-orm";
 import { getFeatures } from "@/server/analytics-config";
 import { getDb, schema } from "@/server/db";
-import { getProjectForUser } from "@/server/projects";
+import { getReadableProject } from "@/server/projects";
 
 /**
  * How visits move through the site, for a three-column flow chart:
@@ -105,7 +105,7 @@ export function summariseFlow(rows: FlowRow[], days: number): FlowSummary {
 
 /** The visit flow of the project for the last `days` days. Empty when the referrers switch is off. */
 export async function flowSummary(userId: string, projectId: string, days = 30, now = new Date()): Promise<FlowSummary> {
-  const project = await getProjectForUser(userId, projectId);
+  const project = await getReadableProject(userId, projectId);
   const features = await getFeatures(project.id);
   if (!features.referrers) return { days, enabled: false, visits: 0, links: [] };
 

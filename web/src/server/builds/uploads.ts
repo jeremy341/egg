@@ -17,6 +17,7 @@ import { finished } from "node:stream/promises";
 import path from "node:path";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { BAD_BUILD_CREDENTIAL } from "@/server/builds/authorization";
+import type { UploadEnvironment } from "@/server/builds/token";
 import { config } from "@/server/config";
 import { getDb, schema } from "@/server/db";
 import { MAX_ARCHIVE_BYTES, BuildError, assertGitRef } from "@/server/deploy/build";
@@ -151,12 +152,14 @@ type DeploymentRow = typeof schema.deployments.$inferSelect;
  * The deployment of this project that is waiting for this commit on this branch: queued or running,
  * not a rollback, and not yet holding an upload. A deployment whose commit is not known yet (a manual
  * deploy or a deploy hook) takes the next build of its branch; one that names a commit takes only that commit.
- * `received` is a matching deployment that already holds an upload.
+ * `received` is a matching deployment that already holds an upload. With `environment`, only deployments of that
+ * environment count: an upload credential made for preview never finds a production deployment, and the other way round.
  */
 export async function findWaiting(
   projectId: string,
   branch: string,
-  commit: string
+  commit: string,
+  environment?: UploadEnvironment
 ): Promise<{ waiting: DeploymentRow | null; received: DeploymentRow | null }> {
   const db = await getDb();
   const rows = await db
@@ -166,7 +169,8 @@ export async function findWaiting(
       and(
         eq(schema.deployments.projectId, projectId),
         eq(schema.deployments.branch, branch),
-        inArray(schema.deployments.state, ["queued", "building"])
+        inArray(schema.deployments.state, ["queued", "building"]),
+        ...(environment ? [eq(schema.deployments.env, environment)] : [])
       )
     )
     .orderBy(asc(schema.deployments.createdAt));
@@ -337,6 +341,8 @@ export async function acceptUpload(a: UploadOptions): Promise<{ deploymentId: st
 
 export type UploadOptions = {
   projectId: string;
+  /** What the upload credential was made for. The build is only attached to a deployment of this environment. */
+  environment: UploadEnvironment;
   headers: UploadHeaders;
   body: ReadableStream<Uint8Array> | null;
   contentLength: number | null;
@@ -369,8 +375,22 @@ async function receiveUpload(a: UploadOptions): Promise<{ deploymentId: string }
 
   sweepUploads();
 
-  const early = await findWaiting(projectId, h.branch, h.commit);
+  const env = a.environment;
+  const early = await findWaiting(projectId, h.branch, h.commit, env);
   if (!early.waiting) {
+    if (!early.received) {
+      // A credential for the other environment is a mistake or an attack, and trying again never helps: say so, do not retry.
+      const other = await findWaiting(projectId, h.branch, h.commit, env === "production" ? "preview" : "production");
+      if (other.waiting || other.received) {
+        throw new HttpError(
+          403,
+          env === "preview"
+            ? "This is a production deployment, and the preview upload credential cannot send a build for it. Use the production credential from the egg-production environment."
+            : "This is a preview deployment, and the production upload credential cannot send a build for it. Use the preview upload credential.",
+          "wrong_upload_credential"
+        );
+      }
+    }
     if (early.received) {
       await eventLog(early.received.id, "warn", `A second build for commit ${h.commit.slice(0, 7)} was rejected: this deployment already has its build.`);
       throw new HttpError(409, "This deployment already has its build.", "already_received");
@@ -400,7 +420,7 @@ async function receiveUpload(a: UploadOptions): Promise<{ deploymentId: string }
   await eventLog(first, "info", `Checksum verified (${(streamed.bytes / 1e6).toFixed(1)} MB).`);
 
   // The deployment may have been canceled, or finished, while the body was arriving.
-  const again = await findWaiting(projectId, h.branch, h.commit);
+  const again = await findWaiting(projectId, h.branch, h.commit, env);
   if (!again.waiting) {
     rmSync(streamed.file, { force: true });
     if (again.received) throw new HttpError(409, "This deployment already has its build.", "already_received");

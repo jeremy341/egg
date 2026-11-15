@@ -28,6 +28,25 @@ export function currentLink(home: string, slug: string) {
   return `${projectDir(home, slug)}/current`;
 }
 
+/**
+ * Runtime variables live beside the release folders, never inside them: a release
+ * folder is what a static app serves, so a file there can be fetched over HTTP.
+ * `env/<release id>.env` is one release's file (mode 600, folder mode 700), and
+ * `current.env` is a link to the file of the release `current` points at. The
+ * production unit reads the link, so switching releases switches the variables.
+ */
+export function envDir(home: string, slug: string) {
+  return `${projectDir(home, slug)}/env`;
+}
+
+export function envFileOf(home: string, slug: string, releaseId: string) {
+  return `${envDir(home, slug)}/${releaseId}.env`;
+}
+
+export function currentEnvLink(home: string, slug: string) {
+  return `${projectDir(home, slug)}/current.env`;
+}
+
 export function sharedDir(home: string, slug: string) {
   return `${projectDir(home, slug)}/shared`;
 }
@@ -77,4 +96,4 @@ export const SH_MARKER_HELPERS =
   `egg_unit_marked() { [ -f "$1" ] && [ ! -L "$1" ] && grep -q '^${UNIT_MARKER}' "$1" 2>/dev/null; }\n` +
   `egg_dir_managed() { local d e n; d="$1"; [ -d "$d" ] && [ ! -L "$d" ] || return 1; [ -f "$d/${FOLDER_MARKER}" ] && return 0; [ -e "$d/.git" ] && return 1; ` +
   `n=0; for e in "$d"/* "$d"/.[!.]*; do [ -e "$e" ] || [ -L "$e" ] || continue; ` +
-  `case "$(basename "$e")" in releases|incoming|shared|current|current.new) n=$((n+1));; *) return 1;; esac; done; [ "$n" -gt 0 ]; }\n`;
+  `case "$(basename "$e")" in releases|incoming|shared|env|current|current.new|current.env|current.env.new) n=$((n+1));; *) return 1;; esac; done; [ "$n" -gt 0 ]; }\n`;

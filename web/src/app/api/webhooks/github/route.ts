@@ -1,7 +1,8 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { readBytesLimited, webhookBodyReads } from "@/server/body-limit";
-import { config } from "@/server/config";
+import { config, trustProxyEnabled } from "@/server/config";
+import { admitRequest } from "@/server/rate-limit-core";
 import { claimDelivery, handleGithubEvent, matchesWebhookEventShape, releaseDelivery } from "@/server/github/webhook";
 import { HttpError } from "@/server/http";
 import { maintenanceState } from "@/server/maintenance";
@@ -73,6 +74,15 @@ export async function POST(req: NextRequest) {
   const signature = req.headers.get("x-hub-signature-256");
   if (!signature || !SIGNATURE_FORMAT.test(signature)) {
     return NextResponse.json({ error: "bad signature" }, { status: 401 });
+  }
+
+  // Per address, after the cheap refusals above. Never banned: GitHub's deliveries come from a few addresses.
+  const limited = admitRequest(req.headers, { trustProxy: trustProxyEnabled(), bucket: "webhook" });
+  if (limited.refused) {
+    return NextResponse.json(
+      { error: "too many webhook deliveries from this address; redeliver shortly" },
+      { status: 429, headers: { "Retry-After": String(limited.retryAfterSeconds) } }
+    );
   }
 
   const release = webhookBodyReads.acquire();

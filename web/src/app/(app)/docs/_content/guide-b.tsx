@@ -174,7 +174,7 @@ const FILE_PROBLEMS: [string, ReactNode][] = [
   ],
   [
     "This file holds the project's environment variable values, so it is not shown here. Change the values in the project's settings.",
-    "403. The Files tab never opens a release’s .env. Change the values in the project’s settings, then deploy.",
+    "403. The Files tab never opens a variables file. Change the values in the project’s settings, then deploy.",
   ],
   [
     "That file holds the project's environment variable values, which are never returned by the API.",
@@ -454,7 +454,7 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         },
         {
           title: "Switch, on your container",
-          body: "Egg writes the release’s .env file, points the service at the new release and restarts it, so the app is unavailable for a moment. Then it waits up to 45 seconds for the app to answer.",
+          body: "Egg writes the release’s variables file, points the service at the new release and restarts it, so the app is unavailable for a moment. Then it waits up to 45 seconds for the app to answer.",
         },
       ])}
       <P>

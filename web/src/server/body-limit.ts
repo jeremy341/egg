@@ -18,7 +18,8 @@ export type ReadBytesOptions = {
   deadlineMs?: number;
 };
 
-export async function readBytesLimited(req: Request, maxBytes: number, opts: ReadBytesOptions = {}): Promise<Buffer> {
+/** Takes a request, or a fetch response when the bytes come from another server (headers and body are all it reads). */
+export async function readBytesLimited(req: Pick<Request, "headers" | "body">, maxBytes: number, opts: ReadBytesOptions = {}): Promise<Buffer> {
   const tooLarge = () => new HttpError(413, "That request is too large.", "too_large");
   const declared = Number(req.headers.get("content-length"));
   if (Number.isFinite(declared) && declared > maxBytes) throw tooLarge();

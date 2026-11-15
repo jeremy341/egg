@@ -71,7 +71,7 @@ describe("job unit files", () => {
     expect(file.split("\n")[0]).toBe(`# egg:managed project=demo job=${id}`);
     expect(file).toContain("Type=oneshot");
     expect(file).toContain("WorkingDirectory=/home/sam-r/.egg/demo/current");
-    expect(file).toContain("EnvironmentFile=-/home/sam-r/.egg/demo/current/.env");
+    expect(file).toContain("EnvironmentFile=-/home/sam-r/.egg/demo/current.env");
     expect(file).toContain('ExecStart=/bin/bash -lc "node scripts/prune.js --days 30"');
     expect(file).toContain("TimeoutStartSec=1800");
     expect(file).toContain("OOMScoreAdjust=500");
@@ -172,6 +172,14 @@ describe("scheduled jobs on a mock Nest", () => {
     const dep = await deployBranch(userId, project.id);
     await runDeployJob(dep.id, deps);
 
+    // Existing installs can still have the old environment file inside current/.
+    // Job installation performs the migration before writing its unit.
+    const projectDir = `${mock.home}/.egg/${project.slug}`;
+    await sh(`mv '${projectDir}/env/${dep.releaseId}.env' '${projectDir}/releases/${dep.releaseId}/.env'
+printf 'LEGACY="kept"\\n' > '${projectDir}/releases/${dep.releaseId}/.env'
+rm '${projectDir}/current.env'
+sed -i 's|EnvironmentFile=${projectDir}/current.env|EnvironmentFile=${projectDir}/current/.env|' '${unitDir}/egg-${project.slug}.service'`);
+
     const job = await createJob(userId, project.id, nightly);
     expect(job).toMatchObject({ name: "Nightly report", schedule: "30 3 * * *", description: "Every day at 03:30 UTC", enabled: true });
     expect(new Date(job.nextRunAt!).getUTCHours()).toBe(3);
@@ -181,6 +189,10 @@ describe("scheduled jobs on a mock Nest", () => {
     const { service, timer } = jobUnits(project.slug, job.id);
     expect(files).toEqual(expect.arrayContaining([service, timer]));
     expect(await sh(`cat ${unitDir}/${timer}`)).toContain("OnCalendar=*-*-* 03:30:00 UTC");
+    const migrated = await sh(`cat '${projectDir}/env/${dep.releaseId}.env'`);
+    expect(migrated).toContain('LEGACY="kept"');
+    expect(await sh(`readlink '${projectDir}/current.env'`)).toBe(`${projectDir}/env/${dep.releaseId}.env`);
+    expect(await sh(`test ! -e '${projectDir}/releases/${dep.releaseId}/.env' && grep -F 'EnvironmentFile=${projectDir}/current.env' '${unitDir}/egg-${project.slug}.service' && grep -F 'EnvironmentFile=-${projectDir}/current.env' '${unitDir}/${service}'`)).toContain("EnvironmentFile");
 
     const [status] = await fetchJobStatuses(userId, project.id);
     expect(status).toMatchObject({ id: job.id, state: "never", armed: true, lastEndedAt: null });

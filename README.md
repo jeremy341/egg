@@ -6,7 +6,7 @@ A Vercel-style dashboard for deploying projects to [Hack Club Nest](https://guid
 
 ## Run it yourself
 
-You can run the whole app privately on your own computer, with no Hack Club account. Set `LOCAL_MODE=1` and sign in with one button. The step-by-step guide is [docs/selfhost/README.md](docs/selfhost/README.md), and [docs/selfhost/customising.md](docs/selfhost/customising.md) covers the name, colours, ports and build memory.
+You can run the whole app privately on your own computer, with no Hack Club account. Set `LOCAL_MODE=1` and sign in with a local password that you set on your first visit. It can also run on your own server with Docker Compose and Caddy. Apps deploy to a Hack Club Nest container; a server you own over SSH is written for but not tested. The step-by-step guide is [docs/selfhost/README.md](docs/selfhost/README.md), [docs/selfhost/customising.md](docs/selfhost/customising.md) covers the name, colours, ports and build memory, and [docs/design/self-host-gaps.md](docs/design/self-host-gaps.md) lists what a non-Hack-Club setup cannot do yet.
 
 ## Start here
 
@@ -18,7 +18,7 @@ The other planning files are the research and history behind those decisions.
 
 ## What it does
 
-- Sign in with Hack Club Auth
+- Sign in with Hack Club Auth, or with a local password when you run your own copy
 - Connect one or more Nest servers with a dedicated SSH key, added in the Nest dashboard
 - Import GitHub repositories; deploy on push, from a deploy hook, or by hand
 - Branch previews, health-checked deploys with automatic revert, and rollback to the last five releases
@@ -35,9 +35,9 @@ The other planning files are the research and history behind those decisions.
 
 ## Not built yet
 
-- Team access (everything belongs to one user)
+- Team access screens. The API has project members and invitations (viewer and developer roles), but the dashboard has no screen for them yet
 - Request counts and latency (analytics counts page views reported by the script, not server requests)
-- Alerts you can configure beyond the webhook, and per-project disk use
+- Alert channels other than a Discord or Slack webhook, and per-project disk use
 
 ## Code
 
