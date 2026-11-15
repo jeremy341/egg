@@ -23,6 +23,8 @@ export async function GET(req: NextRequest) {
     time: f.time,
     goals: f.funnel ? f.steps.filter((s) => s.kind === "track").map((s) => s.value) : [],
     referrers: f.referrers,
+    campaigns: f.campaigns,
+    utmAllowlist: f.utmAllowlist,
     vitals: f.vitals,
     events: f.events,
     live: f.live,

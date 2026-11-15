@@ -163,7 +163,7 @@ describe("funnel collection and summary", () => {
   it("records a goal with the daily visitor hash, and the same hash a page view gets", async () => {
     expect(await recordHit(key, { e: "goal", n: "signup" }, person(1), at(10))).toBe(true);
     const goal = (await (await getDb()).select().from(schema.analyticsEvents))[0];
-    const view = await recordPageview(key, { p: "/pricing" }, person(1), at(0));
+    const view = await recordPageview(key, { p: "/pricing", pt: 1 }, person(1), at(0));
     expect(view).toBe(true);
     const pv = (await (await getDb()).select().from(schema.pageviews))[0];
     expect(goal).toMatchObject({ kind: "goal", label: "signup", day: "2026-11-04" });
@@ -173,15 +173,15 @@ describe("funnel collection and summary", () => {
 
   it("counts visitors per step from page views and goals, in order, once per day", async () => {
     // Visitor 2 goes all the way. Visitor 3 clicks signup without seeing pricing first. Visitor 4 stops at pricing.
-    await recordPageview(key, { p: "/pricing" }, person(2), at(100));
-    await recordPageview(key, { p: "/pricing" }, person(2), at(110));
+    await recordPageview(key, { p: "/pricing", pt: 1 }, person(2), at(100));
+    await recordPageview(key, { p: "/pricing", pt: 1 }, person(2), at(110));
     await recordHit(key, { e: "goal", n: "signup" }, person(2), at(120));
-    await recordPageview(key, { p: "/welcome" }, person(2), at(130));
+    await recordPageview(key, { p: "/welcome", pt: 1 }, person(2), at(130));
     await recordHit(key, { e: "goal", n: "signup" }, person(3), at(140));
-    await recordPageview(key, { p: "/welcome" }, person(3), at(150));
-    await recordPageview(key, { p: "/pricing" }, person(4), at(160));
+    await recordPageview(key, { p: "/welcome", pt: 1 }, person(3), at(150));
+    await recordPageview(key, { p: "/pricing", pt: 1 }, person(4), at(160));
     // The same visitor the next day is a new visitor, as page view counts already are.
-    await recordPageview(key, { p: "/pricing" }, person(4), new Date(at(160).getTime() + 86_400_000));
+    await recordPageview(key, { p: "/pricing", pt: 1 }, person(4), new Date(at(160).getTime() + 86_400_000));
 
     const s = await funnelSummary(userId, projectId, 30, new Date("2026-11-06T09:00:00Z"));
     // Visitor 1 reached pricing and signup; 2 reached all three; 3 reached none in order; 4 reached pricing on two days.

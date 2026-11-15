@@ -31,7 +31,7 @@ export const ANALYTICS_FEATURE_LABELS: Record<AnalyticsFeatureKey, { title: stri
     title: "Funnel",
     sentence: "Counts visitors through the steps you list. It does nothing until a project has two steps.",
   },
-  referrers: { title: "Referrers and campaigns", sentence: "The referring site's host and the utm_ values in the address." },
+  referrers: { title: "Referrers", sentence: "The referring site's host. Campaigns have their own switch and list of allowed values, set per project." },
   vitals: { title: "Speed and errors", sentence: "Page speed measurements and JavaScript error messages." },
   events: { title: "Custom events", sentence: "Clicks on elements you mark with data-egg-track, with an optional value." },
   live: { title: "Live view", sentence: "Who is on the site in the last 5 minutes. Unique visitors also need retention." },

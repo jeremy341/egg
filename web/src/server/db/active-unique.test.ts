@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { upsertUser } from "@/server/auth/session";
 import { schema } from "@/server/db";
 import { isUniqueViolation } from "@/server/db/errors";
-import { createProject, enqueueDeployment } from "@/server/projects";
+import { createProject, deleteProjectRecords, enqueueDeployment } from "@/server/projects";
 import { createServer } from "@/server/servers";
 import { useFreshDb } from "@/server/test/db";
 
@@ -29,6 +29,51 @@ const webhook = (sha: string, branch = "main") =>
   enqueueDeployment(project, { env: "production", source: "webhook", branch, commitSha: sha });
 
 describe("unique indexes that close the deploy dedupe races", () => {
+  it("preserves every queued GitHub push because webhook arrival order does not prove commit order", async () => {
+    const first = await enqueueDeployment(project, {
+      env: "production", source: "webhook", branch: "main", commitSha: "1".repeat(40),
+    });
+    const manual = await enqueueDeployment(project, {
+      env: "production", source: "manual", branch: "main", commitSha: "2".repeat(40),
+    });
+    const latest = await enqueueDeployment(project, {
+      env: "production", source: "webhook", branch: "main", commitSha: "3".repeat(40),
+    });
+    const rows = await ctx.db.select().from(schema.deployments).where(eq(schema.deployments.projectId, project.id));
+    expect(rows.find((row) => row.id === first.id)?.state).toBe("queued");
+    expect(rows.find((row) => row.id === manual.id)?.state).toBe("queued");
+    expect(rows.find((row) => row.id === latest.id)?.state).toBe("queued");
+    const firstJob = await ctx.db.select().from(schema.jobs).where(eq(schema.jobs.deploymentId, first.id)).get();
+    expect(firstJob?.state).toBe("queued");
+  });
+  it("does not leave a queued deployment if creating its job fails", async () => {
+    await ctx.db.run(sql.raw("CREATE TRIGGER reject_test_job BEFORE INSERT ON jobs BEGIN SELECT RAISE(ABORT, 'test failure'); END"));
+    try {
+      await expect(enqueueDeployment(project, { env: "production", source: "manual", branch: "atomic-test" })).rejects.toThrow();
+      const rows = await ctx.db.select().from(schema.deployments).where(eq(schema.deployments.branch, "atomic-test"));
+      expect(rows).toHaveLength(0);
+    } finally {
+      await ctx.db.run(sql.raw("DROP TRIGGER reject_test_job"));
+    }
+  });
+
+  it("reserves different ports for concurrent preview deployments", async () => {
+    const results = await Promise.all(Array.from({ length: 4 }, (_, i) =>
+      enqueueDeployment(project, { env: "preview", source: "manual", branch: `preview-${i}` })
+    ));
+    expect(new Set(results.map((row) => row.port)).size).toBe(results.length);
+  });
+  it("refuses project deletion while a canceled deployment's worker is still running", async () => {
+    const user = await upsertUser({ id: "cancel-delete", name: "A", email: null, slackId: null });
+    const server = await createServer(user.id, "cancel-delete");
+    const p = await createProject(user.id, { serverId: server.id, repoUrl: "https://github.com/a/b.git", runtime: "node", name: "Cancel delete", slug: "cancel-delete", port: 3001 });
+    const dep = await enqueueDeployment(p, { env: "production", source: "manual", branch: "main" });
+    await ctx.db.update(schema.jobs).set({ state: "running" }).where(eq(schema.jobs.deploymentId, dep.id));
+    await ctx.db.update(schema.deployments).set({ state: "canceled" }).where(eq(schema.deployments.id, dep.id));
+    await expect(deleteProjectRecords(user.id, p.id)).rejects.toMatchObject({ status: 409 });
+    await ctx.db.update(schema.jobs).set({ state: "done" }).where(eq(schema.jobs.deploymentId, dep.id));
+    await expect(deleteProjectRecords(user.id, p.id)).resolves.toBeUndefined();
+  });
   it("lets one webhook deployment per commit be active and refuses a racing second one", async () => {
     await webhook("a".repeat(40));
     const err: unknown = await webhook("a".repeat(40)).catch((e: unknown) => e);

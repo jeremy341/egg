@@ -7,6 +7,7 @@
  *    or Global Privacy Control, and on localhost;
  *  - it sets no cookie. It stores one random id in localStorage only while the
  *    owner has retention on, and removes that id when retention is off;
+ *  - route details default to `/`; only a site-declared route template is sent;
  *  - it sends the referrer's host only, never the address or the query string;
  *  - every listener, observer and timer it adds is removed when the page is left for good.
  */
@@ -16,9 +17,12 @@ export type ScriptFeatures = {
   time: boolean;
   /** data-egg-track names that are steps of the funnel. Empty when funnels are off. */
   goals: string[];
-  /** Send the referring host and the utm_ values, once per page load. */
+  /** Send the referring host once per page load. */
   referrers?: boolean;
-  /** Send web vitals (once, when the page is hidden) and JavaScript errors. */
+  /** Send only campaign values explicitly allowlisted by the owner. */
+  campaigns?: boolean;
+  utmAllowlist?: { source: string[]; medium: string[]; campaign: string[] };
+  /** Send web vitals (once, when the page is hidden). */
   vitals?: boolean;
   /** Send a track event, with the optional data-egg-value, for a click on a data-egg-track element. */
   events?: boolean;
@@ -39,6 +43,12 @@ const HEAD = `(function () {
   if (host === "localhost" || host === "127.0.0.1") return;
   var endpoint = new URL(s.src).origin + "/api/collect/" + encodeURIComponent(key);
   var last = null;
+  // Route names are opt-in so reset links and account identifiers never leave
+  // the page by default. Sites may provide a stable template on <html>.
+  function pagePath() {
+    var p = document.documentElement && document.documentElement.getAttribute("data-egg-path");
+    return p && p.charAt(0) === "/" ? p.split(/[?#]/)[0].slice(0, 200) : "/";
+  }
   var off = [];
   function on(t, type, fn, cap) {
     t.addEventListener(type, fn, cap);
@@ -73,29 +83,35 @@ const ID_ON = `  var id = "";
 const ID_OFF = `  try { localStorage.removeItem("_egg_id"); } catch (e) {}
 `;
 
-// The referrer's host and the three utm_ values, from the first page of a visit
-// only. A link inside the site is not a referrer, and the address is never sent.
+// The referrer's host from the first page of a visit only. A link inside the
+// site is not a referrer, and the address is never sent.
 const REFERRERS = `    if (first) {
       try {
         var h = new URL(document.referrer).hostname;
         if (h && h !== host) o.r = h;
       } catch (e) {}
+    }
+`;
+
+// Query values can carry identifiers or secrets. Even with campaigns enabled,
+// only the owner's exact approved static labels ever leave the visitor's page.
+const CAMPAIGNS = `    if (first) {
       var q = new URLSearchParams(location.search);
-      var u = { us: "utm_source", um: "utm_medium", uc: "utm_campaign" };
+      var u = { us: ["utm_source", @SOURCE@], um: ["utm_medium", @MEDIUM@], uc: ["utm_campaign", @CAMPAIGN@] };
       for (var k in u) {
-        var v = (q.get(u[k]) || "").trim().slice(0, 80);
-        if (v) o[k] = v;
+        var v = (q.get(u[k][0]) || "").trim();
+        if (v && u[k][1].indexOf(v) !== -1) o[k] = v;
       }
     }
 `;
 
 const VIEW = `  function send() {
-    var path = location.pathname;
-    if (path === last) return;
+    var route = location.pathname;
+    if (route === last) return;
 @FLUSH@    var first = last === null;
-    last = path;
-    var o = { p: path };
-@REFERRERS@@ID@    post(o);
+    last = route;
+    var o = { p: pagePath(), pt: 1 };
+@REFERRERS@@CAMPAIGNS@@ID@    post(o);
 @RESET@  }
   var push = history.pushState;
   var wrapped = function () {
@@ -107,15 +123,14 @@ const VIEW = `  function send() {
   on(window, "popstate", send);
 `;
 
-// One delegated listener for the whole document. It only looks at links,
-// buttons and elements the owner marked, and it reads a label, never a value.
-// A data-egg-value is read only on an element the owner marked with data-egg-track.
+// Only explicitly named elements are measured. Accessible names and visible
+// text can contain personal data, so analytics never reads them.
 const CLICKS = `  on(document, "click", function (e) {
     var t = e.target;
-    var el = t && t.closest && t.closest("[data-egg-track],a,button,[role=button],[role=link],summary");
+    var el = t && t.closest && t.closest("[data-egg-track]");
     if (!el) return;
     var name = el.getAttribute("data-egg-track");
-    var l = (name || el.getAttribute("aria-label") || el.textContent || "").replace(/\\s+/g, " ").trim().slice(0, 40);
+    var l = name || "";
     if (!l) return;
 @SEND@  }, true);
 `;
@@ -149,13 +164,12 @@ const TIME = `  var acc = 0;
 `;
 
 // Speed: the browser's own PerformanceObserver, no library. One summary for the
-// page load, sent once when the page is hidden, each number rounded. Errors: the
-// message, the file name without its address, and the line; at most 5 a page view.
+// page load, sent once when the page is hidden, each number rounded. Exception
+// messages are intentionally not collected because they can contain secrets.
 const VITALS = `  var vit = {};
   var shift = 0;
-  var p0 = location.pathname;
+  var p0 = pagePath();
   var sentV = 0;
-  var ne = 0;
   function watch(type, fn, extra) {
     try {
       var po = new PerformanceObserver(function (l) { l.getEntries().forEach(fn); });
@@ -171,7 +185,7 @@ const VITALS = `  var vit = {};
   function sendVitals() {
     if (sentV) return;
     sentV = 1;
-    var o = { e: "vitals", p: p0 };
+    var o = { e: "vitals", p: p0, pt: 1 };
     var any = 0;
     for (var k in vit) {
       o[k] = k === "cls" ? Math.round(vit[k] * 1e3) / 1e3 : Math.round(vit[k]);
@@ -180,12 +194,6 @@ const VITALS = `  var vit = {};
     if (any) post(o);
   }
   on(document, "visibilitychange", function () { if (document.hidden) sendVitals(); });
-  function bad(m, f, l) {
-    if (ne++ > 4) return;
-    post({ e: "err", m: String(m).slice(0, 200), f: String(f || "").split(/[?#]/)[0].split("/").pop(), l: l | 0 });
-  }
-  on(window, "error", function (e) { bad(e.message, e.filename, e.lineno); });
-  on(window, "unhandledrejection", function (e) { var r = e.reason; bad((r && r.message) || r, "", 0); });
 `;
 
 // A heartbeat while the page is visible, for the "on the site now" count.
@@ -247,8 +255,12 @@ export function buildScript(f: ScriptFeatures): string {
     (f.vitals ? VITALS : "") +
     VIEW.replace("@FLUSH@", f.time ? "    if (last !== null) flush();\n" : "")
       .replace("@REFERRERS@", f.referrers ? REFERRERS : "")
+      .replace("@CAMPAIGNS@", f.campaigns ? CAMPAIGNS
+        .replace("@SOURCE@", `[${(f.utmAllowlist?.source ?? []).map(literal).join(",")}]`)
+        .replace("@MEDIUM@", `[${(f.utmAllowlist?.medium ?? []).map(literal).join(",")}]`)
+        .replace("@CAMPAIGN@", `[${(f.utmAllowlist?.campaign ?? []).map(literal).join(",")}]`) : "")
       .replace("@ID@", retention ? "    if (id) o.i = id;\n" : "")
-      .replace("@RESET@", f.vitals ? "    ne = 0;\n" : "") +
+      .replace("@RESET@", "") +
     clicks +
     (f.live && retention ? LIVE : "") +
     TAIL.replace("@LEAVE@", (f.time ? "    flush();\n" : "") + (f.vitals ? "    sendVitals();\n" : ""));

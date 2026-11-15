@@ -5,7 +5,16 @@ import { audit } from "@/server/audit";
 import { getDb, schema } from "@/server/db";
 import { HttpError } from "@/server/http";
 import { getProjectForUser } from "@/server/projects";
-import { TRACK_NAME, cleanPath } from "@/server/analytics-fields";
+import {
+  EMPTY_UTM_ALLOWLIST,
+  TRACK_NAME,
+  UTM_ALLOWLIST_MAX,
+  UTM_KEYS,
+  UTM_ALLOWLIST_VALUE,
+  cleanPath,
+  parseUtmAllowlist,
+  type UtmAllowlist,
+} from "@/server/analytics-fields";
 
 /**
  * Which opt-in analytics features a project has switched on. Everything is off
@@ -20,9 +29,14 @@ export type AnalyticsFeatures = {
   time: boolean;
   funnel: boolean;
   steps: FunnelStep[];
-  /** The referring site and the campaign values of a page view. */
+  /** The host of the referring site of a page view. Campaign values are a separate switch. */
   referrers: boolean;
-  /** Web vitals and script errors. */
+  /** UTM tracking is a separate opt-in with exact allowlisted campaign labels. */
+  campaigns: boolean;
+  utmAllowlist: UtmAllowlist;
+  /** Capped at 90 days to match the visitor-id key rotation period. */
+  retentionDays: 30 | 60 | 90;
+  /** Web vitals. */
   vitals: boolean;
   /** Custom events with an optional value. */
   events: boolean;
@@ -30,6 +44,8 @@ export type AnalyticsFeatures = {
   live: boolean;
   /** A random id in the visitor's browser, for new versus returning visitors. */
   retention: boolean;
+  /** The visitor's country (two letters only, never the address), looked up offline. */
+  locations: boolean;
 };
 
 export const NO_FEATURES: AnalyticsFeatures = {
@@ -38,13 +54,17 @@ export const NO_FEATURES: AnalyticsFeatures = {
   funnel: false,
   steps: [],
   referrers: false,
+  campaigns: false,
+  utmAllowlist: { ...EMPTY_UTM_ALLOWLIST },
+  retentionDays: 90,
   vitals: false,
   events: false,
   live: false,
   retention: false,
+  locations: false,
 };
 
-const SWITCHES = ["clicks", "time", "funnel", "referrers", "vitals", "events", "live", "retention"] as const;
+const SWITCHES = ["clicks", "time", "funnel", "referrers", "campaigns", "vitals", "events", "live", "retention", "locations"] as const;
 
 export const MIN_STEPS = 2;
 export const MAX_STEPS = 6;
@@ -76,10 +96,18 @@ export const featuresPatch = z.object({
   time: z.boolean().optional(),
   funnel: z.boolean().optional(),
   referrers: z.boolean().optional(),
+  campaigns: z.boolean().optional(),
+  utmAllowlist: z.object({
+    source: z.array(z.string().regex(UTM_ALLOWLIST_VALUE, "Use short static labels with letters, numbers, dot, dash or underscore.")).max(UTM_ALLOWLIST_MAX).optional(),
+    medium: z.array(z.string().regex(UTM_ALLOWLIST_VALUE, "Use short static labels with letters, numbers, dot, dash or underscore.")).max(UTM_ALLOWLIST_MAX).optional(),
+    campaign: z.array(z.string().regex(UTM_ALLOWLIST_VALUE, "Use short static labels with letters, numbers, dot, dash or underscore.")).max(UTM_ALLOWLIST_MAX).optional(),
+  }).strict().optional(),
+  retentionDays: z.union([z.literal(30), z.literal(60), z.literal(90)]).optional(),
   vitals: z.boolean().optional(),
   events: z.boolean().optional(),
   live: z.boolean().optional(),
   retention: z.boolean().optional(),
+  locations: z.boolean().optional(),
   steps: z.array(step).max(MAX_STEPS, `A funnel has at most ${MAX_STEPS} steps`).optional(),
 });
 export type FeaturesPatch = z.input<typeof featuresPatch>;
@@ -105,10 +133,14 @@ function fromRow(row: typeof schema.analyticsSettings.$inferSelect | undefined):
     funnel: row.funnel && steps.length >= MIN_STEPS,
     steps,
     referrers: row.referrers,
+    campaigns: row.campaigns,
+    utmAllowlist: parseUtmAllowlist(row.utmAllowlist),
+    retentionDays: row.retentionDays === 30 || row.retentionDays === 60 ? row.retentionDays : 90,
     vitals: row.vitals,
     events: row.events,
     live: row.live,
     retention: row.retention,
+    locations: row.locations,
   };
 }
 
@@ -175,11 +207,22 @@ export async function updateFeatures(userId: string, projectId: string, raw: Fea
     funnel: patch.funnel ?? row?.funnel ?? false,
     steps: patch.steps ?? parseSteps(row?.funnelSteps),
     referrers: patch.referrers ?? row?.referrers ?? false,
+    campaigns: patch.campaigns ?? row?.campaigns ?? false,
+    utmAllowlist: parseUtmAllowlist(row?.utmAllowlist),
+    retentionDays: patch.retentionDays ?? (row?.retentionDays === 30 || row?.retentionDays === 60 ? row.retentionDays : 90),
     vitals: patch.vitals ?? row?.vitals ?? false,
     events: patch.events ?? row?.events ?? false,
     live: patch.live ?? row?.live ?? false,
     retention: patch.retention ?? row?.retention ?? false,
+    locations: patch.locations ?? row?.locations ?? false,
   };
+  if (patch.utmAllowlist) {
+    const merged = Object.fromEntries(UTM_KEYS.map((key) => [key, patch.utmAllowlist?.[key] ?? next.utmAllowlist[key]]));
+    next.utmAllowlist = parseUtmAllowlist(merged);
+  }
+  if (next.campaigns && UTM_KEYS.every((key) => next.utmAllowlist[key].length === 0)) {
+    throw new HttpError(400, "Allow at least one safe campaign label before turning campaigns on.", "validation");
+  }
   // A funnel switched on by the account defaults has no steps yet and waits for them, so
   // only a change to the funnel itself is held to the two-step minimum.
   if ((patch.funnel !== undefined || patch.steps !== undefined) && next.funnel && next.steps.length < MIN_STEPS) {
@@ -191,10 +234,14 @@ export async function updateFeatures(userId: string, projectId: string, raw: Fea
     funnel: next.funnel,
     funnelSteps: next.steps.length ? JSON.stringify(next.steps) : null,
     referrers: next.referrers,
+    campaigns: next.campaigns,
+    utmAllowlist: JSON.stringify(next.utmAllowlist),
+    retentionDays: next.retentionDays,
     vitals: next.vitals,
     events: next.events,
     live: next.live,
     retention: next.retention,
+    locations: next.locations,
     updatedAt: new Date(),
   };
   await db
@@ -206,6 +253,20 @@ export async function updateFeatures(userId: string, projectId: string, raw: Fea
     await db.update(schema.pageviews).set({ vid: null }).where(eq(schema.pageviews.projectId, project.id));
     await db.delete(schema.analyticsLive).where(eq(schema.analyticsLive.projectId, project.id));
   }
+  // Turning countries off deletes the codes already stored, so "off" also means "forgotten".
+  if (row?.locations && !next.locations) {
+    await db.update(schema.pageviews).set({ country: null }).where(eq(schema.pageviews.projectId, project.id));
+  }
+  // The same for referrers (the stored host) and for campaigns (the three utm values).
+  if (row?.referrers && !next.referrers) {
+    await db.update(schema.pageviews).set({ referrer: null }).where(eq(schema.pageviews.projectId, project.id));
+  }
+  if (row?.campaigns && !next.campaigns) {
+    await db
+      .update(schema.pageviews)
+      .set({ utmSource: null, utmMedium: null, utmCampaign: null })
+      .where(eq(schema.pageviews.projectId, project.id));
+  }
   const changed = SWITCHES.filter((k) => next[k] !== (row?.[k] ?? false));
   if (changed.length || patch.steps) {
     await audit(userId, "analytics.settings", project.id, {
@@ -214,10 +275,13 @@ export async function updateFeatures(userId: string, projectId: string, raw: Fea
       funnel: next.funnel,
       steps: next.steps.length,
       referrers: next.referrers,
+      campaigns: next.campaigns,
+      retentionDays: next.retentionDays,
       vitals: next.vitals,
       events: next.events,
       live: next.live,
       retention: next.retention,
+      locations: next.locations,
     });
   }
   return fromRow({ projectId: project.id, ...values });

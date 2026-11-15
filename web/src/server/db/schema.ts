@@ -88,6 +88,14 @@ export const servers = sqliteTable(
     allowOrphanRemoval: integer("allow_orphan_removal", { mode: "boolean" }).notNull().default(false),
     /** Memory limit of the build sandbox for this server's projects, in MB. Range in lib/build-memory.ts. */
     buildMemoryMb: integer("build_memory_mb").notNull().default(2048),
+    /** CPU limit of the build sandbox in quarter-core units. */
+    buildCpuQuarters: integer("build_cpu_quarters").notNull().default(8),
+    /**
+     * One build at a time on a container. The deployment that holds the lock and the
+     * last time it renewed it; a lock that is not renewed for a while is free again.
+     */
+    buildLockHolder: text("build_lock_holder"),
+    buildLockAt: ts("build_lock_at"),
     status: text("status", { enum: ["pending", "connected", "error", "disconnected"] })
       .notNull()
       .default("pending"),
@@ -113,6 +121,15 @@ export const githubInstallations = sqliteTable("github_installations", {
 
 export const RUNTIMES = ["node", "python", "static", "command"] as const;
 export type Runtime = (typeof RUNTIMES)[number];
+
+/**
+ * Where a project is built. "container": on the user's Nest container, under a memory and CPU
+ * cap. "github": in the user's own GitHub Actions workflow, which uploads the finished release;
+ * the container then only installs production dependencies and runs it. Egg's own machine
+ * builds nothing in either mode.
+ */
+export const BUILD_LOCATIONS = ["container", "github"] as const;
+export type BuildLocation = (typeof BUILD_LOCATIONS)[number];
 
 export const projects = sqliteTable(
   "projects",
@@ -140,6 +157,8 @@ export const projects = sqliteTable(
     startCommand: text("start_command"),
     /** Folder to ship for static sites, relative to the root directory. */
     outputDir: text("output_dir"),
+    /** Where builds run: on the container, or in GitHub Actions. */
+    buildLocation: text("build_location", { enum: BUILD_LOCATIONS }).notNull().default("container"),
     /** Port the app listens on. Map your domain to this port in Nest. */
     port: integer("port").notNull(),
     healthPath: text("health_path").notNull().default("/"),
@@ -259,6 +278,8 @@ export const deployments = sqliteTable(
     error: text("error"),
     createdAt: ts("created_at").notNull(),
     startedAt: ts("started_at"),
+    /** Set atomically immediately before production/preview activation; cancellation is refused after this point. */
+    activationStartedAt: ts("activation_started_at"),
     finishedAt: ts("finished_at"),
   },
   (t) => [
@@ -277,6 +298,23 @@ export const deployments = sqliteTable(
       .where(
         sql`${t.source} = 'hook' and ${t.state} in ('queued', 'building', 'deploying')`
       ),
+  ]
+);
+
+/** Short-lived, operation-scoped credentials for an external GitHub Actions build. */
+export const buildCredentials = sqliteTable(
+  "build_credentials",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+    scope: text("scope", { enum: ["upload", "env_preview", "env_production"] }).notNull(),
+    tokenHash: text("token_hash").notNull().unique(),
+    createdAt: ts("created_at").notNull(),
+    expiresAt: ts("expires_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("build_credentials_project_scope_idx").on(t.projectId, t.scope),
+    index("build_credentials_expiry_idx").on(t.expiresAt),
   ]
 );
 
@@ -352,15 +390,95 @@ export const jobs = sqliteTable(
   ]
 );
 
+/** Durable, explicitly requested cleanup. Remote failure keeps these rows for retry. */
+export const cleanupJobs = sqliteTable(
+  "cleanup_jobs",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    scope: text("scope", { enum: ["account", "project"] }).notNull(),
+    /** Snapshot id only; the project row is deleted only after remote cleanup succeeds. */
+    projectId: text("project_id"),
+    state: text("state", { enum: ["draining", "running", "failed", "done"] }).notNull().default("draining"),
+    requestedAt: ts("requested_at").notNull(),
+    notBefore: ts("not_before").notNull(),
+    startedAt: ts("started_at"),
+    finishedAt: ts("finished_at"),
+    attempts: integer("attempts").notNull().default(0),
+    step: text("step").notNull().default("draining"),
+    leaseOwner: text("lease_owner"),
+    leaseUntil: ts("lease_until"),
+    error: text("error"),
+    warnings: text("warnings"),
+    updatedAt: ts("updated_at").notNull(),
+  },
+  (t) => [
+    index("cleanup_jobs_queue_idx").on(t.state, t.notBefore),
+    uniqueIndex("cleanup_jobs_active_account_idx")
+      .on(t.userId)
+      .where(sql`${t.scope} = 'account' and ${t.state} in ('draining', 'running', 'failed')`),
+    uniqueIndex("cleanup_jobs_active_project_idx")
+      .on(t.userId, t.projectId)
+      .where(sql`${t.scope} = 'project' and ${t.state} in ('draining', 'running', 'failed')`),
+  ]
+);
+
+/** Per-project progress retained until the whole account cleanup is complete. */
+export const cleanupItems = sqliteTable(
+  "cleanup_items",
+  {
+    id: text("id").primaryKey(),
+    cleanupJobId: text("cleanup_job_id")
+      .notNull()
+      .references(() => cleanupJobs.id, { onDelete: "cascade" }),
+    projectId: text("project_id").notNull(),
+    serverId: text("server_id").notNull(),
+    projectName: text("project_name").notNull(),
+    projectSlug: text("project_slug").notNull(),
+    serverLabel: text("server_label").notNull(),
+    state: text("state", { enum: ["pending", "running", "failed", "done"] }).notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    step: text("step").notNull().default("pending"),
+    error: text("error"),
+    warnings: text("warnings"),
+    updatedAt: ts("updated_at").notNull(),
+  },
+  (t) => [
+    index("cleanup_items_job_idx").on(t.cleanupJobId, t.state),
+    uniqueIndex("cleanup_items_job_project_idx").on(t.cleanupJobId, t.projectId),
+  ]
+);
+
+/** Active SSH sessions opened by Egg. Cleanup waits for them to close. */
+export const cleanupOperations = sqliteTable(
+  "cleanup_operations",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    serverId: text("server_id").notNull().references(() => servers.id, { onDelete: "cascade" }),
+    openedAt: ts("opened_at").notNull(),
+  },
+  (t) => [index("cleanup_operations_server_idx").on(t.serverId, t.openedAt)]
+);
+
 /** Display and interface choices, one row per user. Values are validated in code, not in SQL. */
 export const userPreferences = sqliteTable("user_preferences", {
   userId: text("user_id")
     .primaryKey()
     .references(() => users.id, { onDelete: "cascade" }),
-  /** "light" | "dark" | "system". */
+  /**
+   * Legacy: "light" | "dark" | "system" from before themes were light or dark only. A row that still
+   * says light or dark has not been converted; the next save writes "system" and the columns below.
+   */
   theme: text("theme").notNull().default("system"),
-  /** Accent palette name. */
+  /** The fixed theme used when matching the device is off (a theme id; older rows hold an accent name). */
   accent: text("accent").notNull().default("default"),
+  /** Use `lightPreset` when the device is light and `darkPreset` when it is dark. */
+  matchDevice: integer("match_device", { mode: "boolean" }).notNull().default(true),
+  /** The light theme used while matching the device. */
+  lightPreset: text("light_preset").notNull().default("egg-light"),
+  /** The dark theme used while matching the device. */
+  darkPreset: text("dark_preset").notNull().default("egg-dark"),
   /** "comfortable" | "compact". */
   density: text("density").notNull().default("comfortable"),
   /** "system" | "reduce" | "no-preference". */
@@ -375,6 +493,31 @@ export const userPreferences = sqliteTable("user_preferences", {
 
 export type UserPreferences = typeof userPreferences.$inferSelect;
 export type NewUserPreferences = typeof userPreferences.$inferInsert;
+
+/**
+ * A person's own colour themes. Private to the owner: every read and write is
+ * by (id, user_id). `tokens` is a JSON object of hex colours for the names in
+ * THEME_TOKENS (src/lib/custom-theme.ts), checked on the way in and again on
+ * the way out. At most 20 per account (CUSTOM_THEME_LIMIT).
+ */
+export const userThemes = sqliteTable(
+  "user_themes",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    /** "light" | "dark". */
+    scheme: text("scheme").notNull(),
+    tokens: text("tokens").notNull(),
+    createdAt: ts("created_at").notNull(),
+    updatedAt: ts("updated_at").notNull(),
+  },
+  (t) => [index("user_themes_user_idx").on(t.userId)]
+);
+
+export type UserTheme = typeof userThemes.$inferSelect;
 
 export const auditLog = sqliteTable("audit_log", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -427,6 +570,8 @@ export const pageviews = sqliteTable(
     utmCampaign: text("utm_campaign"),
     /** Salted HMAC of the random id in the visitor's browser, only when the project records retention. */
     vid: text("vid"),
+    /** Two-letter country code (ISO 3166-1 alpha-2), only when the project records visitor countries. Never an IP address, city or region. */
+    country: text("country"),
   },
   (t) => [index("pageviews_project_at_idx").on(t.projectId, t.at)]
 );
@@ -446,6 +591,12 @@ export const analyticsSettings = sqliteTable("analytics_settings", {
   funnelSteps: text("funnel_steps"),
   /** Referring site and campaign values on page views. */
   referrers: integer("referrers", { mode: "boolean" }).notNull().default(false),
+  /** Raw UTM values are never collected unless this additional opt-in is enabled. */
+  campaigns: integer("campaigns", { mode: "boolean" }).notNull().default(false),
+  /** JSON allowlists keyed by source/medium/campaign; only exact listed labels are transmitted. */
+  utmAllowlist: text("utm_allowlist").notNull().default("{}"),
+  /** Per-project analytics retention. 90 preserves the legacy behavior. */
+  retentionDays: integer("retention_days").notNull().default(90),
   /** Web vitals and script errors. */
   vitals: integer("vitals", { mode: "boolean" }).notNull().default(false),
   /** Custom events (data-egg-track with an optional data-egg-value). */
@@ -454,6 +605,8 @@ export const analyticsSettings = sqliteTable("analytics_settings", {
   live: integer("live", { mode: "boolean" }).notNull().default(false),
   /** A random id in the visitor's browser, to tell new visitors from returning ones. */
   retention: integer("retention", { mode: "boolean" }).notNull().default(false),
+  /** The visitor's country (two letters, from a bundled offline database) on page views. Off by default. */
+  locations: integer("locations", { mode: "boolean" }).notNull().default(false),
   updatedAt: ts("updated_at").notNull(),
 });
 
@@ -644,4 +797,84 @@ export const webhookDeliveries = sqliteTable(
     index("webhook_deliveries_webhook_idx").on(t.webhookId, t.createdAt),
     index("webhook_deliveries_created_idx").on(t.createdAt),
   ]
+);
+
+/** Hashes of authenticated inbound GitHub payloads, retained to reject replays across restarts. */
+export const githubWebhookEvents = sqliteTable("github_webhook_events", {
+  /** Legacy SQL column name; now stores the digest of event type plus signed body. */
+  eventHash: text("body_hash").primaryKey(),
+  receivedAt: ts("received_at").notNull(),
+});
+
+/** Local-mode credential hash; the recovery secret remains in the owner's private environment. */
+export const localAuthCredentials = sqliteTable("local_auth_credentials", {
+  id: text("id").primaryKey(),
+  /** Null for the local-mode owner row; set for a person who turned on password sign-in. A row is the switch: no row, no password. */
+  userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
+  passwordHash: text("password_hash").notNull(),
+  /** Scrypt hash of the recovery key; the key itself is shown once and never stored. */
+  recoveryKeyHash: text("recovery_key_hash"),
+  createdAt: ts("created_at").notNull(),
+  updatedAt: ts("updated_at").notNull(),
+}, (t) => [uniqueIndex("local_auth_credentials_user_idx").on(t.userId)]);
+
+/** Private vulnerability reports; report text, identity and evidence are sealed together. */
+export const securityReports = sqliteTable("security_reports", {
+  id: text("id").primaryKey(),
+  payloadEnc: text("payload_enc").notNull(),
+  storedBytes: integer("stored_bytes").notNull(),
+  status: text("status", { enum: ["new", "reviewing", "resolved"] }).notNull().default("new"),
+  createdAt: ts("created_at").notNull(),
+}, (t) => [index("security_reports_created_idx").on(t.createdAt)]);
+
+/** Instance-wide operational settings. Only the explicitly configured administrator may change them. */
+export const instanceSettings = sqliteTable("instance_settings", {
+  id: text("id").primaryKey(),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(false),
+  message: text("message").notNull().default(""),
+  startsAt: ts("starts_at"),
+  endsAt: ts("ends_at"),
+  updatedAt: ts("updated_at").notNull(),
+  updatedBy: text("updated_by").notNull(),
+});
+
+/**
+ * One reachability check of Nest or of Egg itself, once a minute. Public figures
+ * only: no user, project or visitor is stored. `latencyMs` is null when nothing
+ * answered. Kept for 90 days.
+ */
+export const statusProbes = sqliteTable(
+  "status_probes",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    target: text("target", { enum: ["nest-site", "nest-app", "egg"] }).notNull(),
+    checkedAt: ts("checked_at").notNull(),
+    ok: integer("ok", { mode: "boolean" }).notNull(),
+    httpStatus: integer("http_status"),
+    latencyMs: integer("latency_ms"),
+  },
+  (t) => [index("status_probes_target_at_idx").on(t.target, t.checkedAt)]
+);
+
+/**
+ * A command that runs on a schedule inside the project's current release, as a
+ * systemd timer on the container. What the container knows (the last run, its
+ * result) is read live and not stored here, so it can never be stale.
+ */
+export const scheduledJobs = sqliteTable(
+  "scheduled_jobs",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    /** Five-field cron expression, normalised. Times are UTC. */
+    schedule: text("schedule").notNull(),
+    command: text("command").notNull(),
+    enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+    createdAt: ts("created_at").notNull(),
+    updatedAt: ts("updated_at").notNull(),
+  },
+  (t) => [index("scheduled_jobs_project_idx").on(t.projectId)]
 );

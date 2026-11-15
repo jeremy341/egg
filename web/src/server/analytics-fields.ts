@@ -36,6 +36,40 @@ export function cleanReferrer(raw: string | null | undefined): string | null {
 export const UTM_MAX = 80;
 export const UTM_KEYS = ["source", "medium", "campaign"] as const;
 export type Utm = { source: string | null; medium: string | null; campaign: string | null };
+export type UtmKey = (typeof UTM_KEYS)[number];
+export type UtmAllowlist = Record<UtmKey, string[]>;
+export const UTM_ALLOWLIST_MAX = 20;
+/** Campaign dimensions are labels, not arbitrary text; values must be short static slugs. */
+export const UTM_ALLOWLIST_VALUE = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,39}$/;
+
+export const EMPTY_UTM_ALLOWLIST: UtmAllowlist = { source: [], medium: [], campaign: [] };
+
+/** Parse the stored JSON defensively; malformed or legacy data allows no campaign values. */
+export function parseUtmAllowlist(raw: unknown): UtmAllowlist {
+  let value = raw;
+  if (typeof raw === "string") {
+    try { value = JSON.parse(raw); } catch { return { ...EMPTY_UTM_ALLOWLIST }; }
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) return { ...EMPTY_UTM_ALLOWLIST };
+  const input = value as Record<string, unknown>;
+  return Object.fromEntries(UTM_KEYS.map((key) => {
+    const candidate = input[key];
+    if (!Array.isArray(candidate)) return [key, []];
+    const safe = [...new Set(candidate.filter((entry): entry is string =>
+      typeof entry === "string" && entry.length <= 40 && UTM_ALLOWLIST_VALUE.test(entry)
+    ))].slice(0, UTM_ALLOWLIST_MAX);
+    return [key, safe];
+  })) as unknown as UtmAllowlist;
+}
+
+/** Match exact, explicitly-approved values. No arbitrary query value is returned. */
+export function allowlistedUtm(raw: { source?: unknown; medium?: unknown; campaign?: unknown }, allowlist: UtmAllowlist): Utm {
+  const clean = cleanUtm(raw);
+  return Object.fromEntries(UTM_KEYS.map((key) => [
+    key,
+    clean[key] && allowlist[key].includes(clean[key]!) ? clean[key] : null,
+  ])) as Utm;
+}
 
 const CONTROL = /[\x00-\x1f\x7f-\x9f]/g;
 const HAS_CONTROL = /[\x00-\x1f\x7f-\x9f]/;
@@ -90,6 +124,9 @@ export const VITAL_THRESHOLDS: Record<Vital, readonly [number, number]> = {
   fcp: [1800, 3000],
   ttfb: [800, 1800],
 };
+
+/** A day needs at least this many reports of a metric before its median is drawn in the day-by-day line. */
+export const MIN_DAILY_REPORTS = 10;
 
 export type VitalRating = "good" | "needs-work" | "poor";
 
