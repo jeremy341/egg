@@ -51,13 +51,22 @@ export function zodToHttp(err: ZodError) {
 
 /**
  * Browsers attach Origin to cross-site writes. Reject writes whose Origin is
- * not our own, on top of SameSite=Lax cookies.
+ * not our own, on top of SameSite=Lax cookies. A write with no Origin is let
+ * through for curl and webhooks, unless the browser's own Sec-Fetch-Site header
+ * says it came from another site.
  */
 export function assertSameOrigin(req: NextRequest) {
   const method = req.method.toUpperCase();
   if (method === "GET" || method === "HEAD" || method === "OPTIONS") return;
   const origin = req.headers.get("origin");
-  if (!origin) return; // non-browser clients (curl, webhooks) send none
+  if (!origin) {
+    // Non-browser clients (curl, webhooks) send neither header.
+    const site = req.headers.get("sec-fetch-site");
+    if (site === "cross-site" || site === "same-site") {
+      throw new HttpError(403, "Cross-origin request blocked", "csrf");
+    }
+    return;
+  }
   const allowed = new URL(config().APP_URL).origin;
   if (origin !== allowed && origin !== req.nextUrl.origin) {
     throw new HttpError(403, "Cross-origin request blocked", "csrf");

@@ -4,7 +4,7 @@ export type MarketingLink = { href: string; label: string };
 export const MARKETING_NAV: MarketingLink[] = [
   { href: "/#product", label: "How it works" },
   { href: "/#runtimes", label: "Runtimes" },
-  { href: "/#security", label: "Security" },
+  { href: "/security", label: "Security" },
   { href: "/#faq", label: "Questions" },
   { href: "/stats", label: "Stats" },
 ];

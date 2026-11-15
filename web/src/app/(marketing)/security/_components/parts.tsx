@@ -1,0 +1,72 @@
+import type { ReactNode } from "react";
+
+/*
+ * The small pieces the Security page is made of. The page is a document, so
+ * these stay plain: a section with a heading, a few paragraphs, lists and a
+ * term-and-description list. The type sizes follow the homepage (17px body on
+ * 28px, a pixel heading for each section).
+ */
+
+/** One section of the page: the heading, then a column of text no wider than a comfortable line. */
+export function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
+  return (
+    <section
+      id={id}
+      aria-labelledby={`${id}-title`}
+      className="scroll-mt-24 border-t border-border p-5 first:border-t-0 sm:p-8 lg:p-10"
+    >
+      <h2
+        id={`${id}-title`}
+        className="font-pixel text-[clamp(1.5rem,2.4vw,2rem)] leading-[1.15] font-medium text-balance text-foreground"
+      >
+        {title}
+      </h2>
+      <div className="mt-5 flex max-w-[65ch] flex-col gap-4 text-[1.0625rem] leading-[1.75rem] text-reading">
+        {children}
+      </div>
+    </section>
+  );
+}
+
+/** A smaller heading inside a section. */
+export function Sub({ children }: { children: ReactNode }) {
+  return <h3 className="mt-2 text-[1.0625rem] leading-7 font-semibold text-foreground">{children}</h3>;
+}
+
+/** Inline code: a file name, a path, a service name. It may break anywhere so it never pushes the page wide. */
+export function Code({ children }: { children: ReactNode }) {
+  return <code className="font-mono text-[0.9em] [overflow-wrap:anywhere] text-foreground">{children}</code>;
+}
+
+/** A plain bulleted list. */
+export function Points({ children }: { children: ReactNode }) {
+  return <ul className="m-0 flex list-disc flex-col gap-2 pl-5 marker:text-muted-foreground">{children}</ul>;
+}
+
+/** A list of named things: the name in bold on its own line, what it is underneath. */
+export function Terms({ children }: { children: ReactNode }) {
+  return <dl className="m-0 flex flex-col gap-4">{children}</dl>;
+}
+
+export function Term({ name, children }: { name: ReactNode; children: ReactNode }) {
+  return (
+    <div>
+      <dt className="font-semibold text-foreground">{name}</dt>
+      <dd className="m-0 mt-1">{children}</dd>
+    </div>
+  );
+}
+
+/** A link in running text. External links open in a new tab and say so to screen readers. */
+export function TextLink({ href, external, children }: { href: string; external?: boolean; children: ReactNode }) {
+  return (
+    <a
+      href={href}
+      {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+      className="text-foreground underline decoration-border decoration-1 underline-offset-4 outline-offset-2 transition-[text-decoration-color] duration-(--dur-fast) hover:decoration-foreground focus-visible:outline-2 focus-visible:outline-[var(--ds-focus-color)]"
+    >
+      {children}
+      {external ? <span className="sr-only"> (opens in a new tab)</span> : null}
+    </a>
+  );
+}

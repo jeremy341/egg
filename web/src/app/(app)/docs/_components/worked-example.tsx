@@ -3,7 +3,7 @@ import { CaretRightIcon } from "@phosphor-icons/react/dist/ssr";
 import { cn } from "@/lib/utils";
 import { CodeBlock } from "./code-block";
 import { HeadingAnchor } from "./heading-anchor";
-import { Callout, MEASURE, PROSE_TEXT, Table } from "./prose";
+import { Callout, H2_CLASS, H3_CLASS, MEASURE, PROSE_TEXT, Table } from "./prose";
 
 // The blocks a docs page is made of after its opening sentence:
 //   Steps, then Limits, then WhatCanGoWrong, with a WorkedExample wherever a
@@ -46,16 +46,7 @@ function BlockHeading({
   const Tag = level === 2 ? "h2" : "h3";
   return (
     <div className={cn("group relative flex items-center gap-2 lg:block", className)}>
-      <Tag
-        id={id}
-        tabIndex={-1}
-        className={cn(
-          "min-w-0 scroll-mt-32 outline-none",
-          level === 2
-            ? "text-foreground text-[22px] leading-[30px] font-semibold tracking-[-0.02em] max-sm:text-[20px]"
-            : "text-[19px] leading-[30px] font-semibold text-foreground"
-        )}
-      >
+      <Tag id={id} tabIndex={-1} className={level === 2 ? H2_CLASS : H3_CLASS}>
         {title}
       </Tag>
       <HeadingAnchor id={id} title={title} />
@@ -88,7 +79,7 @@ function UiPath({ path }: { path: string[] }) {
 /** The numbered list itself, without a heading. */
 function StepList({ items, className }: { items: StepItem[]; className?: string }) {
   return (
-    <ol className={cn("mt-[30px] max-w-[760px]", className)}>
+    <ol className={cn("mt-[30px]", className)}>
       {items.map((s, i) => (
         <li key={s.title} className="grid grid-cols-[30px_minmax(0,1fr)] gap-x-[15px] pb-[30px] last:pb-0">
           {/* A lit cell holds the number: 24px square inset 3px in a 30px cell. */}
@@ -221,26 +212,19 @@ export function WhatCanGoWrong({
   return (
     <>
       <BlockHeading id={id} title={title} level={level} className={gapAbove(level)} />
-      <ul className="mt-[30px] max-w-[760px]">
+      <ul className="mt-[30px] divide-y border bg-background">
         {items.map((p, i) => (
-          <li
-            key={i}
-            className="grid grid-cols-[30px_minmax(0,1fr)] gap-x-[15px] pb-[30px] last:pb-0"
-          >
-            {/* A failed cell: a 2px ink outline with an empty middle. */}
-            <span aria-hidden="true" className="m-[3px] size-6 border-2 border-[var(--pixel-lit)]" />
-            <div className={cn("min-w-0", MEASURE)}>
-              <p className="text-[15px] leading-[30px] font-semibold text-foreground">
-                {typeof p.symptom === "string" ? (
-                  <code className="rounded-[3px] bg-[var(--ds-gray-100)] px-1.5 py-px font-mono text-[14px] shadow-[inset_0_0_0_1px_var(--ds-gray-alpha-200)] [overflow-wrap:anywhere]">
-                    {p.symptom}
-                  </code>
-                ) : (
-                  p.symptom
-                )}
-              </p>
-              <div className={PROSE_TEXT}>{p.fix}</div>
-            </div>
+          <li key={i} className="px-4 py-3 max-sm:px-3">
+            <p className="text-[15px] leading-[30px] font-semibold text-foreground">
+              {typeof p.symptom === "string" ? (
+                <code className="rounded-[3px] bg-[var(--ds-gray-100)] px-1.5 py-px font-mono text-[14px] shadow-[inset_0_0_0_1px_var(--ds-gray-alpha-200)] [overflow-wrap:anywhere]">
+                  {p.symptom}
+                </code>
+              ) : (
+                p.symptom
+              )}
+            </p>
+            <div className={cn(MEASURE, "text-[16px] leading-[30px] text-reading")}>{p.fix}</div>
           </li>
         ))}
       </ul>
@@ -249,7 +233,7 @@ export function WhatCanGoWrong({
 }
 
 /**
- * A complete worked example, marked "Example": what you start with, what to do, what you see.
+ * A complete worked example, titled "Example: ...": what you start with, what to do, what you see.
  * - `id`: unique heading id on the page.
  * - `title`: what the example achieves: "Put pixel-garden online".
  * - `given`: what the reader starts with, using sample names (a repository, a token name).
@@ -278,18 +262,21 @@ export function WorkedExample({
   const Part = level === 2 ? "h3" : "h4";
   const part = "text-[13px] leading-[30px] font-semibold text-muted-foreground";
   return (
-    <section aria-labelledby={id} className={cn("max-w-[780px]", gapAbove(level))}>
-      <p className="text-[13px] leading-[30px] font-semibold text-foreground">{label}</p>
-      <BlockHeading id={id} title={title} level={level} />
-      <div className="mt-[15px] border-t border-foreground pt-[15px]">
-        <Part className={part}>Given</Part>
-        <div className={cn(MEASURE, PROSE_TEXT)}>{given}</div>
-
-        <Part className={cn(part, "mt-[30px]")}>Do</Part>
-        <StepList items={steps} className="mt-0" />
-
-        <Part className={cn(part, "mt-[30px]")}>Result</Part>
-        <div className={cn(MEASURE, PROSE_TEXT)}>{result}</div>
+    <section aria-labelledby={id} className={gapAbove(level)}>
+      <BlockHeading id={id} title={`${label}: ${title}`} level={level} />
+      <div className="mt-[15px] divide-y border bg-background">
+        <div className="px-4 py-3 max-sm:px-3">
+          <Part className={part}>Given</Part>
+          <div className={cn(MEASURE, PROSE_TEXT)}>{given}</div>
+        </div>
+        <div className="px-4 py-3 max-sm:px-3">
+          <Part className={part}>Do</Part>
+          <StepList items={steps} className="mt-0" />
+        </div>
+        <div className="px-4 py-3 max-sm:px-3">
+          <Part className={part}>Result</Part>
+          <div className={cn(MEASURE, PROSE_TEXT)}>{result}</div>
+        </div>
       </div>
     </section>
   );

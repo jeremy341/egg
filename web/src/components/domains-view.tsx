@@ -331,6 +331,7 @@ export function DomainsView({
                     variant={d.status === "invalid" ? "default" : "outline"}
                     size="sm"
                     disabled={checking === d.id}
+                    aria-label={checking === d.id ? undefined : `Check ${d.domain}`}
                     aria-describedby={d.status === "invalid" ? `cause-${d.id}` : undefined}
                     onClick={() => void check(d.id)}
                   >

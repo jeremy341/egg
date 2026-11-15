@@ -1,3 +1,4 @@
+import { readBytesLimited } from "@/server/body-limit";
 import { HttpError, authed, handle, ok } from "@/server/http";
 import { requireProjectFeature } from "@/server/permission-guards";
 import { enforceRateLimit } from "@/server/rate-limit";
@@ -27,10 +28,11 @@ export const POST = handle<Ctx>(async (req, { params }) => {
   // Ownership and the path rules run before the body is read, so a refused
   // request costs nothing. writeProjectFile checks them again.
   await checkProjectWrite(user.id, id, path);
-  const body = Buffer.from(await req.arrayBuffer());
-  if (body.length > UPLOAD_LIMIT) {
-    throw new HttpError(413, "That file is over the 50 MB limit.", "too_large");
-  }
+  // Counted as it arrives: a body with no Content-Length is cut off at the limit, not held in memory first.
+  const body = await readBytesLimited(req, UPLOAD_LIMIT).catch((e: unknown) => {
+    if (e instanceof HttpError && e.status === 413) throw new HttpError(413, "That file is over the 50 MB limit.", "too_large");
+    throw e;
+  });
   // Next.js buffers request bodies up to a limit and cuts the rest. A short
   // body must never be saved as if it were the whole file.
   if (Number.isFinite(declared) && declared > 0 && body.length !== declared) {

@@ -233,3 +233,27 @@ describe("deploy pipeline", () => {
     await expect(rollback(userId, v1.id)).rejects.toMatchObject({ status: 409 });
   });
 });
+
+describe("deploy state races", () => {
+  it("does not deploy, or revive, a deployment that was canceled while it was building", async () => {
+    files = nodeApp("never-ships");
+    const dep = await deployBranch(userId, project.id, "main");
+    const cancelDuringBuild: PipelineDeps = {
+      ...deps,
+      // The cancel button writes straight to the database; the abort signal only follows on the next poll.
+      build: async (req) => {
+        await ctx.db.update(schema.deployments).set({ state: "canceled" }).where(eq(schema.deployments.id, dep.id));
+        return deps.build(req);
+      },
+    };
+    await runDeployJob(dep.id, cancelDuringBuild);
+
+    const row = await ctx.db.select().from(schema.deployments).where(eq(schema.deployments.id, dep.id)).get();
+    expect(row?.state).toBe("canceled");
+    expect(row?.isCurrent).toBe(false);
+    const home = mock.home.replace(/\\/g, "/");
+    const dirs = await sh(`ls ${home}/.nest-deploy/demo-app/releases`);
+    expect(dirs).not.toContain(dep.releaseId);
+    expect(await answer(project.port)).not.toBe("never-ships:hello-secret-value");
+  });
+});

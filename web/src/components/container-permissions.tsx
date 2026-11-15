@@ -30,6 +30,11 @@ export type PermissionServer = {
   permissions: ContainerPermissions;
 };
 
+// The first two sentences are the point; the rest is detail, kept behind a disclosure.
+const INTRO_SENTENCES = SECTION_INTRO.split(/(?<=\.)\s+/);
+const INTRO_LEAD = INTRO_SENTENCES.slice(0, 2).join(" ");
+const INTRO_MORE = INTRO_SENTENCES.slice(2).join(" ");
+
 const message = (e: unknown) =>
   e instanceof Error && e.message ? e.message : "Could not save. Try again.";
 
@@ -63,7 +68,15 @@ export function ContainerPermissionsSection({ servers }: { servers: PermissionSe
       <h2 id="container-permissions-heading" className="scroll-mt-20 text-title-2">
         Container permissions
       </h2>
-      <p className="mt-1 max-w-[62ch] text-muted-foreground">{SECTION_INTRO}</p>
+      <p className="mt-1 max-w-[62ch] text-muted-foreground">{INTRO_LEAD}</p>
+      {INTRO_MORE ? (
+        <details className="mt-1 max-w-[62ch] text-muted-foreground">
+          <summary className="inline-flex min-h-8 cursor-pointer items-center text-foreground underline decoration-[var(--ds-gray-alpha-400)] underline-offset-4 max-sm:min-h-10">
+            More about these switches
+          </summary>
+          <p className="mt-1">{INTRO_MORE}</p>
+        </details>
+      ) : null}
 
       {servers.length === 0 ? (
         <div className="mt-4 rounded-lg bg-card p-5 shadow-border-small">

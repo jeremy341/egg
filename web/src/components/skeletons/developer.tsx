@@ -89,7 +89,7 @@ function HubSkeleton() {
 /** /developer, as the real page lays it out: header with Create token, the token list, and the addresses card. */
 export function DeveloperSkeleton() {
   return (
-    <LoadingRegion label="Loading developer settings…" className="mx-auto max-w-[1120px]">
+    <LoadingRegion label="Loading developer settings…">
       <div aria-hidden="true" className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div className="min-w-0">
           <SkeletonText size="title-1" width="w-40" />

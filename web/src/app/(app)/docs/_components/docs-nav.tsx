@@ -14,7 +14,7 @@ export function useCurrentDocsPage(): string | null {
   return sectionIdFromPath(usePathname());
 }
 
-function filterNav(query: string): { groups: DocsGroup[]; count: number } {
+export function filterNav(query: string): { groups: DocsGroup[]; count: number } {
   const q = query.trim().toLowerCase();
   if (q === "") return { groups: DOCS_NAV, count: DOCS_NAV.reduce((n, g) => n + g.sections.length, 0) };
   const groups: DocsGroup[] = [];

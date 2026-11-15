@@ -179,20 +179,20 @@ export function ServiceCard({ projectId }: { projectId: string }) {
           </Item>
           <Item label="Uptime">
             <Swap
-              value={status.uptimeSeconds !== null ? formatUptime(status.uptimeSeconds) : "None"}
+              value={status.uptimeSeconds !== null ? formatUptime(status.uptimeSeconds) : "No reading"}
               className="tabular"
             >
-              {status.uptimeSeconds !== null ? formatUptime(status.uptimeSeconds) : "None"}
+              {status.uptimeSeconds !== null ? formatUptime(status.uptimeSeconds) : "No reading"}
             </Swap>
           </Item>
           <Item label="Memory">
-            <Swap value={status.memoryMb ?? "None"} className="tabular">
-              {status.memoryMb !== null ? `${status.memoryMb} MB` : "None"}
+            <Swap value={status.memoryMb ?? "No reading"} className="tabular">
+              {status.memoryMb !== null ? `${status.memoryMb} MB` : "No reading"}
             </Swap>
           </Item>
           <Item label="Restarts">
-            <Swap value={status.restarts ?? "None"} className="tabular">
-              {status.restarts ?? "None"}
+            <Swap value={status.restarts ?? "No reading"} className="tabular">
+              {status.restarts ?? "No reading"}
             </Swap>
           </Item>
           <Item label="Health check">

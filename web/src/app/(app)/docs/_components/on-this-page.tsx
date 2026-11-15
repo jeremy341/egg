@@ -6,7 +6,7 @@ import type { DocsSubsection } from "../_data/nav";
 import { usePageHeadings } from "./use-page-headings";
 
 /**
- * The headings of the page you are reading, in a rail from 1280px up, with
+ * The headings of the page you are reading, in a rail from 1400px up, with
  * the one in view marked by a lit cell. Plain hash links: the browser does
  * the scrolling. `h2` headings are the sections and `h3` headings sit under
  * them. Pages with fewer than two headings show nothing.
@@ -21,12 +21,12 @@ export function OnThisPage({ pageId, items }: { pageId: string; items: DocsSubse
   );
   const active = useScrollSpy(
     headings.map((h) => h.id),
-    { offset: 128 }
+    { offset: 96 }
   );
   if (headings.length < 2) return null;
 
   return (
-    <nav aria-label="On this page" className="sticky top-[calc(var(--topbar-height)+48px+16px)] hidden self-start max-h-[calc(100dvh-10rem)] overflow-y-auto min-[1280px]:block [scrollbar-width:thin]">
+    <nav aria-label="On this page" className="sticky top-[calc(var(--topbar-height)+24px)] hidden max-h-[calc(100dvh-var(--topbar-height)-48px)] self-start overflow-y-auto min-[1400px]:block [scrollbar-width:thin]">
       <p className="text-[13px] leading-[30px] font-semibold text-foreground">On this page</p>
       <ul className="mt-[15px] border-l border-l-foreground/20">
         {headings.map((h) => {

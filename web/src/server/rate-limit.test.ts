@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { HttpError } from "@/server/http";
-import { RATE_LIMITS, SlidingWindowLimiter, enforceRateLimit, rateLimiter } from "@/server/rate-limit";
+import { RATE_LIMITS, SlidingWindowLimiter, clientIp, enforceRateLimit, rateLimiter } from "@/server/rate-limit";
 
 function clock(start = 1_000_000) {
   let t = start;
@@ -112,5 +112,37 @@ describe("enforceRateLimit", () => {
       vi.useRealTimers();
       rateLimiter().clear();
     }
+  });
+});
+
+describe("clientIp", () => {
+  const h = (init: Record<string, string>) => new Headers(init);
+
+  it("trusts the address the nearest proxy appended, not the one the client wrote", () => {
+    expect(clientIp(h({ "x-forwarded-for": "6.6.6.6, 203.0.113.9" }))).toBe("203.0.113.9");
+    expect(clientIp(h({ "x-forwarded-for": "203.0.113.9" }))).toBe("203.0.113.9");
+  });
+
+  it("falls back to x-real-ip, then to null", () => {
+    expect(clientIp(h({ "x-real-ip": "198.51.100.4" }))).toBe("198.51.100.4");
+    expect(clientIp(h({}))).toBeNull();
+    expect(clientIp(h({ "x-forwarded-for": " , " }))).toBeNull();
+  });
+});
+
+describe("sign-in and bad-token limits", () => {
+  it("cap sign-in attempts per address", () => {
+    rateLimiter().clear();
+    for (let i = 0; i < RATE_LIMITS.signIn.limit; i++) enforceRateLimit("signIn", "203.0.113.9");
+    expect(() => enforceRateLimit("signIn", "203.0.113.9")).toThrow(HttpError);
+    expect(() => enforceRateLimit("signIn", "203.0.113.10")).not.toThrow();
+    rateLimiter().clear();
+  });
+
+  it("cap bad token guesses per address", () => {
+    rateLimiter().clear();
+    for (let i = 0; i < RATE_LIMITS.badToken.limit; i++) enforceRateLimit("badToken", "203.0.113.9");
+    expect(() => enforceRateLimit("badToken", "203.0.113.9")).toThrow(/Too many/);
+    rateLimiter().clear();
   });
 });

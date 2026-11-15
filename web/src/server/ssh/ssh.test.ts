@@ -32,6 +32,22 @@ describe("keys", () => {
   });
 });
 
+describe("writeFile", () => {
+  it("refuses a mode that is not octal digits, before anything is sent", async () => {
+    const sent: string[] = [];
+    const session = Object.create(NestSession.prototype) as NestSession;
+    (session as unknown as { exec: (c: string) => Promise<unknown> }).exec = async (c) => {
+      sent.push(c);
+      return { code: 0, stdout: "", stderr: "" };
+    };
+    await expect(session.writeFile("/tmp/x", "a", "644; rm -rf ~")).rejects.toBeInstanceOf(SshError);
+    await expect(session.writeFile("/tmp/x", "a", "$(id)")).rejects.toBeInstanceOf(SshError);
+    expect(sent).toEqual([]);
+    await session.writeFile("/tmp/x", "a", "600");
+    expect(sent).toHaveLength(1);
+  });
+});
+
 describe("shellQuote", () => {
   it("neutralises quotes and metacharacters", () => {
     expect(shellQuote("a'b")).toBe(`'a'\\''b'`);
@@ -67,6 +83,16 @@ describe("NestSession against a mock Nest", () => {
     expect(r.code).toBe(3);
     expect(r.stdout.trim()).toBe("hello");
     expect(r.stderr.trim()).toBe("oops");
+    s.close();
+  });
+
+  it("cuts off a command that prints more than the output cap, instead of holding it all in memory", async () => {
+    const s = await connect();
+    await expect(s.exec("yes aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa | head -c 200000", { maxOutputBytes: 10_000 })).rejects.toMatchObject({
+      kind: "exec",
+    });
+    // The connection is still usable afterwards.
+    expect((await s.exec("echo ok", { maxOutputBytes: 10_000 })).stdout.trim()).toBe("ok");
     s.close();
   });
 

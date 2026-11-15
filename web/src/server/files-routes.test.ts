@@ -236,6 +236,25 @@ describe("operations", () => {
     expect(Buffer.from(await res.arrayBuffer()).toString()).toBe("abc");
   });
 
+  it("keeps a backslash in a file name from escaping the quoted file name in the header", async () => {
+    reply = () => ({ code: 0, stdout: `1
+${Buffer.from("a").toString("base64")}` });
+    const res = await download(get("download", { path: "shared/a\\.txt" }), ctxFor(projectId));
+    const disposition = res.headers.get("content-disposition")!;
+    expect(disposition).toContain('filename="a_.txt"');
+    expect(disposition).toContain("filename*=UTF-8''a%5C.txt");
+  });
+
+  it("counts every list, read and download against a per-user limit, since each one opens an SSH connection", async () => {
+    reply = () => ({ code: 0, stdout: "" });
+    let last = 200;
+    for (let i = 0; i < 121; i++) last = (await list(get("list", { path: "shared" }), ctxFor(projectId))).status;
+    expect(last).toBe(429);
+    const blocked = await read(get("read", { path: "shared/a.txt" }), ctxFor(projectId));
+    expect(blocked.status).toBe(429);
+    expect(blocked.headers.get("retry-after")).toMatch(/^\d+$/);
+  });
+
   it("writes, passes the bytes on stdin, and audits the path only", async () => {
     const secret = "SUPER-SECRET-FILE-CONTENTS";
     const res = await write(upload({ path: "shared/data/notes.txt", overwrite: "1" }, secret), ctxFor(projectId));

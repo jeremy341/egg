@@ -1,6 +1,7 @@
 import { z } from "zod";
+import { readTextLimited } from "@/server/body-limit";
 import { requireProjectFeature } from "@/server/permission-guards";
-import { authed, handle, HttpError, notFound, ok, readJson } from "@/server/http";
+import { authed, handle, HttpError, notFound, ok, zodToHttp } from "@/server/http";
 import { enforceRateLimit } from "@/server/rate-limit";
 import { isSessionId, terminals, TERMINAL_LIMITS } from "@/server/terminal";
 
@@ -24,11 +25,20 @@ export const POST = handle<Ctx>(async (req, { params }) => {
   await requireProjectFeature(user.id, id, "terminal");
   if (!isSessionId(sessionId)) throw notFound("Terminal session not found");
   enforceRateLimit("terminalInput", user.id);
-  const length = Number(req.headers.get("content-length") ?? 0);
-  if (length > MAX_BODY_BYTES) {
-    throw new HttpError(413, "That is too much input at once.", "too_large");
+  // Counted as it arrives, so a body with no Content-Length cannot be larger than this either.
+  const text = await readTextLimited(req, MAX_BODY_BYTES).catch((e: unknown) => {
+    if (e instanceof HttpError && e.status === 413) throw new HttpError(413, "That is too much input at once.", "too_large");
+    throw e;
+  });
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    throw new HttpError(400, "Request body must be JSON", "bad_json");
   }
-  const { data } = await readJson(req, input);
+  const parsed = input.safeParse(json);
+  if (!parsed.success) throw zodToHttp(parsed.error);
+  const { data } = parsed.data;
   const info = terminals().write(user.id, id, sessionId, data);
   return ok({ expiresAt: info.expiresAt, serverNow: info.serverNow });
 });

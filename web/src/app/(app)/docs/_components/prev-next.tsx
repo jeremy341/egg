@@ -16,7 +16,7 @@ export function PrevNext({ sectionId }: { sectionId: string }) {
   const here = groupOf(sectionId);
 
   return (
-    <nav aria-label="Previous and next page" className="mt-[90px] flex max-w-[780px] flex-col gap-px border bg-border sm:flex-row">
+    <nav aria-label="Previous and next page" className="mt-[90px] flex flex-col gap-px border bg-border sm:flex-row">
       {prev ? (
         <Link href={docsHref(prev.id)} rel="prev" className={card}>
           <span className="flex items-center gap-1.5 text-[13px] leading-5 text-muted-foreground">

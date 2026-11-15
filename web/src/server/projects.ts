@@ -3,12 +3,14 @@ import { z } from "zod";
 import { audit } from "@/server/audit";
 import { pickCloneSettings, type CloneSettings } from "@/server/clone-settings";
 import { newId, open, seal } from "@/server/crypto";
-import { getDb, schema } from "@/server/db";
+import { getDb, schema, type Db } from "@/server/db";
 import { RUNTIMES } from "@/server/db/schema";
 import { assertCloneUrl, BuildError } from "@/server/deploy/build";
 import { isValidSlug, slugify } from "@/server/deploy/layout";
 import { ENV_KEY, RESERVED_ENV } from "@/server/deploy/runtime";
+import { assertInstallationOwned, GithubError } from "@/server/github/app";
 import { HttpError, notFound } from "@/server/http";
+import { moveDomainsToPort } from "@/server/domains";
 import { getServerForUser } from "@/server/servers";
 
 export type ProjectRow = typeof schema.projects.$inferSelect;
@@ -106,6 +108,32 @@ export async function listProjects(userId: string) {
     .orderBy(desc(schema.projects.createdAt));
 }
 
+/**
+ * The GitHub fields come from the client, and an installation token reads
+ * private repositories, so both are checked: the installation must be one this
+ * user linked, and the repository name (which routes push events to the
+ * project) must be the one in the repository URL.
+ */
+async function assertGithubLinks(
+  userId: string,
+  input: { installationId?: number | null; repoUrl: string; repoFullName?: string | null }
+) {
+  if (input.installationId) {
+    try {
+      await assertInstallationOwned(userId, input.installationId);
+    } catch (e) {
+      if (e instanceof GithubError) throw new HttpError(403, e.message, "forbidden");
+      throw e;
+    }
+  }
+  if (input.repoFullName) {
+    const path = new URL(input.repoUrl).pathname.replace(/^\/+|\/+$/g, "").replace(/\.git$/i, "");
+    if (path.toLowerCase() !== input.repoFullName.toLowerCase()) {
+      throw new HttpError(400, "The repository name does not match the repository URL.", "validation");
+    }
+  }
+}
+
 export async function createProject(userId: string, raw: unknown): Promise<ProjectRow> {
   const input = createProjectInput.parse(raw);
   const db = await getDb();
@@ -117,6 +145,8 @@ export async function createProject(userId: string, raw: unknown): Promise<Proje
     if (e instanceof BuildError) throw new HttpError(400, e.message, "validation");
     throw e;
   }
+
+  await assertGithubLinks(userId, input);
 
   const slug = input.slug ? input.slug : slugify(input.name);
   if (!isValidSlug(slug)) {
@@ -134,44 +164,54 @@ export async function createProject(userId: string, raw: unknown): Promise<Proje
   if (mine.some((p) => p.slug === slug)) {
     throw new HttpError(409, `You already have a project called "${slug}".`, "conflict");
   }
-  const clash = await db
-    .select({ port: schema.projects.port })
-    .from(schema.projects)
-    .where(eq(schema.projects.serverId, input.serverId));
-  if (clash.some((p) => p.port === input.port)) {
-    throw new HttpError(
-      409,
-      `Port ${input.port} is already used by another project on this server.`,
-      "conflict"
-    );
-  }
 
   const id = newId();
   const now = new Date();
-  await db.insert(schema.projects).values({
-    id,
-    userId,
-    serverId: input.serverId,
-    slug,
-    name: input.name,
-    repoUrl: input.repoUrl,
-    repoFullName: input.repoFullName ?? null,
-    installationId: input.installationId ?? null,
-    productionBranch: input.productionBranch,
-    rootDir: input.rootDir,
-    runtime: input.runtime,
-    installCommand: input.installCommand || null,
-    buildCommand: input.buildCommand || null,
-    startCommand: input.startCommand || null,
-    outputDir: input.outputDir || null,
-    port: input.port,
-    healthPath: input.healthPath,
-    autoDeploy: input.adopted ? false : input.autoDeploy,
-    createdAt: now,
-    updatedAt: now,
+  // The port check and the insert are one write transaction, so two requests for the same
+  // port cannot both pass the check before either row exists.
+  await db.transaction(async (tx) => {
+    await assertPortFree(
+      tx,
+      input.serverId,
+      input.port,
+      `Port ${input.port} is already used by another project on this server.`
+    );
+    await tx.insert(schema.projects).values({
+      id,
+      userId,
+      serverId: input.serverId,
+      slug,
+      name: input.name,
+      repoUrl: input.repoUrl,
+      repoFullName: input.repoFullName ?? null,
+      installationId: input.installationId ?? null,
+      productionBranch: input.productionBranch,
+      rootDir: input.rootDir,
+      runtime: input.runtime,
+      installCommand: input.installCommand || null,
+      buildCommand: input.buildCommand || null,
+      startCommand: input.startCommand || null,
+      outputDir: input.outputDir || null,
+      port: input.port,
+      healthPath: input.healthPath,
+      autoDeploy: input.adopted ? false : input.autoDeploy,
+      createdAt: now,
+      updatedAt: now,
+    });
   });
   await audit(userId, "project.create", id, { name: input.name });
   return assertOwned(userId, id);
+}
+
+type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+
+/** 409 when another project on this server already has the port. Call inside the write transaction. */
+async function assertPortFree(tx: Tx, serverId: string, port: number, message: string, exceptId?: string) {
+  const taken = await tx
+    .select({ id: schema.projects.id })
+    .from(schema.projects)
+    .where(and(eq(schema.projects.serverId, serverId), eq(schema.projects.port, port)));
+  if (taken.some((p) => p.id !== exceptId)) throw new HttpError(409, message, "conflict");
 }
 
 export async function updateProject(userId: string, projectId: string, raw: unknown) {
@@ -179,23 +219,21 @@ export async function updateProject(userId: string, projectId: string, raw: unkn
   const project = await assertOwned(userId, projectId);
   const db = await getDb();
 
-  if (input.port !== undefined && input.port !== project.port) {
-    const others = await db
-      .select({ port: schema.projects.port })
-      .from(schema.projects)
-      .where(and(eq(schema.projects.serverId, project.serverId)));
-    if (others.some((p) => p.port === input.port)) {
-      throw new HttpError(409, `Port ${input.port} is already used on this server.`, "conflict");
-    }
-  }
-
   const clean = Object.fromEntries(
     Object.entries(input).filter(([, v]) => v !== undefined)
   ) as Partial<typeof schema.projects.$inferInsert>;
-  await db
-    .update(schema.projects)
-    .set({ ...clean, updatedAt: new Date() })
-    .where(eq(schema.projects.id, project.id));
+  const newPort = input.port !== undefined && input.port !== project.port ? input.port : null;
+  await db.transaction(async (tx) => {
+    if (newPort !== null) {
+      await assertPortFree(tx, project.serverId, newPort, `Port ${newPort} is already used on this server.`, project.id);
+    }
+    await tx
+      .update(schema.projects)
+      .set({ ...clean, updatedAt: new Date() })
+      .where(eq(schema.projects.id, project.id));
+    // Nest holds the real port mapping: a domain left on the old port must say so.
+    if (newPort !== null) await moveDomainsToPort(tx, project.id, newPort);
+  });
   await audit(userId, "project.update", project.id, { fields: Object.keys(clean).join(", ") });
   return assertOwned(userId, projectId);
 }
@@ -504,6 +542,24 @@ export async function deploymentLogs(userId: string, deploymentId: string, after
 export async function deleteProjectRecords(userId: string, projectId: string) {
   const project = await assertOwned(userId, projectId);
   const db = await getDb();
+  // The worker would keep writing a service and folders for a project that no longer exists.
+  const running = await db
+    .select({ id: schema.deployments.id })
+    .from(schema.deployments)
+    .where(
+      and(
+        eq(schema.deployments.projectId, project.id),
+        inArray(schema.deployments.state, ["queued", "building", "deploying"])
+      )
+    )
+    .get();
+  if (running) {
+    throw new HttpError(
+      409,
+      "A deployment is still running for this project. Cancel it or wait for it to finish, then delete the project.",
+      "conflict"
+    );
+  }
   await db.delete(schema.projects).where(eq(schema.projects.id, project.id));
   await audit(userId, "project.delete", null, { name: project.name });
 }

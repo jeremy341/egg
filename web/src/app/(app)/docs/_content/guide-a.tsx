@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { B, C, Callout, H3, InternalLink, List, P, Section, Table } from "../_components/prose";
+import { B, C, Callout, H2, H3, InternalLink, List, P, Section, Table } from "../_components/prose";
 import {
   Limits,
   Steps,
@@ -760,6 +760,12 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
         <B>Cancel</B> (previews that are not finished) or <B>Delete previews</B> (previews that are not live and
         are at least 24 hours old). The page loads the newest 100 deployments and shows 25 at a time with a{" "}
         <B>Show N more</B> button.
+      </P>
+      <P>
+        To keep a record outside the dashboard, open a project’s Deployments tab and press <B>Export CSV</B>. The
+        file holds that project’s newest 5,000 deployments with the time (UTC), commit, branch, environment, state,
+        duration in seconds and deployment id. It never includes variables, logs, ports or addresses. You can make
+        10 exports a minute.
       </P>
       <H3 id="deployments-releases" />
       <P>
@@ -1587,6 +1593,73 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
           </>
         ),
       })}
+      <H2 id="notifications-webhooks" title="Signed webhooks for your own code" />
+      <P>
+        Discord and Slack are for people. To tell a program, use <B>Webhooks</B> in Account. Nest Deploy sends a
+        signed JSON message to an https address when a deployment starts, succeeds or fails. It covers every project
+        on your account.
+      </P>
+      <Steps
+        id="notifications-webhooks-steps"
+        level={3}
+        items={([
+        {
+          title: "Add the address",
+          body: <>Open Account, find <B>Webhooks</B>, paste the address under <B>Add a webhook address</B> and press <B>Add webhook</B>.</>,
+        },
+        {
+          title: "Copy the secret",
+          body: <>The card shows the signing secret once, starting with <C>whsec_</C>. Copy it before you press <B>I have copied it</B>. It cannot be read again.</>,
+        },
+        {
+          title: "Send a test",
+          body: <>Press <B>Send test</B> on the new row. The toast says “Test message delivered”, and the row lists the delivery under <B>Recent deliveries</B>.</>,
+        },
+        {
+          title: "Check the signature in your code",
+          body: (
+            <>
+              Every request has an <C>X-NestDeploy-Signature</C> header of the form <C>t=TIME,v1=HEX</C>. The value
+              is an HMAC-SHA256 of <C>TIME.BODY</C>, keyed with your secret. Refuse a request that does not match,
+              or whose time is more than 300 seconds from yours.
+            </>
+          ),
+          code: {
+            label: "Node.js",
+            code: `import { createHmac, timingSafeEqual } from "node:crypto";
+
+export function isFromNestDeploy(secret, header, body) {
+  const m = /^t=(\\d+),v1=([0-9a-f]{64})$/.exec(header ?? "");
+  if (!m || Math.abs(Date.now() / 1000 - Number(m[1])) > 300) return false;
+  const want = createHmac("sha256", secret).update(m[1] + "." + body).digest();
+  return timingSafeEqual(want, Buffer.from(m[2], "hex"));
+}`,
+          },
+        },
+      ] as Step[]).map(toStep)}
+      />
+      <P>
+        The body is JSON with the event (<C>deployment.started</C>, <C>deployment.succeeded</C> or{" "}
+        <C>deployment.failed</C>), the project’s id and slug, the deployment’s id, branch, short commit and state,
+        and the time. It never carries variables, logs, commit messages, errors or links. The headers{" "}
+        <C>X-NestDeploy-Event</C> and <C>X-NestDeploy-Delivery</C> name the event and this delivery.
+      </P>
+      <Limits
+        id="notifications-webhooks-limits"
+        level={3}
+        items={([
+        ["Webhooks per account", "10", "Delete one to add another."],
+        ["Address", "https, a domain name, no port, no credentials, 500 characters at most", "The form says what to change."],
+        ["Where it can point", "A public address", "Private, loopback and internal addresses are refused when the message is sent."],
+        ["Time to answer", "5 seconds", "The attempt counts as failed. Redirects are not followed."],
+        ["Attempts", "3, with pauses of 2 and 10 seconds", "A failed delivery is listed with a short reason."],
+        ["Delivery history", "30 days", "Older rows are removed."],
+      ] as [string, string, ReactNode][]).map(([name, value, atLimit]) => ({ name, value, atLimit }))}
+      />
+      <P>
+        <B>Pause</B> stops messages without deleting the webhook, <B>New secret</B> makes the old secret stop
+        working at once, and <B>Delete</B> removes the webhook and its history.
+      </P>
       {related([
         ["monitoring", "Monitoring and uptime"],
         ["hooks", "Deploy hooks"],

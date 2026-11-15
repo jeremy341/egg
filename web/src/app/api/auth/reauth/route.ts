@@ -1,6 +1,8 @@
 import { connection, NextResponse, type NextRequest } from "next/server";
 import { createAuthRequest } from "@/server/auth/hackclub";
 import { OAUTH_COOKIE, SESSION_COOKIE, markFreshAuth, userForSessionToken } from "@/server/auth/session";
+import { safeNextPath } from "@/server/auth/redirect";
+import { throttleSignIn } from "@/server/auth/throttle";
 import { config, hackClubConfigured } from "@/server/config";
 
 /**
@@ -10,14 +12,15 @@ import { config, hackClubConfigured } from "@/server/config";
  */
 export async function GET(req: NextRequest) {
   await connection();
+  const throttled = throttleSignIn(req);
+  if (throttled) return throttled;
   const home = config().APP_URL;
   const token = req.cookies.get(SESSION_COOKIE)?.value;
   if (!(await userForSessionToken(token))) {
     return NextResponse.redirect(new URL("/login", home), 303);
   }
   // Only same-site relative paths, so this cannot send people elsewhere.
-  const raw = req.nextUrl.searchParams.get("next") ?? "/account";
-  const next = raw.startsWith("/") && !raw.startsWith("//") ? raw : "/account";
+  const next = safeNextPath(req.nextUrl.searchParams.get("next"));
 
   if (!hackClubConfigured()) {
     // Local development only: the development sign-in already skips Hack Club, so the

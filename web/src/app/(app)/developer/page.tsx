@@ -24,7 +24,7 @@ async function DeveloperContent() {
   await requireUser();
   const origin = new URL(config().APP_URL).origin;
   return (
-    <div className="motion-enter mx-auto max-w-[1120px]">
+    <div className="motion-enter">
       <DeveloperTokens
         scopes={SCOPES.map((id) => ({ id, label: SCOPE_LABEL[id] }))}
         aside={

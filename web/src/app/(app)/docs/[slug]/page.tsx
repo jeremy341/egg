@@ -23,7 +23,7 @@ export async function generateMetadata({ params }: Props) {
 /** A page's shape while it loads: the title, the intro, then paragraphs and a block. */
 function DocsPageSkeleton() {
   return (
-    <LoadingRegion label="Loading…" className="max-w-[780px]">
+    <LoadingRegion label="Loading…" className="max-w-[720px]">
       <SkeletonText size="title-1" width="w-56" />
       <SkeletonText size="body" width="w-full" lines={2} className="mt-3" />
       <SkeletonText size="title-3" width="w-48" className="mt-10" />
@@ -48,7 +48,7 @@ async function DocsPageContent({ params }: Props) {
   if (!section || !content) notFound();
 
   return (
-    <div className="grid gap-x-[60px] min-[1280px]:grid-cols-[minmax(0,780px)_180px] min-[1380px]:grid-cols-[minmax(0,780px)_240px]">
+    <div className="grid gap-x-12 min-[1400px]:grid-cols-[minmax(0,720px)_168px]">
       <article id="docs-article" tabIndex={-1} className="min-w-0 scroll-mt-32 outline-none">
         {content()}
         <PrevNext sectionId={slug} />

@@ -1,11 +1,14 @@
 import { connection, NextResponse, type NextRequest } from "next/server";
 import { createAuthRequest } from "@/server/auth/hackclub";
+import { throttleSignIn } from "@/server/auth/throttle";
 import { OAUTH_COOKIE } from "@/server/auth/session";
 import { config, hackClubConfigured } from "@/server/config";
 
 export async function GET(req: NextRequest) {
   // Each login needs a fresh state value, so never prerender this route.
   await connection();
+  const throttled = throttleSignIn(req);
+  if (throttled) return throttled;
   if (!hackClubConfigured()) {
     return NextResponse.redirect(
       new URL("/login?error=not_configured", config().APP_URL),
@@ -25,6 +28,5 @@ export async function GET(req: NextRequest) {
       maxAge: 600,
     }
   );
-  void req;
   return res;
 }

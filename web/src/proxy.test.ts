@@ -40,3 +40,34 @@ describe("pages that stay public", () => {
     expect(res.status).toBe(200);
   });
 });
+
+describe("the proxy matcher", () => {
+  it("skips static files by extension only, not any path that merely ends in those letters", async () => {
+    const { config } = await import("@/proxy");
+    const [pattern] = config.matcher;
+    const skip = pattern.slice(pattern.indexOf("(?!") + 3, pattern.indexOf(").*)"));
+    const asRegex = new RegExp(`^/(?:${skip.replace(/\//g, "\/")})`);
+    expect(asRegex.test("/logo.png")).toBe(true);
+    expect(asRegex.test("/icons/mark.svg")).toBe(true);
+    expect(asRegex.test("/api/v1/projects/xpng")).toBe(false);
+    expect(asRegex.test("/api/tokens/mysvg")).toBe(false);
+  });
+});
+
+describe("API CORS", () => {
+  it("allows any origin on /api/v1 but never credentials", () => {
+    const pre = proxy(new NextRequest("http://localhost:3100/api/v1/projects", { method: "OPTIONS", headers: { cookie: SIGNED_IN } }));
+    const res = proxy(request("/api/v1/projects", SIGNED_IN));
+    for (const r of [pre, res]) {
+      expect(r.headers.get("access-control-allow-origin")).toBe("*");
+      expect(r.headers.get("access-control-allow-credentials")).toBeNull();
+    }
+    expect(pre.status).toBe(204);
+  });
+
+  it("does not open the dashboard routes to other origins", () => {
+    for (const path of ["/api/tokens", "/api/projects", "/api/auth/logout"]) {
+      expect(proxy(request(path, SIGNED_IN)).headers.get("access-control-allow-origin"), path).toBeNull();
+    }
+  });
+});

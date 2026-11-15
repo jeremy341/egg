@@ -8,7 +8,7 @@ import { DocsNavBody, useCurrentDocsPage } from "./docs-nav";
 import { scanPageHeadings, type PageHeading } from "./use-page-headings";
 
 /**
- * The docs section bar. It sticks under the app's top bar and always names the
+ * The docs section bar, for screens under 1280px (wider ones have the sidebar). It sticks under the app's top bar and always names the
  * current page; pressing it opens a panel with the list of pages, filterable,
  * grouped in columns on wide screens. On phones the panel also lists the
  * headings of this page ("On this page"), which wide screens show in a rail.
@@ -51,7 +51,7 @@ export function DocsSectionNav() {
   }, [open]);
 
   return (
-    <div ref={rootRef} className="sticky top-[var(--topbar-height)] z-20 -mx-4 -mt-6 border-b bg-background lg:-mx-6">
+    <div ref={rootRef} className="sticky top-[var(--topbar-height)] z-20 border-b bg-background min-[1280px]:hidden">
       <button
         ref={buttonRef}
         type="button"
@@ -85,7 +85,7 @@ export function DocsSectionNav() {
         >
           <div className="mx-auto max-w-[var(--page-width)] px-4 py-4 lg:px-6">
             {headings.length > 1 ? (
-              <nav aria-label="On this page" className="mb-4 border-b pb-4 min-[1280px]:hidden">
+              <nav aria-label="On this page" className="mb-4 border-b pb-4">
                 <p className="px-2 text-[13px] leading-6 font-semibold text-foreground">On this page</p>
                 <ul className="mt-1">
                   {headings.map((h) => (

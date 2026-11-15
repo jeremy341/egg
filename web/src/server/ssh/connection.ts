@@ -21,6 +21,8 @@ export class SshError extends Error {
   }
 }
 
+const DEFAULT_MAX_OUTPUT_BYTES = 128 * 1024 * 1024;
+
 export type ExecResult = { code: number; stdout: string; stderr: string };
 
 export type ExecOptions = {
@@ -29,6 +31,12 @@ export type ExecOptions = {
   /** Stream to pipe into stdin instead (for uploads). */
   stdinStream?: Readable;
   timeoutMs?: number;
+  /**
+   * Most bytes of stdout plus stderr to keep. A container is the user's own
+   * machine, so it can print without end; past this the command is cut off
+   * and the call fails. Default 128 MB, room for a 50 MB file sent as base64.
+   */
+  maxOutputBytes?: number;
   /** Called with each line of stdout/stderr as it arrives. */
   onLine?: (line: string, stream: "stdout" | "stderr") => void;
 };
@@ -155,6 +163,16 @@ export class NestSession {
         let errBuf = "";
         let settled = false;
         let timer: NodeJS.Timeout | undefined;
+        let received = 0;
+        const cap = opts.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
+        const overflow = (n: number) => {
+          received += n;
+          if (received <= cap || settled) return;
+          settled = true;
+          if (timer) clearTimeout(timer);
+          stream.close();
+          reject(new SshError("The container printed more output than Nest Deploy will read.", "exec"));
+        };
 
         const flush = (buf: string, which: "stdout" | "stderr", final: boolean) => {
           if (!opts.onLine) return buf;
@@ -191,11 +209,15 @@ export class NestSession {
         }
 
         stream.on("data", (d: Buffer) => {
+          overflow(d.length);
+          if (settled) return;
           const s = d.toString("utf8");
           stdout += s;
           outBuf = flush(outBuf + s, "stdout", false);
         });
         stream.stderr.on("data", (d: Buffer) => {
+          overflow(d.length);
+          if (settled) return;
           const s = d.toString("utf8");
           stderr += s;
           errBuf = flush(errBuf + s, "stderr", false);
@@ -242,6 +264,8 @@ export class NestSession {
   }
 
   async writeFile(remotePath: string, content: string, mode = "644") {
+    // The mode goes into the command line, so it must be octal digits and nothing else.
+    if (!/^[0-7]{3,4}$/.test(mode)) throw new SshError("Invalid file mode", "exec");
     const result = await this.exec(
       `umask 077 && cat > ${shellQuote(remotePath)} && chmod ${mode} ${shellQuote(remotePath)}`,
       { stdin: content }

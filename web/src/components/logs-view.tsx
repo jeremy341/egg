@@ -195,8 +195,25 @@ export function LogsView({
           placeholder="Search the last 1000 lines…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          className="min-w-[14rem] max-w-80 flex-1 max-sm:max-w-none max-sm:basis-full"
+          className="min-w-[14rem] max-w-96 flex-1 max-sm:max-w-none max-sm:basis-full"
         />
+        <div className="ml-auto flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={download}
+            disabled={lines.length === 0}
+            aria-label={`Download ${lines.length} visible ${lines.length === 1 ? "line" : "lines"} as a text file`}
+          >
+            <DownloadSimpleIcon aria-hidden="true" />
+            Download
+          </Button>
+          <Button variant="outline" onClick={() => void load()} disabled={loading}>
+            <ArrowsClockwiseIcon aria-hidden="true" className={cn(loading && "animate-spin")} />
+            Refresh
+          </Button>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <Segmented<LogRange>
           label="Time range"
           value={range}
@@ -219,21 +236,6 @@ export function LogsView({
         {auto ? (
           <StatusIndicator tone="ready" label="Live" className="motion-fade text-label" />
         ) : null}
-        <div className="ml-auto flex items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={download}
-            disabled={lines.length === 0}
-            aria-label={`Download ${lines.length} visible ${lines.length === 1 ? "line" : "lines"} as a text file`}
-          >
-            <DownloadSimpleIcon aria-hidden="true" />
-            Download
-          </Button>
-          <Button variant="outline" onClick={() => void load()} disabled={loading}>
-            <ArrowsClockwiseIcon aria-hidden="true" className={cn(loading && "animate-spin")} />
-            Refresh
-          </Button>
-        </div>
       </div>
 
       {error ? <ConnectionAlert message={error} onRetry={() => void load()} retrying={loading} /> : null}

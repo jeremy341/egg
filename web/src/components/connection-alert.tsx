@@ -27,26 +27,31 @@ export function ConnectionAlert({
   const view = describeConnectionError(message);
   return (
     <Alert tone="error" role="alert" title={view.summary} className={className}>
-      {note ? <p className="text-muted-foreground">{note}</p> : null}
       {view.connection ? (
-        <details className="mt-1 text-label text-muted-foreground">
-          <summary className="inline-flex min-h-6 cursor-pointer items-center underline-offset-4 hover:underline max-sm:min-h-10">
-            Show details
-          </summary>
-          <p className="mt-1 font-mono text-[13px] break-words">{view.detail}</p>
-        </details>
+        <p className="text-muted-foreground">
+          Your container may be stopped or still starting. Try again in a minute.
+        </p>
       ) : null}
+      {note ? <p className="text-muted-foreground">{note}</p> : null}
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <Button type="button" variant="outline" size="sm" onClick={onRetry} disabled={retrying}>
           <ArrowClockwiseIcon aria-hidden="true" className={cn(retrying && "animate-spin")} />
           Try again
         </Button>
         {view.connection ? (
-          <Link href="/connect" className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "px-2.5")}>
+          <Link href="/connect" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "px-2.5")}>
             Check your connection settings
           </Link>
         ) : null}
       </div>
+      {view.connection ? (
+        <details className="mt-2 text-label">
+          <summary className="inline-flex min-h-8 cursor-pointer items-center text-muted-foreground underline decoration-[var(--ds-gray-alpha-400)] underline-offset-4 hover:text-foreground max-sm:min-h-10">
+            Show details
+          </summary>
+          <p className="mt-1 font-mono text-[13px] break-words text-muted-foreground">{view.detail}</p>
+        </details>
+      ) : null}
     </Alert>
   );
 }

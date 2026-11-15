@@ -1,12 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowUpRightIcon, CheckCircleIcon } from "@phosphor-icons/react";
 import { api } from "@/components/api";
 import { CopyField } from "@/components/copy-field";
 import { PageHeader } from "@/components/page-header";
+import { DocsLink } from "@/components/settings-ui";
 import { StatusIndicator } from "@/components/status-dot";
 import { Alert } from "@/components/ui/alert";
 import { ConfirmDialog } from "@/components/ui/alert-dialog";
@@ -279,17 +279,7 @@ export function ConnectFlow({ servers }: { servers: ServerView[] }) {
       <PageHeader
         title="Connect a Nest server"
         description="Nest Deploy signs in to your container with a key made just for it. You stay in control: removing the key in the Nest dashboard ends our access."
-        actions={
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-label="Read the docs about connecting a server"
-            render={<Link href="/docs/servers#servers-connection" />}
-          >
-            Docs
-            <ArrowUpRightIcon aria-hidden="true" className="size-3.5" />
-          </Button>
-        }
+        actions={<DocsLink href="/docs/servers#servers-connection" topic="connecting a server" className="max-sm:hidden" />}
       />
 
       {servers.map((s) => (

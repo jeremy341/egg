@@ -91,6 +91,7 @@ function publicV6(g: number[]): boolean {
   if (g[0] === 0x2002) return publicV4(v4FromGroups(g[1], g[2])); // 6to4 embeds IPv4
   if (g[0] === 0x2001 && g[1] === 0) return false; // Teredo
   if (g[0] === 0x2001 && g[1] === 0xdb8) return false; // documentation
+  if (g[0] === 0x3fff && (g[1] & 0xf000) === 0) return false; // documentation, 3fff::/20
   if (g[0] === 0x100 && allZero(1, 4)) return false; // discard-only 100::/64
   if ((g[0] & 0xfe00) === 0xfc00) return false; // unique local fc00::/7
   if ((g[0] & 0xffc0) === 0xfe80) return false; // link-local fe80::/10

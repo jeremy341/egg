@@ -1,4 +1,5 @@
 import { getDb, schema } from "@/server/db";
+import { maskSecrets, secretNeedles } from "@/server/deploy/redact";
 
 export type Level = "info" | "warn" | "error";
 
@@ -19,13 +20,12 @@ export class DeploymentLogger {
   ) {}
 
   setSecrets(values: string[]) {
-    this.secrets = values.filter((v) => v.length >= 4).sort((a, b) => b.length - a.length);
+    this.secrets = secretNeedles(values);
   }
 
-  private mask(message: string) {
-    let out = message;
-    for (const s of this.secrets) out = out.split(s).join("***");
-    return out;
+  /** Mask secret values in any text that is about to be stored or shown, such as a deployment's error. */
+  mask(message: string) {
+    return maskSecrets(message, this.secrets);
   }
 
   log = (level: Level, message: string) => {

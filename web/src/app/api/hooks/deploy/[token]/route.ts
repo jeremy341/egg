@@ -1,7 +1,11 @@
+import { readTextLimited } from "@/server/body-limit";
 import { handle, HttpError, ok } from "@/server/http";
 import { triggerDeployHook } from "@/server/hooks";
 
 type Ctx = { params: Promise<{ token: string }> };
+
+/** The body is { "branch": "..." } at most; this route is public, so it reads no more than this. */
+const MAX_BODY_BYTES = 4 * 1024;
 
 /**
  * Deploy hook. Public by design: the secret in the URL is the credential, so
@@ -11,7 +15,7 @@ type Ctx = { params: Promise<{ token: string }> };
 export const POST = handle<Ctx>(
   async (req, { params }) => {
     const { token } = await params;
-    const text = await req.text();
+    const text = await readTextLimited(req, MAX_BODY_BYTES);
     let body: unknown = {};
     if (text.trim()) {
       try {

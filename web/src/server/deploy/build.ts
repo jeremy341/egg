@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { createReadStream, existsSync, mkdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { createReadStream, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import * as tar from "tar";
@@ -10,6 +10,7 @@ import {
   type RuntimeInput,
   type RuntimeSpec,
 } from "@/server/deploy/runtime";
+import { secretNeedles } from "@/server/deploy/redact";
 
 export type LogFn = (level: "info" | "warn" | "error", message: string) => void;
 
@@ -67,14 +68,83 @@ export function assertCloneUrl(url: string) {
   }
 }
 
-/** Resolve a user-supplied folder inside `base`, refusing `..` escapes. */
+const within = (root: string, full: string) => full === root || full.startsWith(root + path.sep);
+
+/**
+ * Resolve a user-supplied folder inside `base`, refusing `..` escapes and
+ * links. A cloned repository (or a build that ran in it) can hold a link to any
+ * path on this machine; the folder that gets archived is read here, not in the
+ * sandbox, so the real location must stay inside `base` too.
+ */
 export function resolveInside(base: string, rel: string): string {
   const full = path.resolve(base, rel || ".");
   const root = path.resolve(base);
-  if (full !== root && !full.startsWith(root + path.sep)) {
+  if (!within(root, full)) {
     throw new BuildError(`"${rel}" is outside the repository.`);
   }
+  // The nearest part that exists decides where the rest would land.
+  let probe = full;
+  while (!existsSync(probe) && probe !== root) probe = path.dirname(probe);
+  if (existsSync(probe) && !within(realpathSync(root), realpathSync(probe))) {
+    throw new BuildError(`"${rel}" leads outside the repository.`);
+  }
   return full;
+}
+
+const REF_BAD = /[\s\u0000-\u001f\u007f:?*[\\^~]/;
+
+/** A branch name that is safe to hand to git: it cannot be read as an option and uses no revision syntax. */
+export function assertGitRef(ref: string): string {
+  if (
+    typeof ref !== "string" ||
+    ref.length === 0 ||
+    ref.length > 200 ||
+    ref.startsWith("-") ||
+    ref.includes("..") ||
+    ref.includes("@{") ||
+    REF_BAD.test(ref)
+  ) {
+    throw new BuildError("The branch name is not valid.");
+  }
+  return ref;
+}
+
+/** A full commit hash (SHA-1 or SHA-256), the only thing we pass to `git fetch` by value. */
+export function assertGitSha(sha: string): string {
+  if (typeof sha !== "string" || !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(sha)) {
+    throw new BuildError("The commit hash is not valid.");
+  }
+  return sha;
+}
+
+/** Variables that change how the docker command, git or a TLS client behaves rather than what the build sees. */
+const CLI_SENSITIVE_ENV =
+  /^(?:DOCKER_|LD_|DYLD_|SSH_|SSL_|CURL_|XDG_|GIT_|BASH_ENV$|ENV$|HOME$|PATH$|PATHEXT$|COMSPEC$|SYSTEMROOT$|TMPDIR$|TEMP$|TMP$|USERPROFILE$|(?:HTTPS?|ALL|NO|FTP)_PROXY$)/i;
+
+/**
+ * The environment of the `docker run` command, and its `-e` arguments.
+ *
+ * Project variables reach the container by name (`-e KEY`), which means they
+ * sit in the docker command's own environment, where a name like DOCKER_HOST,
+ * LD_PRELOAD or HTTPS_PROXY would change how that command runs on this machine.
+ * Those names are passed by value on the command line instead (`-e KEY=value`),
+ * so the container still gets them and the command does not.
+ */
+export function buildCliEnv(
+  vars: Record<string, string>,
+  base: Record<string, string | undefined>
+): { env: NodeJS.ProcessEnv; argv: string[] } {
+  const env = { ...base } as NodeJS.ProcessEnv;
+  const argv: string[] = [];
+  for (const [key, value] of Object.entries(vars)) {
+    if (CLI_SENSITIVE_ENV.test(key)) {
+      argv.push("-e", `${key}=${value}`);
+    } else {
+      env[key] = value;
+      argv.push("-e", key);
+    }
+  }
+  return { env, argv };
 }
 
 type RunOptions = {
@@ -174,7 +244,7 @@ export function detectFiles(dir: string): ProjectFiles {
 }
 
 function redactor(secrets: string[]) {
-  const list = secrets.filter((s) => s.length >= 4).sort((a, b) => b.length - a.length);
+  const list = secretNeedles(secrets);
   return (line: string) => {
     let out = line;
     for (const s of list) out = out.split(s).join("***");
@@ -200,13 +270,18 @@ export const defaultBuilder: Builder = async (req) => {
   const srcDir = path.join(workDir, "src");
   mkdirSync(workDir, { recursive: true });
 
-  const redact = redactor([req.source.token ?? "", ...Object.values(req.env)]);
+  const basicAuth = req.source.token
+    ? Buffer.from(`x-access-token:${req.source.token}`).toString("base64")
+    : "";
+  const redact = redactor([req.source.token ?? "", basicAuth, ...Object.values(req.env)]);
   const log: LogFn = (level, msg) => req.log(level, redact(msg));
   const line = (l: string) => log("info", l);
 
   try {
     // 1. Clone
     assertCloneUrl(req.source.cloneUrl);
+    assertGitRef(req.source.branch);
+    if (req.source.sha) assertGitSha(req.source.sha);
     log("info", `Cloning ${req.source.cloneUrl} (branch ${req.source.branch})`);
     const gitArgs: string[] = [];
     if (req.source.token) {
@@ -225,6 +300,7 @@ export const defaultBuilder: Builder = async (req) => {
         req.source.branch,
         "--single-branch",
         "--no-tags",
+        "--",
         req.source.cloneUrl,
         srcDir,
       ],
@@ -391,12 +467,14 @@ async function runBuildScript(
   if (process.platform !== "win32" && process.getuid && process.getgid) {
     args.push("--user", `${process.getuid()}:${process.getgid()}`);
   }
-  // Values are passed through the docker CLI's own environment, not argv.
-  for (const key of Object.keys(env)) args.push("-e", key);
+  // Values are passed through the docker CLI's own environment, not argv, except
+  // for names that would change how the docker command itself runs.
+  const cli = buildCliEnv(env, process.env);
+  args.push(...cli.argv);
   args.push(image, "sh", "-c", `set -e; ${script}`);
 
   return runProcess("docker", args, {
-    env: { ...process.env, ...env },
+    env: cli.env,
     onLine,
     timeoutMs,
     signal: req.signal,

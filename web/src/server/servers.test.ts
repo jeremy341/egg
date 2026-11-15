@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { open } from "@/server/crypto";
 import { schema } from "@/server/db";
 import {
+  connectToServer,
   createServer,
   deleteServer,
   getServerForUser,
@@ -113,6 +114,25 @@ describe("testing a connection", () => {
     expect(saved.lastError).toBeNull();
     expect(saved.hostKeyFingerprint).toBe(mock.hostKeyFingerprint);
     expect(saved.probe).toContain("uid");
+  });
+
+  it("pins the host key on the first connection of any kind, so a deploy cannot be sent to a different host later", async () => {
+    const row = await createServer(userId, "sam-tofu", { host: "127.0.0.1", port: 1 });
+    const first = await startMockSsh({ authorizedKeys: [row.publicKey] });
+    await ctx.db.update(schema.servers).set({ port: first.port }).where(eq(schema.servers.id, row.id));
+    expect((await getServerForUser(userId, row.id)).hostKeyFingerprint).toBeNull();
+
+    (await connectToServer(await getServerForUser(userId, row.id))).close();
+    const pinned = await getServerForUser(userId, row.id);
+    expect(pinned.hostKeyFingerprint).toBe(first.hostKeyFingerprint);
+    await first.stop();
+
+    // Another machine answers on the same address.
+    const impostor = await startMockSsh({ authorizedKeys: [row.publicKey] });
+    await ctx.db.update(schema.servers).set({ port: impostor.port }).where(eq(schema.servers.id, row.id));
+    await expect(connectToServer(await getServerForUser(userId, row.id))).rejects.toMatchObject({ kind: "host-key" });
+    expect(impostor.commands).toEqual([]);
+    await impostor.stop();
   });
 
   it("refuses to talk to a host whose key changed after pinning", async () => {

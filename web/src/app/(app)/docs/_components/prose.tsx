@@ -16,11 +16,23 @@ import { HeadingAnchor } from "./heading-anchor";
 export const PROSE_TEXT = "text-[17px] leading-[30px] text-reading";
 
 /**
- * The reading measure: 34em of 17px text is about 570px, which is 70 to 75
+ * The reading measure: 33em of 17px text is about 560px, which is about 68
  * characters of this face a line. (`68ch` would be wider, because a "0" is
- * wider than the average letter.) Code and tables go out to 760px.
+ * wider than the average letter.) Code, tables, steps and callouts use the
+ * whole column, which is 720px at most.
  */
-export const MEASURE = "max-w-[34em]";
+export const MEASURE = "max-w-[33em]";
+
+/**
+ * Headings. The title and the page sections are in the pixel face (the
+ * layout puts the font on the docs); `h3` and below are in the body face, so a
+ * long page stays readable.
+ */
+export const H1_CLASS =
+  "font-pixel text-foreground outline-none text-[40px] leading-[60px] font-medium max-sm:text-[28px] max-sm:leading-9";
+export const H2_CLASS =
+  "font-pixel min-w-0 scroll-mt-32 text-foreground outline-none text-[26px] leading-[30px] font-medium max-sm:text-[22px]";
+export const H3_CLASS = "min-w-0 scroll-mt-32 text-[19px] leading-[30px] font-semibold text-foreground outline-none";
 
 /** Inline code. */
 export function C({ children }: { children: ReactNode }) {
@@ -89,14 +101,10 @@ export function Section({
   const hid = headingId(id);
   return (
     <section id={id} aria-labelledby={hid}>
-      <h1
-        id={hid}
-        tabIndex={-1}
-        className="text-foreground outline-none text-[32px] leading-10 font-semibold tracking-[-0.025em] max-sm:text-[28px] max-sm:leading-9"
-      >
+      <h1 id={hid} tabIndex={-1} className={H1_CLASS}>
         {title}
       </h1>
-      {intro ? <p className="mt-[30px] max-w-[32em] text-[19px] leading-[30px] text-muted-foreground">{intro}</p> : null}
+      {intro ? <p className="mt-[15px] max-w-[30em] text-[19px] leading-[30px] text-muted-foreground">{intro}</p> : null}
       {children}
     </section>
   );
@@ -113,16 +121,12 @@ function resolveTitle(id: string, title?: string): string {
   return title ?? subsectionTitle(id);
 }
 
-/** A page section: an `h2` in the pixel face. Sections are what "On this page" lists first. */
+/** A page section: an `h2`, in the pixel face. Sections are what "On this page" lists first. */
 export function H2({ id, title }: HeadingProps) {
   const text = resolveTitle(id, title);
   return (
     <HeadingRow className="mt-[90px] max-sm:mt-[60px]">
-      <h2
-        id={id}
-        tabIndex={-1}
-        className="min-w-0 scroll-mt-32 text-foreground outline-none text-[22px] leading-[30px] font-semibold tracking-[-0.02em] max-sm:text-[20px]"
-      >
+      <h2 id={id} tabIndex={-1} className={H2_CLASS}>
         {text}
       </h2>
       <HeadingAnchor id={id} title={text} />
@@ -141,11 +145,7 @@ export function H3({ id, title }: HeadingProps) {
   if (title === undefined) return <H2 id={id} />;
   return (
     <HeadingRow className="mt-[60px] max-sm:mt-[45px]">
-      <h3
-        id={id}
-        tabIndex={-1}
-        className="min-w-0 scroll-mt-32 text-[19px] leading-[30px] font-semibold text-foreground outline-none"
-      >
+      <h3 id={id} tabIndex={-1} className={H3_CLASS}>
         {title}
       </h3>
       <HeadingAnchor id={id} title={title} />
@@ -183,11 +183,12 @@ const SCROLL_SHADOW: CSSProperties = {
     "linear-gradient(to left, var(--background) 30%, transparent) 100% 0 / 32px 100% no-repeat local",
     "linear-gradient(to right, color-mix(in oklab, var(--foreground) 14%, transparent), transparent) 0 0 / 14px 100% no-repeat scroll",
     "linear-gradient(to left, color-mix(in oklab, var(--foreground) 14%, transparent), transparent) 100% 0 / 14px 100% no-repeat scroll",
+    "var(--background)",
   ].join(", "),
 };
 
 /**
- * A data table. It scrolls inside its own frame, up to 760px wide.
+ * A data table. It fills the column and scrolls inside its own frame.
  * - `head`: the column titles.
  * - `rows`: one array of cells per row.
  * - `caption`: the accessible name of the scrollable region (the nearest heading).
@@ -208,9 +209,9 @@ export function Table({
       aria-label={caption}
       tabIndex={0}
       style={SCROLL_SHADOW}
-      className="mt-[30px] max-w-[760px] overflow-x-auto border"
+      className="mt-[30px] overflow-x-auto border bg-background"
     >
-      <table className={cn("w-full border-collapse text-left text-docs-small", wide && "min-w-[560px]")}>
+      <table className={cn("w-full border-collapse text-left text-docs-small", wide && "min-w-[520px]")}>
         <caption className="sr-only">{caption}</caption>
         <thead className="bg-background-subtle">
           <tr>
@@ -232,8 +233,7 @@ export function Table({
                     "px-4 py-3 align-top max-sm:px-3 [&_code]:[overflow-wrap:normal]",
                     j === 0 ? "font-medium text-foreground sm:whitespace-nowrap" : "text-reading",
                     j === 0 && !wide && "sm:w-[34%]",
-                    // Short values such as a command stay on one line in wide tables.
-                    wide && j === r.length - 1 && "sm:whitespace-nowrap"
+                    j === 0 && wide && "sm:w-[28%]"
                   )}
                 >
                   {cell}
@@ -276,7 +276,7 @@ export function Callout({
 }) {
   const { token, Icon, label } = TONES[tone];
   return (
-    <div role="note" aria-label={label} className="mt-[30px] flex max-w-[600px] gap-3 border bg-background p-4">
+    <div role="note" aria-label={label} className="mt-[30px] flex gap-3 border bg-background p-4">
       <Icon aria-hidden="true" weight="regular" className={cn("mt-[5px] size-4 shrink-0", iconClass[token])} />
       <div className="min-w-0">
         <p className="text-[15px] leading-6 font-semibold text-foreground">{title}</p>

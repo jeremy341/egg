@@ -5,7 +5,7 @@ import { z } from "zod";
 import { audit } from "@/server/audit";
 import { runAppCheck, type AppCheckReport, type Probe } from "@/server/app-check";
 import { newId } from "@/server/crypto";
-import { getDb, schema } from "@/server/db";
+import { getDb, schema, type Db } from "@/server/db";
 import { HttpError, notFound } from "@/server/http";
 import { getServerForUser } from "@/server/servers";
 
@@ -168,6 +168,18 @@ export async function updateDomain(userId: string, domainId: string, raw: unknow
     needsNestChange: portChanged,
     instructions: portChanged ? dashboardInstructions(row.domain, port, server.nestUsername) : null,
   };
+}
+
+/**
+ * A project changed its port: its domains follow it and go back to pending, because the
+ * Nest dashboard still maps them to the old port until the owner changes it there.
+ * Takes the caller's transaction so the project and its domains change together.
+ */
+export async function moveDomainsToPort(db: Pick<Db, "update">, projectId: string, port: number) {
+  await db
+    .update(schema.domains)
+    .set({ port, status: "pending", lastCheckedAt: null })
+    .where(eq(schema.domains.projectId, projectId));
 }
 
 export type Resolver = {

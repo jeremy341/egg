@@ -178,6 +178,27 @@ describe("terminal routes", () => {
     expect(fine.status).toBe(200);
   });
 
+  it("stops reading a body that has no Content-Length once it passes the cap", async () => {
+    const s = await openAsAlice();
+    const enc = new TextEncoder();
+    const body = new ReadableStream<Uint8Array>({
+      start(c) {
+        for (let i = 0; i < 20; i++) c.enqueue(enc.encode("x".repeat(8 * 1024)));
+        c.close();
+      },
+    });
+    const chunked = new NextRequest(
+      new Request(`${ORIGIN}/x`, {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: ORIGIN },
+        body,
+        duplex: "half",
+      } as RequestInit)
+    );
+    expect((await sendInput(chunked, ctx("p-alice", s.sessionId))).status).toBe(413);
+    expect(shells[0].written).toEqual([]);
+  });
+
   it("resizes inside the bounds and refuses outside them", async () => {
     const s = await openAsAlice();
     const ok = await resizeTerminal(req("/x", "POST", { cols: 120, rows: 40 }), ctx("p-alice", s.sessionId));

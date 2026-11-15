@@ -303,10 +303,19 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         { title: "Load more", body: "Press Load more at the bottom to read the next 50." },
       ])}
 
+      <H3 id="activity-export" title="Exporting to CSV" />
+      <P>
+        Press <B>Export CSV</B> at the top of the page to download what the list shows. The file follows the search,
+        kind and date range you have set, newest first. Its columns are Time (UTC), Kind, Action, Description,
+        Target, Details, Access token and Entry id. Secrets are left out exactly as they are on the page, and a value
+        that starts with <C>=</C>, <C>+</C>, <C>-</C> or <C>@</C> gets a leading quote so a spreadsheet shows it as
+        text.
+      </P>
       {limits("activity-limits", [
         ["Entries per page", "50", "Press Load more for the next 50."],
         ["Search depth", "The newest 5000", "A search reads in batches of 200 and says when it stopped at the limit. Narrow the date range instead."],
         ["Search text", "80 characters", "Anything longer is cut."],
+        ["CSV export", "5000 entries, 10 exports a minute", "Narrow the date range or search to export the rest."],
         ["Retention", "No pruning", "Nest Deploy does not delete old entries. Deleting your account removes all of them."],
       ])}
 

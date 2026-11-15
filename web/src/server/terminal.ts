@@ -34,6 +34,8 @@ export const TERMINAL_LIMITS = {
   maxRows: 200,
   /** Sessions open at once on the whole server. */
   maxSessions: 50,
+  /** Sessions one user may hold at once (one per project), so one account cannot use the server's share. */
+  maxSessionsPerUser: 5,
   /** How long a closed session's reason is kept, so a stream that reconnects can still be told why. */
   closedMemoryMs: 2 * 60_000,
 } as const;
@@ -215,7 +217,10 @@ export class TerminalManager {
    * Keys whose session is still being opened (connecting), so a second click cannot start another.
    * `cancelled` is set when the user signs out or the terminal is switched off mid-connect.
    */
-  private readonly opening = new Map<string, { userId: string; serverId: string; cancelled: CloseReason | null }>();
+  private readonly opening = new Map<
+    string,
+    { userId: string; serverId: string; tokenId: string | null; cancelled: CloseReason | null }
+  >();
   private readonly closedMemory = new Map<string, { userId: string; projectId: string; reason: CloseReason; until: number }>();
 
   constructor(deps: Partial<TerminalDeps> = {}) {
@@ -252,7 +257,23 @@ export class TerminalManager {
       throw new HttpError(503, "Too many terminals are open right now. Try again soon.", "busy");
     }
 
-    const pending = { userId, serverId: project.serverId, cancelled: null as CloseReason | null };
+    let mine = 0;
+    for (const s of this.sessions.values()) if (s.userId === userId) mine++;
+    for (const o of this.opening.values()) if (o.userId === userId) mine++;
+    if (mine >= TERMINAL_LIMITS.maxSessionsPerUser) {
+      throw new HttpError(
+        429,
+        `You can have ${TERMINAL_LIMITS.maxSessionsPerUser} terminals open at once. Close one first.`,
+        "too_many"
+      );
+    }
+
+    const pending = {
+      userId,
+      serverId: project.serverId,
+      tokenId: actor.tokenId ?? null,
+      cancelled: null as CloseReason | null,
+    };
     this.opening.set(key, pending);
     try {
       const { shell, uid, host } = await this.deps.connect(userId, project, checked);
@@ -423,6 +444,19 @@ export class TerminalManager {
       if (p.userId !== userId) continue;
       if (opts.serverId !== undefined && p.serverId !== opts.serverId) continue;
       p.cancelled = reason;
+    }
+    await Promise.all(logs);
+    return logs.length;
+  }
+
+  /** Close the terminals one API token opened, and cancel any of its still connecting. Used when the token is revoked. */
+  async closeAllForToken(userId: string, tokenId: string, reason: CloseReason): Promise<number> {
+    const logs: Promise<void>[] = [];
+    for (const s of [...this.sessions.values()]) {
+      if (s.userId === userId && s.tokenId === tokenId) logs.push(this.end(s, reason));
+    }
+    for (const p of this.opening.values()) {
+      if (p.userId === userId && p.tokenId === tokenId) p.cancelled = reason;
     }
     await Promise.all(logs);
     return logs.length;

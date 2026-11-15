@@ -34,6 +34,14 @@ beforeAll(async () => {
   ctx = await useFreshDb();
   const userId = (await upsertUser({ id: "u1", name: "Sam", email: null, slackId: null })).id;
   const serverId = (await createServer(userId, "sam-r")).id;
+  // Projects may only use an installation their owner has linked.
+  await (await getDb()).insert(schema.githubInstallations).values({
+    id: 99,
+    userId,
+    accountLogin: "sam",
+    accountType: "User",
+    createdAt: new Date(),
+  });
   project = await createProject(userId, {
     serverId,
     name: "App",

@@ -1,5 +1,5 @@
 import { rmSync } from "node:fs";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, ne } from "drizzle-orm";
 import { open } from "@/server/crypto";
 import { config, githubConfigured } from "@/server/config";
 import { installationToken } from "@/server/github/app";
@@ -97,19 +97,35 @@ export async function envForDeployment(
   return out;
 }
 
+/**
+ * Move a deployment to a new state. A canceled deployment stays canceled: the
+ * cancel button writes the state straight to the database while this worker is
+ * mid-step, so a later "deploying" or "ready" must not overwrite it. Returns
+ * false when the move was refused for that reason.
+ */
 async function setState(
   id: string,
   state: Deployment["state"],
   extra: Partial<typeof schema.deployments.$inferInsert> = {}
-) {
+): Promise<boolean> {
   const db = await getDb();
-  await db.update(schema.deployments).set({ state, ...extra }).where(eq(schema.deployments.id, id));
+  const where =
+    state === "canceled"
+      ? eq(schema.deployments.id, id)
+      : and(eq(schema.deployments.id, id), ne(schema.deployments.state, "canceled"));
+  const moved = await db
+    .update(schema.deployments)
+    .set({ state, ...extra })
+    .where(where)
+    .returning({ id: schema.deployments.id });
+  if (moved.length === 0) return false;
   void dispatchDeploymentEvent(id, { state }); // outbound webhooks; never throws
   if (state === "ready" || state === "error") {
     // Fire and forget: notifyDeploymentFinished never throws.
     void notifyDeploymentFinished(id);
     void commentDeploymentOnPr(id);
   }
+  return true;
 }
 
 async function stateOf(id: string) {
@@ -298,7 +314,7 @@ export async function runDeployJob(
 
   try {
     if ((await stateOf(deploymentId)) !== "queued") return;
-    await setState(deploymentId, "building", { startedAt: new Date() });
+    if (!(await setState(deploymentId, "building", { startedAt: new Date() }))) return;
     log.info(
       `Deploying ${project.name} (${dep.env}) to ${server.nestUsername}@${server.host}`
     );
@@ -344,7 +360,7 @@ export async function runDeployJob(
       .where(eq(schema.deployments.id, deploymentId));
 
     // ---- release on Nest
-    await setState(deploymentId, "deploying");
+    if (!(await setState(deploymentId, "deploying"))) throw new DeployError("The deployment was canceled.");
     log.info("Connecting to your Nest container");
     session = await deps.connect(server);
     const probe = await getProbe(session, server);
@@ -492,7 +508,7 @@ export async function runDeployJob(
     await log.flush().catch(() => {});
     const canceled = signal.aborted || (await stateOf(deploymentId)) === "canceled";
     await setState(deploymentId, canceled ? "canceled" : "error", {
-      error: message.slice(0, 500),
+      error: log.mask(message).slice(0, 500),
       finishedAt: new Date(),
     });
     if (!(err instanceof DeployError) && !canceled) {
