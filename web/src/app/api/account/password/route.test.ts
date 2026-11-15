@@ -48,7 +48,7 @@ const NEXT_PASSWORD = "another long enough password";
 
 async function person(hackClubId = "ident!sam", email: string | null = "sam@example.com") {
   const user = await upsertUser({ id: hackClubId, name: "Sam", email, slackId: null });
-  const session = await createSession(user.id);
+  const session = await createSession(user.id, undefined, undefined, { freshHackClubAuth: true });
   currentCookie = session.token;
   return { user, session };
 }

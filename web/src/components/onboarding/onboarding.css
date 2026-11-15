@@ -1,0 +1,217 @@
+/*
+ * The guided tour: the dimming layer and the popover. Driver.js ships its own white card with
+ * `all: unset` on every part, so these rules restate each part with the app's tokens. They follow
+ * the theme, light or dark, built in or custom, because every colour here is a token.
+ */
+
+/* The layer number is --z-tour in globals.css, with the rest of the scale. */
+
+/* ------------------------------------------------------------------------------------------ */
+/* The dimming layer                                                                          */
+/* ------------------------------------------------------------------------------------------ */
+
+/*
+ * The layer is the page's own background pushed towards black, so a warm or cool theme keeps its
+ * tint. Dark themes need a little more of it to read as dimmed. The popover sits one level above
+ * the layer, or the layer would dim the popover too.
+ */
+.driver-overlay {
+  --tour-scrim: color-mix(in oklab, var(--background) 10%, black);
+  --tour-scrim-strength: 0.6;
+  z-index: var(--z-tour, 200) !important;
+}
+:root.dark .driver-overlay {
+  --tour-scrim-strength: 0.72;
+}
+.driver-overlay path {
+  fill: var(--tour-scrim) !important;
+  opacity: var(--tour-scrim-strength) !important;
+}
+
+/* ------------------------------------------------------------------------------------------ */
+/* The popover                                                                                */
+/* ------------------------------------------------------------------------------------------ */
+
+.driver-popover.egg-tour {
+  --tour-bg: var(--popover);
+  --tour-fg: var(--popover-foreground);
+  --tour-muted: var(--muted-foreground);
+  --tour-edge: var(--border);
+  --driver-popover-font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
+
+  z-index: calc(var(--z-tour, 200) + 1) !important;
+  background: var(--tour-bg);
+  color: var(--tour-fg);
+  min-width: 260px;
+  max-width: min(340px, calc(100vw - 24px));
+  padding: 16px;
+  border-radius: 12px;
+  box-shadow:
+    0 0 0 1px var(--tour-edge),
+    0 8px 24px rgb(0 0 0 / 0.18);
+  font-size: 14px;
+  line-height: 1.5;
+  /* The popover is reached by focus when a step has nothing focusable to point at; no ring on the box itself. */
+  outline: none;
+  animation: egg-tour-in var(--dur-base, 200ms) var(--ease-snappy, ease-out) backwards;
+}
+
+@keyframes egg-tour-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.driver-popover.egg-tour .driver-popover-title {
+  display: block;
+  /* Room for the leave button at the top right. */
+  margin: 0 92px 6px 0;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.35;
+  color: var(--tour-fg);
+}
+
+.driver-popover.egg-tour .driver-popover-description {
+  margin: 0;
+  color: var(--tour-fg);
+}
+
+.driver-popover.egg-tour .egg-tour-link {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 8px;
+  min-height: 28px;
+  font-weight: 500;
+}
+
+.driver-popover.egg-tour .driver-popover-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.driver-popover.egg-tour .driver-popover-progress-text {
+  color: var(--tour-muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.driver-popover.egg-tour .driver-popover-navigation-btns {
+  display: flex;
+  gap: 8px;
+}
+
+.driver-popover.egg-tour .driver-popover-footer-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--ds-gray-100);
+  color: var(--tour-fg);
+  box-shadow: 0 0 0 1px var(--tour-edge);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  text-shadow: none;
+}
+
+.driver-popover.egg-tour .driver-popover-footer-btn:hover {
+  background: var(--accent);
+}
+
+.driver-popover.egg-tour .driver-popover-next-btn {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  box-shadow: none;
+}
+
+.driver-popover.egg-tour .driver-popover-next-btn:hover {
+  background: var(--primary);
+  opacity: 0.9;
+}
+
+/* A button that is shown but not available yet: dimmed, no pointer. */
+.driver-popover.egg-tour .driver-popover-footer .driver-popover-btn-disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.driver-popover.egg-tour .driver-popover-close-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: auto;
+  height: auto;
+  min-height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  color: var(--tour-muted);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 28px;
+  cursor: pointer;
+}
+
+.driver-popover.egg-tour .driver-popover-close-btn:hover {
+  color: var(--tour-fg);
+  background: var(--ds-gray-100);
+}
+
+/* Keep the app's own focus ring on every part of the popover. */
+.driver-popover.egg-tour button:focus-visible,
+.driver-popover.egg-tour a:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* The arrow takes the card's colour. Driver draws it with borders. */
+.driver-popover.egg-tour .driver-popover-arrow-side-top.driver-popover-arrow {
+  border-top-color: var(--tour-bg);
+}
+.driver-popover.egg-tour .driver-popover-arrow-side-bottom.driver-popover-arrow {
+  border-bottom-color: var(--tour-bg);
+}
+.driver-popover.egg-tour .driver-popover-arrow-side-left.driver-popover-arrow {
+  border-left-color: var(--tour-bg);
+}
+.driver-popover.egg-tour .driver-popover-arrow-side-right.driver-popover-arrow {
+  border-right-color: var(--tour-bg);
+}
+
+/* On a touch screen the buttons are the size of the app's other touch targets. */
+@media (pointer: coarse) {
+  .driver-popover.egg-tour .driver-popover-footer-btn {
+    min-height: 44px;
+    padding: 0 16px;
+  }
+  .driver-popover.egg-tour .driver-popover-close-btn {
+    min-height: 44px;
+    line-height: 44px;
+    top: 4px;
+    right: 4px;
+  }
+  .driver-popover.egg-tour .egg-tour-link {
+    min-height: 44px;
+  }
+}
+
+/* Phones: the popover docks to the bottom of the screen instead of floating beside the target. */
+@media (max-width: 639px) {
+  .driver-popover.egg-tour {
+    inset: auto 12px calc(12px + env(safe-area-inset-bottom)) 12px !important;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+  }
+  .driver-popover.egg-tour .driver-popover-arrow {
+    display: none;
+  }
+}

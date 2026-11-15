@@ -2,9 +2,10 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { createClient, type Client } from "@libsql/client";
 import { drizzle, type LibSQLDatabase } from "drizzle-orm/libsql";
-import { migrate } from "drizzle-orm/libsql/migrator";
 import { config } from "@/server/config";
 import * as schema from "@/server/db/schema";
+import { recordBackendQuery } from "@/server/backend-metrics";
+import { migrateDatabase } from "@/server/db/migrations";
 
 export type Db = LibSQLDatabase<typeof schema>;
 
@@ -20,13 +21,11 @@ function open(): Holder {
     mkdirSync(path.dirname(path.resolve(file)), { recursive: true });
   }
   const client = createClient({ url });
-  const db = drizzle(client, { schema });
+  const db = drizzle(client, { schema, logger: { logQuery: recordBackendQuery } });
   const ready = (async () => {
     await client.execute("PRAGMA foreign_keys = ON");
     await client.execute("PRAGMA busy_timeout = 5000");
-    await migrate(db, {
-      migrationsFolder: path.join(process.cwd(), "drizzle"),
-    });
+    await migrateDatabase(client, path.join(process.cwd(), "drizzle"));
   })();
   return { client, db, ready };
 }

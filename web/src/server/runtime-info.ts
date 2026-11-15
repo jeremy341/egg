@@ -176,7 +176,7 @@ export async function removeProjectFromServer(
   await withServerSession(server, async (s) => {
     const probe = await probeSession(s);
     for (const p of previews) {
-      await s.script(
+      const result = await s.script(
         removePreview({
           home: probe.home,
           slug: project.slug,
@@ -186,10 +186,18 @@ export async function removeProjectFromServer(
         }),
         { timeoutMs: 60_000 }
       );
+      if (result.code !== 0) {
+        throw new HttpError(502, `Could not remove preview deployment ${p.releaseId.slice(0, 8)} from your container.`, "upstream");
+      }
     }
     // Timers first, so none of them starts a job in a release that is about to be deleted.
     const jobUnits = await jobUnitNames(project.id, project.slug);
-    if (jobUnits.length > 0) await s.script(removeUnits(unitDir, jobUnits), { timeoutMs: 60_000 });
+    if (jobUnits.length > 0) {
+      const result = await s.script(removeUnits(unitDir, jobUnits), { timeoutMs: 60_000 });
+      if (result.code !== 0) {
+        throw new HttpError(502, "Could not remove scheduled jobs from your container.", "upstream");
+      }
+    }
     const res = await s.script(
       removeProject({
         home: probe.home,

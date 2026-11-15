@@ -21,6 +21,15 @@ Priority levels as the review used them: **P0** protect running apps and data, *
 
 ## Already in the code before this round
 
+### Backend regression fixes (2026-11-13)
+
+- Worker polling is serialized, and shutdown waits for an outstanding claim and its work.
+- PR closure keeps canceled previews canceled across activation, waits for running jobs before removing their files, and retries unfinished removals from the monitor without canceling a reopened PR's new build.
+- Direct remote removals propagate stop and deletion failures; cleanup records are only marked complete after successful commands.
+- Session creation only records fresh Hack Club authentication when the successful Hack Club callback explicitly supplies that provenance. Password sign-in does not satisfy that confirmation; local installations retain their explicit local reauthentication flow.
+
+These repairs have focused regression coverage; real Nest validation remains separate.
+
 The review listed these as things to build or verify. They exist; whether each is complete is a separate question.
 
 - **Deployment preflight.** `web/src/server/deploy/container-probe.ts` checks the needed tools, free disk space and whether a memory cap can be enforced, before anything is uploaded.

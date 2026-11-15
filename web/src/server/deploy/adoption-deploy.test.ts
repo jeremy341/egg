@@ -126,7 +126,9 @@ describe("a folder that is not ours", () => {
     const p = await makeProject("keepme");
     mock.writeFile(`${home}/.egg/keepme/notes.txt`, "precious");
     mock.writeFile(`${home}/units/egg-keepme.service`, "[Service]\nExecStart=/usr/bin/true\n");
-    await removeProjectFromServer(userId, p.id, { deleteData: true, unitDir: `${home}/units` });
+    await expect(removeProjectFromServer(userId, p.id, { deleteData: true, unitDir: `${home}/units` })).rejects.toThrow(
+      "Could not remove the project from your container."
+    );
     expect(await sh(`cat ${home}/.egg/keepme/notes.txt`)).toBe("precious");
     expect(await sh(`cat ${home}/units/egg-keepme.service`)).toContain("ExecStart=/usr/bin/true");
   });

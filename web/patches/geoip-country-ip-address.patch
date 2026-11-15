@@ -1,0 +1,13 @@
+diff --git a/scripts/updatedb.js b/scripts/updatedb.js
+--- a/scripts/updatedb.js
++++ b/scripts/updatedb.js
+@@ -398,2 +398,2 @@
+-			sip = parseInt(rngip.startAddress().bigInteger(),10)
+-			eip = parseInt(rngip.endAddress().bigInteger(),10)
++			sip = parseInt(rngip.startAddress().bigInt(),10)
++			eip = parseInt(rngip.endAddress().bigInt(),10)
+@@ -633,2 +633,2 @@
+-			sip = parseInt(rngip.startAddress().bigInteger(),10)
+-			eip = parseInt(rngip.endAddress().bigInteger(),10)
++			sip = parseInt(rngip.startAddress().bigInt(),10)
++			eip = parseInt(rngip.endAddress().bigInt(),10)

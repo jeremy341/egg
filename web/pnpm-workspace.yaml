@@ -3,3 +3,9 @@ allowBuilds:
   unrs-resolver: false
 minimumReleaseAgeExclude:
   - geoip-country@5.0.202611110258
+overrides:
+  'minimatch@>=7.0.0 <11.0.1': 11.0.1
+  'esbuild@<=0.24.2': 0.25.12
+  'geoip-country>ip-address': 10.7.4
+patchedDependencies:
+  'geoip-country@5.0.202611110258': patches/geoip-country-ip-address.patch

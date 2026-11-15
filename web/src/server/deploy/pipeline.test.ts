@@ -15,6 +15,7 @@ import {
 } from "@/server/projects";
 import { connectToServer, createServer, getServerForUser, type ServerRow } from "@/server/servers";
 import { NestSession } from "@/server/ssh/connection";
+import { closePullRequestPreviews } from "@/server/github/pulls";
 import {
   brokenApp,
   fakeBuilder,
@@ -315,6 +316,45 @@ describe("deploy pipeline", () => {
 });
 
 describe("deploy state races", () => {
+  it.each([false, true])("does not revive a preview closed after its health check (removal fails: %s)", async (removalFails) => {
+    files = nodeApp("closed-preview");
+    const dep = await deployBranch(userId, project.id, "closed-pr");
+    await ctx.db.update(schema.deployments).set({ prNumber: 99 }).where(eq(schema.deployments.id, dep.id));
+    // Keep the worker's guard until it has completely stopped touching the release.
+    await ctx.db.update(schema.jobs).set({ state: "running" }).where(eq(schema.jobs.deploymentId, dep.id));
+    let closed = false;
+    await runDeployJob(dep.id, {
+      ...deps,
+      connect: async (srv) => {
+        const session = await deps.connect(srv);
+        return new Proxy(session, {
+          get(target, prop) {
+            const value = Reflect.get(target, prop, target);
+            if (prop !== "script") return typeof value === "function" ? value.bind(target) : value;
+            return async (...args: Parameters<NestSession["script"]>) => {
+              if (closed && removalFails && args[0].includes("egg_unit_marked") && args[0].includes("rm -rf")) {
+                return { code: 45, stdout: "", stderr: "Service could not stop" };
+              }
+              const result = await target.script(...args);
+              if (!closed && args[0].includes('Healthy: HTTP') && result.code === 0) {
+                closed = true;
+                await closePullRequestPreviews(project.id, 99);
+              }
+              return result;
+            };
+          },
+        });
+      },
+    });
+    expect(closed).toBe(true);
+    const row = await ctx.db.select().from(schema.deployments).where(eq(schema.deployments.id, dep.id)).get();
+    expect(row?.state).toBe("canceled");
+    expect(row?.error).toBe("Pull request closed");
+    expect(row?.cleanedUp).toBe(!removalFails);
+    expect(await sh(`test -d "$HOME/.egg/demo-app/releases/${dep.releaseId}" && echo exists || echo absent`)).toBe(removalFails ? "exists" : "absent");
+    await ctx.db.update(schema.jobs).set({ state: "done" }).where(eq(schema.jobs.deploymentId, dep.id));
+  }, DEPLOY_LOOP_TIMEOUT);
+
   it("does not deploy, or revive, a deployment that was canceled while it was building", async () => {
     files = nodeApp("never-ships");
     const dep = await deployBranch(userId, project.id, "main");

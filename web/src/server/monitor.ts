@@ -356,4 +356,6 @@ export async function runMonitorPass(onError?: (err: unknown) => void, now?: Dat
   await db.delete(schema.projectSamples).where(lt(schema.projectSamples.at, cutoff));
   await prunePageviews(passFinishedAt);
   await pruneAlertEvents(passFinishedAt);
+  const { reconcileClosedPreviews } = await import("@/server/github/pulls");
+  await reconcileClosedPreviews();
 }

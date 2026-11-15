@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { resetConfigForTests } from "@/server/config";
-import { OAUTH_COOKIE, SESSION_COOKIE, createSession, upsertUser, userForSessionToken } from "@/server/auth/session";
+import { OAUTH_COOKIE, SESSION_COOKIE, createSession, isFreshAuth, upsertUser, userForSessionToken } from "@/server/auth/session";
 import { rateLimiter } from "@/server/rate-limit";
 import { useFreshDb } from "@/server/test/db";
 
@@ -98,6 +98,7 @@ describe("the callback", () => {
     expect(fresh).not.toBe(old);
     expect(await userForSessionToken(old)).toBeNull();
     expect(await userForSessionToken(fresh)).not.toBeNull();
+    expect(await isFreshAuth(fresh)).toBe(true);
   });
 
   it("sets the session cookie httpOnly, SameSite=Lax and Secure in production", async () => {

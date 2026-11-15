@@ -1,0 +1,732 @@
+/*
+ * Homepage only. Everything is scoped to .egg-home, so the app, its themes and the other public
+ * pages are untouched. Black, white and the neutral token scale; no accent colour.
+ *
+ * THE FRAME. Below the hero the page is one bordered grid (.vg): a column whose edges and columns
+ * land on the 30px grid the marketing layout draws behind the page, with each section a closed
+ * box (rules above and below) and an empty band of grid between sections. Rules are
+ * pseudo-elements that take no space. Cells are transparent, so the grid shows through them; only
+ * cells that hold product UI or code have a solid surface.
+ *
+ * SPACING. Everything inside the frame uses these few variables, so every heading, paragraph,
+ * list and product view in a column shares one left edge and one rhythm:
+ *   --vg-inset      the side padding of every cell
+ *   --vg-pad        top and bottom padding of a text cell
+ *   --vg-pad-head   top and bottom padding of a heading cell
+ *   --vg-gap        the empty band between two sections (larger than anything inside a section)
+ *   --vg-lead-gap   a heading to the paragraph under it
+ *   --vg-title-gap  a title to its own sentence (small: they are one thing)
+ *   --vg-item-gap   one item to the next, inside a cell (clearly larger than the title gap)
+ * Text keeps normal leading (1.5 to 1.6). Grid alignment is done at the level of box edges: a
+ * small script (grid-frame.tsx) rounds each row, list item and gap up to a whole number of 30px
+ * cells, so rules land on grid lines without squeezing the text onto a 30px baseline.
+ * On a phone the frame is full width: rows keep their hairlines and lose the side rules.
+ */
+.egg-home {
+  --rule: color-mix(in srgb, var(--foreground) 20%, transparent);
+  --vg-inset: 24px;
+  --vg-pad: 40px;
+  --vg-pad-head: 48px;
+  --vg-gap: 72px;
+  --vg-lead-gap: 20px;
+  --vg-title-gap: 8px;
+  --vg-item-gap: 28px;
+}
+@media (min-width: 640px) {
+  .egg-home {
+    --vg-inset: 40px;
+    --vg-pad: 60px;
+    --vg-pad-head: 90px;
+    --vg-gap: 90px;
+    --vg-lead-gap: 24px;
+    --vg-item-gap: 32px;
+  }
+}
+@media (min-width: 1024px) {
+  .egg-home {
+    --vg-inset: 60px;
+    --vg-gap: 120px;
+    --vg-lead-gap: 30px;
+    --vg-item-gap: 36px;
+  }
+}
+
+/* ---- the frame ---------------------------------------------------------------------------- */
+
+.egg-home .vg {
+  position: relative;
+  box-sizing: border-box;
+  width: 100%;
+}
+@media (min-width: 640px) {
+  .egg-home .vg {
+    width: calc(100% - 60px);
+    margin-left: 30px;
+  }
+}
+@supports (width: round(down, 1px, 1px)) {
+  @media (min-width: 640px) {
+    /* At most 46 cells (1380px), a cell of air on each side at 1440. */
+    .egg-home .vg {
+      width: calc(round(down, min(100% - 60px, 1380px), 30px) + 1px);
+      margin-left: round(down, calc((100% - round(down, min(100% - 60px, 1380px), 30px)) / 2), 30px);
+    }
+  }
+}
+
+/* The side rules run the full height, through the bands between sections. */
+@media (min-width: 640px) {
+  .egg-home .vg::before,
+  .egg-home .vg::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--rule);
+    pointer-events: none;
+  }
+  .egg-home .vg::before {
+    left: 0;
+  }
+  .egg-home .vg::after {
+    right: 0;
+  }
+}
+
+/* A section is a closed box: its first row draws the top rule, this draws the bottom one. */
+.egg-home .vg-sec {
+  position: relative;
+}
+.egg-home .vg-sec::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1px;
+  background: var(--rule);
+  pointer-events: none;
+}
+.egg-home .vg-gap {
+  height: var(--vg-gap);
+}
+
+.egg-home .vg-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+/* The rule above a row, and above any cell stacked under another. */
+.egg-home .vg-row::before,
+.egg-home .vg-row > * + *::before,
+.egg-home .vg-stack > * + *::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--rule);
+  pointer-events: none;
+  z-index: 2;
+}
+.egg-home .vg-row > *,
+.egg-home .vg-stack > * {
+  position: relative;
+  min-width: 0;
+}
+
+.egg-home .vg-cell {
+  padding: var(--vg-pad) var(--vg-inset);
+}
+/* A cell that holds a heading and nothing else, or opens a section. */
+.egg-home .vg-head {
+  padding: var(--vg-pad-head) var(--vg-inset);
+}
+/* The first cell of a list that sits beside its heading: same top edge as the heading. */
+.egg-home .vg-top {
+  padding-top: var(--vg-pad-head);
+}
+/* Content that stays in view beside a long list (from 1024px, where cells sit side by side). */
+@media (min-width: 1024px) {
+  .egg-home .vg-sticky {
+    position: sticky;
+    top: 120px;
+  }
+}
+/* A cell with a solid surface: product UI or code. The grid does not show through it. */
+.egg-home .vg-solid {
+  background: var(--background-subtle);
+}
+
+/* Columns, from 1024px. Below that, cells stack. Each width is a whole number of cells. */
+@media (min-width: 1024px) {
+  .egg-home .vg-cols {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .egg-home .vg-cols > * + *::before {
+    right: auto;
+    bottom: 0;
+    width: 1px;
+    height: auto;
+  }
+  .egg-home .vg-c-half {
+    grid-template-columns: 50% minmax(0, 1fr);
+  }
+  .egg-home .vg-c-side {
+    grid-template-columns: 33% minmax(0, 1fr);
+  }
+  .egg-home .vg-c-list {
+    grid-template-columns: 40% minmax(0, 1fr);
+  }
+  .egg-home .vg-c-log {
+    grid-template-columns: minmax(0, 1fr) 50%;
+  }
+  .egg-home .vg-c-wide {
+    grid-template-columns: 60% minmax(0, 1fr);
+  }
+}
+@supports (width: round(down, 1px, 1px)) {
+  @media (min-width: 1024px) {
+    .egg-home .vg-c-half {
+      grid-template-columns: round(down, 50%, 30px) minmax(0, 1fr);
+    }
+    .egg-home .vg-c-side {
+      grid-template-columns: round(down, 33.3%, 30px) minmax(0, 1fr);
+    }
+    .egg-home .vg-c-list {
+      grid-template-columns: round(down, 40%, 30px) minmax(0, 1fr);
+    }
+    .egg-home .vg-c-log {
+      grid-template-columns: minmax(0, 1fr) round(down, 50%, 30px);
+    }
+    .egg-home .vg-c-wide {
+      grid-template-columns: round(down, 60%, 30px) minmax(0, 1fr);
+    }
+  }
+}
+/* A cell whose content sits in the middle of its height. */
+.egg-home .vg-mid {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+/* ---- type --------------------------------------------------------------------------------- */
+
+.egg-home .vg-h2 {
+  font-family: var(--font-pixel), var(--font-geist-mono), monospace;
+  font-size: 32px;
+  line-height: 36px;
+  font-weight: 500;
+  letter-spacing: 0;
+  font-synthesis: none;
+  font-variant-ligatures: none;
+  text-wrap: balance;
+}
+@media (min-width: 640px) {
+  .egg-home .vg-h2 {
+    font-size: 44px;
+    line-height: 52px;
+  }
+}
+@media (min-width: 1024px) {
+  .egg-home .vg-h2 {
+    font-size: 56px;
+    line-height: 64px;
+  }
+  /* A heading in a narrow cell: a step smaller, so it does not take the whole column. */
+  .egg-home .vg-h2.vg-h2-cell {
+    font-size: 44px;
+    line-height: 52px;
+  }
+}
+.egg-home .vg-h2 + * {
+  margin-top: var(--vg-lead-gap);
+}
+.egg-home .vg-h3 {
+  font-size: 18px;
+  line-height: 26px;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  color: var(--foreground);
+  text-wrap: balance;
+}
+.egg-home .vg-h3 + .vg-p:not(.vg-cell),
+.egg-home .vg-h3 + .vg-code:not(.vg-cell) {
+  margin-top: var(--vg-title-gap);
+}
+.egg-home .vg-p {
+  max-width: 58ch;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--muted-foreground);
+  text-wrap: pretty;
+}
+.egg-home .vg-lead {
+  max-width: 40ch;
+  font-size: 18px;
+  line-height: 27px;
+  letter-spacing: -0.01em;
+  color: var(--muted-foreground);
+  text-wrap: pretty;
+}
+@media (min-width: 1024px) {
+  .egg-home .vg-lead {
+    font-size: 19px;
+    line-height: 28px;
+  }
+}
+.egg-home .vg-code {
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 13px;
+  line-height: 24px;
+  font-variant-numeric: tabular-nums;
+}
+.egg-home .vg-lead strong,
+.egg-home .vg-p strong {
+  color: var(--foreground);
+  font-weight: 500;
+}
+.egg-home .vg-ink {
+  color: var(--foreground);
+}
+/* Items of one cell: the title and its sentence stay close, the next item is clearly apart. */
+.egg-home .vg-items {
+  display: grid;
+  gap: var(--vg-item-gap);
+}
+/* The caption of a sample, at the same inset as the content it labels. */
+.egg-home .vg-caption {
+  padding: 16px var(--vg-inset) 24px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--muted-foreground);
+}
+/* A line that may be wider than its cell: it scrolls inside itself, not the page. */
+.egg-home .vg-scroll {
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+/* ---- the two product views, fitted to the frame ------------------------------------------- */
+
+/*
+ * The real BuildLogs viewer. It is a rounded card with its own padding; here it fills its cell,
+ * square, with the cell's inset.
+ */
+.egg-home .vg-log {
+  display: flex;
+  flex-direction: column;
+}
+.egg-home .vg-log > .vg-caption {
+  margin-top: auto;
+}
+.egg-home .vg-log section {
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+.egg-home .vg-log section > button {
+  height: 60px;
+  padding-inline: var(--vg-inset);
+}
+.egg-home .vg-log section > div {
+  border-top: 0;
+  box-shadow: inset 0 1px 0 var(--rule);
+}
+.egg-home .vg-log section > div > div:first-child {
+  height: 60px;
+  padding: 0 var(--vg-inset);
+}
+.egg-home .vg-log [role="log"] {
+  max-height: none;
+  min-height: 0;
+  padding: 18px 0;
+  line-height: 24px;
+  box-shadow: inset 0 1px 0 var(--rule);
+}
+.egg-home .vg-log .log-line {
+  padding-inline: var(--vg-inset);
+  line-height: 24px;
+  gap: 16px;
+}
+/* Lines wrap at spaces, and break inside a word only when one word is longer than the line. */
+.egg-home .vg-log .log-line > span:last-child {
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 639px) {
+  /* The clock would leave a phone about 150px for the message. */
+  .egg-home .vg-log .log-line > span:first-child {
+    display: none;
+  }
+}
+
+/*
+ * The real deployments list, in its cell: square, edge to edge, rows of 60px. The status filter
+ * (a pill toggle) sits in a bar of 60px above the rows, so the rows stay on the 30px grid.
+ */
+.egg-home .vg-deploys {
+  container-type: inline-size;
+}
+.egg-home .vg-deploys > div > div:first-child {
+  display: flex;
+  align-items: center;
+  height: 60px;
+  margin: 0;
+  padding: 0 var(--vg-inset);
+  box-shadow: inset 0 -1px 0 var(--rule);
+}
+/* A filter with no matches: the message, flat like the list. */
+.egg-home .vg-deploys > div > div:not(:first-child) {
+  padding-inline: var(--vg-inset);
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+.egg-home .vg-deploys ul {
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+.egg-home .vg-deploys ul > li {
+  height: 60px;
+  padding: 0 var(--vg-inset);
+  align-items: center;
+  border-top: 0;
+}
+.egg-home .vg-deploys ul > li + li {
+  box-shadow: inset 0 1px 0 var(--rule);
+}
+/*
+ * Under 1100px the list's own layout does not fit in a row of 60px, so each row is two lines of
+ * 30px: the commit message, then state, environment and age. The branch drops out. The
+ * selectors follow the row's markup (DeploymentRow, demo mode).
+ */
+@container (max-width: 1099px) {
+  .egg-home .vg-deploys li {
+    grid-template-columns: auto auto minmax(0, 1fr);
+    grid-template-rows: 30px 30px;
+    column-gap: 12px;
+    row-gap: 0;
+  }
+  .egg-home .vg-deploys li > .contents:first-child > p {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+  .egg-home .vg-deploys li > .contents:first-child > span {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .egg-home .vg-deploys li > .contents:nth-child(2) > .contents > span {
+    grid-column: 2;
+    grid-row: 2;
+  }
+  .egg-home .vg-deploys li > .contents:nth-child(2) > .contents > p {
+    display: none;
+  }
+  .egg-home .vg-deploys li > .contents:nth-child(2) > p {
+    grid-column: 3;
+    grid-row: 2;
+    justify-self: end;
+  }
+  .egg-home .vg-deploys li > div:last-child {
+    display: none;
+  }
+}
+
+/* A term and its text, stacked under 1024px: one block, with no rule between them. */
+@media (max-width: 1023px) {
+  .egg-home .vg-term > :first-child {
+    padding-bottom: 0;
+  }
+  .egg-home .vg-term > :last-child {
+    padding-top: var(--vg-title-gap);
+  }
+  .egg-home .vg-term > * + *::before {
+    display: none;
+  }
+}
+
+/* ---- questions ---------------------------------------------------------------------------- */
+
+.egg-home .vg-faq details {
+  position: relative;
+}
+.egg-home .vg-faq details + details::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--rule);
+  pointer-events: none;
+}
+.egg-home .vg-faq summary {
+  display: flex;
+  min-height: 60px;
+  box-sizing: border-box;
+  cursor: pointer;
+  list-style: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 30px;
+  padding: 17px var(--vg-inset);
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 26px;
+  letter-spacing: -0.015em;
+}
+.egg-home .vg-faq summary::-webkit-details-marker {
+  display: none;
+}
+@media (hover: hover) {
+  .egg-home .vg-faq summary:hover {
+    background: var(--ds-gray-100);
+  }
+}
+.egg-home .vg-faq summary:focus-visible {
+  outline: 2px solid var(--ds-focus-color);
+  outline-offset: -2px;
+}
+.egg-home .vg-faq p {
+  max-width: 58ch;
+  padding: 0 var(--vg-inset) 30px;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--muted-foreground);
+}
+/* A plus that turns into a minus: two bars, the upright one folds away. */
+.egg-home .vg-faq-icon {
+  position: relative;
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+.egg-home .vg-faq-icon::before,
+.egg-home .vg-faq-icon::after {
+  content: "";
+  position: absolute;
+  background: currentColor;
+}
+.egg-home .vg-faq-icon::before {
+  left: 0;
+  top: 6px;
+  width: 14px;
+  height: 2px;
+}
+.egg-home .vg-faq-icon::after {
+  left: 6px;
+  top: 0;
+  width: 2px;
+  height: 14px;
+  transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.egg-home .vg-faq details[open] .vg-faq-icon::after {
+  transform: scaleY(0);
+}
+
+/* Motion off (the device setting, unless the site setting says otherwise). */
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion="no-preference"]) .egg-home .vg-faq-icon::after {
+    transition: none;
+  }
+}
+:root[data-motion="reduce"] .egg-home .vg-faq-icon::after {
+  transition: none;
+}
+/* A block followed by a button or a lead: a little more air than a title and its sentence. */
+.egg-home .vg-term-lead {
+  --vg-title-gap: 20px;
+}
+
+/* Clear space under the hero. GridFrame adds up to 29px to land on a grid line. */
+.egg-home .vg {
+  margin-top: 60px;
+}
+
+/* ---- the hero field ------------------------------------------------------------------------ */
+
+/*
+ * A canvas of creatures behind the hero text (hero-field.tsx, field/). The page stays black and
+ * white: the only colour is in the creatures and in the small swatch on each switcher button.
+ * The canvas takes no pointer events. The controls sit in the hero's bottom padding, so they
+ * never push or cover the text, and they are squared like the frame below.
+ */
+.egg-home .cf-hero {
+  position: relative;
+  isolation: isolate;
+}
+.egg-home .cf-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  /* The engine reads this for the keyboard characters. */
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+}
+.egg-home .cf-copy {
+  position: relative;
+  z-index: 1;
+  transition: opacity 200ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+/* H, or the button: the text steps aside and the field has the whole hero. */
+.egg-home .cf-hero[data-ui="off"] .cf-copy {
+  visibility: hidden;
+  opacity: 0;
+  transition:
+    opacity 200ms cubic-bezier(0.23, 1, 0.32, 1),
+    visibility 0s 200ms;
+}
+
+.egg-home .cf-bar {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px 12px;
+  pointer-events: none;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 16px;
+  animation: cf-in 400ms cubic-bezier(0.23, 1, 0.32, 1) 300ms backwards;
+}
+@keyframes cf-in {
+  from {
+    opacity: 0;
+  }
+}
+.egg-home .cf-bar > * {
+  pointer-events: auto;
+}
+.egg-home .cf-hint {
+  color: var(--muted-foreground);
+  text-align: center;
+}
+.egg-home .cf-coarse {
+  display: none;
+}
+@media (hover: none) {
+  .egg-home .cf-fine {
+    display: none;
+  }
+  .egg-home .cf-coarse {
+    display: inline;
+  }
+}
+.egg-home .cf-controls {
+  display: flex;
+  gap: 8px;
+}
+.egg-home .cf-switch {
+  display: flex;
+}
+.egg-home .cf-bar button {
+  position: relative;
+  display: inline-flex;
+  min-width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 10px;
+  background: var(--background);
+  box-shadow: inset 0 0 0 1px var(--rule);
+  color: var(--muted-foreground);
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color 140ms ease-out,
+    background-color 140ms ease-out,
+    transform 120ms ease-out;
+}
+/* Neighbours share one hairline. */
+.egg-home .cf-switch button + button {
+  margin-left: -1px;
+}
+.egg-home .cf-bar button[aria-pressed="true"] {
+  z-index: 1;
+  box-shadow: inset 0 0 0 1px var(--foreground);
+  color: var(--foreground);
+}
+@media (hover: hover) {
+  .egg-home .cf-bar button:hover {
+    background: var(--ds-gray-100);
+    color: var(--foreground);
+  }
+}
+.egg-home .cf-bar button:active {
+  transform: scale(0.97);
+}
+.egg-home .cf-bar button:focus-visible {
+  z-index: 2;
+  outline: 2px solid var(--ds-focus-color);
+  outline-offset: 2px;
+}
+.egg-home .cf-sw {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  background: var(--sw-l);
+}
+.dark .egg-home .cf-sw {
+  background: var(--sw-d);
+}
+.egg-home .cf-key {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}
+/* On a phone a button is a swatch and its number; the name stays for screen readers. */
+.egg-home .cf-name {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.egg-home .cf-toggle .cf-key {
+  display: none;
+}
+/* Text hidden: the creature buttons and the hint go too. The button that brings it back stays. */
+.egg-home .cf-bar[data-shown="false"] .cf-hint,
+.egg-home .cf-bar[data-shown="false"] .cf-switch {
+  visibility: hidden;
+}
+@media (min-width: 640px) {
+  .egg-home .cf-bar {
+    padding: 0 30px 15px;
+  }
+  .egg-home .cf-bar button {
+    min-width: 30px;
+    height: 30px;
+  }
+  .egg-home .cf-name {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip-path: none;
+  }
+}
+@media (min-width: 1280px) {
+  .egg-home .cf-bar {
+    flex-direction: row;
+    justify-content: space-between;
+  }
+}
+@media (hover: hover) {
+  .egg-home .cf-toggle .cf-key {
+    display: inline;
+  }
+}

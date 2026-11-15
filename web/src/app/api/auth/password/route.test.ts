@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { resetConfigForTests } from "@/server/config";
-import { SESSION_COOKIE, createSession, upsertUser, userForSessionToken } from "@/server/auth/session";
+import { SESSION_COOKIE, createSession, isFreshAuth, upsertUser, userForSessionToken } from "@/server/auth/session";
 import { verifyLocalPassword } from "@/server/auth/local-password";
 import { PASSWORD_AUTH_ERROR, createPasswordCredential, generateRecoveryKey, normalizeRecoveryKey } from "@/server/auth/password-signin";
 import { sha256Hex } from "@/server/crypto";
@@ -77,6 +77,7 @@ describe("password sign-in", () => {
     expect(res.headers.get("location")).toBe("http://localhost:3000/projects");
     const token = decodeURIComponent(cookie(res).split(";")[0].split("=").slice(1).join("="));
     expect((await userForSessionToken(token))?.id).toBe(user.id);
+    expect(await isFreshAuth(token)).toBe(false);
   });
 
   it("gives the same answer for a wrong password, an unknown email and an account with no password", async () => {

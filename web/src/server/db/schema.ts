@@ -16,6 +16,7 @@ export const users = sqliteTable("users", {
   hackClubId: text("hack_club_id").notNull().unique(),
   name: text("name").notNull(),
   email: text("email"),
+  emailVerified: integer("email_verified", { mode: "boolean" }).notNull().default(false),
   slackId: text("slack_id"),
   createdAt: ts("created_at").notNull(),
 });
@@ -134,6 +135,8 @@ export type BuildLocation = (typeof BUILD_LOCATIONS)[number];
 export const projects = sqliteTable(
   "projects",
   {
+    /** Owner opt-in: download cache may retain private packages; it is not a sandbox. */
+    buildCacheEnabled: integer("build_cache_enabled", { mode: "boolean" }).notNull().default(false),
     id: text("id").primaryKey(),
     userId: text("user_id")
       .notNull()
@@ -203,6 +206,11 @@ export const projects = sqliteTable(
     analyticsKey: text("analytics_key"),
     /** Unguessable id in the public status page URL. Null means there is no public page. */
     statusKey: text("status_key"),
+    /**
+     * Owner opt-in: list this project's latest deployments on the public Egg homepage. Separate from the
+     * status page. Only ever honoured for a repository that GitHub confirms is public (server/public-feed.ts).
+     */
+    homepageFeed: integer("homepage_feed", { mode: "boolean" }).notNull().default(false),
     createdAt: ts("created_at").notNull(),
     updatedAt: ts("updated_at").notNull(),
   },
@@ -283,7 +291,7 @@ export const deployments = sqliteTable(
     finishedAt: ts("finished_at"),
   },
   (t) => [
-    index("deployments_project_idx").on(t.projectId, t.createdAt),
+    index("deployments_project_idx").on(t.projectId, t.createdAt, t.id),
     index("deployments_state_idx").on(t.state),
     // Closes the check-then-act race in the webhook dedupe: a retried or racing
     // push for the same commit cannot start a second active build.
@@ -307,7 +315,7 @@ export const buildCredentials = sqliteTable(
   {
     id: text("id").primaryKey(),
     projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
-    scope: text("scope", { enum: ["upload", "env_preview", "env_production"] }).notNull(),
+    scope: text("scope", { enum: ["upload_preview", "upload_production", "env_preview", "env_production"] }).notNull(),
     tokenHash: text("token_hash").notNull().unique(),
     createdAt: ts("created_at").notNull(),
     expiresAt: ts("expires_at").notNull(),
@@ -331,7 +339,7 @@ export const deploymentLogs = sqliteTable(
       .default("info"),
     message: text("message").notNull(),
   },
-  (t) => [index("logs_deployment_idx").on(t.deploymentId, t.id)]
+  (t) => [index("logs_deployment_idx").on(t.deploymentId, t.id), index("logs_retention_at_idx").on(t.at)]
 );
 
 export const domains = sqliteTable(
@@ -370,6 +378,12 @@ export const jobs = sqliteTable(
     deploymentId: text("deployment_id")
       .notNull()
       .references(() => deployments.id, { onDelete: "cascade" }),
+    /**
+     * The deployment's project, copied here so the database itself can refuse a second
+     * running job for one project (`jobs_running_project_idx`). Set when the job is queued
+     * and again when it is claimed; null on rows from before migration 0042.
+     */
+    projectId: text("project_id"),
     state: text("state", {
       enum: ["queued", "running", "done", "failed"],
     })
@@ -387,6 +401,11 @@ export const jobs = sqliteTable(
     uniqueIndex("jobs_active_deployment_idx")
       .on(t.deploymentId)
       .where(sql`${t.state} in ('queued', 'running')`),
+    // One running job per project, enforced by the database. The claim query already checks
+    // this; the index catches anything that gets past it (a second process, a bug).
+    uniqueIndex("jobs_running_project_idx")
+      .on(t.projectId)
+      .where(sql`${t.state} = 'running' and ${t.projectId} is not null`),
   ]
 );
 
@@ -488,6 +507,8 @@ export const userPreferences = sqliteTable("user_preferences", {
   avatar: text("avatar").notNull().default("pixel-01"),
   /** JSON object of the analytics features a new project starts with. `{}` means every one is off. */
   analyticsDefaults: text("analytics_defaults").notNull().default("{}"),
+  /** JSON object of per-chapter marks, see src/lib/onboarding-marks.ts */
+  onboarding: text("onboarding").notNull().default("{}"),
   updatedAt: ts("updated_at").notNull(),
 });
 
@@ -878,3 +899,45 @@ export const scheduledJobs = sqliteTable(
   },
   (t) => [index("scheduled_jobs_project_idx").on(t.projectId)]
 );
+
+/** Completed backend deployment stages. Metadata contains only allowlisted measurements. */
+export const deployStageMetrics = sqliteTable("deploy_stage_metrics", {
+  id: text("id").primaryKey(),
+  deploymentId: text("deployment_id").notNull().references(() => deployments.id, { onDelete: "cascade" }),
+  stage: text("stage").notNull(),
+  startedAt: ts("started_at").notNull(),
+  finishedAt: ts("finished_at").notNull(),
+  durationMs: integer("duration_ms").notNull(),
+  bytes: integer("bytes"),
+  metadata: text("metadata"),
+}, (t) => [index("deploy_stage_metrics_deployment_idx").on(t.deploymentId)]);
+
+/** Shared coordination for periodic, idempotent control-plane maintenance. */
+export const maintenanceLeases = sqliteTable("maintenance_leases", {
+  name: text("name").primaryKey(), owner: text("owner").notNull(),
+  expiresAt: ts("expires_at").notNull(), updatedAt: ts("updated_at").notNull(),
+});
+
+export const projectMembers = sqliteTable("project_members", {
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  role: text("role", { enum: ["viewer", "developer"] }).notNull(),
+  createdAt: ts("created_at").notNull(),
+}, (t) => [uniqueIndex("project_members_pair_idx").on(t.projectId, t.userId), index("project_members_user_idx").on(t.userId)]);
+
+export const projectInvitations = sqliteTable("project_invitations", {
+  id: text("id").primaryKey(), projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  email: text("email").notNull(), role: text("role", { enum: ["viewer", "developer"] }).notNull(),
+  invitedUserId: text("invited_user_id").references(() => users.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull().unique(), createdAt: ts("created_at").notNull(),
+  expiresAt: ts("expires_at").notNull(), acceptedAt: ts("accepted_at"),
+});
+
+/** Expiring encrypted import plans; only the server owner may confirm a cutover. */
+export const adoptionPlans = sqliteTable("adoption_plans", {
+  id: text("id").primaryKey(), userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  payloadEnc: text("payload_enc").notNull(), state: text("state").notNull().default("planned"),
+  createdAt: ts("created_at").notNull(), expiresAt: ts("expires_at").notNull(),
+  confirmedAt: ts("confirmed_at"), error: text("error"),
+});

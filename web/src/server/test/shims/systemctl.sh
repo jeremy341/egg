@@ -1,5 +1,7 @@
 state="$HOME/.fake-systemd"; mkdir -p "$state"
 cmd="$1"; unit="${2:-}"
+quiet=0
+if [ "$unit" = "--quiet" ]; then quiet=1; unit="${3:-}"; fi
 unitfile="$HOME/units/$unit"
 pidfile="$state/$unit.pid"
 alive() { [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null; }
@@ -47,7 +49,9 @@ case "$cmd" in
       echo "$n loaded active running Egg build scope"
     done
     exit 0 ;;
-  is-active) if alive; then echo active; else echo failed; fi; exit 0 ;;
+  is-active)
+    if alive; then [ "$quiet" = 1 ] || echo active; exit 0;
+    else [ "$quiet" = 1 ] || echo failed; exit 3; fi ;;
   stop) case "$unit" in *.scope) [ -f "$pidfile" ] || exit 5;; esac  # a scope that is not running cannot be stopped, as on a real container
         alive && kill "$(cat "$pidfile")" 2>/dev/null; rm -f "$pidfile"; exit 0 ;;
   restart|start)

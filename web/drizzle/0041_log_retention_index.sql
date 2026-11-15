@@ -1,0 +1,1 @@
+CREATE INDEX `logs_retention_at_idx` ON `deployment_logs` (`at`);

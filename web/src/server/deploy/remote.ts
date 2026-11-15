@@ -236,8 +236,10 @@ export function removePreview(args: {
   return (
     SH_MARKER_HELPERS +
     removeOwnUnit(args.unitDir, args.unit) +
-    `if egg_dir_managed ${shellQuote(projectDir(args.home, args.slug))} && [[ ${shellQuote(args.releaseId)} =~ ^[0-9a-f-]{36}$ ]]; then rm -rf ${shellQuote(releaseDir(args.home, args.slug, args.releaseId))}; fi\n` +
-    `true\n`
+    `p=${shellQuote(projectDir(args.home, args.slug))}\n` +
+    `if egg_dir_managed "$p"; then\n` +
+    `  if [[ ${shellQuote(args.releaseId)} =~ ^[0-9a-f-]{36}$ ]]; then rm -rf ${shellQuote(releaseDir(args.home, args.slug, args.releaseId))}; fi\n` +
+    `elif [ -e "$p" ] || [ -L "$p" ]; then echo ${shellQuote(`Project folder ${projectDir(args.home, args.slug)} was not created by Egg, so it was left alone.`)} >&2; exit ${NOT_OURS_EXIT}; fi\n`
   );
 }
 
@@ -248,13 +250,15 @@ export function removePreview(args: {
  */
 export function removeOwnUnit(unitDir: string, unit: string) {
   const file = shellQuote(`${unitDir}/${unit}`);
+  const failure = 45;
   return (
     `if egg_unit_marked ${file}; then\n` +
-    `  systemctl stop ${shellQuote(unit)} >/dev/null 2>&1 || true\n` +
-    `  systemctl disable ${shellQuote(unit)} >/dev/null 2>&1 || true\n` +
-    `  rm -f ${file}\n` +
-    `  systemctl daemon-reload >/dev/null 2>&1 || true\n` +
-    `elif [ -e ${file} ] || [ -L ${file} ]; then echo ${shellQuote(`${unit} was not created by Egg, so it was left alone.`)}; fi\n`
+    `  systemctl stop ${shellQuote(unit)} >/dev/null 2>&1 || { echo ${shellQuote(`Could not stop ${unit}; it was left in place.`)} >&2; exit ${failure}; }\n` +
+    `  if systemctl is-active --quiet ${shellQuote(unit)}; then echo ${shellQuote(`Could not stop ${unit}; it is still active and was left in place.`)} >&2; exit ${failure}; fi\n` +
+    `  systemctl disable ${shellQuote(unit)} >/dev/null 2>&1 || { echo ${shellQuote(`Could not disable ${unit}; it was left in place.`)} >&2; exit ${failure}; }\n` +
+    `  rm -f -- ${file} || { echo ${shellQuote(`Could not remove ${unit}; its file was left in place.`)} >&2; exit ${failure}; }\n` +
+    `  systemctl daemon-reload >/dev/null 2>&1 || { echo ${shellQuote(`Could not reload systemd after removing ${unit}.`)} >&2; exit ${failure}; }\n` +
+    `elif [ -e ${file} ] || [ -L ${file} ]; then echo ${shellQuote(`${unit} was not created by Egg, so it was left alone.`)} >&2; exit ${NOT_OURS_EXIT}; fi\n`
   );
 }
 
@@ -275,8 +279,7 @@ export function removeProject(args: {
   return (
     SH_MARKER_HELPERS +
     removeOwnUnit(args.unitDir, args.unit) +
-    `if egg_dir_managed ${shellQuote(p)}; then ${remove}; elif [ -e ${shellQuote(p)} ] || [ -L ${shellQuote(p)} ]; then echo ${shellQuote(`${p} was not created by Egg, so it was left alone.`)}; fi\n` +
-    `true\n`
+    `if egg_dir_managed ${shellQuote(p)}; then ${remove}; elif [ -e ${shellQuote(p)} ] || [ -L ${shellQuote(p)} ]; then echo ${shellQuote(`${p} was not created by Egg, so it was left alone.`)} >&2; exit ${NOT_OURS_EXIT}; fi\n`
   );
 }
 

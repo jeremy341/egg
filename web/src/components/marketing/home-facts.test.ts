@@ -44,7 +44,6 @@ describe("homepage facts match the code", () => {
     for (const days of HOME_FACTS.pageviewDayChoices) expect(featuresPatch.safeParse({ retentionDays: days }).success).toBe(true);
     expect(featuresPatch.safeParse({ retentionDays: 45 }).success).toBe(false);
     expect(HOME_FACTS.pageviewDayChoices).toContain(HOME_FACTS.pageviewDays);
-    expect(src("src/app/(marketing)/page.tsx")).toContain("${F.pageviewDayChoices[0]}, ${F.pageviewDayChoices[1]} or ${F.pageviewDayChoices[2]} days");
     expect(src("src/server/status-page.ts")).toContain(`const windowDays = ${HOME_FACTS.statusWindowDays};`);
   });
 
@@ -68,7 +67,7 @@ describe("homepage facts match the code", () => {
   it("shows the default start commands", () => {
     expect(resolveStartCommand({ runtime: "node", startCommand: null }, null, 3000)).toBe("npm start");
     expect(resolveStartCommand({ runtime: "python", startCommand: null }, null, 3000)).toBe("python3 app.py");
-    expect(resolveStartCommand({ runtime: "static", startCommand: null }, null, 3000)).toMatch(/^python3 -m http\.server /);
+    expect(resolveStartCommand({ runtime: "static", startCommand: null }, null, 3000)).toMatch(/^python3 -c /);
   });
 
   it("states the uptime check interval and the failed checks before an alert", () => {
