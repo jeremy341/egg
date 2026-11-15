@@ -83,7 +83,7 @@ export function CodeBlock({ label, code }: { label: Label; code: string }) {
         <button
           type="button"
           onClick={copy}
-          className="pressable inline-flex h-7 items-center gap-1.5 px-2 text-[12px] font-medium text-muted-foreground hover:bg-[var(--ds-gray-alpha-100)] hover:text-foreground max-sm:h-10 max-sm:px-3"
+          className="touch-target pressable inline-flex h-7 items-center gap-1.5 px-2 text-[12px] font-medium text-muted-foreground hover:bg-[var(--ds-gray-alpha-100)] hover:text-foreground max-sm:h-10 max-sm:px-3"
         >
           <Swap value={copied ? "copied" : "copy"} className="inline-flex items-center gap-1.5">
             {copied ? (

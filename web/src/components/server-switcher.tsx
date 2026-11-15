@@ -27,7 +27,7 @@ export function ServerSwitcher({ className }: { className?: string }) {
       <DropdownMenuTrigger
         aria-label={`Server: ${label}`}
         className={cn(
-          "flex h-9 w-full items-center gap-2 rounded-md px-2 text-left font-medium tracking-[-0.02em] transition-colors duration-(--dur-fast) hover:bg-[var(--ds-gray-alpha-100)] aria-expanded:bg-[var(--ds-gray-alpha-100)] focus-visible:outline-offset-[-2px]",
+          "touch-target flex h-9 w-full items-center gap-2 rounded-md px-2 text-left font-medium tracking-[-0.02em] transition-colors duration-(--dur-fast) hover:bg-[var(--ds-gray-alpha-100)] aria-expanded:bg-[var(--ds-gray-alpha-100)] focus-visible:outline-offset-[-2px]",
           className
         )}
       >

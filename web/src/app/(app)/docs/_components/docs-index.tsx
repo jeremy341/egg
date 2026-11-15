@@ -66,7 +66,7 @@ export function DocsIndex() {
         {groups.length === 0 ? (
           <div className="border-y py-4">
             <p className="text-[15px] leading-6 text-muted-foreground">No page matches &ldquo;{query.trim()}&rdquo;.</p>
-            <Button variant="outline" size="sm" className="mt-2" onClick={() => setQuery("")}>
+            <Button variant="outline" size="sm" shape="capsule" className="mt-2" onClick={() => setQuery("")}>
               Clear filter
             </Button>
           </div>

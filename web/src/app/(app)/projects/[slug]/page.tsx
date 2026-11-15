@@ -115,7 +115,7 @@ async function ProjectContent({ params }: Props) {
             {/* The deployment can be Ready while the app itself is not answering, so the monitor is named here. */}
             <Link
               href={`/projects/${slug}/settings#alerts-heading`}
-              className="-my-2 inline-flex min-h-10 items-center rounded-sm underline-offset-4 hover:underline sm:min-h-6"
+              className="touch-target -my-2 inline-flex min-h-10 items-center rounded-sm underline-offset-4 hover:underline sm:min-h-6"
             >
               <span className="sr-only">Uptime monitor: </span>
               <StatusIndicator

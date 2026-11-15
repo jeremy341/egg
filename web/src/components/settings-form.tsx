@@ -246,7 +246,7 @@ export function SettingsForm({
           <Fieldset legend="Character" hint="A small pixel character beside your name. There are no uploads." hintId={`${ids}-char-hint`}>
             <div className="grid grid-cols-4 gap-2 sm:max-w-[420px]">
               {AVATARS.map((a) => (
-                <label key={a.id} className="relative block min-w-0 cursor-pointer">
+                <label key={a.id} className="touch-target relative block min-w-0 cursor-pointer">
                   <input
                     type="radio"
                     name="avatar"
@@ -296,7 +296,7 @@ export function SettingsForm({
           <Fieldset legend="Accent colour" hint="Colours buttons, links and the focus ring. Text on them keeps at least 4.5:1 contrast." hintId={`${ids}-accent-hint`}>
             <div className="grid grid-cols-2 gap-2 sm:max-w-[420px] sm:grid-cols-4">
               {ACCENTS.map((a) => (
-                <label key={a} className="relative block min-w-0 cursor-pointer">
+                <label key={a} className="touch-target relative block min-w-0 cursor-pointer">
                   <input
                     type="radio"
                     name="accent"

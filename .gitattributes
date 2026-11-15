@@ -1,2 +1,16 @@
 # Shell scripts run on Linux; never convert their line endings.
 *.sh text eol=lf
+
+# Store and check out all text files with LF line endings.
+* text=auto eol=lf
+
+# Binary assets must never be touched by line-ending conversion.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.db binary
+*.sqlite binary

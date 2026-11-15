@@ -125,9 +125,13 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
           title: "The worker builds in a sandbox",
           body: (
             <>
-              It clones the branch, then runs your install and build commands inside a Docker container on the
-              Egg side, with 2 GB of memory by default (you can change it per server on the Container page) and 2 CPUs.
-              Your container’s memory stays free for your app.
+              Egg clones the branch and runs your install and build commands on the machine that runs Egg, not on
+              your Nest container. The build runs in a Docker container there, with up to 2 GB of memory by default
+              (you can change it per server on the Container page) and 2 CPUs. So a build never uses your container’s
+              memory.
+              <br />
+              If Egg runs on the same machine as your other apps, a build uses that machine’s memory and CPU while it
+              runs, and can slow them down. Lower the build memory, or run Egg on a separate machine.
             </>
           ),
         },

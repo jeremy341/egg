@@ -453,7 +453,7 @@ export function DeploymentsView({
 
         <div className="flex min-h-8 items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <label className="inline-flex min-h-10 items-center gap-2 text-label text-muted-foreground sm:min-h-8">
+            <label className="touch-target inline-flex min-h-10 items-center gap-2 text-label text-muted-foreground sm:min-h-8">
               <input
                 type="checkbox"
                 checked={allShownPicked}

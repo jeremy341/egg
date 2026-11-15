@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { motionReduced } from "@/lib/motion";
 
 /**
  * The sticky header of the public pages.
@@ -39,7 +40,6 @@ export function SiteHeader({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
     const root = document.documentElement;
     let timer = 0;
     const reset = () => {
@@ -50,7 +50,7 @@ export function SiteHeader({ children }: { children: React.ReactNode }) {
 
     const onClick = (e: MouseEvent) => {
       // detail is 0 for a click made with Enter: keyboard moves stay instant.
-      if (e.defaultPrevented || e.button !== 0 || e.detail === 0 || reduce.matches) return;
+      if (e.defaultPrevented || e.button !== 0 || e.detail === 0 || motionReduced()) return;
       if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
       const a = e.target instanceof Element ? e.target.closest("a[href*='#']") : null;
       if (!(a instanceof HTMLAnchorElement) || a.target) return;

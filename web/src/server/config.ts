@@ -93,7 +93,7 @@ export function config(): Config {
     );
     throw new Error(
       `Invalid environment configuration:\n${lines.join("\n")}\n` +
-        "Run `pnpm setup` to create .env.local, or see .env.example."
+        "Run `pnpm run setup` to create .env.local, or see .env.example."
     );
   }
   cached = parsed.data;

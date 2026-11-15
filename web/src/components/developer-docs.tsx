@@ -157,7 +157,7 @@ export function DeveloperHub({ origin }: { origin: string }) {
               <li key={l.href}>
                 <Link
                   href={l.href}
-                  className="flex min-h-10 items-center justify-between gap-3 px-4 py-2 text-label font-medium transition-colors duration-(--dur-fast) hover:bg-muted focus-visible:-outline-offset-2 max-sm:min-h-11"
+                  className="touch-target flex min-h-10 items-center justify-between gap-3 px-4 py-2 text-label font-medium transition-colors duration-(--dur-fast) hover:bg-muted focus-visible:-outline-offset-2 max-sm:min-h-11"
                 >
                   {l.label}
                   <ArrowRightIcon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />

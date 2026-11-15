@@ -18,6 +18,7 @@ import {
   navItemIdle,
 } from "@/components/nav-list";
 import { ServerSwitcher } from "@/components/server-switcher";
+import { IconTip } from "@/components/ui/tooltip";
 import { UserMenu } from "@/components/user-menu";
 import { cn } from "@/lib/utils";
 
@@ -42,27 +43,29 @@ export function MobileDock() {
           <button
             type="button"
             onClick={() => openFind()}
-            className="pressable flex h-full items-center gap-2 rounded-l-xl pr-4 pl-4 font-medium text-muted-foreground focus-visible:outline-offset-[-2px]"
+            className="touch-target pressable flex h-full items-center gap-2 rounded-l-xl pr-4 pl-4 font-medium text-muted-foreground focus-visible:outline-offset-[-2px]"
           >
             <MagnifyingGlassIcon aria-hidden="true" className="size-4" />
             Find
           </button>
           <span aria-hidden="true" className="h-5 w-px bg-border" />
-          <button
-            ref={toggleRef}
-            type="button"
-            onClick={() => (menuOpen ? close(true) : setMenuOpen(true))}
-            aria-expanded={menuOpen}
-            aria-controls="mobile-menu"
-            aria-label={menuOpen ? "Close menu" : "Open menu"}
-            className="pressable flex h-full w-12 items-center justify-center rounded-r-xl focus-visible:outline-offset-[-2px]"
-          >
-            {menuOpen ? (
-              <XIcon aria-hidden="true" className="size-5" />
-            ) : (
-              <ListIcon aria-hidden="true" className="size-5" />
-            )}
-          </button>
+          <IconTip label={menuOpen ? "Close menu" : "Open menu"}>
+            <button
+              ref={toggleRef}
+              type="button"
+              onClick={() => (menuOpen ? close(true) : setMenuOpen(true))}
+              aria-expanded={menuOpen}
+              aria-controls="mobile-menu"
+              aria-label={menuOpen ? "Close menu" : "Open menu"}
+              className="touch-target pressable flex h-full w-12 items-center justify-center rounded-r-xl focus-visible:outline-offset-[-2px]"
+            >
+              {menuOpen ? (
+                <XIcon aria-hidden="true" className="size-5" />
+              ) : (
+                <ListIcon aria-hidden="true" className="size-5" />
+              )}
+            </button>
+          </IconTip>
         </div>
       </div>
 

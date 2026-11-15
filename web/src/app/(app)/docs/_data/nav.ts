@@ -155,10 +155,13 @@ export const DOCS_NAV: DocsGroup[] = [
         title: "Running your own",
         subsections: [
           { id: "selfhost-start", title: "Starting your own copy" },
+          { id: "selfhost-login", title: "Start on login" },
           { id: "selfhost-config", title: "Settings the code reads" },
           { id: "selfhost-worker", title: "The worker" },
           { id: "selfhost-database", title: "The database and backups" },
           { id: "selfhost-apps", title: "Hack Club and GitHub apps" },
+          { id: "selfhost-server", title: "Run on your own server" },
+          { id: "selfhost-platforms", title: "What works where" },
         ],
       },
       {

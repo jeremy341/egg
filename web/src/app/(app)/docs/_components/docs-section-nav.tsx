@@ -95,7 +95,7 @@ export function DocsSectionNav() {
                         href={`#${h.id}`}
                         onClick={close}
                         className={cn(
-                          "flex min-h-10 items-center rounded-md text-[14px] leading-5 text-muted-foreground hover:bg-[var(--ds-gray-alpha-100)] hover:text-foreground",
+                          "touch-target flex min-h-10 items-center rounded-md text-[14px] leading-5 text-muted-foreground hover:bg-[var(--ds-gray-alpha-100)] hover:text-foreground",
                           h.level === 2 ? "px-2" : "pr-2 pl-6"
                         )}
                       >

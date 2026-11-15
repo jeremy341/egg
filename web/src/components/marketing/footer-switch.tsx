@@ -17,7 +17,7 @@ export function FooterSwitch({ full }: { full: React.ReactNode }) {
   return (
     <footer className="border-t bg-background">
       <div className="mx-auto flex max-w-[1280px] flex-col gap-4 px-4 py-8 text-[14px] sm:flex-row sm:items-center sm:justify-between sm:px-6">
-        <Link href="/" className="flex w-fit items-center gap-2 rounded-md">
+        <Link href="/" className="touch-target flex w-fit items-center gap-2 rounded-md">
           <NestMark className="size-5" />
           <span className="font-pixel text-[16px] leading-none font-semibold">Egg</span>
         </Link>

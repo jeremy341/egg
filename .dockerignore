@@ -1,0 +1,15 @@
+# Keep the build context small and never copy local state or secrets into an image.
+.git
+.github
+**/node_modules
+**/.next
+web/data
+web/tsconfig.tsbuildinfo
+.env
+.env.*
+**/.env
+**/.env.*
+backups
+docs
+examples
+reference

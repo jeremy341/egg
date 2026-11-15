@@ -292,8 +292,8 @@ export function LogsView({
             <DownloadSimpleIcon aria-hidden="true" />
             Download
           </Button>
-          <Button variant="outline" onClick={() => void load()} disabled={loading}>
-            <ArrowsClockwiseIcon aria-hidden="true" className={cn(loading && "animate-spin")} />
+          <Button variant="outline" onClick={() => void load()} loading={loading}>
+            <ArrowsClockwiseIcon aria-hidden="true" />
             Refresh
           </Button>
         </div>
@@ -314,7 +314,7 @@ export function LogsView({
             { value: "problems", label: "Warnings and errors" },
           ]}
         />
-        <label className="inline-flex min-h-10 items-center gap-2 text-label text-muted-foreground sm:min-h-8">
+        <label className="touch-target inline-flex min-h-10 items-center gap-2 text-label text-muted-foreground sm:min-h-8">
           <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} />
           Refresh every 5s
         </label>

@@ -82,7 +82,7 @@ async function LoginContent({
           <Link
             href="/"
             aria-label="Egg, home"
-            className="mx-auto block w-fit rounded-md outline-offset-4"
+            className="touch-target mx-auto block w-fit rounded-md outline-offset-4"
           >
             <NestMark className="mx-auto size-10" />
           </Link>

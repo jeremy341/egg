@@ -292,7 +292,7 @@ export function WebhooksCard() {
         </form>
 
         <details className="rounded-md shadow-border-base">
-          <summary className="min-h-10 cursor-pointer px-3 py-2.5 font-medium">How to check a message is from Egg</summary>
+          <summary className="touch-target min-h-10 cursor-pointer px-3 py-2.5 font-medium">How to check a message is from Egg</summary>
           <div className="space-y-2 px-3 pb-3 text-muted-foreground">
             <p>
               Each request has a header <code className="font-mono text-[12.5px]">X-Egg-Signature: t=1700000000,v1=…</code>. The

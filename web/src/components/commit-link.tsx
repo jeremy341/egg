@@ -37,7 +37,7 @@ export function CommitLink({
       rel="noreferrer"
       aria-label={`Open commit ${short} on GitHub`}
       className={cn(
-        "relative z-10 inline-flex shrink-0 items-center gap-0.5 underline-offset-4 hover:text-foreground hover:underline focus-visible:text-foreground focus-visible:underline max-sm:min-h-10",
+        "touch-target relative z-10 inline-flex shrink-0 items-center gap-0.5 underline-offset-4 hover:text-foreground hover:underline focus-visible:text-foreground focus-visible:underline max-sm:min-h-10",
         className
       )}
     >

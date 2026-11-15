@@ -231,7 +231,7 @@ export function ProjectSettings({
                   className="font-mono"
                 />
               </div>
-              <label className="inline-flex min-h-10 items-center gap-2 self-end sm:min-h-9">
+              <label className="touch-target inline-flex min-h-10 items-center gap-2 self-end sm:min-h-9">
                 <input
                   type="checkbox"
                   checked={form.autoDeploy}
@@ -375,7 +375,7 @@ export function ProjectSettings({
               </>
             }
           >
-            <label className="mb-3 inline-flex min-h-10 items-center gap-2 sm:min-h-8">
+            <label className="touch-target mb-3 inline-flex min-h-10 items-center gap-2 sm:min-h-8">
               <input
                 type="checkbox"
                 checked={removeRemote}

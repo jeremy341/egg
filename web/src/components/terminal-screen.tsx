@@ -10,6 +10,7 @@ import {
   CopyIcon,
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
+import { motionReduced } from "@/lib/motion";
 
 /**
  * The xterm.js screen for one terminal session. Loaded on the client only
@@ -319,7 +320,7 @@ export default function TerminalScreen(props: TerminalScreenProps) {
       ]);
       if (disposed) return;
 
-      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const reduceMotion = motionReduced();
       const t = new Terminal({
         fontFamily: FONT_FAMILY,
         fontSize: 13,

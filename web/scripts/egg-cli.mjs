@@ -15,6 +15,8 @@
 
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { doctorCommand } from "./doctor.mjs";
+import { startEgg } from "./egg-start.mjs";
 
 const FINAL_STATES = new Set(["ready", "error", "canceled"]);
 const POLL_MS = 2000;
@@ -25,7 +27,11 @@ export const USAGE = `Egg command line
 
 Usage: egg <command> [options]
 
-Commands:
+Run Egg on this computer (no token needed):
+  egg start [--dev]                   Set up if needed, check this computer, start Egg, open the browser
+  egg doctor                          Check that this computer can run Egg and print one fix per problem
+
+Use a running Egg (needs EGG_TOKEN and EGG_URL):
   egg whoami                          Who the token belongs to, its scopes and expiry
   egg projects list                   List your projects
   egg projects show <slug>            Show one project
@@ -39,6 +45,7 @@ Commands:
 
 Options:
   --json        Print the API answer as JSON instead of text
+  --dev         With start: run the development server (next dev) instead of a production build
   -h, --help    Show this help
 
 Environment:
@@ -62,11 +69,15 @@ const COMMANDS = {
   "env names": { args: ["a project slug"], options: [] },
   "domains list": { args: [], options: [] },
   status: { args: [], options: [] },
+  start: { args: [], options: ["dev"] },
+  doctor: { args: [], options: [] },
 };
 
 const GROUPS = ["projects", "deployments", "env", "domains"];
 const VALUE_OPTIONS = new Set(["branch"]);
-const FLAG_OPTIONS = new Set(["json", "follow", "help"]);
+const FLAG_OPTIONS = new Set(["json", "follow", "help", "dev"]);
+/** Commands that run on this computer and never talk to a server, so they need no token. */
+const LOCAL_COMMANDS = new Set(["start", "doctor"]);
 
 const fail = (message) => ({ ok: false, message });
 
@@ -121,8 +132,8 @@ export function parseCli(argv) {
   }
 
   const spec = COMMANDS[command];
-  for (const option of ["branch", "follow"]) {
-    const given = option === "branch" ? flags.branch !== undefined : flags.follow;
+  for (const option of ["branch", "follow", "dev"]) {
+    const given = option === "branch" ? flags.branch !== undefined : flags[option];
     if (given && !spec.options.includes(option)) {
       const owner = Object.entries(COMMANDS).find(([, s]) => s.options.includes(option))[0];
       return fail(`--${option} only works with egg ${owner}.`);
@@ -373,6 +384,17 @@ export async function run(argv, deps = {}) {
   if (parsed.command === "help") {
     out(USAGE);
     return 0;
+  }
+
+  if (LOCAL_COMMANDS.has(parsed.command)) {
+    // `deps.local` lets tests replace the machine-touching parts of these two commands.
+    const local = { out, ...deps.local };
+    try {
+      return parsed.command === "start" ? await startEgg({ dev: Boolean(parsed.flags.dev), ...local }) : await doctorCommand(local);
+    } catch (error) {
+      err(`Error: ${error instanceof Error ? error.message : String(error)}`);
+      return 1;
+    }
   }
 
   let failure = null;

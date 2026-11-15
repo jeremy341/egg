@@ -447,7 +447,7 @@ function Configure({
               on your container, or change the project name, server or port.
             </p>
             <p className="mt-1.5">
-              <Link href="/container" target="_blank" rel="noopener" className="link inline-flex min-h-10 items-center">
+              <Link href="/container" target="_blank" rel="noopener" className="touch-target link inline-flex min-h-10 items-center">
                 Open container status<span className="sr-only"> (opens in a new tab)</span>
               </Link>
             </p>

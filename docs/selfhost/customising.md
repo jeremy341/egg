@@ -1,6 +1,6 @@
 # Customising Egg
 
-Everything here is a change to a file in `web/`. Line numbers are correct for the commit this guide was written against; if a line has moved, search for the quoted text. Restart `pnpm dev`, or run `pnpm build` again, after a change.
+Everything here is a change to a file in `web/`. Line numbers are correct for the commit this guide was written against; if a line has moved, search for the quoted text. Restart Egg (`pnpm egg start`), or run `pnpm build` again, after a change.
 
 Back to the [self-hosting guide](README.md).
 
@@ -79,12 +79,14 @@ Egg uses three ports, and each one has to be changed in two places so they agree
 
 | Port | Default | Change it | Then also set |
 | --- | --- | --- | --- |
-| The website | 3000 | `PORT=4000 pnpm start`, or `pnpm dev --port 4000` | `APP_URL=http://localhost:4000` in `web/.env.local` |
+| The website | 3000 | Set `APP_URL=http://localhost:4000` in `web/.env.local`. `pnpm egg start` and the start-on-login service listen on that port. Or `PORT=4000 pnpm start`, or `pnpm dev --port 4000` | `APP_URL` must match whichever you use |
 | The stand-in server (`pnpm fake-nest`) | 2222 | `FAKE_NEST_PORT=2223 pnpm fake-nest` (read at `web/scripts/fake-nest.ts:30`) | `NEST_PORT=2223` in `web/.env.local` |
 | The SSH port Egg connects to | 22 | `NEST_PORT` in `web/.env.local` (defined in `web/src/server/config.ts`) | Only change it with `fake-nest` |
 
-On Windows PowerShell, set a variable for one command with `$env:PORT = "4000"; pnpm start`.
+On Windows PowerShell, set a variable for one command with `$env:PORT = "4000"; pnpm start`. If you used `pnpm run service:install`, run it again after a port change so the service file has the new port.
 
 If you change the website port and leave `APP_URL` as it was, sign-in redirects and the same-origin check on writes will point at the old port and sign-in will fail. With `LOCAL_MODE=1`, `APP_URL` must still be `localhost`, `127.0.0.1` or `[::1]`, so `http://localhost:4000` is fine.
+
+On a server run with Docker Compose, the website port is fixed at 3000 inside the network and only Caddy is published (80 and 443). Do not change it there.
 
 Deployed apps use their own ports on the server, and branch previews use ports 20000 to 29999. Those are not Egg settings.

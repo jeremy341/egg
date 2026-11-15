@@ -6,7 +6,7 @@ A Vercel-style dashboard and the backend behind it: Hack Club sign-in, SSH to a 
 
 ```bash
 pnpm install
-pnpm setup     # creates .env.local (random APP_SECRET, DEV_LOGIN=1)
+pnpm run setup  # creates .env.local (random APP_SECRET, DEV_LOGIN=1)
 pnpm dev       # http://localhost:3000, deployment worker included
 ```
 

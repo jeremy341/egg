@@ -720,6 +720,28 @@
   }
 }
 
+/* Touch target. On a coarse pointer (a finger) the hit area of a small control
+   grows to at least 44 by 44 CSS pixels, centred on it, without changing what
+   is drawn. The extra area is a transparent ::after, so it also works for
+   links and for compact density. Fine pointers are not touched. position is
+   set through :where() so a caller's absolute, fixed or sticky still wins. */
+@utility touch-target {
+  @media (pointer: coarse) {
+    :where(&) {
+      position: relative;
+    }
+    &::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: max(100%, 44px);
+      height: max(100%, 44px);
+      transform: translate(-50%, -50%);
+    }
+  }
+}
+
 /* M7. Interactive card: the hairline darkens on hover. */
 @utility card-interactive {
   transition: box-shadow var(--dur-fast) var(--ease-snappy);

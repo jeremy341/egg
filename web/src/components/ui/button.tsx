@@ -3,9 +3,22 @@ import { Button as ButtonPrimitive } from "@base-ui/react/button"
 import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 import { PixelLoader } from "@/components/ui/pixel-loader"
+import { IconTip } from "@/components/ui/tooltip"
 
+/**
+ * Button shape, one rule for the whole app:
+ * - a single action that stands alone on a marketing, docs or settings page is a
+ *   capsule: shape="capsule";
+ * - buttons in a vertical stack are rounded rectangles: the default (rounded-md);
+ * - buttons in a horizontal row share one shape, so a row of capsules is all
+ *   capsules (set shape="capsule" on each) and a row of rectangles is all default;
+ * - dense data controls (filters, table and row actions, toolbars) keep the
+ *   default rectangle at their own size.
+ * The hit area is separate: touch-target grows it to 44 by 44 CSS pixels on a
+ * coarse pointer without changing what is drawn.
+ */
 const buttonVariants = cva(
-  "group/button inline-flex shrink-0 items-center justify-center rounded-md border border-transparent bg-clip-padding text-sm font-medium tracking-[-0.02em] whitespace-nowrap transition-[background-color,color,box-shadow,opacity,scale] duration-(--dur-fast) ease-snappy select-none active:not-disabled:not-aria-disabled:scale-[0.97] active:not-disabled:not-aria-disabled:duration-(--dur-press) disabled:pointer-events-none disabled:not-aria-busy:text-muted-foreground disabled:not-aria-busy:shadow-none aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "group/button touch-target inline-flex shrink-0 items-center justify-center rounded-md border border-transparent bg-clip-padding text-sm font-medium tracking-[-0.02em] whitespace-nowrap transition-[background-color,color,box-shadow,opacity,scale] duration-(--dur-fast) ease-snappy select-none active:not-disabled:not-aria-disabled:scale-[0.97] active:not-disabled:not-aria-disabled:duration-(--dur-press) disabled:pointer-events-none disabled:not-aria-busy:text-muted-foreground disabled:not-aria-busy:shadow-none aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
@@ -37,10 +50,15 @@ const buttonVariants = cva(
           "size-7 rounded-[min(var(--radius-md),12px)] max-sm:size-10 in-data-[slot=button-group]:rounded-lg",
         "icon-lg": "size-9 max-sm:size-10",
       },
+      shape: {
+        default: "",
+        capsule: "rounded-full",
+      },
     },
     defaultVariants: {
       variant: "default",
       size: "default",
+      shape: "default",
     },
   }
 )
@@ -65,11 +83,13 @@ function Button({
   className,
   variant = "default",
   size = "default",
+  shape = "default",
   loading = false,
   disabled,
   children,
   render,
   nativeButton,
+  tooltip,
   ...props
 }: ButtonPrimitive.Props &
   VariantProps<typeof buttonVariants> & {
@@ -79,6 +99,13 @@ function Button({
      * "Saving…" form of the label as children while it is true.
      */
     loading?: boolean
+    /**
+     * Name tooltip, shown after a short hover and on keyboard focus. An
+     * icon-only button (a size starting with "icon") with an aria-label gets one
+     * automatically, with the label as its text. Pass a string to say something
+     * else, or false to turn it off.
+     */
+    tooltip?: string | false
   }) {
   // Base UI expects a native <button>. With render={<Link/>} or {<a/>} it must
   // be told otherwise. An explicit nativeButton from the caller always wins.
@@ -98,18 +125,22 @@ function Button({
       </>
     )
   }
-  return (
+  const label = typeof props["aria-label"] === "string" ? props["aria-label"] : undefined
+  const tip =
+    tooltip === false ? undefined : (tooltip ?? (size?.startsWith("icon") ? label : undefined))
+  const button = (
     <ButtonPrimitive
       data-slot="button"
       aria-busy={loading || undefined}
       disabled={disabled || loading}
       render={render}
       nativeButton={isNative}
-      className={cn(buttonVariants({ variant, size, className }))}
+      className={cn(buttonVariants({ variant, size, shape, className }))}
       {...props}
       {...(content !== undefined ? { children: content } : null)}
     />
   )
+  return tip ? <IconTip label={tip}>{button}</IconTip> : button
 }
 
 export { Button, buttonVariants }

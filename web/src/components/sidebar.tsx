@@ -31,7 +31,7 @@ export function FindButton({ className }: { className?: string }) {
       onClick={() => open()}
       aria-keyshortcuts="F"
       className={cn(
-        "shadow-border-base flex h-8 w-full items-center gap-2 rounded-md bg-background px-2 text-left text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground",
+        "touch-target shadow-border-base flex h-8 w-full items-center gap-2 rounded-md bg-background px-2 text-left text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground",
         className
       )}
     >
@@ -59,7 +59,7 @@ export function Sidebar() {
         <Link
           href="/projects"
           aria-label="Egg home"
-          className="flex size-8 shrink-0 items-center justify-center rounded-md transition-colors duration-(--dur-fast) hover:bg-[var(--ds-gray-alpha-100)]"
+          className="touch-target flex size-8 shrink-0 items-center justify-center rounded-md transition-colors duration-(--dur-fast) hover:bg-[var(--ds-gray-alpha-100)]"
         >
           <NestMark className="size-5" />
         </Link>

@@ -24,7 +24,7 @@ export function PrevNext({ sectionId }: { sectionId: string }) {
             <span className="flex items-center gap-1.5 text-[13px] leading-5 text-muted-foreground">
               <ArrowLeftIcon
                 aria-hidden="true"
-                className="size-3.5 transition-transform duration-(--dur-fast) ease-snappy group-hover:-translate-x-0.5"
+                className="size-3.5"
               />
               Previous
             </span>
@@ -42,7 +42,7 @@ export function PrevNext({ sectionId }: { sectionId: string }) {
               Next
               <ArrowRightIcon
                 aria-hidden="true"
-                className="size-3.5 transition-transform duration-(--dur-fast) ease-snappy group-hover:translate-x-0.5"
+                className="size-3.5"
               />
             </span>
             <span className="text-[15px] leading-6 font-semibold text-foreground">{next.title}</span>

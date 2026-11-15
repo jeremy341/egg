@@ -62,7 +62,7 @@ export function Toc({ sections }: { sections: readonly { id: string; title: stri
               <a
                 href={`#${s.id}`}
                 aria-current={current ? "location" : undefined}
-                className={`flex items-baseline gap-3 py-1.5 text-[0.9375rem] leading-6 underline decoration-transparent underline-offset-4 outline-offset-2 transition-[color,text-decoration-color] duration-(--dur-fast) focus-visible:outline-2 focus-visible:outline-[var(--ds-focus-color)] motion-reduce:transition-none ${
+                className={`touch-target flex items-baseline gap-3 py-1.5 text-[0.9375rem] leading-6 underline decoration-transparent underline-offset-4 outline-offset-2 transition-[color,text-decoration-color] duration-(--dur-fast) focus-visible:outline-2 focus-visible:outline-[var(--ds-focus-color)] motion-reduce:transition-none ${
                   current
                     ? "font-semibold text-foreground"
                     : "text-muted-foreground hover:text-foreground hover:decoration-current"
