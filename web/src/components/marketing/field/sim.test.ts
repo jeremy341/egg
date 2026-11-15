@@ -49,6 +49,14 @@ describe("the bigger sprite", () => {
     return out;
   };
 
+  it("draws four times the size as Scale2x twice, still one connected body", () => {
+    const big = cellsOf(parse(["555", "555", "555"], 4));
+    expect(big.size).toBeLessThan(144);
+    expect(big.size).toBeGreaterThan(110);
+    expect(big.has("6,6")).toBe(true);
+    expect(big.has("0,0")).toBe(false);
+  });
+
   it("draws a lone cell as four, or nine", () => {
     expect(cellsOf(parse(["5"], 2)).size).toBe(4);
     expect(cellsOf(parse(["5"], 3)).size).toBe(9);
