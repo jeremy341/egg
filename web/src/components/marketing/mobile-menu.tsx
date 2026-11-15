@@ -3,27 +3,30 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useTheme } from "next-themes";
-import { ListIcon, MoonIcon, SunIcon, XIcon } from "@phosphor-icons/react";
+import { ArrowUpRightIcon, ListIcon, XIcon } from "@phosphor-icons/react";
 import { isCurrent, type NavItem } from "@/components/marketing/marketing-nav";
 
 const row =
-  "flex min-h-[45px] w-full items-center gap-2 px-4 text-left text-[15px] text-foreground transition-colors duration-(--dur-fast) hover:bg-[var(--ds-gray-alpha-100)] aria-[current=page]:font-medium sm:px-[30px]";
+  "flex h-11 items-center gap-2 px-6 text-[15px] text-muted-foreground transition-colors duration-(--dur-fast) hover:bg-[var(--ds-gray-alpha-100)] hover:text-foreground aria-[current=page]:text-foreground";
 
 /**
- * The header menu below 768px: a 40px "Menu" button and a panel under the bar
- * with every link and the theme switch. Esc, a click on a link, or a click
- * outside close it. Esc and a link click return focus to the button, and
- * tabbing out of the panel closes it. The panel is always in the DOM and
- * toggled with `hidden`, so it adds no layout shift. "Sign in" lives in the
- * bar and moves in here under 360px.
+ * The header menu below md: a 40px button and a panel under the header with
+ * every destination, so sign-in and the dashboard are reachable on a phone.
+ * Closes on a link click, Esc (focus goes back to the button) and a click
+ * outside. The panel is always in the DOM and toggled with `hidden`, so it
+ * adds no layout shift and its entrance plays each time it opens.
  */
-export function MobileMenu({ items }: { items: NavItem[] }) {
+export function MobileMenu({
+  items,
+  repoUrl,
+}: {
+  items: NavItem[];
+  repoUrl: string;
+}) {
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLElement>(null);
   const pathname = usePathname();
-  const { resolvedTheme, setTheme } = useTheme();
 
   useEffect(() => {
     if (!open) return;
@@ -33,7 +36,7 @@ export function MobileMenu({ items }: { items: NavItem[] }) {
       setOpen(false);
       button.current?.focus();
     };
-    const outside = (e: Event) => {
+    const onPointer = (e: PointerEvent) => {
       const t = e.target as Node;
       if (panel.current?.contains(t) || button.current?.contains(t)) return;
       setOpen(false);
@@ -45,35 +48,29 @@ export function MobileMenu({ items }: { items: NavItem[] }) {
     };
 
     document.addEventListener("keydown", onKey);
-    document.addEventListener("pointerdown", outside);
-    document.addEventListener("focusin", outside);
+    document.addEventListener("pointerdown", onPointer);
     wide.addEventListener("change", onWide);
     return () => {
       document.removeEventListener("keydown", onKey);
-      document.removeEventListener("pointerdown", outside);
-      document.removeEventListener("focusin", outside);
+      document.removeEventListener("pointerdown", onPointer);
       wide.removeEventListener("change", onWide);
     };
   }, [open]);
 
-  /* After a link click the browser moves focus to the link target; put it back on the button once it has. */
-  const closeAndReturn = () => {
-    setOpen(false);
-    requestAnimationFrame(() => button.current?.focus({ preventScroll: true }));
-  };
+  const close = () => setOpen(false);
 
   return (
     <>
       <button
         ref={button}
         type="button"
+        aria-label={open ? "Close menu" : "Open menu"}
         aria-expanded={open}
         aria-controls="site-menu"
         onClick={() => setOpen((o) => !o)}
-        className="pressable inline-flex h-10 items-center justify-center gap-2 border px-3 text-[14px] font-medium text-foreground hover:bg-[var(--ds-gray-100)] md:hidden"
+        className="pressable inline-flex size-10 items-center justify-center rounded-md text-muted-foreground hover:bg-[var(--ds-gray-100)] hover:text-foreground md:hidden"
       >
         {open ? <XIcon aria-hidden="true" className="size-[18px]" /> : <ListIcon aria-hidden="true" className="size-[18px]" />}
-        Menu
       </button>
 
       <nav
@@ -82,9 +79,10 @@ export function MobileMenu({ items }: { items: NavItem[] }) {
         aria-label="Site menu"
         hidden={!open}
         onClick={(e) => {
-          if ((e.target as HTMLElement).closest("a")) closeAndReturn();
+          if ((e.target as HTMLElement).closest("a")) close();
         }}
-        className="absolute inset-x-0 top-[calc(100%+8px)] border bg-background py-2 md:hidden"
+        style={{ animationDuration: "180ms" }}
+        className="motion-enter absolute inset-x-0 top-15 border-b bg-background-subtle py-2 shadow-menu md:hidden"
       >
         {items.map((n) =>
           n.href.includes("#") ? (
@@ -102,19 +100,18 @@ export function MobileMenu({ items }: { items: NavItem[] }) {
             </Link>
           )
         )}
+        <a href={repoUrl} target="_blank" rel="noreferrer" className={row}>
+          GitHub
+          <ArrowUpRightIcon aria-hidden="true" className="size-3.5 text-subtle-foreground" />
+          <span className="sr-only">(opens in a new tab)</span>
+        </a>
         <div className="mt-2 border-t pt-2">
-          <Link href="/login" className={`${row} min-[360px]:hidden`}>
+          <Link href="/login" className={row}>
             Sign in
           </Link>
-          <button
-            type="button"
-            onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
-            className={row}
-          >
-            <SunIcon aria-hidden="true" className="hidden size-[18px] dark:block" />
-            <MoonIcon aria-hidden="true" className="size-[18px] dark:hidden" />
-            Switch between light and dark
-          </button>
+          <Link href="/projects" className={row}>
+            Dashboard
+          </Link>
         </div>
       </nav>
     </>

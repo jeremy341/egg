@@ -9,8 +9,7 @@ import { HeadingAnchor } from "./heading-anchor";
 // code block's copy button) are imported where they are used.
 //
 // Vertical rhythm: prose is 17px on a 30px line, and every gap between blocks
-// is a whole number of 30px rows, so the page grid's hairlines fall between
-// lines of text instead of through them.
+// is a whole number of 30px rows, so the page keeps one steady beat.
 
 /** The reading style: 17px on a 30px line, in the reading ink. */
 export const PROSE_TEXT = "text-[17px] leading-[30px] text-reading";
@@ -209,7 +208,7 @@ export function Table({
       aria-label={caption}
       tabIndex={0}
       style={SCROLL_SHADOW}
-      className="mt-[30px] overflow-x-auto border bg-background"
+      className="mt-[30px] overflow-x-auto rounded-md border bg-background"
     >
       <table className={cn("w-full border-collapse text-left text-docs-small", wide && "min-w-[520px]")}>
         <caption className="sr-only">{caption}</caption>
@@ -276,7 +275,7 @@ export function Callout({
 }) {
   const { token, Icon, label } = TONES[tone];
   return (
-    <div role="note" aria-label={label} className="mt-[30px] flex gap-3 border bg-background p-4">
+    <div role="note" aria-label={label} className="mt-[30px] flex gap-3 rounded-md border bg-background-subtle p-4">
       <Icon aria-hidden="true" weight="regular" className={cn("mt-[5px] size-4 shrink-0", iconClass[token])} />
       <div className="min-w-0">
         <p className="text-[15px] leading-6 font-semibold text-foreground">{title}</p>
@@ -285,3 +284,13 @@ export function Callout({
     </div>
   );
 }
+
+/**
+ * The surface a docs page reads on: the app's card (its own background token,
+ * hairline border and 8px corners). The reading text keeps its 68 character
+ * measure inside it; code, tables, steps and callouts use the card's width.
+ * Padding grows with the screen, and stays at 24px at 1280px so the column
+ * keeps its width beside the page list and the "On this page" rail.
+ */
+export const ARTICLE_CARD =
+  "min-w-0 rounded-lg border bg-card px-4 py-6 text-card-foreground sm:px-6 sm:py-8 min-[1440px]:px-10 min-[1440px]:py-10";

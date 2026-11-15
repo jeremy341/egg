@@ -212,7 +212,7 @@ export function WhatCanGoWrong({
   return (
     <>
       <BlockHeading id={id} title={title} level={level} className={gapAbove(level)} />
-      <ul className="mt-[30px] divide-y border bg-background">
+      <ul className="mt-[30px] divide-y overflow-hidden rounded-md border bg-background">
         {items.map((p, i) => (
           <li key={i} className="px-4 py-3 max-sm:px-3">
             <p className="text-[15px] leading-[30px] font-semibold text-foreground">
@@ -264,7 +264,7 @@ export function WorkedExample({
   return (
     <section aria-labelledby={id} className={gapAbove(level)}>
       <BlockHeading id={id} title={`${label}: ${title}`} level={level} />
-      <div className="mt-[15px] divide-y border bg-background">
+      <div className="mt-[15px] divide-y overflow-hidden rounded-md border bg-background">
         <div className="px-4 py-3 max-sm:px-3">
           <Part className={part}>Given</Part>
           <div className={cn(MEASURE, PROSE_TEXT)}>{given}</div>

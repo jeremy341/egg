@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { createReadStream, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
 import { spawn } from "node:child_process";
+import { StringDecoder } from "node:string_decoder";
 import path from "node:path";
 import * as tar from "tar";
 import { config } from "@/server/config";
@@ -186,13 +187,16 @@ export function runProcess(
 
     const pump = (stream: NodeJS.ReadableStream) => {
       let buf = "";
+      // Decode as a stream: a multi-byte character can straddle two chunks.
+      const decoder = new StringDecoder("utf8");
       stream.on("data", (d: Buffer) => {
-        buf += d.toString("utf8");
+        buf += decoder.write(d);
         const parts = buf.split(/\r?\n/);
         buf = parts.pop() ?? "";
         for (const l of parts) if (l.length) opts.onLine?.(l);
       });
       stream.on("end", () => {
+        buf += decoder.end();
         if (buf.length) opts.onLine?.(buf);
       });
     };

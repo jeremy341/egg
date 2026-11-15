@@ -174,7 +174,7 @@ export function renderEnvFile(vars: Record<string, string>): string {
     const escaped = v
       .replace(/\\/g, "\\\\")
       .replace(/"/g, '\\"')
-      .replace(/\r?\n/g, "\\n");
+      .replace(/\r\n|[\r\n]/g, "\\n");
     lines.push(`${k}="${escaped}"`);
   }
   return lines.join("\n") + "\n";

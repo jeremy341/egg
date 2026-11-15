@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { docsHref, groupOf, neighbors } from "../_data/nav";
 
 const card =
-  "group flex min-h-[90px] min-w-0 flex-1 flex-col justify-center gap-1 bg-background px-5 py-3 transition-colors duration-(--dur-fast) hover:bg-[var(--ds-gray-100)] active:translate-y-px max-sm:min-h-[75px] -outline-offset-2";
+  "group flex min-h-[90px] min-w-0 flex-1 flex-col justify-center gap-1 bg-card px-5 py-3 transition-colors duration-(--dur-fast) hover:bg-[var(--ds-gray-100)] active:translate-y-px max-sm:min-h-[75px] -outline-offset-2";
 
 /**
  * The page before and after this one, in reading order, so the docs can be
@@ -16,7 +16,7 @@ export function PrevNext({ sectionId }: { sectionId: string }) {
   const here = groupOf(sectionId);
 
   return (
-    <nav aria-label="Previous and next page" className="mt-[90px] flex flex-col gap-px border bg-border sm:flex-row">
+    <nav aria-label="Previous and next page" className="mt-[90px] flex flex-col gap-px overflow-hidden rounded-md border bg-border sm:flex-row">
       {prev ? (
         <Link href={docsHref(prev.id)} rel="prev" className={card}>
           <span className="flex items-center gap-1.5 text-[13px] leading-5 text-muted-foreground">
@@ -32,7 +32,7 @@ export function PrevNext({ sectionId }: { sectionId: string }) {
           ) : null}
         </Link>
       ) : (
-        <span className="hidden flex-1 bg-background sm:block" aria-hidden="true" />
+        <span className="hidden flex-1 bg-card sm:block" aria-hidden="true" />
       )}
       {next ? (
         <Link href={docsHref(next.id)} rel="next" className={cn(card, "sm:items-end sm:text-right")}>
@@ -49,7 +49,7 @@ export function PrevNext({ sectionId }: { sectionId: string }) {
           ) : null}
         </Link>
       ) : (
-        <span className="hidden flex-1 bg-background sm:block" aria-hidden="true" />
+        <span className="hidden flex-1 bg-card sm:block" aria-hidden="true" />
       )}
     </nav>
   );

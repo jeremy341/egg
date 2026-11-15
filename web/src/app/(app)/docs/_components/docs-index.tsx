@@ -57,14 +57,14 @@ export function DocsIndex() {
             aria-controls={listId}
             autoComplete="off"
             spellCheck={false}
-            className="bg-background pl-8"
+            className="pl-8"
           />
         </div>
       </div>
 
       <div id={listId} className="mt-[30px]">
         {groups.length === 0 ? (
-          <div className="border bg-background p-4">
+          <div className="rounded-md border bg-background-subtle p-4">
             <p className="text-[15px] leading-6 text-muted-foreground">No page matches &ldquo;{query.trim()}&rdquo;.</p>
             <Button variant="outline" size="sm" className="mt-2" onClick={() => setQuery("")}>
               Clear filter
@@ -82,7 +82,7 @@ export function DocsIndex() {
                   {GROUP_NOTES[g.group] ? (
                     <p className="text-[15px] leading-[30px] text-muted-foreground">{GROUP_NOTES[g.group]}</p>
                   ) : null}
-                  <ul className="mt-[15px] divide-y border bg-background">
+                  <ul className="mt-[15px] divide-y overflow-hidden rounded-md border bg-background">
                     {g.sections.map((s) => (
                       <li key={s.id} className="group relative">
                         <Link

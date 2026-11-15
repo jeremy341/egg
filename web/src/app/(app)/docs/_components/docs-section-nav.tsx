@@ -51,7 +51,7 @@ export function DocsSectionNav() {
   }, [open]);
 
   return (
-    <div ref={rootRef} className="sticky top-[var(--topbar-height)] z-20 border-b bg-background min-[1280px]:hidden">
+    <div ref={rootRef} className="sticky top-[var(--topbar-height)] z-20 -mx-4 -mt-6 mb-4 border-b bg-background-subtle lg:-mx-6 min-[1280px]:hidden">
       <button
         ref={buttonRef}
         type="button"
