@@ -12,7 +12,7 @@ export interface Rect {
 export interface Sprite {
   w: number;
   h: number;
-  /** Cells as x, y, shade triples. Shade 0 is a hole: nothing is drawn there, not even the glow. */
+  /** Cells as x, y, shade triples (finer than the frame when it was parsed with a scale). Shade 0 is a hole: nothing is drawn there, not even the glow. */
   cells: Int16Array;
   /** Characters as x, y, char code triples. */
   glyphs: Int16Array;
@@ -39,17 +39,63 @@ export function mirror(frame: Frame): string[] {
   );
 }
 
-export function parse(frame: Frame): Sprite {
+/**
+ * The cells of a frame drawn `k` times as large, as x, y, shade triples. For `k` 2 it is Scale2x,
+ * the classic pixel-art enlargement: each cell becomes four, and a corner where two neighbours
+ * agree and the other two differ takes the neighbour's shade, so the stair-steps of a diagonal
+ * edge are cut into half steps and a big body is rounded instead of being a block-for-block
+ * magnification. Any other `k` is a plain magnification. Characters (beaks, legs) are not body,
+ * and a hole (shade 0) is enlarged and rounded like any shade, so an eye stays an eye.
+ */
+export function upscale(frame: Frame, k: number): number[] {
+  const h = frame.length;
+  const w = frame[0].length;
+  const at = (x: number, y: number) => {
+    const ch = x < 0 || y < 0 || x >= w || y >= h ? "." : frame[y][x];
+    return ch >= "0" && ch <= "5" ? ch : ".";
+  };
+  const cells: number[] = [];
+  const put = (x: number, y: number, ch: string) => {
+    if (ch !== ".") cells.push(x, y, Number(ch));
+  };
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const p = at(x, y);
+      if (k !== 2) {
+        for (let b = 0; b < k; b++) for (let a = 0; a < k; a++) put(x * k + a, y * k + b, p);
+        continue;
+      }
+      const up = at(x, y - 1);
+      const right = at(x + 1, y);
+      const left = at(x - 1, y);
+      const down = at(x, y + 1);
+      put(x * 2, y * 2, left === up && left !== down && up !== right ? up : p);
+      put(x * 2 + 1, y * 2, up === right && up !== left && right !== down ? right : p);
+      put(x * 2, y * 2 + 1, down === left && down !== right && left !== up ? left : p);
+      put(x * 2 + 1, y * 2 + 1, right === down && right !== up && down !== left ? down : p);
+    }
+  }
+  return cells;
+}
+
+/**
+ * A frame as cells and characters. With `k` above 1 the cells are `k` times finer (see upscale)
+ * while the characters stay where they are, in cells of the original frame, so the field can draw
+ * each one `k` cells large.
+ */
+export function parse(frame: Frame, k = 1): Sprite {
   const cells: number[] = [];
   const glyphs: number[] = [];
   frame.forEach((row, y) => {
     for (let x = 0; x < row.length; x++) {
       const ch = row[x];
       if (ch === ".") continue;
-      if (ch >= "0" && ch <= "5") cells.push(x, y, Number(ch));
-      else glyphs.push(x, y, ch.charCodeAt(0));
+      if (ch >= "0" && ch <= "5") {
+        if (k === 1) cells.push(x, y, Number(ch));
+      } else glyphs.push(x, y, ch.charCodeAt(0));
     }
   });
+  if (k > 1) cells.push(...upscale(frame, k));
   return { w: frame[0].length, h: frame.length, cells: Int16Array.from(cells), glyphs: Int16Array.from(glyphs) };
 }
 
