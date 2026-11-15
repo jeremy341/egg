@@ -206,7 +206,7 @@ export const SPECIES: readonly Species[] = [
     name: "chick",
     ramp: {
       dark: ["#b45309", "#d97706", "#f59e0b", "#fbbf24", "#fde68a"],
-      light: ["#b5b5b5", "#8a8a8a", "#5c5c5c", "#363636", "#171717"],
+      light: ["#f6dc7c", "#f0c53e", "#e6aa00", "#cc8c00", "#a96c00"],
     },
     frames: [
       CHICK_STAND,
