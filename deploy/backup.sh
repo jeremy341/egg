@@ -29,11 +29,27 @@ env_value() {
   sed -n "s/^$1=//p" "$ROOT/.env" | tail -n 1
 }
 
+local_env_value() {
+  [ -f "$ROOT/web/.env.local" ] || return 0
+  sed -n "s/^$1=//p" "$ROOT/web/.env.local" | tail -n 1
+}
+
 if [ -z "${EGG_DB:-}" ]; then
   data_dir=$(env_value EGG_DATA_DIR)
+  configured_url=${DATABASE_URL:-$(env_value DATABASE_URL)}
+  [ -n "$configured_url" ] || configured_url=$(local_env_value DATABASE_URL)
+  # Do not silently back up a different database when a non-default URL is configured.
   if [ -n "$data_dir" ]; then
+    case "$configured_url" in
+      ''|file:/data/egg.db) ;;
+      *) echo "DATABASE_URL is not the default; set EGG_DB to the actual database path." >&2; exit 1 ;;
+    esac
     EGG_DB=$data_dir/egg.db
   else
+    case "$configured_url" in
+      ''|file:./data/egg.db) ;;
+      *) echo "DATABASE_URL is not the default; set EGG_DB to the actual database path." >&2; exit 1 ;;
+    esac
     EGG_DB=$ROOT/web/data/egg.db
   fi
 fi
@@ -71,18 +87,18 @@ trap 'rm -f "$tmp" "$tmp.gz"' EXIT INT TERM
 
 node_vacuum='const {createClient}=require("@libsql/client");const c=createClient({url:"file:"+process.argv[1]});c.execute("VACUUM INTO \x27"+process.argv[2]+"\x27").then(()=>{c.close()},e=>{console.error(e.message);process.exit(1)})'
 
-if command -v sqlite3 >/dev/null 2>&1; then
+if [ -z "${EGG_CONTAINER_DB:-}" ] && command -v sqlite3 >/dev/null 2>&1; then
   echo "Backing up with sqlite3 .backup"
   sqlite3 "$EGG_DB" ".timeout 10000" ".backup '$tmp'"
 elif command -v docker >/dev/null 2>&1 \
   && [ -f "$ROOT/compose.yaml" ] \
-  && [ "$EGG_DB" = "$(env_value EGG_DATA_DIR)/egg.db" ] \
+  && { [ -n "${EGG_CONTAINER_DB:-}" ] || [ "$EGG_DB" = "$(env_value EGG_DATA_DIR)/egg.db" ]; } \
   && [ -n "$(cd "$ROOT" && docker compose ps -q app 2>/dev/null)" ]; then
   # The copy is written into the data folder (which the app container can write to),
   # compressed from there, and removed again by the container.
   echo "Backing up with VACUUM INTO inside the app container"
-  raw=$(dirname "$EGG_DB")/.backup-$stamp.tmp
-  (cd "$ROOT" && docker compose exec -T app node -e "$node_vacuum" /data/egg.db "/data/.backup-$stamp.tmp")
+  raw=${EGG_DATA_MOUNT:-$(dirname "$EGG_DB")}/.backup-$stamp.tmp
+  (cd "$ROOT" && docker compose exec -T app node -e "$node_vacuum" "${EGG_CONTAINER_DB:-/data/egg.db}" "/data/.backup-$stamp.tmp")
   gzip -c "$raw" > "$tmp.gz" || { (cd "$ROOT" && docker compose exec -T app rm -f "/data/.backup-$stamp.tmp"); exit 1; }
   (cd "$ROOT" && docker compose exec -T app rm -f "/data/.backup-$stamp.tmp")
 elif command -v node >/dev/null 2>&1 && [ -d "$ROOT/web/node_modules/@libsql" ]; then

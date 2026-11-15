@@ -271,23 +271,6 @@ export function probeDirectory(dir, fs = { mkdirSync, writeFileSync, rmSync }) {
 
 const errorCode = (error) => (error && typeof error.code === "string" ? error.code : error instanceof Error ? error.message : "unknown error");
 
-// --------------------------------------------------------------------- docker
-
-/**
- * `runner` is BUILD_RUNNER (docker when unset). `dockerWorks` is whether `docker info` succeeded.
- * A missing Docker only matters for the first build, so it is a warning, never a blocker.
- */
-export function checkDocker({ runner, dockerWorks }) {
-  const name = "Docker";
-  const mode = String(runner ?? "").trim() || "docker";
-  if (mode !== "docker" && mode !== "local") {
-    return result(name, false, "blocker", `BUILD_RUNNER is "${mode}"`, "Set BUILD_RUNNER=docker or BUILD_RUNNER=local in .env.local.");
-  }
-  if (mode === "local") return result(name, true, "warning", "BUILD_RUNNER=local: builds run on this computer, so only deploy code you trust");
-  if (dockerWorks) return result(name, true, "warning", "Docker is running");
-  return result(name, false, "warning", "Docker is not running. Builds need Docker, or BUILD_RUNNER=local", "Start Docker Desktop (or the Docker service), or set BUILD_RUNNER=local in .env.local. Egg itself starts without it.");
-}
-
 // ------------------------------------------------------------ system and misc
 
 const OS_NAMES = { win32: "Windows", darwin: "macOS", linux: "Linux" };

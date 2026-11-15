@@ -11,7 +11,22 @@
 #
 # Caddy replaces any X-Forwarded-For sent by the client with the real address, which is what
 # TRUST_PROXY=1 relies on. The app is never published on a port of its own: only Caddy is.
+#
+# The GitHub webhook is public and unauthenticated until its signature is checked, so Caddy
+# refuses a body over 5 MiB before the app sees it. The app holds the same cap (MAX_BODY_BYTES in
+# web/src/app/api/webhooks/github/route.ts) and also limits concurrent webhook reads, so this line
+# is a backstop, not the only check. Keep the two values equal.
+#
+# The stock caddy:2 image cannot rate-limit requests or cap concurrent connections per path:
+# both need a third-party module, which this file does not add. For those limits, use your
+# firewall or cloud provider's request limits on /api/webhooks/github (see docs/selfhost).
 {$APP_HOST} {
 	encode zstd gzip
+
+	@github path /api/webhooks/github
+	request_body @github {
+		max_size 5MiB
+	}
+
 	reverse_proxy app:3000
 }

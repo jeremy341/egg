@@ -24,7 +24,27 @@ if [ ! -f .env ]; then
 fi
 
 echo "== Backup first (to run it by hand: sh deploy/backup.sh)"
-EGG_SKIP_IF_MISSING=1 sh deploy/backup.sh
+# Inspect the running container: its effective environment and mount are the
+# source of truth even when Compose interpolation or shell overrides are used.
+container=$(docker compose ps -q app)
+if [ -z "$container" ]; then
+  echo "The app container must be running so its database can be identified and backed up." >&2
+  exit 1
+fi
+db_url=$(docker compose exec -T app node -p 'process.env.DATABASE_URL || ""' | tr -d '\r')
+data_mount=$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Source}}{{end}}{{end}}' "$container")
+case "$db_url" in
+  file:/data/*) container_db=${db_url#file:} ;;
+  *) echo "Cannot automatically back up the configured DATABASE_URL; back it up separately before upgrading." >&2; exit 1 ;;
+esac
+case "$container_db" in
+  *".."*|*"?"*|*"#"*) echo "Unsupported database path; back it up separately before upgrading." >&2; exit 1 ;;
+esac
+if [ -z "$data_mount" ]; then
+  echo "Cannot identify the app's /data mount; refusing to upgrade without a backup." >&2
+  exit 1
+fi
+EGG_SKIP_IF_MISSING=0 EGG_DB="$data_mount/${container_db#/data/}" EGG_CONTAINER_DB="$container_db" EGG_DATA_MOUNT="$data_mount" sh deploy/backup.sh
 
 if [ -d .git ]; then
   echo "== git pull"

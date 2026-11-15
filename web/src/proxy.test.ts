@@ -29,11 +29,15 @@ describe("pages that stay public", () => {
     "/",
     "/login",
     "/stats",
+    "/nest-status",
+    "/api/status/nest",
     "/status/abc",
     "/api/analytics/script",
     "/api/collect/x",
     "/api/v1/projects",
     "/api/mcp",
+    "/api/builds/upload",
+    "/api/builds/env",
   ])("lets a signed-out visitor through to %s", (path) => {
     const res = proxy(request(path));
     expect(res.headers.get("location")).toBeNull();
@@ -51,6 +55,16 @@ describe("the proxy matcher", () => {
     expect(asRegex.test("/icons/mark.svg")).toBe(true);
     expect(asRegex.test("/api/v1/projects/xpng")).toBe(false);
     expect(asRegex.test("/api/tokens/mysvg")).toBe(false);
+  });
+
+  it("skips the two build routes so a 500 MB upload streams straight through, and nothing else under /api", async () => {
+    const { config } = await import("@/proxy");
+    const [pattern] = config.matcher;
+    const skip = pattern.slice(pattern.indexOf("(?!") + 3, pattern.indexOf(").*)"));
+    const asRegex = new RegExp(`^/(?:${skip.replace(/\//g, "\/")})`);
+    expect(asRegex.test("/api/builds/upload")).toBe(true);
+    expect(asRegex.test("/api/builds/env")).toBe(true);
+    expect(asRegex.test("/api/build")).toBe(false);
   });
 });
 

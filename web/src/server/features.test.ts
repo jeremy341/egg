@@ -76,10 +76,10 @@ describe("analytics collection and summary", () => {
     const person = (ip: string) => ({ ip, ua: "Mozilla/5.0 Firefox" });
 
     expect(await recordPageview(key, { p: "/", r: "https://news.example.com/x" }, person("1.1.1.1"), now)).toBe(true);
-    expect(await recordPageview(key, { p: "/about?x=1" }, person("2.2.2.2"), new Date(now.getTime() + 5_000))).toBe(true);
+    expect(await recordPageview(key, { p: "/about?x=1", pt: 1 }, person("2.2.2.2"), new Date(now.getTime() + 5_000))).toBe(true);
     // The same address inside a second is dropped, a later view is counted.
-    expect(await recordPageview(key, { p: "/about" }, person("2.2.2.2"), new Date(now.getTime() + 5_200))).toBe(false);
-    expect(await recordPageview(key, { p: "/about" }, person("2.2.2.2"), new Date(now.getTime() + 9_000))).toBe(true);
+    expect(await recordPageview(key, { p: "/about", pt: 1 }, person("2.2.2.2"), new Date(now.getTime() + 5_200))).toBe(false);
+    expect(await recordPageview(key, { p: "/about", pt: 1 }, person("2.2.2.2"), new Date(now.getTime() + 9_000))).toBe(true);
     expect(await recordPageview(key, { p: "/" }, { ip: "3.3.3.3", ua: "Googlebot/2.1" }, now)).toBe(false);
     expect(await recordPageview("nda_unknown", { p: "/" }, person("4.4.4.4"), now)).toBe(false);
     expect(await recordPageview("wrong", { p: "/" }, person("4.4.4.4"), now)).toBe(false);

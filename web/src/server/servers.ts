@@ -1,4 +1,4 @@
-import { and, eq, isNull, ne, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { audit } from "@/server/audit";
 import { config } from "@/server/config";
@@ -8,6 +8,8 @@ import { HttpError, notFound } from "@/server/http";
 import { terminals } from "@/server/terminal";
 import { NestSession, SshError } from "@/server/ssh/connection";
 import { generateServerKey } from "@/server/ssh/keys";
+import { assertNoAccountCleanup, assertNoServerCleanup } from "@/server/cleanup-guards";
+import { DEFAULT_CONTAINER_BUILD_MEMORY_MB } from "@/lib/build-memory";
 import {
   probeIssues,
   probeSession,
@@ -79,6 +81,7 @@ export async function createServer(
   target?: { host: string; port: number }
 ) {
   const username = validateNestUsername(nestUsername);
+  await assertNoAccountCleanup(userId);
   const db = await getDb();
 
   const mine = await listServers(userId);
@@ -137,6 +140,7 @@ export async function createServer(
     publicKey: key.publicKey,
     privateKeyEnc: seal(key.privateKey, `server:${id}`),
     keyFingerprint: key.fingerprint,
+    buildMemoryMb: DEFAULT_CONTAINER_BUILD_MEMORY_MB,
     status: "pending",
     createdAt: new Date(),
   });
@@ -145,6 +149,7 @@ export async function createServer(
 
 /** Replace the key. The old one stops working once removed in the dashboard. */
 export async function rotateServerKey(userId: string, serverId: string) {
+  await assertNoServerCleanup(userId, serverId, true);
   const server = await getServerForUser(userId, serverId);
   const key = generateServerKey(`egg:${server.nestUsername}`);
   const db = await getDb();
@@ -178,39 +183,48 @@ export async function deleteServer(
   serverId: string,
   options: { deleteProjects?: boolean } = {}
 ) {
+  await assertNoServerCleanup(userId, serverId);
   const server = await getServerForUser(userId, serverId);
   // Root shells opened with this server's key must not outlive the key.
   await terminals().closeAllForUser(userId, "disabled", { serverId: server.id });
   const db = await getDb();
-  const projects = await db
-    .select({ id: schema.projects.id })
-    .from(schema.projects)
-    .where(eq(schema.projects.serverId, server.id));
   const deleteProjects = options.deleteProjects === true;
-
-  if (deleteProjects || projects.length === 0) {
-    // Foreign keys remove the projects, deployments, logs, domains and samples with it.
-    await db.delete(schema.servers).where(eq(schema.servers.id, server.id));
-  } else {
-    // The projects need the record to point at. Drop the key and the pinned host,
-    // so nothing can connect until the account is connected again.
-    await db
-      .update(schema.servers)
-      .set({
-        status: "disconnected",
-        publicKey: "",
-        keyFingerprint: "",
-        privateKeyEnc: seal("removed", `server:${server.id}`),
-        hostKeyFingerprint: null,
-        lastError: null,
-        probe: null,
-      })
-      .where(eq(schema.servers.id, server.id));
-  }
+  let projectCount = 0;
+  await db.transaction(async (tx) => {
+    // A cleanup can start while the terminal manager is closing its sessions.
+    // Recheck alongside the destructive write so cleanup keeps its keys and records.
+    const cleanup = await tx.select({ id: schema.cleanupJobs.id }).from(schema.cleanupJobs)
+      .leftJoin(schema.cleanupItems, eq(schema.cleanupItems.cleanupJobId, schema.cleanupJobs.id))
+      .where(and(eq(schema.cleanupJobs.userId, userId), inArray(schema.cleanupJobs.state, ["draining", "running", "failed"]),
+        sql`(${schema.cleanupJobs.scope} = 'account' or ${schema.cleanupItems.serverId} = ${server.id})`)).get();
+    if (cleanup) throw new HttpError(409, "Cleanup is in progress for this server. Remote access is temporarily paused.", "cleanup_in_progress");
+    const projects = await tx.select({ id: schema.projects.id }).from(schema.projects)
+      .where(eq(schema.projects.serverId, server.id));
+    projectCount = projects.length;
+    if (deleteProjects || projects.length === 0) {
+      // Foreign keys remove the projects, deployments, logs, domains and samples with it.
+      await tx.delete(schema.servers).where(and(eq(schema.servers.id, server.id), eq(schema.servers.userId, userId)));
+    } else {
+      // The projects need the record to point at. Drop the key and the pinned host,
+      // so nothing can connect until the account is connected again.
+      await tx
+        .update(schema.servers)
+        .set({
+          status: "disconnected",
+          publicKey: "",
+          keyFingerprint: "",
+          privateKeyEnc: seal("removed", `server:${server.id}`),
+          hostKeyFingerprint: null,
+          lastError: null,
+          probe: null,
+        })
+        .where(and(eq(schema.servers.id, server.id), eq(schema.servers.userId, userId)));
+    }
+  });
   await audit(userId, "server.disconnect", null, {
     server: server.nestUsername,
-    projectsDeleted: deleteProjects ? projects.length : 0,
-    projectsKept: deleteProjects ? 0 : projects.length,
+    projectsDeleted: deleteProjects ? projectCount : 0,
+    projectsKept: deleteProjects ? 0 : projectCount,
   });
 }
 
@@ -228,7 +242,7 @@ export const HOST_KEY_FINGERPRINT = /^SHA256:[A-Za-z0-9+/]{43}$/;
  */
 export async function connectToServer(
   server: ServerRow,
-  opts: { confirmHostKey?: string } = {}
+  opts: { confirmHostKey?: string; allowDuringCleanup?: boolean; cleanupExecutor?: boolean } = {}
 ): Promise<NestSession> {
   if (server.status === "disconnected") {
     throw new HttpError(
@@ -246,12 +260,45 @@ export async function connectToServer(
     );
   }
   const privateKey = open(server.privateKeyEnc, `server:${server.id}`);
-  const session = await NestSession.connect({
+  const db = await getDb();
+  const operationId = opts.cleanupExecutor ? null : newId();
+  if (operationId) {
+    // SQLite may reject competing write transactions immediately. The cleanup
+    // check and reservation must remain atomic, so retry only lock contention.
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await db.transaction(async (tx) => {
+          if (!opts.allowDuringCleanup) {
+            const active = await tx.select({ id: schema.cleanupJobs.id }).from(schema.cleanupJobs)
+              .leftJoin(schema.cleanupItems, eq(schema.cleanupItems.cleanupJobId, schema.cleanupJobs.id))
+              .where(and(eq(schema.cleanupJobs.userId, server.userId), sql`${schema.cleanupJobs.state} in ('draining', 'running', 'failed')`,
+                sql`(${schema.cleanupJobs.scope} = 'account' or ${schema.cleanupItems.serverId} = ${server.id})`)).get();
+            if (active) throw new HttpError(409, "Cleanup is in progress. Remote access is paused.", "cleanup_in_progress");
+          }
+          await tx.insert(schema.cleanupOperations).values({ id: operationId, userId: server.userId, serverId: server.id, openedAt: new Date() });
+        });
+        break;
+      } catch (err) {
+        if (attempt >= 49 || !(err instanceof Error) || !/SQLITE_BUSY|SQLITE_LOCKED/.test(err.message)) throw err;
+        await new Promise((resolve) => setTimeout(resolve, 20 + attempt * 5));
+      }
+    }
+  }
+  let session: NestSession;
+  try {
+    session = await NestSession.connect({
     host: server.host,
     port: server.port,
     username: server.nestUsername,
     privateKey,
     pinnedHostKey: pinned ?? opts.confirmHostKey,
+    });
+  } catch (err) {
+    if (operationId) await db.delete(schema.cleanupOperations).where(eq(schema.cleanupOperations.id, operationId));
+    throw err;
+  }
+  if (operationId) session.onClosed(() => {
+    void db.delete(schema.cleanupOperations).where(eq(schema.cleanupOperations.id, operationId)).catch(() => {});
   });
   if (!pinned && session.hostKeyFingerprint) {
     try {
@@ -271,9 +318,10 @@ export async function connectToServer(
 /** Run `fn` with a session and always close it. */
 export async function withServerSession<T>(
   server: ServerRow,
-  fn: (session: NestSession) => Promise<T>
+  fn: (session: NestSession) => Promise<T>,
+  opts: { allowDuringCleanup?: boolean; cleanupExecutor?: boolean } = {}
 ): Promise<T> {
-  const session = await connectToServer(server);
+  const session = await connectToServer(server, opts);
   try {
     return await fn(session);
   } finally {
@@ -320,7 +368,8 @@ export async function testServer(
       return { ok: false, error: message, kind: "host-key-unconfirmed", hostKey: seen.hostKeyFingerprint };
     }
 
-    const session = await connectToServer(server, { confirmHostKey: opts.confirmHostKey });
+    // A read-only probe is also how a failed cleanup's connection is repaired.
+    const session = await connectToServer(server, { confirmHostKey: opts.confirmHostKey, allowDuringCleanup: true });
     try {
       const probe = await probeSession(session);
       const issues = probeIssues(probe);

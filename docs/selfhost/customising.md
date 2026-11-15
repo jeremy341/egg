@@ -65,13 +65,19 @@ Check that `--brand-text` is still readable on `--brand-soft`, and that white te
 
 Most of these point at a `--ds-*` scale in the same file. Change the scale to move a whole family of greys or reds at once, or replace the `var(...)` with a colour of your own to change one use.
 
-## The default build memory
+## The build memory and CPU limits
 
-Builds in the Docker sandbox get a memory limit. The default is one number:
+Builds run on the Nest container of each project, and each one gets a memory cap and a CPU cap. Each server stores its own two values. You change them on that server's Container page, in **Build memory (MB)** and **Build CPU limit (cores)**. You do not need to edit code for that.
 
-- `web/src/lib/build-memory.ts:7`: `export const DEFAULT_BUILD_MEMORY_MB = 2048;`
+The code also holds a default for each, in `web/src/lib/build-memory.ts`:
 
-The smallest allowed value is on line 8 (`MIN_BUILD_MEMORY_MB = 512`) and the top of the range when a server reports no memory is on line 10 (`FALLBACK_MAX_BUILD_MEMORY_MB = 8192`). Keep the default between those. This default applies to a server until you set its own value on the Container page. It does not apply to `BUILD_RUNNER=local`, which has no limit.
+- `DEFAULT_CONTAINER_BUILD_MEMORY_MB = 512`, the memory a new server starts with and what the "Use 512 MB" button restores.
+- `BUILD_STEP_FLOOR_MB = 1024`, the least a project with a build step gets while it builds, if the container has room for it.
+- `DEFAULT_BUILD_CPUS = 2`, the CPU default.
+
+Changing these numbers does **not** change what an existing server uses. To change what a server uses, set it on the Container page. A server that still had the old 1024 MB default saved was lowered to 512 MB by a migration. A value you saved yourself was kept. The 1024 MB floor for build steps is applied when a build starts and does not change the saved value.
+
+A project with a build step (a build command, or a build script such as `next build`) gets at least 1024 MB while it builds, as long as the container's memory minus 512 MB is at least 1024 MB. Installs and plain apps use the setting. A build never gets more than the container's memory minus `CONTAINER_RESERVE_MB` (512 MB), which stays free for the app. If that leaves less than `MIN_CONTAINER_CAP_MB` (256 MB, in `web/src/server/deploy/container-build.ts`), the build does not start. The smallest setting is `MIN_BUILD_MEMORY_MB = 512` and the top of the range when a server reports no memory is `FALLBACK_MAX_BUILD_MEMORY_MB = 8192`. The smallest CPU limit is `MIN_BUILD_CPUS = 0.5` and the step is `BUILD_CPU_STEP = 0.25`.
 
 ## Ports
 
@@ -89,4 +95,4 @@ If you change the website port and leave `APP_URL` as it was, sign-in redirects 
 
 On a server run with Docker Compose, the website port is fixed at 3000 inside the network and only Caddy is published (80 and 443). Do not change it there.
 
-Deployed apps use their own ports on the server, and branch previews use ports 20000 to 29999. Those are not Egg settings.
+Deployed apps listen on their own ports on your Nest container, and branch previews use ports 20000 to 29999 there. Those are not Egg settings. You choose an app's port in the project, and Egg picks a preview's port.

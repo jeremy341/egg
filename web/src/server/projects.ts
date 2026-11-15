@@ -1,11 +1,11 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { audit } from "@/server/audit";
 import { pickCloneSettings, type CloneSettings } from "@/server/clone-settings";
 import { newId, open, seal } from "@/server/crypto";
 import { getDb, schema, type Db } from "@/server/db";
 import { pageLimit, selectDeploymentPage, type DeploymentFilter } from "@/server/deployment-page";
-import { RUNTIMES } from "@/server/db/schema";
+import { BUILD_LOCATIONS, RUNTIMES } from "@/server/db/schema";
 import { assertCloneUrl, BuildError } from "@/server/deploy/build";
 import { isValidSlug, slugify } from "@/server/deploy/layout";
 import { ENV_KEY, RESERVED_ENV } from "@/server/deploy/runtime";
@@ -13,6 +13,8 @@ import { assertInstallationOwned, GithubError } from "@/server/github/app";
 import { HttpError, notFound } from "@/server/http";
 import { moveDomainsToPort } from "@/server/domains";
 import { getServerForUser } from "@/server/servers";
+import { assertCleanupAllowsWork } from "@/server/cleanup-guards";
+import { maintenanceBlocksUser } from "@/server/maintenance";
 
 export type ProjectRow = typeof schema.projects.$inferSelect;
 export type DeploymentRow = typeof schema.deployments.$inferSelect;
@@ -71,6 +73,8 @@ export const createProjectInput = z.object({
   buildCommand: command,
   startCommand: command,
   outputDir: z.string().trim().max(200).nullable().optional(),
+  /** Where builds run: "container" (the default) or "github" (a GitHub Actions workflow uploads the release). */
+  buildLocation: z.enum(BUILD_LOCATIONS).optional(),
   port,
   healthPath: z.string().trim().max(200).regex(/^\//, "Must start with /").default("/"),
   autoDeploy: z.boolean().default(true),
@@ -82,8 +86,19 @@ export const createProjectInput = z.object({
   adopted: z.boolean().default(false),
 });
 
+/**
+ * An update changes only what it sends. Zod 4 fills a default into a key that is left out, even
+ * under .partial(), so the defaults of the create schema are removed here first. Otherwise a rename
+ * would silently reset the branch, root folder, health path and auto deploy.
+ */
 export const updateProjectInput = createProjectInput
   .omit({ serverId: true, slug: true, repoUrl: true, repoFullName: true, installationId: true, adopted: true })
+  .extend({
+    productionBranch: createProjectInput.shape.productionBranch.removeDefault(),
+    rootDir: createProjectInput.shape.rootDir.removeDefault(),
+    healthPath: createProjectInput.shape.healthPath.removeDefault(),
+    autoDeploy: createProjectInput.shape.autoDeploy.removeDefault(),
+  })
   .partial();
 
 export type CreateProjectInput = z.infer<typeof createProjectInput>;
@@ -171,6 +186,7 @@ export async function createProject(userId: string, raw: unknown): Promise<Proje
   // The port check and the insert are one write transaction, so two requests for the same
   // port cannot both pass the check before either row exists.
   await db.transaction(async (tx) => {
+    await assertCleanupAllowsWork(tx, userId);
     await assertPortFree(
       tx,
       input.serverId,
@@ -193,6 +209,7 @@ export async function createProject(userId: string, raw: unknown): Promise<Proje
       buildCommand: input.buildCommand || null,
       startCommand: input.startCommand || null,
       outputDir: input.outputDir || null,
+      buildLocation: input.buildLocation ?? "container",
       port: input.port,
       healthPath: input.healthPath,
       autoDeploy: input.adopted ? false : input.autoDeploy,
@@ -225,6 +242,7 @@ export async function updateProject(userId: string, projectId: string, raw: unkn
   ) as Partial<typeof schema.projects.$inferInsert>;
   const newPort = input.port !== undefined && input.port !== project.port ? input.port : null;
   await db.transaction(async (tx) => {
+    await assertCleanupAllowsWork(tx, userId, projectId);
     if (newPort !== null) {
       await assertPortFree(tx, project.serverId, newPort, `Port ${newPort} is already used on this server.`, project.id);
     }
@@ -332,9 +350,8 @@ export async function revealEnvVar(projectId: string, key: string, target: "all"
 
 // ------------------------------------------------------------ deployments
 
-async function allocatePreviewPort(serverId: string): Promise<number> {
-  const db = await getDb();
-  const used = await db
+async function allocatePreviewPort(tx: Tx, serverId: string): Promise<number> {
+  const used = await tx
     .select({ port: schema.deployments.port })
     .from(schema.deployments)
     .innerJoin(schema.projects, eq(schema.projects.id, schema.deployments.projectId))
@@ -375,33 +392,46 @@ export async function enqueueDeployment(
 ): Promise<DeploymentRow> {
   const db = await getDb();
   const id = newId();
-  const port =
-    input.port ??
-    (input.env === "production" ? project.port : await allocatePreviewPort(project.serverId));
-
-  await db.insert(schema.deployments).values({
-    id,
-    projectId: project.id,
-    triggeredBy: input.triggeredBy ?? null,
-    env: input.env,
-    state: "queued",
-    source: input.source,
-    branch: input.branch,
-    commitSha: input.commitSha ?? null,
-    commitMessage: input.commitMessage ?? null,
-    prNumber: input.prNumber ?? null,
-    author: input.author ?? null,
-    port,
-    releaseId: input.releaseId ?? newId(),
-    createdAt: new Date(),
+  const enqueue = () => db.transaction(async (tx) => {
+    await assertCleanupAllowsWork(tx, project.userId, project.id);
+    if (await maintenanceBlocksUser(project.userId, tx)) throw new HttpError(503, "Maintenance is active. New deployments are paused.", "maintenance");
+    const port = input.port ??
+      (input.env === "production" ? project.port : await allocatePreviewPort(tx, project.serverId));
+    await tx.insert(schema.deployments).values({
+      id,
+      projectId: project.id,
+      triggeredBy: input.triggeredBy ?? null,
+      env: input.env,
+      state: "queued",
+      source: input.source,
+      branch: input.branch,
+      commitSha: input.commitSha ?? null,
+      commitMessage: input.commitMessage ?? null,
+      prNumber: input.prNumber ?? null,
+      author: input.author ?? null,
+      port,
+      releaseId: input.releaseId ?? newId(),
+      createdAt: new Date(),
+    });
+    await tx.insert(schema.jobs).values({
+      id: newId(),
+      type: jobType,
+      deploymentId: id,
+      state: "queued",
+      createdAt: new Date(),
+    });
   });
-  await db.insert(schema.jobs).values({
-    id: newId(),
-    type: jobType,
-    deploymentId: id,
-    state: "queued",
-    createdAt: new Date(),
-  });
+  // SQLite can reject a concurrent write transaction immediately. Retry only lock
+  // contention; constraint and application errors must reach the caller unchanged.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await enqueue();
+      break;
+    } catch (err) {
+      if (attempt >= 49 || !(err instanceof Error) || !/SQLITE_BUSY|SQLITE_LOCKED/.test(err.message)) throw err;
+      await new Promise((resolve) => setTimeout(resolve, 20 + attempt * 5));
+    }
+  }
   return (await db.select().from(schema.deployments).where(eq(schema.deployments.id, id)).get())!;
 }
 
@@ -483,13 +513,22 @@ export async function rollback(userId: string, deploymentId: string, via: Action
 export async function cancelDeployment(userId: string, deploymentId: string, via: ActionVia = {}) {
   const { project, dep } = await ownedDeployment(userId, deploymentId);
   const db = await getDb();
-  if (!["queued", "building", "deploying"].includes(dep.state)) {
-    throw new HttpError(409, "That deployment is already finished.", "conflict");
-  }
-  await db
+  // This conditional write races atomically with the worker's activation CAS.
+  // Exactly one side wins: a cancel before activation, or the activation lock.
+  const canceled = await db
     .update(schema.deployments)
     .set({ state: "canceled", finishedAt: new Date(), error: "Canceled" })
-    .where(eq(schema.deployments.id, dep.id));
+    .where(
+      and(
+        eq(schema.deployments.id, dep.id),
+        inArray(schema.deployments.state, ["queued", "building", "deploying"]),
+        isNull(schema.deployments.activationStartedAt)
+      )
+    )
+    .returning({ id: schema.deployments.id });
+  if (canceled.length === 0) {
+    throw new HttpError(409, "Activation has started or this deployment is already finished.", "conflict");
+  }
   await db
     .update(schema.jobs)
     .set({ state: "failed", error: "Canceled" })
@@ -553,25 +592,37 @@ export async function deploymentLogs(userId: string, deploymentId: string, after
 export async function deleteProjectRecords(userId: string, projectId: string) {
   const project = await assertOwned(userId, projectId);
   const db = await getDb();
-  // The worker would keep writing a service and folders for a project that no longer exists.
-  const running = await db
-    .select({ id: schema.deployments.id })
-    .from(schema.deployments)
-    .where(
-      and(
-        eq(schema.deployments.projectId, project.id),
-        inArray(schema.deployments.state, ["queued", "building", "deploying"])
+  await db.transaction(async (tx) => {
+    await assertCleanupAllowsWork(tx, userId, projectId);
+    const activeJob = await tx
+      .select({ id: schema.jobs.id })
+      .from(schema.jobs)
+      .innerJoin(schema.deployments, eq(schema.jobs.deploymentId, schema.deployments.id))
+      .where(and(eq(schema.deployments.projectId, project.id), eq(schema.jobs.state, "running")))
+      .get();
+    if (activeJob) {
+      throw new HttpError(409, "A deployment is still stopping for this project. Wait for it to finish, then delete the project.", "conflict");
+    }
+    // The worker would keep writing a service and folders for a project that no longer exists.
+    const running = await tx
+      .select({ id: schema.deployments.id })
+      .from(schema.deployments)
+      .where(
+        and(
+          eq(schema.deployments.projectId, project.id),
+          inArray(schema.deployments.state, ["queued", "building", "deploying"])
+        )
       )
-    )
-    .get();
-  if (running) {
-    throw new HttpError(
-      409,
-      "A deployment is still running for this project. Cancel it or wait for it to finish, then delete the project.",
-      "conflict"
-    );
-  }
-  await db.delete(schema.projects).where(eq(schema.projects.id, project.id));
+      .get();
+    if (running) {
+      throw new HttpError(
+        409,
+        "A deployment is still running for this project. Cancel it or wait for it to finish, then delete the project.",
+        "conflict"
+      );
+    }
+    await tx.delete(schema.projects).where(eq(schema.projects.id, project.id));
+  });
   await audit(userId, "project.delete", null, { name: project.name });
 }
 

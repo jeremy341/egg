@@ -2,6 +2,7 @@ import {
   createCipheriv,
   createDecipheriv,
   createHash,
+  createHmac,
   hkdfSync,
   randomBytes,
   randomUUID,
@@ -67,6 +68,23 @@ export function randomToken(bytes = 32): string {
 
 export function sha256Hex(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+/**
+ * A keyed digest (HMAC-SHA256) for correlating a value without storing it, such
+ * as a rate-limit source. The key is derived from APP_SECRET with a purpose
+ * label, so the digest cannot be recomputed from the database alone and one
+ * purpose's digests never match another's.
+ */
+export function keyedDigestHex(purpose: string, value: string): string {
+  const subkey = hkdfSync(
+    "sha256",
+    Buffer.from(config().APP_SECRET, "utf8"),
+    Buffer.from("nest-deploy-salt"),
+    Buffer.from(`nest-deploy digest ${purpose}`),
+    32
+  );
+  return createHmac("sha256", Buffer.from(subkey)).update(value, "utf8").digest("hex");
 }
 
 export function safeEqual(a: string, b: string): boolean {

@@ -10,7 +10,7 @@ To change the name, colours, ports or build memory, see [customising.md](customi
 | --- | --- |
 | Windows | Full. `pnpm fake-nest` needs WSL (see "Trying everything on one machine"). |
 | Linux | Full. |
-| macOS | The same as Linux. Builds need Docker Desktop, or `BUILD_RUNNER=local`. |
+| macOS | The same as Linux. |
 
 The CI workflow runs the typecheck, lint, tests and the dependency audit on Linux and macOS. The audit fails the Linux run on a high-severity finding. On macOS it only reports it.
 
@@ -19,7 +19,6 @@ The CI workflow runs the typecheck, lint, tests and the dependency audit on Linu
 - **Node.js 22.13 or newer.** The repo pins `pnpm@11.20.0`, and that pnpm needs Node 22.13. (Next.js 16 alone would run on Node 20.9.) Check with `node -v`.
 - **pnpm.** Run `corepack enable`, or install it with `npm install -g pnpm`. On Windows, run either in a terminal opened as administrator if it reports a permission error.
 - **Git.**
-- **Docker**, if you want builds to run in a sandbox. This is the default. You can skip it by setting `BUILD_RUNNER=local` (see "Where builds run").
 - **A server to deploy to.** Egg deploys to a Hack Club Nest container over SSH. You can also try it with a stand-in server on this machine (see "Connecting a server").
 
 ## 1. Get the code and install
@@ -38,13 +37,13 @@ Every command below runs from the `web/` folder.
 pnpm run setup
 ```
 
-Type `pnpm run setup`, not `pnpm setup`. pnpm has a built-in command called `setup` that does something else. This writes `web/.env.local` with a fresh random `APP_SECRET` and `LOCAL_MODE=1`. It never overwrites a file that already exists. If your file is older and has no `LOCAL_MODE=1` line, add it.
+Type `pnpm run setup`, not `pnpm setup`. pnpm has a built-in command called `setup` that does something else. This writes `web/.env.local` with a fresh random `APP_SECRET`, a separate `LOCAL_MODE_SECRET` recovery key, and `LOCAL_MODE=1`. Keep the file private. It never overwrites a file that already exists. If your file is older and has no `LOCAL_MODE=1` line, add it and add a fresh `LOCAL_MODE_SECRET` (for example, `openssl rand -base64 32`).
 
-`LOCAL_MODE=1` is the only switch you need for a private, local install. It lets you sign in on this computer without an outside account. Leave `APP_URL=http://localhost:3000` as it is.
+`LOCAL_MODE=1` enables local sign-in without an outside account. On the first sign-in after this update, enter the `LOCAL_MODE_SECRET` recovery key and choose a password with at least 12 characters. Egg stores only a salted scrypt hash in the database; it does not store your password in `.env.local`. Later sign-ins use the password. Leave `APP_URL=http://localhost:3000` as it is.
 
 You can skip this step. `pnpm egg start` runs setup for you when `.env.local` is missing.
 
-The setup script also writes `DEV_LOGIN=1`. That switch only works with `pnpm dev` and is ignored in a production build. It is harmless to leave, and you can set it to `0`.
+The setup script writes `DEV_LOGIN=0`. You can explicitly set it to `1` for a named development account with `pnpm dev`; it is ignored in a production build. When local mode is on, development sign-in also requires the local password.
 
 ## 3. Start Egg
 
@@ -60,13 +59,13 @@ One command does this, in order:
 4. Starts it on the port in `APP_URL`.
 5. Opens your browser.
 
-Press **Sign in on this computer**. You land on the Projects page as the local owner. Press Ctrl+C to stop Egg.
+On the first sign-in, enter the recovery key and choose a password. After that, enter the password to sign in. Press Ctrl+C to stop Egg.
 
 `pnpm egg start --dev` runs the development server instead. It reloads while you edit code and skips the build.
 
 If you prefer separate steps, `pnpm build` and then `pnpm start` do the same without the checks. Open <http://localhost:3000/login>.
 
-Your data is one file, `web/data/egg.db`. It stays on disk when Egg stops. Back it up together with `APP_SECRET` (see "Backups").
+Your data is in `web/data/egg.db`. It stays on disk when Egg stops. Back it up together with `APP_SECRET` and `.env.local`; the database holds the password hash, and the recovery key in `.env.local` lets you reset the password if you forget it (see "Backups").
 
 The deployment worker runs inside the web process (`RUN_WORKER=1`, which the setup script writes), so one command starts everything. If you set `RUN_WORKER` to anything else, run `pnpm worker` in a second terminal, or deployments stay queued.
 
@@ -79,7 +78,7 @@ pnpm run doctor
 This only checks the computer. It starts nothing. Each check prints one line, and a problem has a `Fix:` line under it.
 
 - A cross (`✗`) stops Egg from starting. `pnpm egg start` runs the same checks and stops on a cross. Examples: Node.js too old, `APP_SECRET` missing or too short, the port already in use, a data folder Egg cannot write to.
-- A warning (`!`) does not stop anything. A common one is "Docker is not running". Builds need Docker, or `BUILD_RUNNER=local` in `.env.local`. Egg itself starts without it.
+- A warning (`!`) does not stop anything. Egg itself starts without the tool a warning names.
 
 The command exits with 1 when there is a cross, and 0 otherwise.
 
@@ -103,12 +102,12 @@ To undo it, run `pnpm run service:remove`. It stops the service and deletes the 
 
 ## What local mode does
 
-`LOCAL_MODE=1` adds one button to the sign-in page. It signs you in as a single owner called "Owner", with no external account.
+`LOCAL_MODE=1` adds sign-in for one local owner called "Owner". The first sign-in uses the private recovery key from `.env.local` to set a user-chosen password. Normal sign-ins use that password. Change it from Account; reset it from the login page with the recovery key. The normal `pnpm dev`, `pnpm start`, `pnpm egg start`, and installed service commands bind local installs to loopback.
 
 - **It is off by default.** Nothing turns it on except you setting `LOCAL_MODE=1`.
 - **It refuses to run on a public address.** If `APP_URL` is not `localhost`, `127.0.0.1` or `[::1]`, Egg stops with an error that names the problem. Anyone who could reach a public address could otherwise sign in as you.
-- **It checks each request too.** The server can listen on every network interface even when `APP_URL` says localhost. The sign-in button works only for requests that arrive on a local address, so someone else on your network cannot use it.
-- **The explicit override.** If you really do host it elsewhere, behind a VPN or an access proxy you control, also set `LOCAL_MODE_ALLOW_REMOTE=1`. Only do this when something else decides who can reach the site.
+- **The recovery key is private.** Anyone who obtains it can reset the local password, so keep `.env.local` private and back it up safely.
+- **The explicit override.** If you host it elsewhere, set `LOCAL_MODE_ALLOW_REMOTE=1` only behind a VPN or access proxy you control. The password protects sign-in, and the network control limits attempts to reach the service.
 - **It skips the Hack Club confirmation.** Turning on the terminal or file changes normally asks you to confirm with Hack Club again. In local mode there is no Hack Club account, so that step is skipped.
 
 You can still set the Hack Club variables later and use both sign-in methods side by side.
@@ -123,7 +122,7 @@ Egg deploys by SSH. A key made just for one server is stored sealed in your data
 
 1. On the Projects page, choose to connect a server and enter your Nest username, the name you log in with, for example `sam-r`.
 2. Egg shows you a public key. Paste it into the SSH Keys page of the Nest dashboard.
-3. Press **Test connection**. The first time, Egg reaches the host, reads its host key, hangs up and shows the fingerprint under **Confirm host key**. Nothing is sent to the server until you check the fingerprint against the one Nest shows for your server and press **Confirm host key**. Egg then pins that key, refuses any other one, and checks the container.
+3. Press **Test connection**. The first time, Egg reaches the host, reads its host key, hangs up and shows the fingerprint under **Confirm host key**. Nothing is sent to the server until you check the fingerprint against the one Nest shows for your server and press **Confirm host key**. Egg then pins that key, refuses any other one, and checks the container. The check only reads. It changes nothing on the container.
 
 The key gives Egg the same access as your own login, so treat the machine that runs Egg accordingly. Removing the key in the Nest dashboard ends its access.
 
@@ -149,12 +148,28 @@ Restart Egg, then add the server. Set the three values first: each server keeps 
 
 ### Where builds run
 
-| `BUILD_RUNNER` | What happens | When to use it |
-| --- | --- | --- |
-| `docker` (default) | Install and build run in a Docker container with memory, CPU and capability limits. | Anything you did not write yourself. |
-| `local` | Install and build run directly on this machine, with no isolation. | You trust the code and Docker is not installed. The worker prints a warning at start. |
+Builds run on the Nest container of each project. The machine that runs Egg, your computer or your server, only clones the repository, packs the source and uploads it over SSH. It does not install or build anything, and it needs no Docker.
 
-Builds happen on the machine running Egg, never on your Nest container. Builds have normal network access, because installing packages needs it.
+Before it uploads anything, Egg looks at the container. It needs:
+
+- Node.js that matches the project's `engines` range, or 22.13 or newer when there is no range.
+- The package manager the lockfile needs: npm, or pnpm or yarn through corepack.
+- Python 3 and `venv`, for a Python project.
+- `systemd-run` and `timeout`.
+- At least 2048 MB of free disk.
+
+If one is missing, the deployment ends with one line that says what to fix, and nothing is uploaded.
+
+The build then runs in a new release folder under a cap, while the running app keeps serving:
+
+- **Memory.** The server's **Build memory (MB)**, 512 MB by default, which covers installs and plain apps. A project with a build step gets at least 1024 MB while it builds, when the container has room for it (its memory minus 512 MB is at least 1024 MB). A build never gets more than the container's memory minus 512 MB, which stays free for the app. If that leaves under 256 MB, the build does not start. There is no swap.
+- **CPU.** The server's **Build CPU limit (cores)**, 2 by default. The build runs at a low priority, so the app gets the CPU first when it is busy.
+- **Time.** 15 minutes. The clone has its own fixed limit of 5 minutes and fails with "The build timed out."
+- **One at a time.** One build runs at a time on a container. Another waits for up to 30 minutes.
+
+A build that fails, runs out of memory, times out or is canceled deletes its new folder. The running release is not touched. An out-of-memory build fails with "The build needed more memory than the cap of N MB. Your app is still running." The second sentence is added only when a release was already serving.
+
+The machine that runs Egg keeps the clone and the packed source in `DEPLOY_WORK_DIR` until the deployment ends, whether it worked or not. Then Egg deletes that folder. The packed source may be 500 MiB at most.
 
 ## Settings, one by one
 
@@ -166,16 +181,13 @@ Every name in the first table is read in `web/src/server/config.ts`. Put them in
 | `APP_SECRET` | none, required | 32 or more characters. Encrypts SSH keys and environment variables. Back it up. Losing it, or changing it, makes every stored key unreadable. |
 | `DATABASE_URL` | `file:./data/egg.db` | The database. A path starting with `file:` is relative to `web/`. |
 | `LOCAL_MODE` | `0` | `1` or `true` turns on the local sign-in button. See "What local mode does". |
+| `LOCAL_MODE_SECRET` | none | Required with `LOCAL_MODE=1`. A private random recovery key from setup, used to set or reset the local password. |
 | `LOCAL_MODE_ALLOW_REMOTE` | `0` | `1` lets `LOCAL_MODE` run when `APP_URL` is not local. Does nothing when `LOCAL_MODE` is off. |
 | `TRUST_PROXY` | `0` | `1` or `true` makes Egg believe the `X-Forwarded-For` and `X-Real-IP` headers for each visitor's address. Set it to `1` only when every request reaches Egg through a reverse proxy you run, which sets those headers itself. Without it every visitor counts as one address: analytics cannot tell visitors apart by address, and the limits on sign-in attempts and invalid access tokens do not apply. On your own computer, leave it off. |
 | `DEV_LOGIN` | `0` | `1` shows a fake sign-in with a name field. Works only with `pnpm dev`. |
 | `HACKCLUB_CLIENT_ID`, `HACKCLUB_CLIENT_SECRET` | empty | Hack Club Auth app credentials. Needed only if you want Hack Club sign-in. |
 | `GITHUB_APP_ID`, `GITHUB_APP_SLUG`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET` | empty | A GitHub App, for private repositories, the repository picker and deploy on push. Set them together. Public repositories deploy by URL without it. Setup is in [backend-setup.md](../backend-setup.md). |
-| `BUILD_RUNNER` | `docker` | `docker` or `local`. See "Where builds run". |
-| `BUILD_IMAGE_NODE` | `node:22-bookworm` | Docker image for Node builds. |
-| `BUILD_IMAGE_PYTHON` | `python:3.12-bookworm` | Docker image for Python builds. |
-| `BUILD_TIMEOUT_SECONDS` | `900` | A build that runs longer than this is stopped. |
-| `DEPLOY_WORK_DIR` | `./data/work` | Where sources are cloned and built, relative to `web/`. |
+| `DEPLOY_WORK_DIR` | `./data/work` | Where sources are cloned and built, relative to `web/`. Each deployment gets a folder here that Egg deletes when the deployment ends. Make sure the disk has room for the clone, the build and the archive (at most 500 MiB) of every deployment that runs at once. |
 | `UNIT_DIR` | `/etc/systemd/system` | Where service files are written on the container. Change only with `fake-nest`. |
 | `NEST_HOST` | `hackclub.app` | The SSH host. Change only with `fake-nest`. |
 | `NEST_PORT` | `22` | The SSH port. Change only with `fake-nest`. |
@@ -185,7 +197,7 @@ These are read elsewhere in the code, not in `config.ts`:
 | Variable | Default | What it does | Read in |
 | --- | --- | --- | --- |
 | `RUN_WORKER` | unset in the code, `1` from the setup script | `1` runs the deployment queue inside the web process. Anything else means run `pnpm worker` yourself. | `web/src/instrumentation.ts` |
-| `WORKER_CONCURRENCY` | `2` | How many deployments run at once. One project never builds twice at the same time. | `web/src/instrumentation.ts`, `web/worker/index.ts` |
+| `WORKER_CONCURRENCY` | `2` | How many deployments run at once. One project never deploys twice at the same time, and one build runs at a time on a container. | `web/src/instrumentation.ts`, `web/worker/index.ts` |
 | `MONITOR_INTERVAL_MS` | `300000` | How often the uptime monitor checks, in milliseconds. `0` turns it off. | `web/src/server/jobs.ts` |
 | `PORT` | `3000` | The port `pnpm start` listens on. Set `APP_URL` to match. | Next.js |
 | `FAKE_NEST_PORT` | `2222` | The port `pnpm fake-nest` listens on. Set `NEST_PORT` to match. | `web/scripts/fake-nest.ts` |
@@ -206,7 +218,7 @@ To use Egg from a terminal or a script, make an access token on the Developer pa
 
 ## Changing the build memory and the Nest username
 
-**Build memory and your apps.** Builds run on the machine that runs Egg, not on your Nest container, so they never use your container’s memory. If Egg shares a machine with your other apps, a build uses that machine’s memory and CPU while it runs, so lower the build memory or run Egg on its own machine. Builds in the Docker sandbox get 2048 MB by default. You change it per server on that server's **Container** page. The allowed range is 512 MB up to the memory the server reports, or up to 8192 MB when it reports none. A build that runs out of memory fails with exit code 137 and says so in its log. The default itself is set in `web/src/lib/build-memory.ts`, see [customising.md](customising.md). `BUILD_RUNNER=local` has no memory limit.
+**Build memory, build CPU and your apps.** The build runs on your Nest container, beside your running app, under a cap. The memory cap is the server's **Build memory (MB)**, 512 MB by default, and never more than the container's memory minus 512 MB. A project with a build step gets at least 1024 MB while it builds, when the container has room for it. The CPU cap is **Build CPU limit (cores)**, 2 by default. You change both per server on that server's **Container** page. Memory can be 512 MB up to the memory the server reports, or up to 8192 MB when it reports none. CPU can be 0.5 cores up to the cores the server reports (2 when it reports none), in steps of 0.25. Servers that still had the old 1024 MB default saved were lowered to 512 MB. A build that goes over its memory cap is stopped with "The build needed more memory than the cap of N MB." and the log says so. A build that wants more CPU than its limit only runs slower. The default memory is set in `web/src/lib/build-memory.ts`, see [customising.md](customising.md).
 
 **Nest username.** This is not an environment variable. You enter it when you connect a server, and it is saved with that server. To change it, disconnect the server and connect it again with the new name, then paste the new public key into the Nest dashboard.
 
@@ -243,12 +255,57 @@ Database changes are applied automatically the first time the new version opens 
 | "Confirm host key" when you press Test connection, and deploys say "Confirm host key: open the Connect page, check the fingerprint of this server and confirm it first." | The first connection to a server waits for you to confirm its fingerprint. | Open the Connect page, press Test connection, then Confirm host key. |
 | "The host key of ... changed" | The server presented a different key from the one you confirmed. Egg sent nothing. | If you expected it, press Disconnect, add the server again and confirm the new fingerprint. |
 | Deployments stay Queued | No worker is running. | Set `RUN_WORKER=1` and restart, or run `pnpm worker`. |
+| A deployment stays Building/Deploying and its job lease is old | The worker stopped renewing its lease. Egg leaves the job blocking because a remote SSH command may continue after its worker disconnects. | Follow **Recovering a stale deployment** below. |
 | No "Sign in on this computer" button | `LOCAL_MODE` is not `1` or `true`, or Egg was not restarted after the change. | Edit `.env.local` and restart. |
 | "Local sign-in only works from this computer" | You opened Egg through a network address, not localhost. | Open <http://localhost:3000>. |
-| A build fails at once with a Docker error | Docker is not running or not installed. | Start Docker, or set `BUILD_RUNNER=local`. |
 | "Egg did not start. Fix the lines marked with a cross, then run this again." | The doctor found a problem that stops Egg. | Read the `Fix:` line under each `✗`. `pnpm run doctor` shows the same list. |
 | "Port 3000 is already in use" | Another program uses the port in `APP_URL`. | Stop it, or change the port in `APP_URL` in `.env.local`. |
-| "Docker is not running. Builds need Docker, or BUILD_RUNNER=local" | A warning, not a stop. Egg starts, but a build fails. | Start Docker, or set `BUILD_RUNNER=local` in `.env.local`. |
+
+### Recovering a stale deployment
+
+An expired lease is not proof that commands on the Nest server stopped. Egg therefore does not automatically free a stale running job. It remains the project's queue guard until an operator has confirmed the worker and its remote work have stopped.
+
+Stop every Egg worker first. For Compose, stop the app as well because it may run the worker when `RUN_WORKER=1`:
+
+```bash
+docker compose stop app worker
+docker compose ps
+```
+
+Also stop any separately run `pnpm worker` process and workers on other hosts. On the affected Nest server, inspect processes for the Egg SSH command and any child command it launched (such as archive extraction or dependency installation). Do not continue while any could still be changing the project's files or service. If you cannot confirm that, leave the job running and investigate first. Never edit the database while a worker may still own the job.
+
+Back up the database, then list running jobs and their deployment IDs. With the default Compose path:
+
+```bash
+sqlite3 "$EGG_DATA_DIR/egg.db" "SELECT id, deployment_id, locked_by, datetime(locked_at / 1000, 'unixepoch') FROM jobs WHERE state = 'running';"
+```
+
+If `DATABASE_URL` points elsewhere, use that database file. For the confirmed stale job, replace the two IDs below and apply the updates in one transaction. A canceled deployment stays canceled; other active deployment states are marked as failed so the user can retry.
+
+```bash
+sqlite3 "$EGG_DATA_DIR/egg.db" <<'SQL'
+BEGIN IMMEDIATE;
+UPDATE jobs
+SET state = 'failed', locked_by = NULL, locked_at = NULL,
+    error = 'Manually recovered after remote work was confirmed stopped'
+WHERE id = 'JOB_ID' AND state = 'running';
+UPDATE deployments
+SET state = 'error',
+    error = 'The worker stopped during this job. It was manually recovered after remote work was confirmed stopped.',
+    finished_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+WHERE id = 'DEPLOYMENT_ID'
+  AND state IN ('queued', 'building', 'deploying')
+  AND EXISTS (
+    SELECT 1 FROM jobs
+    WHERE id = 'JOB_ID' AND deployment_id = 'DEPLOYMENT_ID'
+      AND state = 'failed'
+      AND error = 'Manually recovered after remote work was confirmed stopped'
+  );
+COMMIT;
+SQL
+```
+
+Restart Egg after the transaction. If the deployment had already been canceled, its canceled state is retained and only the confirmed stopped job is released.
 
 ## Run Egg on your own server
 
@@ -279,7 +336,7 @@ Edit `.env` and set three values:
 Create the data folder and give it to the container user (uid 1000). The path must match `EGG_DATA_DIR` in `.env`:
 
 ```bash
-sudo mkdir -p /srv/egg/data/work && sudo chown -R 1000:1000 /srv/egg/data
+sudo mkdir -p /srv/egg/data && sudo chown -R 1000:1000 /srv/egg/data
 ```
 
 Start it:
@@ -296,17 +353,9 @@ Caddy gets and renews the certificate by itself. It listens on ports 80 and 443,
 
 `TRUST_PROXY=1` is set in the example file because every request comes through Caddy. Never set it if the app can be reached without going through Caddy.
 
-### Builds (read this)
+### Builds
 
-The worker runs project builds in Docker, so it mounts the Docker socket. Anyone who can run code in the worker can control Docker, which is root on the server.
-
-The worker is off in the example file. `COMPOSE_PROFILES=builds` is commented out. Turn it on only if you accept the risk above, by removing the `#` from that line. Without it, deployments stay queued.
-
-When you turn it on, set `DOCKER_GID` to the group that owns the socket:
-
-```bash
-stat -c %g /var/run/docker.sock
-```
+Nothing is built on this server. The `worker` service clones each repository, packs the source and sends it to the project's Nest container, where the install and build run under a cap. No service in `compose.yaml` needs the Docker socket or extra privileges. The worker starts with the rest. Without it, deployments stay queued.
 
 ### Backup
 
@@ -314,7 +363,7 @@ stat -c %g /var/run/docker.sock
 sh deploy/backup.sh
 ```
 
-`pnpm run backup` from `web/` does the same. It makes a consistent copy while Egg runs, gzips it into `backups/` and keeps the newest 14. Set `BACKUP_KEEP` to change the number. The copy is useless without `APP_SECRET`, so store the two in different places.
+`pnpm run backup` from `web/` does the same. It makes a consistent copy while Egg runs, gzips it into `backups/` and keeps the newest 14. Set `BACKUP_KEEP` to change the number. For a custom database path, set `EGG_DB` to the actual host file; non-file databases need their own backup process. The copy is useless without `APP_SECRET`, so store the two in different places.
 
 ### Upgrade
 
@@ -322,11 +371,43 @@ sh deploy/backup.sh
 sh deploy/upgrade.sh
 ```
 
-It backs up first (a failed backup stops the upgrade), pulls, rebuilds and restarts. Database changes apply when the app starts.
+It inspects the running app to find its database and backs it up before pulling, rebuilding and restarting. Start the app first: the upgrade stops if it cannot verify and back up a file database mounted under `/data`. Database changes apply when the app starts.
+
+### Drain and clean up Egg-managed deployments
+
+Settings and Account offer **Clean up and delete account**. Project Settings offers the same operation for one project. Type the displayed name and review the final confirmation to schedule it. No cleanup is scheduled merely by opening the page.
+
+New deployments and remote sessions for the affected resources are paused immediately. Egg waits at least five minutes, then waits for active deployment jobs and tracked SSH sessions to settle. The app process runs this durable queue even when its build worker is disabled. An app restart resumes requests that have not started remote work. A drain can be canceled before its first execution; after remote removal begins it cannot be undone.
+
+The delay is not a load-balancer traffic drain: stopping the application causes downtime, and Egg cannot guarantee that application requests complete. Canceling a scheduled cleanup also does not restart queued deployments it already canceled.
+
+Cleanup checks explicit Egg ownership markers before touching service units or project folders. It stops each verified service and checks that it is inactive before removing units and deployed releases. It preserves `shared/`, your GitHub repositories and anything whose ownership it cannot verify. If a server is unreachable, a service cannot stop, or ownership is uncertain, the project/account records and stored credentials remain available for repair and retry. The status panel shows each target and its error. Repair a failed connection on Connect, then retry; another five-minute drain applies.
+
+An interrupted executor is **not** reclaimed automatically. If the page says its worker did not confirm completion, first stop the old app/worker and verify that its remote cleanup commands and terminal sessions have stopped on the affected Nest server. Only then check the verified-idle confirmation and retry. This manual check is necessary because a disconnected SSH channel cannot prove detached remote processes have stopped.
+
+Before account deletion finishes, save the manual-removal links shown in its confirmation: remove Egg's public key in the Nest dashboard and review the GitHub App installation on GitHub. Those permissions can be shared with other projects or people, and this integration cannot safely revoke them automatically. Database backups can retain old records until the operator expires them.
 
 ### Security notes for a server
 
+#### Private vulnerability inbox
+
+Set `SECURITY_REPORT_ADMIN_ID` to the exact Egg database user id of the administrator, then restart the app. The id is returned by `/api/me` while signed in and is also available in the local `users` table. Names and email addresses do not grant access. With this setting empty, the public form refuses submissions and the inbox denies access. The administrator opens `/security/reports`; public visitors submit from `/security#report`.
+
+Reports may be anonymous or include a name and reply address. Egg does not attach the signed-in account or store an IP address with the report. The in-memory limiter uses a hashed trusted client address when available, otherwise a shared client bucket; reverse proxies and hosting logs may independently record request metadata. Anonymous reports have no reply channel. Submitted text and image metadata can still identify a reporter.
+
+Report text, supplied identity, and evidence are sealed with `APP_SECRET` in the database. The inbox accepts up to three PNG/JPEG images of 1 MB and 16 million pixels each; other proof belongs in a Markdown code block. HTML and remote images are not rendered. The inbox holds at most 200 reports and 100 MB of encrypted payloads, and stops accepting reports when full. Submissions have process-local client/global rate limits; operators should also apply request limits at their trusted proxy. The admin may mark reports new, reviewing, or resolved, and permanently delete reports and evidence. Reports stay until deleted; backups have their own retention. Do not open untrusted evidence or execute proof code on a sensitive machine.
+
+#### Instance administration and maintenance
+
+The same exact `SECURITY_REPORT_ADMIN_ID` grants access to `/admin`, which adds an Administration sidebar link to that account. The administrator retains the ordinary project/account tools and can view aggregate account, project, server, queue, cleanup and report counts. The dashboard does not expose other users' SSH keys, environment values, files or terminal output. Changing the configured ID requires an operator restart; names and email addresses are never administrator credentials.
+
+Maintenance can start immediately or use optional start/end times. It is saved in the database and survives app restarts. While active, ordinary browser/API/MCP mutations are refused with `503 maintenance`, and new ordinary deployment jobs stay queued. The configured administrator can keep working. Signed-in people see a notice that refreshes at least every 30 seconds. Sign-in/sign-out, security reports, cancellation, session/token revocation, and recovery of an already-requested cleanup remain available; new cleanup requests are paused. GitHub linking is also paused for ordinary users.
+
+Maintenance is an operational read-only boundary, not a process freeze: requests and deployments already underway may finish, scheduled cleanup and monitoring continue, incoming analytics/report collection remains available, and applications already deployed on Nest keep running. It cannot stop SSH access outside Egg or protect the host during infrastructure changes. Wait for existing jobs and take a verified backup before upgrading. If the settings database cannot be read, mutation requests fail rather than bypassing the maintenance check.
+
+GitHub App webhook events are refused with `503 maintenance` before replay state is recorded, for all repositories including the administrator's. This pauses pushes, pull-request preview creation/removal, repository renames and installation updates. [GitHub does not automatically redeliver failed deliveries](https://docs.github.com/en/webhooks/using-webhooks/handling-failed-webhook-deliveries). After the window, use the App's recent webhook deliveries to redeliver failures; a missed push can alternatively be deployed from Egg. Preview cleanup and integration metadata may remain stale until their events are redelivered. Egg does not persist or automatically replay paused payloads.
+
 - **Request size.** A signed-in JSON request may be up to 256 KB. A larger one is refused with 413.
+- **GitHub webhook intake.** The webhook is public, so it is the one route anyone can send bytes to. Egg refuses a delivery without a `Content-Length` (411), one over 5 MB (413), or one whose `X-Hub-Signature-256` is missing or malformed (401), all before reading the body. At most four deliveries are read at once; more get `503` with `Retry-After`, and GitHub's redelivery can retry them. Caddy's stock build has no rate limiting or connection caps. If you want them, set a request rate limit on `/api/webhooks/github` at your firewall or cloud load balancer. Egg does not need it for memory safety.
 - **Rate limits.** One address may make 20 sign-in attempts a minute, and 60 requests a minute with access tokens that are not recognised. These limits count by address, so they only work when `TRUST_PROXY=1` behind a proxy. The example file sets it. They are kept in memory, so a restart clears them.
 - **Content policy.** The `script-src` rule still allows inline scripts, so a script injected into a page would not be blocked by it. A per-request nonce would close this, but it is not in place yet. The fix is open. The rules against framing, plug-ins and form hijacking are not affected.
-- **The Docker socket.** See "Builds" above.

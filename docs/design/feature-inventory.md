@@ -186,7 +186,7 @@ Common errors: "Could not save. Try again." (client fallback); 403 "Confirm with
   2. In "New Project", read the "We found" summary and press "Use these settings" to fill the fields. Nothing is applied until you press it.
   3. Choose "Nest server", "Project name", "Application preset" (Node.js, Python, Static site, Custom command), "Production branch", "Root directory", "Port your app listens on", and optional "Install command (optional)", "Start command (optional)", "Build command (optional)", and "Output directory" (static only).
   4. Fill any "Environment variables" fields shown from the example env file. An empty field is skipped.
-  5. Optionally tick "Adopt an existing checkout".
+  5. Optionally tick "Start with automatic deploys off".
   6. Press "Deploy". Busy text: "Starting deployment…". You land on the deployment page.
 - **Defaults in the form:** name is the repository name made into a slug; preset Node.js; root `.`; port `3000`; branch is the repository default branch (URL imports start at `main`) (`new-project-flow.tsx:156-165`, `:624-629`). Automatic deploys are on (`server/projects.ts:73`). Health path is `/` (the form has no health path field; change it in Settings).
 - **Limits (server side, `server/projects.ts`):**
@@ -228,9 +228,9 @@ Common errors: "Could not save. Try again." (client fallback); 403 "Confirm with
 - **Mismatch to know:** detection prefers the `packageManager` field, but the build chooses the package manager from the lockfile only (`server/deploy/build.ts:163-169`).
 - **Needs:** sign-in. A private repository needs the GitHub App installation.
 
-### Adopt an existing checkout and container conflict check
+### Start with automatic deploys off and container conflict check
 
-- **Label:** checkbox "Adopt an existing checkout" with "This repository already runs on this container." Section "What is already on this container" with a status line and badges "Blocks the deploy", "Made by Egg", "Good to know" (`new-project-flow.tsx:402-427`, `components/project-conflicts.tsx`).
+- **Label:** checkbox "Start with automatic deploys off" with "For a repository you already run here by hand. Egg does not take over or stop that copy." Once ticked, the note says the first deploy is manual, automatic deploys start only after you confirm it works, and you stop your old process yourself if it holds the port. The option sets the internal `adopted` field. It does not import, take over or stop a running service. Section "What is already on this container" with a status line and badges "Blocks the deploy", "Made by Egg", "Good to know" (`new-project-flow.tsx:402-427`, `components/project-conflicts.tsx`).
 - **What it does:** as soon as name, server and port are valid (600 ms pause), the form asks the container, read-only, whether the new project would collide with anything (`app/api/projects/conflicts/route.ts`, `server/adoption.ts`). The same check runs again at the start of every deploy, before anything is written (`server/deploy/pipeline.ts:360-381`).
 - **Limits:** 20 checks per minute per user (`conflicts/route.ts:11`), 429 "Too many checks. Wait <n> second(s) and try again." The probe has a 60 second timeout (`adoption.ts:256`). The probe never returns command lines, environment or file contents.
 - **What blocks a deploy (`server/adoption.ts:52-223`):**
@@ -829,7 +829,7 @@ How Egg tells what it created from what you made (`server/deploy/layout.ts:61-78
 
 ### Adoption checks
 
-See "Adopt an existing checkout and container conflict check" under Projects. The probe code is in `server/ssh/adoption-probe.ts` and `server/adoption.ts`.
+See "Start with automatic deploys off and container conflict check" under Projects. The probe code is in `server/ssh/adoption-probe.ts` and `server/adoption.ts`.
 
 ---
 

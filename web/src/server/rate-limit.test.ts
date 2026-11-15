@@ -76,7 +76,11 @@ describe("enforceRateLimit", () => {
     expect(RATE_LIMITS.terminalInput.limit).toBe(300);
     expect(RATE_LIMITS.fileWrite.limit).toBe(60);
     expect(RATE_LIMITS.orphanRemoval.limit).toBe(10);
-    for (const r of Object.values(RATE_LIMITS)) expect(r.windowMs).toBe(60_000);
+    expect(RATE_LIMITS.buildUpload).toMatchObject({ limit: 20, windowMs: 60 * 60_000 });
+    expect(RATE_LIMITS.buildEnv).toMatchObject({ limit: 30, windowMs: 60 * 60_000 });
+    for (const [name, r] of Object.entries(RATE_LIMITS)) {
+      if (name !== "buildUpload" && name !== "buildEnv") expect(r.windowMs, name).toBe(60_000);
+    }
   });
 
   it("throws a 429 with a Retry-After header after the cap, per user and per bucket", () => {

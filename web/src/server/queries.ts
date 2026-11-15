@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { and, asc, count, desc, eq, gte, inArray } from "drizzle-orm";
 import { getDb, schema } from "@/server/db";
+import type { BuildLocation } from "@/server/db/schema";
 import { isNestName, ownedParentOf } from "@/server/domain-policy";
 import { notFound } from "@/server/http";
 import { pageLimit, selectDeploymentPage, type DeploymentFilter } from "@/server/deployment-page";
@@ -28,6 +29,7 @@ export type ProjectView = {
   port: number;
   healthPath: string;
   autoDeploy: boolean;
+  buildLocation: BuildLocation;
   /** True when a deploy hook exists. The URL is only ever shown when it is created. */
   hookActive: boolean;
   hookCreatedAt: string | null;
@@ -150,6 +152,7 @@ async function loadProjectViews(userId: string): Promise<ProjectView[]> {
       port: p.port,
       healthPath: p.healthPath,
       autoDeploy: p.autoDeploy,
+      buildLocation: p.buildLocation,
       hookActive: Boolean(p.hookHash),
       hookCreatedAt: p.hookCreatedAt ? p.hookCreatedAt.toISOString() : null,
       notify: notifySummary(p),
