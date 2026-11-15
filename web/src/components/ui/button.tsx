@@ -22,7 +22,7 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/85 disabled:not-aria-busy:border-border disabled:not-aria-busy:bg-muted",
+        default: "bg-primary text-primary-foreground hover:bg-primary-hover disabled:not-aria-busy:border-border disabled:not-aria-busy:bg-muted",
         brand:
           "bg-brand text-brand-foreground hover:brightness-110 active:brightness-95 disabled:not-aria-busy:border-border disabled:not-aria-busy:bg-muted",
         outline:
@@ -35,7 +35,7 @@ const buttonVariants = cva(
           "bg-destructive/10 text-destructive hover:bg-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 disabled:not-aria-busy:border-border disabled:not-aria-busy:bg-muted",
         "destructive-solid":
           "bg-destructive text-destructive-foreground hover:bg-[color-mix(in_oklab,var(--destructive)_88%,var(--foreground))] disabled:not-aria-busy:border-border disabled:not-aria-busy:bg-muted",
-        link: "text-primary underline-offset-4 hover:underline",
+        link: "text-link underline-offset-4 hover:underline",
       },
       size: {
         default:

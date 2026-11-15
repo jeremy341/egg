@@ -23,6 +23,36 @@ import { invalidateStatusPage } from "@/server/status-tags";
 export const FAILURES_BEFORE_DOWN = 2;
 /** How long usage samples are kept. */
 export const SAMPLE_KEEP_MS = 7 * 24 * 60 * 60 * 1000;
+/** Bound parallel SSH probes so one slow container does not delay every other one. */
+export const MONITOR_CONCURRENCY = 4;
+
+/** Ignore malformed or excessive operator settings rather than flooding Nest. */
+export function monitorConcurrency(raw?: string): number {
+  if (!raw || !/^\d+$/.test(raw)) return MONITOR_CONCURRENCY;
+  const n = Number(raw);
+  return Number.isSafeInteger(n) && n >= 1 && n <= 16 ? n : MONITOR_CONCURRENCY;
+}
+
+/** Check every server once, isolating failures while bounding concurrent work. */
+export async function monitorServers<T>(
+  servers: readonly T[],
+  check: (server: T) => Promise<void>,
+  onError?: (err: unknown) => void,
+  concurrency = monitorConcurrency(process.env.MONITOR_CONCURRENCY)
+): Promise<void> {
+  const limit = Number.isFinite(concurrency) ? Math.max(1, Math.floor(concurrency)) : 1;
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(servers.length, limit) }, async () => {
+    while (next < servers.length) {
+      const server = servers[next++];
+      try {
+        await check(server);
+      } catch (err) {
+        onError?.(err);
+      }
+    }
+  }));
+}
 
 type MonitorState = "unknown" | "up" | "down";
 
@@ -311,22 +341,19 @@ async function checkResources(p: ProjectRow, usage: ResourceUsage, now: Date) {
 }
 
 /** Check every connected server once. A server that cannot be reached is skipped. */
-export async function runMonitorPass(onError?: (err: unknown) => void, now = new Date()) {
+export async function runMonitorPass(onError?: (err: unknown) => void, now?: Date) {
   const db = await getDb();
   const servers = await db
     .select()
     .from(schema.servers)
     .where(eq(schema.servers.status, "connected"));
-  for (const server of servers) {
-    try {
-      await checkServer(server, now);
-    } catch (err) {
-      onError?.(err);
-    }
-  }
-  const cutoff = new Date(now.getTime() - SAMPLE_KEEP_MS);
+  // Capture each server's check time as it starts, rather than assigning the
+  // beginning of a long monitoring pass to every later sample.
+  await monitorServers(servers, (server) => checkServer(server, now ?? new Date()), onError);
+  const passFinishedAt = now ?? new Date();
+  const cutoff = new Date(passFinishedAt.getTime() - SAMPLE_KEEP_MS);
   await db.delete(schema.usageSamples).where(lt(schema.usageSamples.at, cutoff));
   await db.delete(schema.projectSamples).where(lt(schema.projectSamples.at, cutoff));
-  await prunePageviews(now);
-  await pruneAlertEvents(now);
+  await prunePageviews(passFinishedAt);
+  await pruneAlertEvents(passFinishedAt);
 }

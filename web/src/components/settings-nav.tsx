@@ -7,9 +7,11 @@ const SECTIONS = [
   { id: "run-heading", label: "Build and Run" },
   { id: "env-heading", label: "Environment Variables" },
   { id: "hook-heading", label: "Deploy Hook" },
+  { id: "jobs-heading", label: "Scheduled Jobs" },
   { id: "notify-heading", label: "Notifications" },
   { id: "alerts-heading", label: "Alerts" },
   { id: "status-page-heading", label: "Status Page" },
+  { id: "cleanup-project-heading", label: "Clean up project" },
   { id: "danger-heading", label: "Delete Project" },
 ] as const;
 
@@ -35,13 +37,13 @@ export function SettingsNav() {
                 className={cn(
                   "touch-target flex h-8 items-center rounded-md px-3 text-sm transition-colors duration-(--dur-fast) focus-visible:outline-offset-[-2px]",
                   active
-                    ? "bg-[var(--ds-gray-alpha-100)] font-medium text-foreground"
+                    ? "bg-selected font-medium text-selected-foreground"
                     : "text-muted-foreground hover:bg-[var(--ds-gray-alpha-100)] hover:text-foreground"
                 )}
               >
                 {s.label}
                 {active ? (
-                  <span aria-hidden="true" className="ml-auto size-1.5 shrink-0 rounded-[1px] bg-foreground" />
+                  <span aria-hidden="true" className="ml-auto size-1.5 shrink-0 rounded-[1px] bg-selected-foreground" />
                 ) : null}
               </a>
             </li>

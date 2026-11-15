@@ -2,6 +2,8 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { DOCS_SECTIONS } from "../_data/nav";
+import { BUILD_STEP_FLOOR_MB, CONTAINER_RESERVE_MB, DEFAULT_CONTAINER_BUILD_MEMORY_MB } from "@/lib/build-memory";
+import { MIN_CONTAINER_CAP_MB } from "@/server/deploy/container-build";
 import { CONTENT } from "./index";
 
 /**
@@ -73,9 +75,26 @@ describe("reference guide pages", () => {
 describe("build memory facts", () => {
   const container = html("container");
   it("gives the default and the range on the container page", () => {
-    expect(container).toContain("2048 MB");
+    expect(DEFAULT_CONTAINER_BUILD_MEMORY_MB).toBe(512);
+    expect(BUILD_STEP_FLOOR_MB).toBe(1024);
+    expect(container).toContain("starts at 512 MB");
+    expect(container).toContain("Use 512 MB");
+    expect(container).toContain("at least 1024 MB");
     expect(container).toContain("512 MB");
     expect(container).toContain("8192 MB");
+    // The old default must not come back as the default.
+    expect(container).not.toMatch(/2048 MB by default|default 2048 MB|Use 2048 MB|1024 MB by default|Use 1024 MB/);
+  });
+  it("says a build never gets more than the container's memory minus the part kept for the app", () => {
+    expect(CONTAINER_RESERVE_MB).toBe(512);
+    expect(MIN_CONTAINER_CAP_MB).toBe(256);
+    expect(container).toContain("memory minus 512 MB");
+    expect(container).toContain("less than 256 MB");
+  });
+  it("describes only builds on the container", () => {
+    for (const id of ["container", "security", "limits", "selfhost", "troubleshooting"]) {
+      expect(html(id), id).not.toMatch(/central build|sandbox|BUILD_RUNNER|Docker socket/i);
+    }
   });
   it("says build memory is per server", () => {
     expect(container).toMatch(/belongs to the server/);

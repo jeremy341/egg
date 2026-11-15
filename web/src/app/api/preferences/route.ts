@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { appearanceCookie } from "@/lib/preferences";
 import { readTextLimited } from "@/server/body-limit";
+import { cookieThemes } from "@/server/custom-themes";
 import { authed, handle, HttpError, ok } from "@/server/http";
 import { getPreferences, updatePreferences } from "@/server/preferences";
 
@@ -31,7 +32,8 @@ export const PATCH = handle(async (req) => {
   res.headers.set("Cache-Control", "no-store");
   res.headers.append(
     "Set-Cookie",
-    appearanceCookie(preferences, req.nextUrl.protocol === "https:")
+    // A custom theme in use travels in the cookie too, so first paint has its colours (see serializeAppearance).
+    appearanceCookie(preferences, req.nextUrl.protocol === "https:", await cookieThemes(user.id))
   );
   return res;
 });

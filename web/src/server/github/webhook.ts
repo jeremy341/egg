@@ -4,6 +4,7 @@ import { isUniqueViolation } from "@/server/db/errors";
 import { assertGitRef, assertGitSha } from "@/server/deploy/build";
 import { attachPullRequest, closePullRequestPreviews } from "@/server/github/pulls";
 import { enqueueDeployment } from "@/server/projects";
+import { maintenanceError, maintenanceState } from "@/server/maintenance";
 
 export type WebhookResult = {
   handled: boolean;
@@ -73,32 +74,69 @@ export function isSafeSha(sha: unknown): sha is string {
   }
 }
 
-const DELIVERY_TTL_MS = 60 * 60_000;
-const DELIVERY_MAX = 5000;
-const deliveries = new Map<string, number>();
-
 /**
- * Remember a GitHub delivery id for an hour. A signed request that is sent
- * again (a replay, or a retry that already worked) is answered without being
- * run again. Returns false when the id has been seen. Per process: another
- * server process keeps its own list, and the push handler's own duplicate
- * check still covers the commit.
+ * Remember the digest of the authenticated request body in the database.
+ * GitHub's delivery header is not covered by the HMAC and cannot be trusted as
+ * the idempotency key. The digest survives process restarts and multiple app
+ * instances. Only the one-way digest is retained; keeping it indefinitely
+ * prevents a captured signed body from becoming valid again after a timeout.
  */
-export function claimDelivery(id: string | null, now = Date.now()): boolean {
-  if (!id) return true;
-  for (const [key, at] of deliveries) {
-    if (now - at > DELIVERY_TTL_MS) deliveries.delete(key);
-    else break; // insertion order is time order
-  }
-  if (deliveries.has(id)) return false;
-  if (deliveries.size >= DELIVERY_MAX) deliveries.delete(deliveries.keys().next().value as string);
-  deliveries.set(id, now);
-  return true;
+export async function claimDelivery(eventHash: string, now = new Date()): Promise<boolean> {
+  const db = await getDb();
+  const inserted = await db
+    .insert(schema.githubWebhookEvents)
+    .values({ eventHash, receivedAt: now })
+    .onConflictDoNothing()
+    .returning({ eventHash: schema.githubWebhookEvents.eventHash });
+  return inserted.length === 1;
 }
 
-/** Forget a delivery whose handling failed, so GitHub's retry is run. */
-export function releaseDelivery(id: string | null) {
-  if (id) deliveries.delete(id);
+/** Forget a failed request so GitHub can retry the exact signed body. */
+export async function releaseDelivery(eventHash: string) {
+  const db = await getDb();
+  await db.delete(schema.githubWebhookEvents).where(eq(schema.githubWebhookEvents.eventHash, eventHash));
+}
+
+/**
+ * GitHub signs the body, not X-GitHub-Event. Require an event-specific payload
+ * shape before claiming a digest, so an unrelated/invalid header cannot burn
+ * the idempotency key for a later correctly labeled delivery.
+ */
+export function matchesWebhookEventShape(event: string, payload: unknown): boolean {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return false;
+  const p = payload as Record<string, unknown>;
+  const repo = p.repository && typeof p.repository === "object" ? (p.repository as Record<string, unknown>) : null;
+  const fullName = typeof repo?.full_name === "string" && repo.full_name.includes("/");
+  const installation = p.installation && typeof p.installation === "object" ? (p.installation as Record<string, unknown>) : null;
+  const pull = p.pull_request && typeof p.pull_request === "object" ? (p.pull_request as Record<string, unknown>) : null;
+  const changes = p.changes && typeof p.changes === "object" ? (p.changes as Record<string, unknown>) : null;
+  const changedRepo = changes?.repository && typeof changes.repository === "object"
+    ? (changes.repository as Record<string, unknown>)
+    : null;
+
+  switch (event) {
+    case "ping":
+      // Ping payloads vary by webhook type; reject clear signatures of other events.
+      return !("ref" in p || "after" in p || "pull_request" in p || "installation" in p || "changes" in p);
+    case "push":
+      return fullName && typeof p.ref === "string" && p.ref.startsWith("refs/") &&
+        typeof p.after === "string" && /^[0-9a-f]{40}$/i.test(p.after);
+    case "installation":
+      // Deletion is the only installation action this app mutates state for.
+      return p.action === "deleted" && Number.isSafeInteger(installation?.id) && Number(installation?.id) > 0;
+    case "pull_request": {
+      const head = pull?.head && typeof pull.head === "object" ? (pull.head as Record<string, unknown>) : null;
+      return fullName && ["opened", "reopened", "synchronize", "ready_for_review", "closed"].includes(String(p.action)) &&
+        Number.isSafeInteger(pull?.number) &&
+        Number(pull?.number) > 0 && typeof head?.ref === "string" && typeof head.sha === "string" &&
+        /^[0-9a-f]{40}$/i.test(head.sha);
+    }
+    case "repository":
+      return fullName && p.action === "renamed" && typeof changedRepo?.name === "object" &&
+        !!changedRepo.name && typeof (changedRepo.name as Record<string, unknown>).from === "string";
+    default:
+      return false;
+  }
 }
 
 /**
@@ -109,6 +147,9 @@ export async function handleGithubEvent(
   event: string,
   payload: unknown
 ): Promise<WebhookResult> {
+  // The route checks before claiming replay state; check again here so a
+  // window starting between those steps cannot start event side effects.
+  if ((await maintenanceState()).active) throw maintenanceError();
   if (event === "ping") return { handled: true, deployments: [], note: "pong" };
   if (event === "installation") return handleInstallation(payload);
   if (event === "pull_request") return handlePullRequest(payload);

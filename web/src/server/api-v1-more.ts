@@ -39,7 +39,6 @@ import {
   createProject,
   createProjectInput,
   deleteEnvVar,
-  deleteProjectRecords,
   deploymentLogs,
   envInput,
   getProjectForUser,
@@ -49,7 +48,7 @@ import {
   updateProject,
 } from "@/server/projects";
 import { projectResources, usageHistory, type UsagePoint } from "@/server/queries";
-import { removeProjectFromServer } from "@/server/runtime-info";
+import { deleteProject } from "@/server/project-delete";
 import { listServers } from "@/server/servers";
 import { statusUrl } from "@/server/status-page";
 
@@ -136,20 +135,12 @@ export async function apiUpdateProject(
 ) {
   requireScope(p, "projects:write");
   // Ownership first, so someone else's project is a 404 whatever was sent.
-  const current = await getProjectForUser(p.userId, projectId);
+  await getProjectForUser(p.userId, projectId);
   const sent = Object.entries(changes).filter(([, v]) => v !== undefined);
   if (sent.length === 0) throw new HttpError(400, "Send at least one setting to change.", "validation");
 
-  // The project service fills a left-out setting with a default (Zod 4 applies a default inside
-  // an optional field). Hand it the current value for those, so a partial change changes only
-  // what was sent.
-  const patch = {
-    productionBranch: current.productionBranch,
-    rootDir: current.rootDir,
-    healthPath: current.healthPath,
-    autoDeploy: current.autoDeploy,
-    ...Object.fromEntries(sent),
-  };
+  // The project service writes only what is sent, so a partial change changes only that.
+  const patch = Object.fromEntries(sent);
   await tagAudit(p, "project.update", () => updateProject(p.userId, projectId, patch), {
     fields: sent.map(([k]) => k).join(", "),
   });
@@ -162,9 +153,8 @@ export async function apiDeleteProject(p: Principal, projectId: string, removeFr
   if (removeFromServer) {
     // This opens an SSH session, so it also spends from the small SSH allowance.
     enforceApiRate(p, "ssh");
-    await removeProjectFromServer(p.userId, projectId);
   }
-  await tagAudit(p, "project.delete", () => deleteProjectRecords(p.userId, projectId), { removedFromServer: removeFromServer });
+  await tagAudit(p, "project.delete", () => deleteProject(p.userId, projectId, { remote: removeFromServer }), { removedFromServer: removeFromServer });
   return { deleted: true, projectId, removedFromServer: removeFromServer };
 }
 
@@ -621,7 +611,7 @@ export const EXPANDED_ENDPOINTS: Endpoint[] = [
     bucket: "write",
     tag: "Projects",
     summary: "Change a project's settings",
-    description: `Change some of a project's settings: production branch, root folder, install, build and start commands, output folder, port, health path and auto-deploy. Send only what changes; at least one field. Takes effect at the next deploy and does not start one. The commands run on the owner's container, so only change them when the user asked. ${NOT_FOUND_NOTE}`,
+    description: `Change some of a project's settings: production branch, root folder, install, build and start commands, output folder, port, health path, and auto-deploy. Send only what changes; at least one field. Takes effect at the next deploy and does not start one. The commands run on the owner's container, so only change them when the user asked. ${NOT_FOUND_NOTE}`,
     pathParams: { projectId },
     body: updateBody,
     response: z.object({ project: projectSchema }),

@@ -1,157 +1,81 @@
 "use client";
 
-import { useState } from "react";
-import { CaretRightIcon } from "@phosphor-icons/react";
+import { BklitBars, Legend, type BarRow } from "@/components/charts/bklit-kit";
+import { bklitThemeStyle } from "@/components/charts/bklit-theme";
 import { describeCount, formatCount, formatDay, type Count } from "@/lib/stats-format";
-import { cn } from "@/lib/utils";
-import { PLOT_H } from "./layout";
+import { TableDisclosure } from "./figures";
+import { STUB_SHARE, countLegend, countSeries } from "./layout";
 
 type Day = { date: string; count: Count };
 
-/** Height of the outlined stub that stands for "1 to 9 that day". Not to scale on purpose. */
-const STUB = 14;
+const SERIES = countSeries("Deployments");
+const LEGEND = countLegend("10 or more, rounded");
 
 /**
- * Total deployments per UTC day, as bars. Three kinds of day are drawn
- * differently so nothing is implied that is not known:
+ * Total deployments per UTC day, as a Bklit bar chart. Three kinds of day are drawn differently
+ * so nothing is implied that is not known:
  *  - a solid bar for a day with 10 or more, to scale and rounded;
- *  - an outlined stub for a day with 1 to 9 ("fewer than 10", not to scale);
- *  - a flat line for a day with none (a real zero, not a missing day).
- * Bars grow once on first mount. Pointing at a day puts it in the caption; the
- * role="img" summary and the table under the chart carry the same facts for
- * screen readers and keyboards.
+ *  - a hatched stub for a day with 1 to 9 ("fewer than 10", not to scale);
+ *  - no bar for a day with none (a real zero, not a missing day).
+ * Pointing at a day names it and its figure. The role="img" summary and the table under the
+ * chart carry the same facts for screen readers and keyboards.
  */
 export function StatsChart({ daily }: { daily: Day[] }) {
-  const [hover, setHover] = useState<number | null>(null);
-  const values = daily.map((d) => ("approx" in d.count ? d.count.approx : 0));
-  const max = Math.max(0, ...values);
+  const max = Math.max(0, ...daily.map((d) => ("approx" in d.count ? d.count.approx : 0)));
   const scaleMax = max >= 10 ? max : 10;
-  const first = daily[0]?.date;
-  const last = daily.at(-1)?.date;
-  const active = hover !== null ? daily[hover] : null;
   const quiet = daily.filter((d) => "approx" in d.count && d.count.approx === 0).length;
   const few = daily.filter((d) => "lessThan" in d.count).length;
 
   const summary =
-    `Total deployments for each of the last ${daily.length} days, in UTC. ` +
+    `Bar chart of total deployments for each of the last ${daily.length} days, in UTC. ` +
     (max >= 10 ? `The busiest day had ${describeCount({ approx: max })}. ` : "No day reached 10. ") +
     `${few} ${few === 1 ? "day" : "days"} had fewer than 10 and ${quiet} had none.`;
 
+  const rows: BarRow[] = daily.map((d) =>
+    "lessThan" in d.count
+      ? { label: formatDay(d.date), values: { value: null, few: scaleMax * STUB_SHARE }, tip: { few: describeCount(d.count) } }
+      : {
+          label: formatDay(d.date),
+          values: { value: d.count.approx, few: null },
+          tip: { value: d.count.approx === 0 ? "none" : describeCount(d.count) },
+        }
+  );
+
   return (
-    <figure>
+    <figure style={bklitThemeStyle}>
       <figcaption className="flex flex-col gap-0.5">
         <span className="text-body font-medium">Deployments per day</span>
-        <span aria-hidden="true" className="tabular min-h-4 text-caption text-muted-foreground">
-          {active
-            ? `${formatDay(active.date)}: ${describeCount(active.count)}`
-            : max >= 10
-              ? `Busiest day: ${describeCount({ approx: max })}`
-              : "No day reached 10"}
+        <span className="tabular text-caption text-muted-foreground">
+          {max >= 10 ? `Busiest day: ${describeCount({ approx: max })}` : "No day reached 10"}
         </span>
       </figcaption>
 
-      <div className="mt-4 grid grid-cols-[2.25rem_minmax(0,1fr)] gap-x-2">
-        <div
-          aria-hidden="true"
-          className={cn("tabular flex flex-col justify-between text-right text-caption text-muted-foreground", PLOT_H)}
-        >
-          <span className="-mt-1">{formatCount({ approx: scaleMax })}</span>
-          <span className="-mb-1">0</span>
-        </div>
-        <div className="relative">
-          <div aria-hidden="true" className="absolute inset-x-0 top-0 border-t border-dashed" />
-          <div
-            role="img"
-            aria-label={summary}
-            className={cn("relative flex items-end gap-[2px] border-b sm:gap-[3px]", PLOT_H)}
-            onPointerLeave={() => setHover(null)}
-          >
-            {daily.map((d, i) => {
-              const isActive = hover === i;
-              const dim = hover !== null && !isActive;
-              const kind = "lessThan" in d.count ? "few" : d.count.approx === 0 ? "none" : "value";
-              const height =
-                kind === "none"
-                  ? "2px"
-                  : kind === "few"
-                    ? `${STUB}%`
-                    : `${Math.max((("approx" in d.count ? d.count.approx : 0) / scaleMax) * 100, 4)}%`;
-              return (
-                <div key={d.date} className="flex h-full min-w-0 flex-1 items-end" onPointerEnter={() => setHover(i)}>
-                  <div
-                    className={cn(
-                      "motion-grow-y w-full transition-[opacity,background-color,border-color] duration-(--dur-fast)",
-                      kind === "value" && (isActive ? "bg-brand" : "bg-foreground"),
-                      kind === "few" && (isActive ? "border border-brand" : "border border-foreground"),
-                      kind === "none" && "bg-foreground"
-                    )}
-                    style={{
-                      height,
-                      opacity: kind === "none" ? (dim ? 0.2 : 0.35) : dim ? 0.45 : 1,
-                      ["--grow-delay" as string]: `${Math.min(i * 8, 240)}ms`,
-                    }}
-                  />
-                </div>
-              );
-            })}
-          </div>
-        </div>
-        <div />
-        <div aria-hidden="true" className="mt-2 flex justify-between text-caption text-muted-foreground">
-          <span>{first ? formatDay(first) : null}</span>
-          <span>{last ? `${formatDay(last)} (today)` : null}</span>
-        </div>
+      <div role="img" aria-label={summary} className="mt-4">
+        <BklitBars
+          rows={rows}
+          series={SERIES}
+          stacked
+          valueMax={max >= 10 ? undefined : scaleMax}
+          height={200}
+          maxLabels={6}
+          showValues={false}
+          formatValue={(n) => formatCount({ approx: n })}
+        />
       </div>
 
-      <ul
-        aria-label="How to read the bars"
-        className="mt-5 flex flex-wrap gap-x-5 gap-y-1.5 text-caption text-muted-foreground"
-      >
-        <li className="flex items-center gap-2">
-          <span aria-hidden="true" className="size-2.5 shrink-0 bg-foreground" />
-          10 or more, rounded
-        </li>
-        <li className="flex items-center gap-2">
-          <span aria-hidden="true" className="size-2.5 shrink-0 border border-foreground" />
-          Fewer than 10 (height not to scale)
-        </li>
-        <li className="flex items-center gap-2">
-          <span aria-hidden="true" className="h-0.5 w-2.5 shrink-0 bg-foreground opacity-35" />
-          No deployments
-        </li>
-      </ul>
+      <Legend className="mt-3 gap-x-5 gap-y-1.5" series={LEGEND} />
+      <p className="mt-1.5 text-caption text-muted-foreground">A day with no bar had no deployments.</p>
 
-      <details className="disclosure mt-6 border-t pt-3">
-        <summary className="touch-target -mx-1 w-fit items-center gap-1.5 rounded-sm px-1 py-1.5 text-label font-medium max-sm:min-h-10">
-          <CaretRightIcon aria-hidden="true" className="disclosure-caret size-4" />
-          Show the numbers as a table
-        </summary>
-        <div className="mt-2 max-h-64 overflow-auto border">
-          <table className="w-full text-left text-label">
-            <caption className="sr-only">Total deployments per UTC day, rounded</caption>
-            <thead className="sticky top-0 bg-background-subtle text-muted-foreground">
-              <tr>
-                <th scope="col" className="w-1/2 px-3 py-2 font-medium">
-                  Day (UTC)
-                </th>
-                <th scope="col" className="px-3 py-2 font-medium">
-                  Deployments
-                </th>
-              </tr>
-            </thead>
-            <tbody className="tabular">
-              {[...daily].reverse().map((d) => (
-                <tr key={d.date} className="border-t">
-                  <th scope="row" className="px-3 py-1.5 font-normal">
-                    <time dateTime={d.date}>{formatDay(d.date)}</time>
-                  </th>
-                  <td className="px-3 py-1.5">{formatCount(d.count)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </details>
+      <TableDisclosure
+        caption="Total deployments per UTC day, rounded"
+        head={["Day (UTC)", "Deployments"]}
+        rows={[...daily].reverse().map((d) => [
+          <time key={d.date} dateTime={d.date}>
+            {formatDay(d.date)}
+          </time>,
+          formatCount(d.count),
+        ])}
+      />
     </figure>
   );
 }

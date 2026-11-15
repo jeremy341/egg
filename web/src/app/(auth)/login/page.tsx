@@ -9,7 +9,9 @@ import { LoadingRegion, Skeleton, SkeletonText } from "@/components/ui/skeleton"
 import { pixel } from "@/lib/fonts";
 import { LOGIN_ERRORS, loginErrorMessage } from "@/lib/login-errors";
 import { config, hackClubConfigured, localModeEnabled } from "@/server/config";
+import { localPasswordConfigured } from "@/server/auth/local-credential";
 import { cn } from "@/lib/utils";
+import { PasswordResetForm } from "@/components/password-reset-form";
 
 export const metadata = { title: "Log in" };
 
@@ -65,11 +67,15 @@ function delay(ms: number): React.CSSProperties {
 async function LoginContent({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; local?: string; method?: string }>;
 }) {
-  const { error } = await searchParams;
+  const { error, local: localFlow, method } = await searchParams;
+  // The optional password sign-in lives on its own views so the usual sign-in stays as it was.
+  const passwordView = method === "password" || method === "reset" ? method : null;
   const hackClub = hackClubConfigured();
   const local = localModeEnabled();
+  const localHasPassword = local ? await localPasswordConfigured() : false;
+  const localReset = local && localHasPassword && localFlow === "reset";
   const dev = config().DEV_LOGIN && process.env.NODE_ENV !== "production";
   // When sign-in is not set up, the note below already says so.
   const showError = error && !(error === "not_configured" && !hackClub && !local);
@@ -104,15 +110,69 @@ async function LoginContent({
             </Notice>
           ) : null}
 
-          {local ? (
-            <form action="/api/auth/local" method="post" className={hackClub ? "mb-3" : undefined}>
-              <Button type="submit" size="lg" className="w-full">
-                Sign in on this computer
-              </Button>
-              <p className="mt-3 text-center text-[13px] text-muted-foreground">
-                Local mode is on, so no account is needed. Anyone who can open this page can sign in.
+          {passwordView === "reset" ? (
+            <PasswordResetForm />
+          ) : passwordView === "password" ? (
+            <form action="/api/auth/password" method="post">
+              <label htmlFor="password-email" className="mb-1.5 block text-[13px] text-muted-foreground">
+                Email
+              </label>
+              <Input id="password-email" name="email" type="email" autoComplete="email" required className="mb-3" />
+              <label htmlFor="password-password" className="mb-1.5 block text-[13px] text-muted-foreground">
+                Password
+              </label>
+              <Input id="password-password" name="password" type="password" autoComplete="current-password" required maxLength={256} className="mb-3" />
+              <Button type="submit" size="lg" className="w-full">Sign in</Button>
+              <p className="mt-3 text-[13px] text-muted-foreground">
+                <Link href="/login?method=reset" className="link">Forgot your password?</Link>
+              </p>
+              <p className="mt-2 text-[13px] text-muted-foreground">
+                <Link href="/login" className="link">Back to sign in</Link>
               </p>
             </form>
+          ) : (
+          <>
+          {local ? (
+            localReset || !localHasPassword ? (
+              <form action="/api/auth/local" method="post" className={hackClub ? "mb-3" : undefined}>
+                <input type="hidden" name="flow" value={localReset ? "reset" : "setup"} />
+                <label htmlFor="local-recovery-key" className="mb-1.5 block text-[13px] text-muted-foreground">
+                  Recovery key from private <code>.env.local</code>
+                </label>
+                <Input id="local-recovery-key" name="recoveryKey" type="password" autoComplete="current-password" required className="mb-3" />
+                {!localReset ? (
+                  <p className="mb-3 text-[12px] text-muted-foreground">
+                    This is the first sign-in after setup. Choose a password; Egg stores only a salted, slow password hash.
+                  </p>
+                ) : null}
+                <label htmlFor="local-new-password" className="mb-1.5 block text-[13px] text-muted-foreground">
+                  {localReset ? "New password (12 characters minimum)" : "Choose a password (12 characters minimum)"}
+                </label>
+                <Input id="local-new-password" name="newPassword" type="password" autoComplete="new-password" minLength={12} maxLength={256} required className="mb-3" />
+                <label htmlFor="local-confirm-password" className="mb-1.5 block text-[13px] text-muted-foreground">
+                  Confirm password
+                </label>
+                <Input id="local-confirm-password" name="confirmPassword" type="password" autoComplete="new-password" minLength={12} maxLength={256} required className="mb-3" />
+                <Button type="submit" size="lg" className="w-full">
+                  {localReset ? "Reset password and sign in" : "Set password and sign in"}
+                </Button>
+                {localReset ? (
+                  <p className="mt-3 text-center text-[13px] text-muted-foreground"><Link href="/login" className="link">Back to sign in</Link></p>
+                ) : null}
+              </form>
+            ) : (
+              <form action="/api/auth/local" method="post" className={hackClub ? "mb-3" : undefined}>
+                <input type="hidden" name="flow" value="login" />
+                <label htmlFor="local-password" className="mb-1.5 block text-[13px] text-muted-foreground">
+                  Local password
+                </label>
+                <Input id="local-password" name="password" type="password" autoComplete="current-password" required className="mb-3" />
+                <Button type="submit" size="lg" className="w-full">Sign in on this computer</Button>
+                <p className="mt-3 text-center text-[13px] text-muted-foreground">
+                  <Link href="/login?local=reset" className="link">Reset with the recovery key</Link>
+                </p>
+              </form>
+            )
           ) : null}
 
           {hackClub ? (
@@ -139,6 +199,10 @@ async function LoginContent({
             </p>
           ) : null}
 
+          <p className="mt-4 text-[13px] text-muted-foreground">
+            <Link href="/login?method=password" className="link">Sign in with a password</Link>
+          </p>
+
           {dev ? (
             <form action="/api/auth/dev" method="post" className="mt-6 border-t pt-5">
               <label htmlFor="dev-name" className="mb-1.5 block text-[13px] text-muted-foreground">
@@ -150,11 +214,23 @@ async function LoginContent({
                   Sign in
                 </Button>
               </div>
+              {local ? (
+                <Input
+                  name="password"
+                  type="password"
+                  autoComplete="current-password"
+                  placeholder="Local password"
+                  required
+                  className="mt-2"
+                />
+              ) : null}
               <p className="mt-2 text-[12px] text-muted-foreground">
                 Shown only because DEV_LOGIN is on and this is not a production build.
               </p>
             </form>
           ) : null}
+          </>
+          )}
         </div>
       </div>
     </main>

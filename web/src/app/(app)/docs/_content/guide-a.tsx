@@ -101,6 +101,45 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
         You need a Hack Club account, a Nest container and a GitHub repository. Nothing else is installed on
         your container ahead of time.
       </P>
+      <P>These docs use the following words in one way only.</P>
+      <List>
+        <li>
+          <B>Container.</B> Your Nest Linux container, the one you log in to with SSH. Your app runs here.
+        </li>
+        <li>
+          <B>Server.</B> Egg’s menus call a Nest container that you have connected to Egg a server. One server is
+          one Nest username.
+        </li>
+        <li>
+          <B>Egg machine.</B> The computer that runs the Egg website and its worker. If you use someone else’s Egg,
+          it is their computer. If you run Egg yourself, it is yours. It clones your repository and packs the source.
+        </li>
+        <li>
+          <B>Worker.</B> The part of Egg that takes queued deployments and runs them.
+        </li>
+        <li>
+          <B>Build.</B> The install and build of your project. It runs on your container, in a new release folder,
+          under a cap.
+        </li>
+        <li>
+          <B>Cap.</B> A hard limit on memory and CPU that the kernel enforces on a build. A build that goes over it
+          is stopped. Your app is not.
+        </li>
+        <li>
+          <B>Archive.</B> The finished build packed into one compressed file, <C>release.tar.gz</C>, for upload.
+        </li>
+        <li>
+          <B>Release.</B> One uploaded build, in its own folder on your container.
+        </li>
+        <li>
+          <B>Production branch.</B> The git branch whose pushes go live. A branch is a named line of commits in
+          your repository.
+        </li>
+        <li>
+          <B>Preview.</B> A build of any other branch. It runs as a second service on its own port, and production
+          keeps running.
+        </li>
+      </List>
       <H3 id="overview-push" />
       {steps("overview", [
         {
@@ -108,7 +147,9 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
           body: (
             <>
               GitHub sends the push to Egg with a signed request. Only projects that match the
-              repository and have <B>Deploy automatically on push</B> turned on get a deployment.
+              repository and have <B>Deploy automatically on push</B> turned on get a deployment. GitHub has to
+              reach Egg’s web address, so an Egg on localhost never hears about pushes. There, press{" "}
+              <B>Deploy</B> or use a deploy hook.
             </>
           ),
         },
@@ -116,32 +157,39 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
           title: "The deployment joins a queue",
           body: (
             <>
-              A worker picks up queued deployments, two at a time by default. It never runs two deployments of
-              the same project together.
+              The worker picks up queued deployments, two at a time by default across all projects. A project never
+              has two running together, so the second one waits as Queued. If no worker is running, every
+              deployment stays Queued.
             </>
           ),
         },
         {
-          title: "The worker builds in a sandbox",
+          title: "The worker clones your repository",
           body: (
             <>
-              Egg clones the branch and runs your install and build commands on the machine that runs Egg, not on
-              your Nest container. The build runs in a Docker container there, with up to 2 GB of memory by default
-              (you can change it per server on the Container page) and 2 CPUs. So a build never uses your container’s
-              memory.
+              This step runs on the Egg machine. Egg clones the newest commit of the branch into a work folder there
+              and packs the source into an archive. The GitHub token is used for the clone and stays on the Egg
+              machine. Nothing is installed or built here, so the Egg machine does not spend its memory or CPU on
+              your build.
+            </>
+          ),
+        },
+        {
+          title: "The build runs on your container",
+          body: (
+            <>
+              Egg first checks your container: the Node.js version, the package manager your lockfile needs, Python 3
+              and venv for a Python project, systemd-run, timeout, and at least 2048 MB of free disk. If a check
+              fails, the deployment ends with one line that says what to fix, and nothing is uploaded. If all pass,
+              Egg uploads the source over SSH and unpacks it into a new release folder next to the release that is
+              running. Your install and build commands run there, then the production install, all under the cap.
               <br />
-              If Egg runs on the same machine as your other apps, a build uses that machine’s memory and CPU while it
-              runs, and can slow them down. Lower the build memory, or run Egg on a separate machine.
-            </>
-          ),
-        },
-        {
-          title: "The release goes to your container",
-          body: (
-            <>
-              The build is packed into one archive and uploaded over SSH into its own folder. Production
-              dependencies are installed there and your environment variables are written to a file that only
-              the service reads.
+              The memory cap is the server’s <B>Build memory (MB)</B>, 512 MB by default, and never more than your
+              container’s memory minus 512 MB. A project with a build step gets at least 1024 MB while it builds, if your container has room for it. The CPU cap is <B>Build CPU limit (cores)</B>. The build gets no swap,
+              runs at a low CPU priority so your app wins when the CPU is busy, and stops after 15 minutes. Your
+              running app keeps serving the whole time. One build runs at a time on a container, and another waits
+              for up to 30 minutes. If the build fails, runs out of memory, times out or is canceled, Egg deletes the
+              new folder and the running release stays in place.
             </>
           ),
         },
@@ -149,8 +197,10 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
           title: "The service switches over",
           body: (
             <>
-              For production, the <C>current</C> link points at the new release and the service restarts. A
-              preview starts its own service on its own port.
+              Egg writes your environment variables to a file that only the service reads. For production, the{" "}
+              <C>current</C> link points at the new release and the service restarts. The app
+              is stopped and started again, so it cannot be reached until the new release answers. A preview starts
+              its own service on its own port, and production is not touched.
             </>
           ),
         },
@@ -158,15 +208,18 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
           title: "Egg waits for an answer",
           body: (
             <>
-              It checks the app on its port for up to 45 seconds. If it never answers, the previous release is
-              switched back on and the deployment is marked Error.
+              Egg asks the app on its port, from your container, for up to 45 seconds. If it never answers, the
+              deployment is marked Error. When an earlier production release exists, Egg switches back to it and
+              checks it for 20 seconds. A first production deployment has nothing to go back to: the service stays
+              registered and systemd keeps restarting it every 3 seconds. Fix the app and deploy again.
             </>
           ),
         },
       ])}
       <P>
         Pushes to your production branch go live. Pushes to any other branch build a preview on a port of its
-        own. The source folder in the worker is deleted when the deployment ends.
+        own. When a deployment ends, whether it worked or not, the worker deletes its folder on the Egg machine.
+        That folder holds the clone and the archive of the source.
       </P>
       <Callout tone="note" title="What it does not do">
         It does not run databases, give a preview a public address on its own, or promise that any application
@@ -178,11 +231,11 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
         [
           ["Deployments per project at once", "One", "The others wait as Queued."],
           ["Deployments running at once, all projects", "2 by default", "The rest wait. A self-hosted worker can change this."],
-          ["Clone", "5 minutes", "The deployment fails with “Could not clone the repository.”"],
-          ["Build time", "15 minutes by default", "The deployment fails with “The build timed out.”"],
-          ["Build sandbox", "2 GB memory, 2 CPUs", "A build that needs more fails inside the sandbox."],
-          ["Build output", "500 MB", "The deployment fails with the size it found."],
-          ["Wait for the app to answer", "45 seconds", "The release is marked Error and the previous one is restored."],
+          ["Clone", "5 minutes", "The deployment fails with “The build timed out.”"],
+          ["Build time", "15 minutes, for install and build together. It cannot be changed.", "The deployment fails with “The build took longer than 15 minutes and was stopped.”"],
+          ["Build cap", "The server’s Build memory (MB), 512 MB by default, at least 1024 MB for a project with a build step when your container has room for it, and never more than your container’s memory minus 512 MB. Build CPU limit (cores), 2 by default. No swap.", "A build that needs more memory is stopped with “The build needed more memory than the cap of N MB.” A build that needs more CPU only runs slower. If the cap would be under 256 MB, the build does not start."],
+          ["Build output", "500 MiB (524.288 MB), measured on the archive", "The deployment fails with the size it found."],
+          ["Wait for the app to answer", "45 seconds", "The deployment is marked Error and the previous release is put back, if there is one."],
         ],
       )}
       {wrong("overview", [
@@ -191,7 +244,8 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
           <>
             Open the project’s Settings, Build and Run, and check that <B>Deploy automatically on push</B> is
             ticked. A project made from a pasted public repository URL is never built by a push, because it
-            does not store the repository name GitHub sends. Press Deploy, or use a deploy hook.
+            does not store the repository name GitHub sends. Press Deploy, or use a deploy hook. GitHub must also be
+            able to reach Egg’s web address.
           </>,
         ],
         [
@@ -202,10 +256,20 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
           </>,
         ],
         [
-          "“The worker stopped while this deployment was running. Try again.”",
+          "“The build needed more memory than the cap of N MB. Your app is still running.”",
           <>
-            The Egg worker restarted mid-build. Redeploy. A running job is treated as dead after one
-            hour.
+            A build went over its cap and was stopped. Your app was not. The second sentence is added only when a
+            release was already serving. Raise <B>Build memory (MB)</B> on the Container page and deploy again,
+            or make the build lighter. The cap never goes above your container’s memory minus 512 MB.
+          </>,
+        ],
+        [
+          "A deployment stays Building or Deploying and does not move",
+          <>
+            The worker stopped or lost its link to the database. Egg does not free the deployment by itself,
+            because a command it started on your container may still be running. Nothing else deploys for this
+            project until the person running Egg follows “Recovering a stale deployment” in the self-host guide.
+            After that the deployment shows Error and you can deploy again.
           </>,
         ],
       ])}
@@ -243,9 +307,10 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
       intro="From nothing to a running app on your Nest container, in four steps. Every button name here is the one on screen."
     >
       <P>
-        Egg signs in to your Nest container with a key made only for it, builds your GitHub repository on its own
-        side, copies the finished build to the container and runs it there as a service. This page is the shortest
-        path through that. Each part has its own page with the full detail.
+        Egg signs in to your Nest container with a key made only for it. It clones your GitHub repository on the
+        Egg machine, the computer that runs Egg, and copies the source to your container. The container builds it
+        there, under a memory and CPU cap, and runs it as a service. This page is the shortest path through that.
+        Each part has its own page with the full detail.
       </P>
       <P>You need four things before you start:</P>
       <List>
@@ -320,10 +385,12 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
           title: "Watch the first deployment",
           body: (
             <>
-              The <B>Build Logs</B> card streams the clone, the install and the build, then the upload and the
-              start. When the state reads Ready, the app is running on your container, and the log ends with “Live
-              on port N. Map your domain to this port in the Nest dashboard.” Pushes to the production branch
-              deploy on their own from now on.
+              The <B>Build Logs</B> card streams the clone, which runs on the Egg machine, then the checks, the
+              upload, the install and build, and the start, which run on your container. When the state reads Ready, the app is
+              running on your container, and the log ends with “Live on port N. Map your domain to this port in the
+              Nest dashboard.” If you imported through the GitHub app, pushes to the production branch deploy on
+              their own from now on. A pasted public address does not. If the state reads Error, read the log from
+              the bottom and see What can go wrong below. Your earlier release keeps running or is put back.
             </>
           ),
         },
@@ -369,14 +436,14 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
           "“Enter a GitHub repository URL such as https://github.com/owner/name”",
           "components/new-project-flow.tsx",
         ],
-        ["Clone", "5 minutes", "The deployment fails with “Could not clone the repository.”", "server/deploy/build.ts"],
+        ["Clone", "5 minutes", "The deployment fails with “The build timed out.”", "server/deploy/build.ts"],
         [
           "Build time",
           "15 minutes by default",
           "The deployment fails with “The build timed out.”",
           "server/config.ts, BUILD_TIMEOUT_SECONDS",
         ],
-        ["Wait for the app to answer", "45 seconds", "The deployment ends as Error and the previous release is put back.", "server/deploy/pipeline.ts"],
+        ["Wait for the app to answer", "45 seconds", "The deployment ends as Error and the previous release is put back, if there is one.", "server/deploy/pipeline.ts"],
         ["Container checks while you fill the form", "20 a minute", "“Too many checks. Wait N seconds and try again.”", "app/api/projects/conflicts/route.ts"],
       ])}
       {wrong("quickstart", [
@@ -480,8 +547,9 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
     >
       <P>
         Connecting a server gives Egg a way into your Nest container and nothing else. You make a key, paste its
-        public half into the Nest dashboard, and Egg uses that key to deploy, restart and read logs. You need a
-        Nest account and your Nest username, the name you log in with, for example <C>sam-r</C>.
+        public half into the Nest dashboard, and Egg uses that key to deploy, restart and read logs. Egg connects
+        from the Egg machine over SSH. You need a Nest account and your Nest username, the name you log in with,
+        for example <C>sam-r</C>.
       </P>
       <H3 id="servers-connection" />
       <P>
@@ -493,7 +561,8 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
         to deploy to.”
       </P>
       <P>
-        The private key is sealed with AES-256-GCM, tied to that server, before it is stored. It is never shown.
+        The private key is sealed with AES-256-GCM, tied to that server, before it is stored in Egg’s database on
+        the Egg machine. It is never shown.
         The first time you press Test connection, Egg reaches the host, reads its host key, hangs up and shows the
         SHA-256 fingerprint under “Confirm host key”. Nothing is sent to the server until you press{" "}
         <B>Confirm host key</B>. The fingerprint is then recorded, and any other host key stops the connection
@@ -558,8 +627,9 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
         <li>
           <B>Test connection</B> opens an SSH session, asks you to confirm the host key the first time, and reads
           what your container has: operating system, user, Node.js and Python versions, which tools exist,
-          systemd, CPU, memory and disk. It can be pressed at any time. A failure saves the message and the status
-          becomes “Could not connect”; the next success clears it.
+          systemd, CPU, memory and disk. It only reads, and it changes nothing on your container. It can be pressed
+          at any time. A failure saves the message and the status becomes “Could not connect”; the next success
+          clears it.
         </li>
         <li>
           <B>New key</B> replaces the key pair. A dialog titled “Generate a new key?” says “The old key stops
@@ -863,10 +933,12 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
           Nothing is saved yet.” Variables, hooks, notifications, the port and the repository are not copied.
         </li>
         <li>
-          <B>Adopt an existing checkout</B> is for a repository that already runs on this container. The project is
-          created with automatic deploys off, and the form says “Adopted means the first deploy is manual, and
+          <B>Start with automatic deploys off</B> is for a repository you already run on this container by hand.
+          The project is created with automatic deploys off, and the form says “The first deploy is manual, and
           automatic deploys start only after you confirm that first deploy works.” Nothing turns them on for you:
-          tick <B>Deploy automatically on push</B> in Settings when the first manual deploy works.
+          tick <B>Deploy automatically on push</B> in Settings when the first manual deploy works. This option does
+          not import, take over or stop the copy that is already running, and Egg does not import a running service
+          yet. The container check still runs, and if your old process holds the port you stop it yourself first.
         </li>
         <li>
           <B>The container check.</B> Once the name, server and port are valid, the form waits 600 milliseconds and
@@ -877,10 +949,14 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
         </li>
         <li>
           <B>Delete Project</B> asks you to type the project name. With “Also stop the service and delete releases
-          on NAME.hackclub.app” ticked, which is the default, the service, the production and preview releases and
-          the <C>current</C> link are removed from the container, but only if Egg created them. The <C>shared/</C>{" "}
-          folder is kept. Unticked, only the records go and the app keeps running. A project with a deployment that
-          is Queued, Building or Deploying cannot be deleted.
+          on NAME.hackclub.app” ticked, which is the default, the app goes offline. The service, the production and
+          preview releases and the <C>current</C> link are removed from the container, but only if Egg created
+          them. The <C>shared/</C> folder, <C>~/.egg/NAME/shared</C>, is kept, so data your app stored there is still
+          on the container. Unticked, only the records go and the app keeps running. A project with a deployment that
+          is Queued, Building or Deploying cannot be deleted. With the box ticked, Egg checks this first and answers
+          409 before it touches anything on the container, so a refused delete changes nothing. While the removal
+          runs, new deployments for the project are refused too, whether they come from a push, a hook, the API or
+          the Deploy button. If the removal fails, the block is lifted and the records are kept so you can try again.
         </li>
       </List>
       <Table
@@ -910,7 +986,7 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
           [
             "The same repository already runs by hand from another checkout",
             "Yes, but only for the first production deploy",
-            "Stop it yourself if you want Egg to take over, or use Adopt an existing checkout.",
+            "Stop it yourself first. Egg does not take over a copy that is already running.",
           ],
           [
             "Leftovers from an earlier Egg project with this name",
@@ -931,12 +1007,12 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
         rows={[
           [
             "Node.js",
-            "Picks pnpm, then yarn, then npm from your lockfile (npm install if there is none) and runs your build script if you have one. The install step uses a frozen lockfile. Your container then installs production dependencies only. node_modules is not uploaded.",
+            "Picks pnpm, then yarn, then npm from your lockfile (npm install if there is none) and runs your build script if you have one. The install step uses a frozen lockfile. The build runs the install, the build and then a production-only install on your container, in the new release folder, under the cap, which uses its CPU, memory and disk on every deploy. node_modules is not uploaded.",
             <C key="n">npm start</C>,
           ],
           [
             "Python",
-            "No build step. Your container creates a virtual environment in .venv and installs requirements.txt into it, if the file exists. Your install and build commands, if you set them, run in the sandbox first.",
+            "No build step. On every deploy your container creates a virtual environment in .venv and installs requirements.txt into it, if the file exists, which uses its CPU, memory and disk. This runs under the cap, after your install and build commands, if you set them.",
             <C key="p">python3 app.py</C>,
           ],
           [
@@ -948,8 +1024,9 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
         ]}
       />
       <P>
-        Builds run in <C>node:22-bookworm</C> for Node.js, Static site and Custom command, and in{" "}
-        <C>python:3.12-bookworm</C> for Python. For Node.js the install command is <C>npm ci</C>,{" "}
+        The build uses the Node.js and Python that are on your container. Node.js must match the <C>engines</C>{" "}
+        range in <C>package.json</C>, or be 22.13 or newer when there is no range. For Node.js the install command
+        is <C>npm ci</C>,{" "}
         <C>corepack enable && pnpm install --frozen-lockfile</C> or{" "}
         <C>corepack enable && yarn install --frozen-lockfile</C>, and the build command is{" "}
         <C>npm run build</C>, <C>pnpm build</C> or <C>yarn build</C>. The service runs your start command through a
@@ -958,11 +1035,11 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
       </P>
       {why(
         <>
-          The build runs on the Egg side, not on your container, so a build that needs a gigabyte of memory cannot
-          crowd out your running app. Only the finished build travels over SSH, and your container installs just the
-          production dependencies, which keeps the upload small and the install matched to the machine that runs
-          it. Container checks look before they touch anything for the same reason: the container is yours and may
-          hold things Egg did not make.
+          The build runs next to the app. The Egg machine only clones and packs the source, so the GitHub token never
+          leaves it. The cap exists because a Nest container is small: the kernel stops a build that goes over it,
+          and the app is set so the kernel stops the build before the app. That is also why the build memory is a
+          setting. A failed build never touches the running release. Container checks look before they touch
+          anything for the same reason: the container is yours and may hold things Egg did not make.
         </>
       )}
       <H3 id="projects-guarantees" />
@@ -1073,7 +1150,15 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
         ],
         [
           "“A deployment is still running for this project. Cancel it or wait for it to finish, then delete the project.”",
-          <>Cancel the deployment on the Deployments tab, then delete the project.</>,
+          <>Cancel the deployment on the Deployments tab, then delete the project. Nothing on the container was touched.</>,
+        ],
+        [
+          "“A deployment is still stopping for this project. Wait for it to finish, then delete the project.”",
+          <>A worker still holds a job for this project. Wait a minute and try again.</>,
+        ],
+        [
+          "409 “Cleanup is in progress for this project. Wait for it to finish or retry it before making changes.”",
+          <>The project is being removed from the container, and new deployments are blocked until that ends. Wait for it, then check whether the project still exists.</>,
         ],
         [
           "“Could not remove the project from your container.”",
@@ -1128,8 +1213,9 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
         A deployment is one attempt to build a commit and put it on your container. It starts Queued, ends as Ready,
         Error or Canceled, and keeps its log. Where it came from is its source: <C>manual</C> (the Deploy button or
         the API), <C>webhook</C> (a push or a pull request), <C>hook</C> (a deploy hook), <C>redeploy</C> or{" "}
-        <C>rollback</C>. You need a project. API tokens need the <C>deployments:write</C> permission to start,
-        redeploy, cancel or roll back.
+        <C>rollback</C>. You need a project. An access token is a secret that you make on the Developer page so a
+        script can call Egg’s API. A token needs the <C>deployments:write</C> permission to start, redeploy, cancel
+        or roll back.
       </P>
       <H3 id="deployments-states" />
       <Table
@@ -1137,8 +1223,8 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
         head={["State", "Meaning"]}
         rows={[
           ["Queued", "Waiting. A project runs one deployment at a time, and the worker runs 2 deployments at once across all projects."],
-          ["Building", "Cloning, installing, building and packing in the sandbox on the Egg side."],
-          ["Deploying", "Uploading, unpacking, starting the service and waiting for it to answer. A rollback also shows as Deploying."],
+          ["Building", "Cloning and packing on the Egg machine, then the checks, the upload, and the install and build on your container."],
+          ["Deploying", "On your container: starting the service and waiting for it to answer. A rollback also shows as Deploying."],
           ["Ready", "Started and answering."],
           ["Error", "A step failed. The error text, at most 500 characters, is on the deployment page."],
           ["Canceled", "You canceled it, or its pull request closed."],
@@ -1172,7 +1258,8 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
             <>
               Open the project and press the button at the top. It reads <B>Deploy</B> until a production release
               is live and <B>Redeploy</B> after that. Either way it queues a new build of the tip of the production
-              branch. It does not rebuild an older commit. If a deployment is already running, the new one waits as
+              branch. It does not rebuild an older commit. The build runs on your container. When it goes live,
+              your app restarts on your container. If a deployment is already running, the new one waits as
               Queued.
             </>
           ),
@@ -1182,8 +1269,8 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
           body: (
             <>
               In the Deployments list, open <B>Actions for deployment</B> on a row and choose <B>Redeploy</B>. This
-              builds the same commit again into the same environment. If GitHub no longer has the commit, the log
-              says “Could not fetch SHA; building the branch tip instead.” The menu also has <B>View logs</B>.
+              builds the same commit again into the same environment. If Egg cannot fetch, check out, and verify
+              that exact commit, the deployment fails; Egg never substitutes the branch tip. The menu also has <B>View logs</B>.
             </>
           ),
         },
@@ -1193,11 +1280,12 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
             <>
               Press <B>Instant rollback</B> on the project page, or choose it from a row’s menu. It points{" "}
               <C>current</C> at an earlier Ready production release that is still on your container and restarts
-              the service. Nothing is rebuilt, but it still waits for the app to answer, for up to 45 seconds. If
-              the older release is not healthy, the release that was live is put back and the new rollback row ends
-              as Error. The log ends with “Rollback complete. Database changes are not reversed.” The project page
-              button targets the newest Ready production release that is not live. Its tooltip says “Switches back
-              to the previous release. Database changes are not reversed.”
+              the service, so the app is offline while it restarts. Nothing is rebuilt, but it still waits for the
+              app to answer, for up to 45 seconds. If the older release is not healthy, the release that was live
+              is put back and the new rollback row ends as Error. The log ends with “Rollback complete. Database
+              changes are not reversed.” The project page button targets the newest Ready production release that
+              is not live. Its tooltip says “Switches back to the previous release. Database changes are not
+              reversed.”
             </>
           ),
         },
@@ -1205,10 +1293,11 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
           title: "Cancel",
           body: (
             <>
-              Choose <B>Cancel</B> on a row that is Queued, Building or Deploying. A running build stops within
-              about two seconds, because the worker looks every two seconds. The build checks again after the
-              build, after the upload and after the service is registered. Once the release has been switched, a
-              cancel can no longer undo it: the deployment finishes as Ready.
+              Choose <B>Cancel</B> on a row that is Queued, Building or Deploying. A running build or upload stops
+              within about two seconds, because the worker looks for a cancel every two seconds. Egg also checks
+              before each step on your container. Cancel works until Egg starts to switch the release. After that
+              it is refused with “Activation has started or this deployment is already finished.” and the
+              deployment finishes as Ready, or as Error if the new release does not answer.
             </>
           ),
         },
@@ -1251,13 +1340,19 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
       </P>
       <H3 id="deployments-releases" />
       <P>
-        Each release lives in its own folder on your container, under <C>~/.egg/NAME/releases/</C>. After
-        every successful deploy, production keeps the five newest Ready releases plus the live one, so up to six can
-        exist after a rollback. Previews, all branches together, keep the two newest Ready ones. Older ones are
-        stopped and deleted. A release that was removed cannot be rolled back to. Failed and canceled deployments
-        leave nothing on the container. If the cleanup fails over SSH, the records are still marked as cleaned up,
-        so a leftover folder can stay on the container while the page says it is gone. The Container page lists
-        such leftovers.
+        Each release lives in its own folder on your container, under <C>~/.egg/NAME/releases/</C>. Each folder
+        holds its own copy of the code and its installed dependencies, so up to six copies use your container’s
+        disk. After every successful deploy, production keeps the five newest Ready releases plus the live one,
+        so up to six can exist after a rollback. Previews, all branches together, keep the two newest Ready ones.
+        Older ones are stopped and deleted. A release that was removed cannot be rolled back to.
+      </P>
+      <P>
+        A build that fails, runs out of memory, times out or is canceled removes its own release folder, and the
+        running release is not touched. A deployment that fails or is canceled after its build finished leaves its
+        release folder there until the next successful deploy removes it. A
+        preview that fails to start is removed at once. If the cleanup fails over SSH, the records are still marked
+        as cleaned up, so a leftover folder can stay on the container while the page says it is gone. The
+        Container page lists such leftovers.
       </P>
       <H3 id="deployments-previews" />
       <P>
@@ -1288,14 +1383,16 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
         ["Preview ports", "20000 to 29999 per server", "“No free preview ports on this server.”", "server/projects.ts"],
         ["Deployments at once, all projects", "2 by default", "The rest wait as Queued. A self-hosted worker can change it with WORKER_CONCURRENCY.", "instrumentation.ts"],
         ["Deployments at once, one project", "1", "The others wait as Queued.", "server/jobs.ts"],
-        ["Clone", "5 minutes", "“Could not clone the repository…”", "server/deploy/build.ts"],
-        ["Fetching one commit for a redeploy", "3 minutes", "The branch tip is built instead.", "server/deploy/build.ts"],
-        ["Build time", "15 minutes by default", "“The build timed out.”", "server/config.ts, BUILD_TIMEOUT_SECONDS"],
-        ["Build sandbox", "2 GB of memory by default with no extra swap, 2 CPUs, 2048 processes", "A build that needs more fails inside the sandbox.", "server/deploy/build.ts"],
-        ["Build output", "500 MiB (524,288,000 bytes), measured on the compressed archive", "“The build output is N MB, over the 524.288 MB limit.”", "server/deploy/build.ts, MAX_ARCHIVE_BYTES"],
+        ["Clone", "5 minutes", "“The build timed out.”", "server/deploy/build.ts"],
+        ["Fetching one commit for a redeploy", "3 minutes", "The deployment fails if the requested SHA cannot be fetched, checked out, and verified. The branch tip is never substituted.", "server/deploy/build.ts"],
+        ["Build time", "15 minutes, for install and build together. Fixed.", "“The build took longer than 15 minutes and was stopped.”", "server/deploy/container-build.ts, BUILD_TIMEOUT_SECONDS"],
+        ["Build cap", "Build memory (MB) of the server, 512 MB by default, at least 1024 MB for a project with a build step when the container has room, and never more than the container’s memory minus 512 MB; Build CPU limit (cores), 2 by default; no swap. The build does not start if the cap would be under 256 MB.", "“The build needed more memory than the cap of N MB.” A build that waits for another build on the same container waits up to 30 minutes.", "server/deploy/container-build.ts, containerMemoryCapMb, lib/build-memory.ts"],
+        ["Free disk before a build", "2048 MB", "“Free up disk space on your container: N MB is free and a build needs at least 2048 MB.” Nothing is uploaded.", "server/deploy/container-probe.ts, MIN_FREE_DISK_MB"],
+        ["Build memory and CPU setting", "Build memory (MB), set per server on the Container page: 512 MB up to the memory the server reports, or 8192 MB when it reports none. Build CPU limit (cores): 0.5 up to the cores the server reports, in 0.25 steps, 2 by default.", "A value outside the range is refused.", "lib/build-memory.ts, DEFAULT_BUILD_CPUS"],
+        ["Source archive", "500 MiB compressed, 2 GiB unpacked, and 200,000 included paths", "Packaging stops when any limit is exceeded. The compressed archive is removed.", "server/deploy/build.ts, MAX_ARCHIVE_BYTES, MAX_SOURCE_UNPACKED_BYTES, MAX_SOURCE_ENTRIES"],
         ["One step on your container", "2 minutes; 15 minutes for unpacking and installing", "“Command timed out after 120s” (or 900s).", "server/deploy/pipeline.ts"],
         ["Wait for the app to answer", "45 seconds, then 20 seconds for the old release", "The release is marked Error and the previous one is restored.", "server/deploy/pipeline.ts"],
-        ["A running job counts as dead after", "1 hour", "“The worker stopped while this deployment was running. Try again.”", "server/jobs.ts"],
+        ["Worker lease on a running job", "Renewed every 15 seconds. Counted as expired after 60 seconds without renewal", "The job keeps blocking its project until the person running Egg recovers it by hand. Egg does not fail it by itself.", "server/jobs.ts, LEASE_RENEW_MS and STALE_AFTER_MS"],
         ["Log lines per deployment", "20,000, each cut at 4000 characters", "“Further log output was dropped: this deployment reached its log limit.”", "server/deploy/logger.ts"],
         ["Build log lines loaded on a page", "1000", "A finished deployment shows its first 1000 lines. A running one streams new lines as they arrive.", "server/projects.ts"],
         ["Live build stream", "About 3.75 hours", "The stream stops; reload the page.", "app/api/deployments/[id]/stream/route.ts"],
@@ -1319,8 +1416,32 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
           <>Read the Build Logs card from the bottom. A missing lockfile, a wrong root directory or a missing variable is the usual cause.</>,
         ],
         [
+          "“The build needed more memory than the cap of N MB. Your app is still running.”",
+          <>
+            A build went over its cap and was stopped (exit 137). Your app was not. The second sentence is
+            added only when a release was already serving. Raise <B>Build memory (MB)</B> on the Container page and
+            deploy again, or make the build lighter. The cap never goes above your container’s memory minus 512 MB.
+          </>,
+        ],
+        [
+          "“The build took longer than 15 minutes and was stopped. Your app is still running.”",
+          <>A build ran past 15 minutes. Cut work from the build. This limit is fixed. “Your app is still running.” is added only when a release was already serving.</>,
+        ],
+        [
           "“The build timed out.”",
-          <>The build ran past 15 minutes. Cut work from the build, or ask the person running Egg to raise the limit.</>,
+          <>The clone ran past 5 minutes. The limit is fixed. Check that the repository is not very large, then deploy again.</>,
+        ],
+        [
+          "A one-line fix that starts with “Install”, “Free up”, “Egg could not check your container”, “Builds on your container run under” or “Your container cannot apply”",
+          <>
+            Egg looked at your container before it uploaded anything and found something missing. Nothing was
+            changed and your running app was not touched. Do what the line says, then deploy again. Every line is
+            listed on the <InternalLink href={docsHref("troubleshooting")}>troubleshooting</InternalLink> page.
+          </>,
+        ],
+        [
+          "“Another build has been running on this container for more than 30 minutes, so this one did not start. Your app is still running.”",
+          <>Only one container build runs at a time on a container. Wait for the other build, or cancel it, then deploy again.</>,
         ],
         [
           "“The output folder “DIR” was not created by the build.”",
@@ -1347,8 +1468,13 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
           <>Fix the port or address, or the health path, and deploy again. The last 30 log lines of the service are printed in the build log.</>,
         ],
         [
-          "“The worker stopped while this deployment was running. Try again.” or “The worker restarted while this deployment was running. Try again.”",
-          <>The Egg worker went away mid-build. Redeploy.</>,
+          "A deployment stays Building or Deploying and does not move",
+          <>
+            The worker stopped, or it can no longer renew its lease on the job. Egg leaves the job blocking its
+            project until the person running Egg recovers it by hand, because a command on your container may
+            still be running. After that the deployment shows Error with “The worker stopped during this job.” and
+            you can deploy again.
+          </>,
         ],
         [
           "“No free preview ports on this server.”",
@@ -1371,8 +1497,8 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
           <>There is nothing older to go back to. Redeploy a commit instead.</>,
         ],
         [
-          "“That deployment is already finished.”",
-          <>It ended before Cancel arrived. Check its state.</>,
+          "“Activation has started or this deployment is already finished.”",
+          <>It is too late to cancel: the release is being switched or the deployment ended. Check its state.</>,
         ],
         [
           "“Only previews that are queued or running can be canceled in bulk.” or “Could not remove the preview from your container.”",
@@ -1470,8 +1596,8 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
           body: (
             <>
               A change reaches your container on the next deployment, because the values are written into the new
-              release. Press <B>Redeploy</B> on the project page to apply it now. A restart alone does not pick up a
-              change.
+              release. Press <B>Redeploy</B> on the project page to apply it now. This builds again on the Egg
+              machine and restarts your app. A restart alone does not pick up a change.
             </>
           ),
         },
@@ -1485,16 +1611,22 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
           ["Preview", "No", "Yes"],
         ]}
       />
+      <P>
+        When the same name is set for <C>All</C> and for one environment, the matching Production or Preview value
+        takes precedence. <C>All</C> supplies the value only when there is no matching environment-specific value.
+      </P>
       <List>
         <li>
           The list shows names and targets only. Values are never returned by the browser, the API or an access
           token. They are stored encrypted with AES-256-GCM, tied to the project, the name and the target.
         </li>
         <li>
-          At deploy time the values are passed to the build as ordinary environment variables, and written to a{" "}
-          <C>.env</C> file at the top of the release with permissions 600, as <C>NAME=&quot;value&quot;</C> lines for
-          systemd. Line breaks in a value become <C>\n</C>. An empty value is left out of the file, so the app sees
-          the variable as unset rather than empty.
+          At deploy time the values are passed to the build on your container as ordinary environment variables, so
+          any install or build script, including those of your dependencies, can read them. For the build they are
+          written to a file with permissions 600 that Egg deletes when the build ends. They are also written to a{" "}
+          <C>.env</C> file at the top of the release on your container with permissions 600, as{" "}
+          <C>NAME=&quot;value&quot;</C> lines for systemd. Line breaks in a value become <C>\n</C>. An empty value
+          is left out of the file, so the app sees the variable as unset rather than empty.
         </li>
         <li>
           Build and deploy logs, and the error text of a failed deployment, hide each value as <C>***</C>. The
@@ -1617,9 +1749,10 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
   logs: () => (
     <Section id="logs" intro="Two kinds: what the build printed, and what your running app prints.">
       <P>
-        Build logs are stored by Egg, one per deployment, and show the clone, install, build and release. Runtime
-        logs are read live from your container and show what your running app prints. Build logs need a deployment.
-        Runtime logs need a project that has been deployed, and only cover the production service.
+        Build logs are stored by Egg, on the Egg machine, one per deployment, and show the clone, install, build and
+        release. Runtime logs are not stored by Egg. Each time you open or refresh the page, Egg reads them from
+        your container over SSH, and they show what your running app prints. Build logs need a deployment. Runtime
+        logs need a project that has been deployed, and only cover the production service.
       </P>
       {steps("logs", [
         {
@@ -1670,7 +1803,8 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
           body: (
             <>
               Tick <B>Refresh every 5s</B> to follow the log. A “Live” marker appears and the page reads quietly in
-              the background. With older lines on screen it adds only what is new at the bottom. Or press{" "}
+              the background. With older lines on screen it adds only what is new at the bottom. Each refresh reads
+              your container over SSH, so untick it when you stop watching. Or press{" "}
               <B>Refresh</B> when you want to.
             </>
           ),
@@ -1716,8 +1850,8 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
         <>
           Runtime output is not copied into Egg. It stays in your container’s journal, so reading it needs a live
           connection and how far back it goes is whatever systemd keeps there, which Egg does not set. Build output
-          is different: it happens on the Egg side, so it is stored with the deployment and is still there when
-          your container is off.
+          is different: Egg collects it while the build runs, so it is stored with the deployment and is still there
+          when your container is off.
         </>
       )}
       {limits("logs", [
@@ -1814,8 +1948,9 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
       <P>
         A domain gives your app a name people can type. Three places have to agree: your DNS provider sends the name
         to Nest, the Nest dashboard maps the name to your app’s port, and Egg keeps a record of both so it can check
-        them. Egg can do only the last part. You need a connected server and either a domain you can edit DNS for
-        or your own Nest name. The form adds the domain to the server you connected first.
+        them. Egg can do only the last part, and only by looking. It changes nothing in DNS, in Nest or on your
+        container, and its checks run from the Egg machine. You need a connected server and either a domain you can
+        edit DNS for or your own Nest name. The form adds the domain to the server you connected first.
       </P>
       <List>
         <li>
@@ -2052,8 +2187,10 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
       <P>
         The app is how Egg gets permission to read a repository and hear about pushes without holding your GitHub
         password. You choose which repositories it can see. You need a GitHub account and a connected server. The
-        app is needed for private repositories, for pushes to deploy, and for pull request comments. A public
-        repository can be imported without it by pasting its address, but then pushes do not deploy.
+        app is needed for private repositories, for pushes to deploy, and for pull request comments. Egg clones
+        with a short-lived token from the app. The token stays on the Egg machine and is not sent to your
+        container. A public repository can be imported without the app by pasting its address, but then pushes do
+        not deploy.
       </P>
       <H3 id="github-push" />
       {steps("github", [
@@ -2102,13 +2239,23 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
       <List>
         <li>Branch deletions, tag pushes and other events are ignored.</li>
         <li>
+          GitHub delivers each push to <C>/api/webhooks/github</C> on Egg’s web address, so GitHub must be able to
+          reach it. An Egg on localhost cannot receive pushes. There, press Deploy or use a deploy hook.
+        </li>
+        <li>
           Only projects with <B>Deploy automatically on push</B> on, whose repository name matches and whose
           GitHub installation is one the project’s owner linked, are built.
         </li>
         <li>The same commit on the same branch is not built twice while one for it is already queued, building or deploying.</li>
         <li>
-          GitHub signs every delivery. Egg checks the signature, and a delivery id it has already seen in the last
-          hour is answered without being run again, so a retry cannot start a second build.
+          Every distinct push delivery remains queued, even if it arrives after a different commit. Webhook delivery
+          order does not prove commit order, so Egg does not cancel a queued push based on arrival time.
+        </li>
+        <li>
+          GitHub signs every delivery. Egg checks the signature. It also keeps a one-way digest of each signed body
+          in its database, so a repeat of the same body is answered “duplicate delivery” and not run again. For
+          that reason, pressing Redeliver in GitHub for a push that already worked does nothing. Push a new commit
+          or press Deploy.
         </li>
         <li>
           If you rename the repository on GitHub, Egg follows the rename: the stored name and the clone address
@@ -2180,8 +2327,8 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
         ["Installation owner", "The first Egg user to link it", "“That GitHub installation is not linked to your account.”", "server/github/app.ts"],
         ["App sign-in token", "9 minutes", "Renewed automatically.", "server/github/app.ts"],
         ["Comments read when updating", "100 per pull request", "A comment beyond that is not found, and a new one is posted.", "server/github/pulls.ts"],
-        ["Delivery ids remembered", "1 hour, up to 5000", "A repeated delivery is answered “duplicate delivery”.", "server/github/webhook.ts"],
-        ["Webhook payload", "25 MB", "“payload too large”", "app/api/webhooks/github/route.ts"],
+        ["Repeated deliveries", "A digest of each signed body is kept in the database, with no expiry", "A repeat of the same body is answered “duplicate delivery”. A push with a new commit has a new body.", "server/github/webhook.ts"],
+        ["Webhook payload", "5 MB", "“payload too large”", "app/api/webhooks/github/route.ts"],
         ["Pull request events handled", "opened, reopened, synchronize, ready_for_review, closed", "Other events are ignored.", "server/github/webhook.ts"],
         ["Commit message kept", "First line, 300 characters", "The rest is cut off.", "server/github/webhook.ts"],
       ])}
@@ -2267,7 +2414,9 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
       <P>
         A deploy hook is for anything that cannot use the GitHub app: a CI service, a scheduled job, a script on
         your laptop, or a project made from a pasted public address. The URL is the only credential, so the caller
-        needs no token and no cookie. You need a project and a way to send an HTTP POST.
+        needs no access token and no cookie. The call goes to Egg and only queues a build. The build runs on the Egg
+        machine, and your app restarts on your container when it goes live. You need a project and a way to send
+        an HTTP POST.
       </P>
       {steps("hooks", [
         {
@@ -2418,6 +2567,261 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
     </Section>
   ),
 
+  jobs: () => (
+    <Section
+      id="jobs"
+      intro="A command that runs on a schedule inside your current release, such as a nightly clean-up or a weekly report."
+    >
+      <P>
+        A scheduled job is a command and a time pattern. Egg turns each job into a systemd timer on your container.
+        systemd is the Linux service manager, and a timer is its way of starting something at set times. The command
+        runs in the folder of your current release, which is the deployed version of your app that is live now. It
+        gets the same environment variables as your app, and for a Python project the project’s virtual environment
+        comes first on the path. You need a project that has been deployed once, because a job has nothing to run in
+        before that.
+      </P>
+      {steps("jobs", [
+        {
+          title: "Open the card",
+          body: (
+            <>
+              Open the project, Settings, <B>Scheduled Jobs</B>. With no jobs the card says “No jobs yet.”
+            </>
+          ),
+        },
+        {
+          title: "Fill in the form",
+          body: (
+            <>
+              Under <B>Add a job</B>, type a <B>Name</B>, a <B>Schedule</B> and a <B>Command</B>. The{" "}
+              <B>Common schedules</B> list fills in the schedule for you. A line under the schedule says what it
+              means and when it next runs, in UTC, or why it is not valid.
+            </>
+          ),
+        },
+        {
+          title: "Press Add job",
+          body: (
+            <>
+              The card says “Added. It is armed on your container now.” The job is saved on your container as a timer
+              before Egg keeps its record, so a job you can see on the card is one that is installed.
+            </>
+          ),
+        },
+        {
+          title: "Check how it went",
+          body: (
+            <>
+              Each row shows the schedule in words, the next run, and the last result: “Has not run yet”, “Running
+              now”, “Succeeded” or “Failed (exit N)” with how long ago. Egg reads this from your container when the card
+              opens and every 30 seconds while the page is visible.
+            </>
+          ),
+        },
+      ])}
+      <List>
+        <li>
+          The name is 1 to 60 characters: letters, numbers, spaces, dots, dashes and underscores, starting with a
+          letter or number. The command is one line of up to 500 characters. For anything longer, put a script in your
+          repository and run it from the command.
+        </li>
+        <li>
+          Egg runs the command with <C>bash -lc</C> from the current release folder, so a relative path such as{" "}
+          <C>node scripts/cleanup.js</C> works. A deploy replaces the current release, so the next run uses the new
+          code.
+        </li>
+        <li>
+          Job names and commands are shown on the card in plain text. Keep secrets in environment variables, not in
+          the command.
+        </li>
+      </List>
+      <H2 id="jobs-schedule" title="Schedule format" />
+      <P>
+        A schedule is five fields separated by spaces: minute, hour, day of month, month and day of week. This is
+        the form cron uses. Cron is the classic Unix scheduler. All times are UTC, so a job does not depend on the
+        time zone of your container.
+      </P>
+      <Table
+        caption="The five fields"
+        head={["Field", "Values"]}
+        rows={[
+          ["Minute", "0 to 59"],
+          ["Hour", "0 to 23"],
+          ["Day of month", "1 to 31"],
+          ["Month", "1 to 12"],
+          ["Day of week", "0 to 7. Both 0 and 7 are Sunday, and 1 is Monday."],
+        ]}
+      />
+      <P>
+        Each field takes <C>*</C> for every value, a number, a list such as <C>1,15</C>, a range such as <C>9-17</C>,
+        or a step such as <C>*/15</C> or <C>0-30/10</C>. Four nicknames are also accepted, in any letter case:{" "}
+        <C>@hourly</C>, <C>@daily</C> (and <C>@midnight</C>), <C>@weekly</C> and <C>@monthly</C>. Egg saves a nickname
+        as its five fields, so <C>@daily</C> is saved as <C>0 0 * * *</C>.
+      </P>
+      <Table
+        caption="Example schedules"
+        head={["Schedule", "When it runs"]}
+        rows={[
+          [<C key="1">*/15 * * * *</C>, "Every 15 minutes"],
+          [<C key="2">0 * * * *</C>, "Every hour, on the hour. Same as @hourly."],
+          [<C key="3">0 */6 * * *</C>, "Every 6 hours, at minute 0"],
+          [<C key="4">30 3 * * *</C>, "Every day at 03:30 UTC"],
+          [<C key="5">0 9 * * 1-5</C>, "Monday to Friday at 09:00 UTC"],
+          [<C key="6">0 9 * * 1</C>, "Every Monday at 09:00 UTC"],
+          [<C key="7">0 4 1 * *</C>, "On the 1st of each month at 04:00 UTC"],
+        ]}
+      />
+      <Table
+        caption="What is not accepted"
+        head={["Schedule", "Why"]}
+        rows={[
+          [<C key="1">0 9 * * MON</C>, "Names such as MON or JAN are not accepted. Use numbers."],
+          [<C key="2">0 0 L * *</C>, "Cron extras such as ?, L and W are not accepted."],
+          [<C key="3">0 0 * * * *</C>, "Six fields, with seconds, are not accepted. There must be exactly five."],
+          [<C key="4">@yearly</C>, "Only @hourly, @daily, @midnight, @weekly and @monthly are accepted."],
+          [<C key="5">0 9 1 * 1</C>, "Both a day of the month and a day of the week are set. Set only one and leave the other as *."],
+          [<C key="6">*/2 * * * *</C>, "It would run every 2 minutes. A job runs at most once every 5 minutes."],
+        ]}
+      />
+      <H2 id="jobs-behaviour" title="How a job behaves" />
+      <List>
+        <li>
+          <B>It gives way to your app.</B> A job runs at a lower priority than your app, and if the container runs
+          out of memory the job is stopped before the app is.
+        </li>
+        <li>
+          <B>Missed runs are not made up.</B> If the container was off or restarting at the scheduled time, the job
+          waits for its next time. It does not run a backlog.
+        </li>
+        <li>
+          <B>It does not overlap itself.</B> If a run is still going when the next time arrives, that time is skipped
+          and a second copy is not started.
+        </li>
+        <li>
+          <B>It is stopped after 30 minutes.</B> A run that is still going then is ended, and the last result reads
+          Failed.
+        </li>
+        <li>
+          <B>A run can start a few seconds late.</B> The timer is accurate to within 10 seconds.
+        </li>
+        <li>
+          <B>It goes when the project goes.</B> Deleting a project with “Also stop the service and delete releases”
+          ticked also removes its timers from the container. Egg only removes timers that it made.
+        </li>
+        <li>
+          <B>A job needs a release.</B> Egg refuses to add or change a job before the project has been deployed once.
+          Deploy the project, then add the job.
+        </li>
+      </List>
+      <H2 id="jobs-actions" title="Actions on a job" />
+      <Table
+        caption="What each control does"
+        head={["Control", "What it does"]}
+        rows={[
+          [<B key="1">Run now</B>, "Starts the job once, straight away, without waiting for it to finish. The card says “Started NAME. Open its output to see what it printed.” It works on a paused job too."],
+          [<B key="2">Pause</B>, "Stops the timer, so the job no longer runs on its own. The row reads “Paused”. The button changes to Resume."],
+          [<B key="3">Resume</B>, "Arms the timer again."],
+          [<B key="4">Edit</B>, "The pencil. Opens the name, schedule and command in the row. Save puts the change on your container, and Cancel or the Escape key closes it without saving."],
+          [<B key="5">Output</B>, "The terminal icon. Shows what the job printed on its last runs, up to the latest 120 lines, or “It has not printed anything yet.”"],
+          [<B key="6">Remove</B>, "The bin. Asks “Remove NAME?” and, on Remove, stops the job and deletes it from your container."],
+        ]}
+      />
+      <H2 id="jobs-routes" title="Dashboard routes" />
+      <P>
+        The card uses these routes. They answer only to your signed-in browser and are not part of the public{" "}
+        <C>/api/v1</C> API, so an access token cannot call them. <C>:id</C> is the project id and <C>:jobId</C> the
+        job id.
+      </P>
+      <Table
+        caption="Scheduled job routes"
+        head={["Route", "What it does"]}
+        rows={[
+          [<C key="1">GET /api/projects/:id/jobs</C>, "Lists the jobs. With ?status=1 it also reads each job’s last result from your container."],
+          [<C key="2">POST /api/projects/:id/jobs</C>, "Adds a job. The body holds name, schedule and command, and may hold enabled. Answers 201."],
+          [<C key="3">PATCH /api/projects/:id/jobs/:jobId</C>, "Changes any of name, schedule, command and enabled."],
+          [<C key="4">DELETE /api/projects/:id/jobs/:jobId</C>, "Removes the job from your container and from Egg."],
+          [<C key="5">POST /api/projects/:id/jobs/:jobId/run</C>, "Starts the job once. Answers 202."],
+          [<C key="6">GET /api/projects/:id/jobs/:jobId/logs</C>, "Returns the job’s recent output as a list of lines."],
+        ]}
+      />
+      {why(
+        <>
+          Cron reads a schedule with both a day of the month and a day of the week as “either”, while systemd reads it
+          as “both”, and people are surprised by whichever one they meet. Egg refuses the mix instead of guessing.
+          The 5 minute floor, the low priority and the 30 minute stop exist because the container is small and shared
+          with your app, so a job must not starve it. Missed runs are skipped so that a restart does not trigger a
+          burst of old work.
+        </>
+      )}
+      {limits("jobs", [
+        ["Jobs per project", "5", "409 “A project can have 5 jobs. Remove one to add another.”", "server/scheduled-jobs.ts, MAX_JOBS_PER_PROJECT"],
+        ["Time between runs", "At least 5 minutes", "The schedule is refused with “Jobs run at most once every 5 minutes so they do not starve your app.”", "lib/cron-schedule.ts, MIN_GAP_MINUTES"],
+        ["Run time", "30 minutes", "systemd stops the run and the last result reads Failed.", "server/deploy/jobs-remote.ts, JOB_TIMEOUT_SECONDS"],
+        ["Name", "1 to 60 characters", "The form says which characters are allowed.", "server/deploy/jobs-remote.ts, JOB_NAME"],
+        ["Command", "500 characters, one line", "“Keep the command under 500 characters. Put longer scripts in a file in your repository.”", "server/scheduled-jobs.ts, jobInput"],
+        ["Schedule", "100 characters", "“That schedule is too long.”", "lib/cron-schedule.ts"],
+      ])}
+      {wrong("jobs", [
+        [
+          "409 “Deploy the project once first. A job runs inside the current release, and there is none yet.”",
+          <>Deploy the project, then add the job.</>,
+        ],
+        [
+          "“Set either the day of the month or the day of the week, not both.”",
+          <>Leave one of the two fields as <C>*</C>.</>,
+        ],
+        [
+          "“That would run every N minutes.”",
+          <>Choose a schedule with at least 5 minutes between runs.</>,
+        ],
+        [
+          "409 “A project can have 5 jobs. Remove one to add another.”",
+          <>Remove a job you no longer need.</>,
+        ],
+        [
+          "409 “A service with that name already exists on your container and was not made by Egg, so it was left alone.”",
+          <>Egg never replaces a unit it did not write. Remove or rename the unit on your container yourself.</>,
+        ],
+        [
+          "“Not on your container. Pause and resume it to put it back.”",
+          <>The timer is gone from the container, for example after someone removed it. Pause the job and press Resume to install it again. If Run now answers “That job is not on your container any more”, save the job again.</>,
+        ],
+        [
+          "504 “Your container did not answer in time.” or 502 “Could not reach your container.”",
+          <>The container may be stopped or starting. Try again in a minute. The list still shows what Egg saved.</>,
+        ],
+        [
+          "The job shows Failed (exit N)",
+          <>Open the output to read what it printed. Run the same command in the Terminal from the current release folder to see the error.</>,
+        ],
+      ])}
+      {example("jobs", {
+        title: "Clean up old uploads every night",
+        given: (
+          <>
+            Sam’s <C>recipe-bot</C> is deployed and has a script <C>scripts/cleanup.js</C> that deletes old uploads.
+          </>
+        ),
+        steps: [
+          { title: "Fill in the form", body: <>Sam types the name <C>Nightly clean-up</C>, picks “Every day at 03:00” from Common schedules and types <C>node scripts/cleanup.js</C>.</> },
+          { title: "Add the job", body: <>Sam presses Add job and sees “Added. It is armed on your container now.”</> },
+          { title: "Try it", body: <>Sam presses Run now, waits a moment, then opens the output.</> },
+        ],
+        result: (
+          <>
+            The row reads “Every day at 03:00 UTC” with the next run time, and the output shows what the script
+            printed. After a deploy, the next night’s run uses the new code.
+          </>
+        ),
+      })}
+      {related([
+        ["hooks", "Deploy hooks"],
+        ["projects", "Projects and runtimes"],
+        ["limits", "Limits"],
+      ])}
+    </Section>
+  ),
+
   notifications: () => (
     <Section
       id="notifications"
@@ -2426,8 +2830,9 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
       <P>
         A notification tells a person that a deployment finished, without anyone watching the dashboard. Each
         project has one webhook address, and every finished deployment, Ready or Error, can post a short message
-        there. You need an incoming webhook URL from Discord or Slack. The same webhook also carries the alerts
-        described under Monitoring and uptime.
+        there. Egg posts it from the Egg machine to Discord or Slack. Nothing runs on your container. You need an
+        incoming webhook URL from Discord or Slack. The same webhook also carries the alerts described under
+        Monitoring and uptime.
       </P>
       {steps("notifications", [
         {
@@ -2685,10 +3090,12 @@ export function isFromEgg(secret, header, body) {
       </P>
       <H3 id="monitoring-uptime" />
       <P>
-        Every 5 minutes the worker checks each project that has a live production release and no deployment in
-        progress. A project is up when its service is running and its health path answers with a status from 1
-        to 499. Without <C>curl</C> on the container, running is enough. A server that cannot be reached is
-        skipped, and its projects are not reported as down.
+        Every 5 minutes the worker opens one SSH connection to each connected server. For each project that has a
+        live production release and no deployment in progress, it runs a short read-only command on your
+        container. The command asks systemd about the service and makes one request to the app on 127.0.0.1. A
+        project is up when its service is running and its health path answers with a status from 1 to 499.
+        Without <C>curl</C> on the container, running is enough. A server that cannot be reached is skipped, and
+        its projects are not reported as down.
       </P>
       <P>
         A project is declared down after a number of failed checks in a row, 2 by default. You get one message
@@ -2824,7 +3231,10 @@ export function isFromEgg(secret, header, body) {
 
   "status-page": () => (
     <Section id="status-page" intro="A public page that says whether one app is answering.">
-      <P>You need a deployed project. The figures come from the uptime checks, so the worker must be running.</P>
+      <P>
+        You need a deployed project. The figures come from the uptime checks, so the worker must be running. Egg
+        serves the page from its own stored data, so a visitor never reaches your container through it.
+      </P>
       {steps("status-page", [
         {
           title: "Publish it",
@@ -2937,7 +3347,9 @@ export function isFromEgg(secret, header, body) {
     >
       <P>
         You need a deployed project that serves web pages, and access to the head of those pages. A bot with no
-        web page has nothing to count.
+        web page has nothing to count. Each visitor’s browser sends the count to Egg’s web address, not to your
+        container, so your container does no extra work. Egg must be reachable from your visitors: an Egg on
+        localhost cannot count visitors on a public site.
       </P>
       <H3 id="analytics-setup-steps" />
       {steps("analytics", [
@@ -2959,13 +3371,13 @@ export function isFromEgg(secret, header, body) {
         },
         {
           title: "Redeploy and visit",
-          body: <>Redeploy so the page has the snippet, then open the page in a normal browser window.</>,
+          body: <>Redeploy so the page has the snippet. This builds again and restarts your app. Then open the page in a normal browser window.</>,
         },
         {
           title: "Switch off when done",
           body: (
             <>
-              Press <B>Turn off</B> to remove the key. Existing numbers stay until they age out after 90 days.
+              Press <B>Turn off</B> to remove the key. Existing numbers stay until they age out, after 90 days unless you chose 30 or 60 under “Keep the numbers for”.
             </>
           ),
         },
@@ -2973,22 +3385,24 @@ export function isFromEgg(secret, header, body) {
       <H3 id="analytics-data" />
       <P>
         “Page views” and “Visitors” for the last 30 days, “Page views per day” as a bar for each day, your top
-        10 pages under “Top pages”, and, once Referrers and campaigns is on, the top 10 sites under “Where visitors came from”. Visitors are counted per day, so someone who comes on two days counts twice.
+        10 pages under “Top pages”, and, once Referrers is on, the top 10 sites under “Where visitors came from”. Once Campaigns is on you also see “Campaigns”, and once Record visitor countries is on, a map under “Where visitors are”. Visitors are counted per day, so someone who comes on two days counts twice.
         Percentages, shares and the median appear only with at least 50 visits behind them. Below that you see
         counts and “Not enough data”.
       </P>
       <P>
-        The “What else to record” card, which appears once analytics is on, adds eight things. Each is a
+        The “What else to record” card, which appears once analytics is on, adds ten things and a choice of how long to keep the numbers. Each is a
         checkbox that is off until you tick it and saves at once, with “Saved.” beneath. With all of them off
-        the script is the plain page view script: the path, nothing more. Under Settings, “Analytics defaults”
-        has the same eight checkboxes, all off. They decide what a project starts with the first time you turn
+        the script records only page views. Route details default to <C>/</C>; to include a route, set a safe
+        template such as <C>data-egg-path=&quot;/users/:id&quot;</C> on the page’s <C>&lt;html&gt;</C> element. Never put
+        a visitor’s name, token or other personal value in that attribute. Under Settings, “Analytics defaults”
+        has eight of them, all off. Campaigns and Record visitor countries are not among them, because you set them up for each project. The checkboxes decide what a project starts with the first time you turn
         analytics on for it. Projects that already have analytics are not changed.
       </P>
       <List>
         <li>
-          <B>Clicks</B> (“Top clicks”). The label of the link, button or element with <C>data-egg-track</C> that
-          was clicked: <C>data-egg-track</C>, else <C>aria-label</C>, else the text, at most 40 characters. A label
-          holding an email address is dropped. It never records input values or form content, and stores only
+          <B>Clicks</B> (“Top clicks”). Only elements explicitly marked with a <C>data-egg-track</C> name are
+          counted. Egg never reads visible text or accessible labels. Do not put personal or changing values in
+          the tracking name. It never records input values or form content, and stores only
           the project, the UTC day and the label.
         </li>
         <li>
@@ -3000,22 +3414,30 @@ export function isFromEgg(secret, header, body) {
           or pick Tracked name. Press <B>Add step</B> for more, then <B>Save steps</B>. A visitor counts at a step only after reaching the ones before it, on the same UTC day.
         </li>
         <li>
-          <B>Referrers and campaigns</B> (“Where visitors came from” and “Campaigns”). The script sends the host of
-          the referring site only, never its full address or query string. It does this once for each page load, and
-          a link from one page of your own site to another is not a referrer. It also sends <C>utm_source</C>, <C>utm_medium</C> and <C>utm_campaign</C> from the address when they are
-          there, each trimmed and cut to 80 characters. No other parameter is read. They are stored with the page
-          view, and the host is kept as sent, so <C>www.</C> stays.
+          <B>Referrers</B> (“Where visitors came from”). The script sends the host of the referring site only,
+          never its full address or query string. It does this once for each page load, and a link from one page of
+          your own site to another is not a referrer. The host is stored with the page view and kept as sent, so{" "}
+          <C>www.</C> stays. Turning Referrers off deletes the hosts already stored for the project.
         </li>
         <li>
-          <B>Speed and errors</B> (“Speed” and “Errors”). Five measurements from the browser, sent once per page
+          <B>Campaigns</B> (“Campaigns”). Off until you turn it on, and it can only be turned on once you have saved
+          at least one allowed value. Under Allowed campaign values you list the exact <C>utm_source</C>,{" "}
+          <C>utm_medium</C> and <C>utm_campaign</C> values you use. The script reads those three parameters from the
+          address, and only a value that is on its list, spelled exactly as listed with capital letters included, is
+          sent and stored. Any other value is dropped, and no other parameter is read. Each list holds up to 20
+          values of up to 40 characters: letters, numbers, dot, dash and underscore. Type a value, press{" "}
+          <B>Add</B>, then press <B>Save allowed values</B>. Turning Campaigns off deletes the campaign values
+          already stored for the project, and your lists are kept. Taking a value off a list stops it being
+          recorded, but page views already stored with it stay until they age out.
+        </li>
+        <li>
+          <B>Speed metrics</B> (“Speed”). Five measurements from the browser, sent once per page
           view when the visitor leaves or switches tab: Largest Contentful Paint, Cumulative Layout Shift,
           Interaction to Next Paint, First Contentful Paint and Time to First Byte. Times are in milliseconds (ms)
           and shown in ms or seconds (s); layout shift is a score with no unit. The table shows the median and the
           75th percentile for each, and labels the 75th percentile Good, Needs work or Poor with Google’s
           thresholds: LCP 2.5 s and 4 s, CLS 0.1 and 0.25, INP 200 ms and 500 ms, FCP 1.8 s and 3 s, TTFB 800 ms
-          and 1800 ms. Errors are the message (at most 200 characters, with any query string cut from addresses
-          and any email address replaced), the script’s file name without its address, and the line. At most 5
-          errors are sent for a page view. No stack, no address and no visitor id.
+          and 1800 ms. Exception messages are not collected because they can contain credentials or personal data.
         </li>
         <li>
           <B>Custom events</B> (“Events”). A click on an element with <C>data-egg-track</C> is recorded by name. Add{" "}
@@ -3041,10 +3463,26 @@ export function isFromEgg(secret, header, body) {
           days, and of those who first came 30 to 37 days ago how many came back within 30 days. A group under 20
           visitors shows “Not enough data yet”.
         </li>
+        <li>
+          <B>Record visitor countries</B> (“Where visitors are”, a map with a table of the same numbers). Egg looks
+          the visitor’s IP address up in a country database that ships with Egg, in the same request that records the
+          page view, so the address is not sent to any other service. Only the two-letter country code, such as{" "}
+          <C>FR</C>, is stored with the page view. Egg does not store or log the IP address, and keeps no city,
+          region or position. An address that is local or private, or not in the database, has no country, and
+          nothing is stored for it. The map covers the last 30 days. A country with fewer than 10 page views is
+          shown as “fewer than 10”, and larger counts are rounded to two significant figures. Turning it off deletes
+          the countries already stored for the project. This product includes GeoLite2 data created by MaxMind,
+          available from https://www.maxmind.com.
+        </li>
       </List>
+      <P>
+        <B>Keep the numbers for</B> sets how long page views, events, speed measurements and error records are
+        kept before Egg deletes them: 30, 60 or 90 days for this project. A project keeps 90 days until you change
+        it. Live view signals are always deleted after an hour.
+      </P>
       <H3 id="analytics-privacy" />
       <List>
-        <li>By default only the page path is recorded. No cookies. Everything else is a switch that starts off.</li>
+        <li>By default route details are omitted and represented as <C>/</C>. To report routes, the site must explicitly provide a safe template in <C>data-egg-path</C>. No cookies. Everything else is a switch that starts off.</li>
         <li>
           No IP address or browser details are stored. A visitor is a hash of the address, browser, project and
           the date, salted with the server secret and shortened. It changes daily, so nobody can be followed
@@ -3055,36 +3493,50 @@ export function isFromEgg(secret, header, body) {
           known bots. The collector also drops requests that carry either signal.
         </li>
         <li>
-          The path loses its query and fragment. The referrer is reduced to its host, kept as it is.
+          The page path is a site-provided template; the script does not send the browser’s raw address path.
+          Legacy snippets without the template marker are stored as <C>/</C>. The referrer is reduced to its host.
         </li>
         <li>
           The script stores nothing in the browser unless Retention is on, and then only one random id in local
-          storage. No IP address is stored by any feature. The address is used only to limit how fast one visitor
-          can send.
+          storage. No IP address is stored by any feature, and Egg does not log it. The address limits how fast one
+          visitor can send and goes into the daily visitor hash. While Record visitor countries is on, it is also
+          used for one country lookup in the same request, and only the two-letter country is stored.
+        </li>
+        <li>
+          Campaign values are recorded only while Campaigns is on, and only values on the project’s allowed list.
+          Any other value is dropped before it is stored.
+        </li>
+        <li>
+          Turning off Referrers, Campaigns, Retention or Record visitor countries deletes what that switch stored
+          for the project. The other switches stop recording when turned off, and what they already stored stays
+          until it ages out.
         </li>
         <li>
           On a copy of Egg that you run yourself behind a reverse proxy, set <C>TRUST_PROXY=1</C>. It is off by
           default. Without it Egg ignores the proxy headers, so every visitor counts as one address: the daily
           visitor hash then tells people apart only by browser, and the limits on how fast one visitor can send are
           shared by everyone. Turn it on only when every request comes through a proxy you run that sets those
-          headers itself.
+          headers itself. With it off, Egg has no visitor address, so Record visitor countries stores no country
+          either.
         </li>
         <li>
-          History is kept for 90 days. A change to a setting reaches visitors within about 5 minutes, because the
-          script is cached.
+          Analytics history is removed after 30, 60 or 90 days, as you choose for each project under “Keep the
+          numbers for”, and after 90 days for a project where you have not chosen. Cleanup runs from the app every 15 minutes, independently
+          of the build worker and uptime checks. Backups may keep older database contents under their own
+          retention. A change to a setting reaches visitors within about 5 minutes, because the script is cached.
         </li>
       </List>
       {limits("analytics", [
-        ["History kept", "90 days", "Older rows are deleted."],
+        ["History kept", "30, 60 or 90 days for each project, 90 by default", "Older rows are deleted by the app cleanup task."],
         ["Percentages and median", "At least 50 visits", "“Not enough data”"],
         ["Funnel steps", "2 to 6", "“A funnel needs at least 2 steps” or “A funnel has at most 6 steps”"],
         ["Tracked name", "Letters, digits, spaces and - _ . : up to 40 characters", "“A tracked name uses letters, numbers, spaces and - _ . : and is at most 40 characters”"],
         ["Page step", "Starts with /", "“A page step starts with \"/\", like /pricing”"],
         ["Page views", "1 per second per project and address. With TRUST_PROXY off, all visitors share one address", "Extra views are dropped.", "server/analytics.ts"],
-        ["Every other report (clicks, time, goals, events, speed, errors, live signal)", "30 per 10 seconds per project and address. With TRUST_PROXY off, all visitors share one address", "Extra events are dropped.", "server/analytics-events.ts"],
+        ["Every other report (clicks, time, goals, events, speed, live signal)", "30 per 10 seconds per project and address. With TRUST_PROXY off, all visitors share one address", "Extra events are dropped.", "server/analytics-events.ts"],
         ["Path and referrer", "200 and 100 characters", "The rest is cut off."],
-        ["Campaign values", "80 characters each", "The rest is cut off."],
-        ["Error message and file name", "200 and 100 characters, 5 errors per page view", "The rest is cut off or not sent."],
+        ["Allowed campaign values", "Up to 20 each for source, medium and campaign, of up to 40 characters: letters, numbers, dot, dash or underscore", "“Use short static labels with letters, numbers, dot, dash or underscore.”"],
+        ["Campaign values recorded", "Only values on the allowed list, spelled exactly", "Any other value is dropped."],
         ["Event value", "Letters, digits, spaces and - _ . : up to 40 characters", "The value is dropped. The event still counts."],
         ["Speed figures", "At least 50 page views per measurement", "“Not enough data”"],
         ["Live view", "Last 5 minutes, signal every 60 seconds, deleted after 1 hour", "Older signals are deleted."],
@@ -3114,6 +3566,18 @@ export function isFromEgg(secret, header, body) {
         [
           "“Could not save” or “Could not change analytics”",
           <>The change did not go through. Try again.</>,
+        ],
+        [
+          "“Allow at least one safe campaign label before turning campaigns on.” or Campaigns cannot be ticked",
+          <>Add a value to at least one of the three lists and press Save allowed values. Then turn Campaigns on.</>,
+        ],
+        [
+          "A campaign you use does not appear under Campaigns",
+          <>Only values on the allowed list are recorded, spelled exactly the same, capital letters included. Add the value and save, then visit again.</>,
+        ],
+        [
+          "“Where visitors are” has no countries",
+          <>Turn on Record visitor countries. Views from before it was on have no country. Local and private addresses have none, and on a copy you run yourself, TRUST_PROXY must be on to give Egg the visitor’s address.</>,
         ],
         [
           "A funnel does not turn on, or “A funnel needs at least 2 steps”",

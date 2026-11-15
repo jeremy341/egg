@@ -6,6 +6,7 @@ import { MobileDock } from "@/components/mobile-dock";
 import { NavListSkeleton } from "@/components/nav-list";
 import { Sidebar } from "@/components/sidebar";
 import { TopBar, TopBarSkeleton } from "@/components/top-bar";
+import { MaintenanceNotice } from "@/components/maintenance-notice";
 import {
   LoadingRegion,
   Skeleton,
@@ -17,6 +18,7 @@ import {
 function ShellSkeleton() {
   return (
     <LoadingRegion label="Loading…" className="flex min-h-dvh">
+      <span hidden data-signed-in="" />
       <aside
         aria-hidden="true"
         className="sticky top-0 hidden h-dvh w-[var(--sidebar-width)] shrink-0 flex-col border-r bg-background-subtle lg:flex"
@@ -78,6 +80,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 id="main"
                 className="mx-auto w-full max-w-[var(--page-width)] flex-1 px-4 py-6 pb-[calc(96px+env(safe-area-inset-bottom))] lg:px-6 lg:pb-10 has-[[data-docs-page]]:mx-0 has-[[data-docs-page]]:max-w-none has-[[data-docs-page]]:lg:pl-12"
               >
+                <MaintenanceNotice />
                 {children}
               </main>
             </div>

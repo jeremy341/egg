@@ -378,13 +378,13 @@ export default function TerminalScreen(props: TerminalScreenProps) {
       });
       sizeObserver.observe(host);
 
-      // Follow the page theme (light, dark, system) without a reload.
+      // Follow the page theme (mode and colour theme) without a reload.
       themeObserver = new MutationObserver(() => {
         t.options.theme = readTheme(host);
       });
       themeObserver.observe(document.documentElement, {
         attributes: true,
-        attributeFilter: ["class", "style", "data-theme"],
+        attributeFilter: ["class", "style", "data-theme", "data-theme-preset"],
       });
 
       controls.current = {

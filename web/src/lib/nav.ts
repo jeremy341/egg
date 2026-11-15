@@ -226,6 +226,9 @@ export function navFor(pathname: string): NavContext {
   if (pathname.startsWith("/account")) {
     return { title: "Account", backHref: "/projects", items: TEAM_ITEMS };
   }
+  if (pathname.startsWith("/admin")) {
+    return { title: "Administration", backHref: "/projects", items: TEAM_ITEMS };
+  }
 
   if (pathname.startsWith("/settings")) {
     return { title: "Settings", backHref: "/projects", items: TEAM_ITEMS };

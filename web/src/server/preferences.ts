@@ -5,21 +5,39 @@ import { getDb, schema } from "@/server/db";
 import { HttpError } from "@/server/http";
 import { ANALYTICS_FEATURES, parseAnalyticsDefaults, serializeAnalyticsDefaults } from "@/lib/analytics-defaults";
 import {
-  ACCENTS,
   AVATAR_IDS,
+  DARK_PRESET_IDS,
   DEFAULT_PREFERENCES,
   DENSITIES,
+  LIGHT_PRESET_IDS,
   MOTIONS,
-  THEMES,
+  PRESET_IDS,
+  isCustomPreset,
   isValidBranchName,
+  themeChoiceFromLegacy,
+  type DarkPreset,
+  type LightPreset,
   type Preferences,
+  type Preset,
+  type Scheme,
 } from "@/lib/preferences";
+import { themeSchemes } from "@/server/custom-themes";
 
 /**
  * Per-person interface choices. One row per user; a person with no row gets
  * the defaults. Everything that comes in is validated here, because the row
  * is read back into HTML attributes and the top bar.
  */
+
+/**
+ * What the `theme` column holds once a row has been saved with the theme choice
+ * (match_device, light_preset, dark_preset, and the fixed theme in `accent`).
+ * A row that still says light, dark or system has not been converted: it is read
+ * once as the choice it meant (themeChoiceFromLegacy), and the next save writes
+ * this marker. A brand-new row says "system" with the default accent, which reads
+ * as the defaults.
+ */
+const CONVERTED = "choice";
 
 // Control characters, and the invisible and direction-changing characters that
 // let a name look like something else.
@@ -36,8 +54,23 @@ const optionalText = (max: number, what: string) =>
 
 export const preferencesPatch = z
   .object({
-    theme: z.enum(THEMES),
-    accent: z.enum(ACCENTS),
+    // Match my device: the light theme by day and the dark theme by night.
+    matchDevice: z.boolean(),
+    // A light theme cannot be the dark one, nor the reverse. A custom theme (`custom:<id>`) is
+    // accepted here by shape and checked against the person's own themes in updatePreferences.
+    lightPreset: z.custom<LightPreset>(
+      (v) => typeof v === "string" && ((LIGHT_PRESET_IDS as readonly string[]).includes(v) || isCustomPreset(v)),
+      "Pick one of the light themes in the list"
+    ),
+    darkPreset: z.custom<DarkPreset>(
+      (v) => typeof v === "string" && ((DARK_PRESET_IDS as readonly string[]).includes(v) || isCustomPreset(v)),
+      "Pick one of the dark themes in the list"
+    ),
+    // The theme that stays when Match my device is off. It is saved in the `accent` column.
+    preset: z.custom<Preset>(
+      (v) => typeof v === "string" && ((PRESET_IDS as readonly string[]).includes(v) || isCustomPreset(v)),
+      "Pick one of the colour themes in the list"
+    ),
     density: z.enum(DENSITIES),
     reducedMotion: z.enum(MOTIONS),
     defaultBranch: optionalText(100, "The branch name").refine(
@@ -59,14 +92,32 @@ export const preferencesPatch = z
 
 export type PreferencesPatch = z.infer<typeof preferencesPatch>;
 
-function fromRow(row: typeof schema.userPreferences.$inferSelect | undefined): Preferences {
+function fromRow(
+  row: typeof schema.userPreferences.$inferSelect | undefined,
+  /** The person's custom themes and their schemes. A custom theme not in here is gone, and its choice falls back. */
+  customs: ReadonlyMap<string, Scheme> = new Map()
+): Preferences {
   if (!row) return { ...DEFAULT_PREFERENCES };
   // A value that is no longer in a list (an old row) falls back, so the page never breaks on it.
   const pick = <T extends string>(list: readonly T[], v: string, fallback: T): T =>
     (list as readonly string[]).includes(v) ? (v as T) : fallback;
+  // A saved row holds the choice itself; an older one is converted here, once.
+  // A custom theme stays only while it exists, and in a slot only while it has that slot's scheme.
+  const custom = <T extends Preset>(v: string, scheme: Scheme | null): T | null =>
+    isCustomPreset(v) && customs.has(v) && (scheme === null || customs.get(v) === scheme) ? (v as T) : null;
+  const choice =
+    row.theme === CONVERTED
+      ? {
+          matchDevice: row.matchDevice,
+          lightPreset:
+            custom<LightPreset>(row.lightPreset, "light") ?? pick(LIGHT_PRESET_IDS, row.lightPreset, DEFAULT_PREFERENCES.lightPreset),
+          darkPreset:
+            custom<DarkPreset>(row.darkPreset, "dark") ?? pick(DARK_PRESET_IDS, row.darkPreset, DEFAULT_PREFERENCES.darkPreset),
+          preset: custom<Preset>(row.accent, null) ?? pick(PRESET_IDS, row.accent, DEFAULT_PREFERENCES.preset),
+        }
+      : themeChoiceFromLegacy(row.theme, row.accent);
   return {
-    theme: pick(THEMES, row.theme, DEFAULT_PREFERENCES.theme),
-    accent: pick(ACCENTS, row.accent, DEFAULT_PREFERENCES.accent),
+    ...choice,
     density: pick(DENSITIES, row.density, DEFAULT_PREFERENCES.density),
     reducedMotion: pick(MOTIONS, row.reducedMotion, DEFAULT_PREFERENCES.reducedMotion),
     defaultBranch: row.defaultBranch,
@@ -83,7 +134,7 @@ async function load(userId: string): Promise<Preferences> {
     .from(schema.userPreferences)
     .where(eq(schema.userPreferences.userId, userId))
     .get();
-  return fromRow(row);
+  return fromRow(row, row ? await themeSchemes(userId) : undefined);
 }
 
 /**
@@ -91,6 +142,27 @@ async function load(userId: string): Promise<Preferences> {
  * components ask (the shell, the top bar and the page all do).
  */
 export const getPreferences = cache(load);
+
+/**
+ * A custom theme can only be chosen if it is the person's own, and a slot only
+ * takes a theme of its scheme (the light slot a light theme). Someone else's
+ * theme id is the same error as one that does not exist.
+ */
+async function checkCustomChoices(userId: string, patch: PreferencesPatch) {
+  const wanted: [string | undefined, Scheme | null][] = [
+    [patch.lightPreset, "light"],
+    [patch.darkPreset, "dark"],
+    [patch.preset, null],
+  ];
+  if (!wanted.some(([v]) => isCustomPreset(v))) return;
+  const mine = await themeSchemes(userId);
+  for (const [value, scheme] of wanted) {
+    if (!isCustomPreset(value)) continue;
+    const have = mine.get(value);
+    if (!have) throw new HttpError(400, "That custom theme does not exist", "validation");
+    if (scheme && have !== scheme) throw new HttpError(400, `Pick a ${scheme} theme for the ${scheme} slot`, "validation");
+  }
+}
 
 /** Validate a partial update and save it. Returns the full preferences afterwards. */
 export async function updatePreferences(userId: string, raw: unknown): Promise<Preferences> {
@@ -101,9 +173,12 @@ export async function updatePreferences(userId: string, raw: unknown): Promise<P
     throw new HttpError(400, `${where}${first?.message ?? "Invalid preferences"}`, "validation");
   }
   const patch = parsed.data;
+  await checkCustomChoices(userId, patch);
   const next: Preferences = { ...(await load(userId)) };
-  if (patch.theme !== undefined) next.theme = patch.theme;
-  if (patch.accent !== undefined) next.accent = patch.accent;
+  if (patch.matchDevice !== undefined) next.matchDevice = patch.matchDevice;
+  if (patch.lightPreset !== undefined) next.lightPreset = patch.lightPreset;
+  if (patch.darkPreset !== undefined) next.darkPreset = patch.darkPreset;
+  if (patch.preset !== undefined) next.preset = patch.preset;
   if (patch.density !== undefined) next.density = patch.density;
   if (patch.reducedMotion !== undefined) next.reducedMotion = patch.reducedMotion;
   if (patch.defaultBranch !== undefined) next.defaultBranch = patch.defaultBranch;
@@ -115,7 +190,14 @@ export async function updatePreferences(userId: string, raw: unknown): Promise<P
   }
 
   const db = await getDb();
-  const values = { ...next, analyticsDefaults: serializeAnalyticsDefaults(next.analyticsDefaults), updatedAt: new Date() };
+  const { preset, ...rest } = next;
+  const values = {
+    ...rest,
+    theme: CONVERTED,
+    accent: preset,
+    analyticsDefaults: serializeAnalyticsDefaults(next.analyticsDefaults),
+    updatedAt: new Date(),
+  };
   await db
     .insert(schema.userPreferences)
     .values({ userId, ...values })

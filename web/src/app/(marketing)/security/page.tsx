@@ -3,7 +3,26 @@ import { HOME_FACTS, TOKEN_SCOPES, numberWord } from "@/components/marketing/hom
 import { REPO_URL } from "@/lib/site";
 import { SECURITY_FACTS } from "./_components/facts";
 import { Toc } from "./_components/toc";
-import { Code, LimitTable, Points, Section, Sub, Term, Terms, TextLink } from "./_components/parts";
+import {
+  Code,
+  DOCUMENT_LAYOUT,
+  InShort,
+  JumpLink,
+  Lead,
+  LimitTable,
+  Notice,
+  PageTitle,
+  Points,
+  SHEET,
+  Section,
+  Steps,
+  Sub,
+  Term,
+  Terms,
+  TextLink,
+  type Brief,
+} from "./_components/parts";
+import { SecurityReportForm } from "@/components/security-report-form";
 
 export const metadata: Metadata = {
   title: "Security",
@@ -11,54 +30,85 @@ export const metadata: Metadata = {
     "What Egg can and cannot touch on your Nest container, how it protects your keys, your account and your browser, the limits it enforces, what it logs, how to report a vulnerability and how to remove it.",
 };
 
-const { reauthMinutes, terminalIdleMinutes, terminalMaxMinutes, shortLivedDays, buildMemoryGb } = HOME_FACTS;
+const { reauthMinutes, terminalIdleMinutes, terminalMaxMinutes, shortLivedDays } = HOME_FACTS;
 const F = SECURITY_FACTS;
 
 /** The private advisory form on the repository, and the maintainer's GitHub profile, both built from REPO_URL. */
 const ADVISORY_URL = `${REPO_URL}/security/advisories/new`;
 const MAINTAINER_URL = REPO_URL.split("/").slice(0, 4).join("/");
 
+/** The sections in page order. `group` gathers neighbours under one name in the list beside the page. */
 const SECTIONS = [
-  { id: "touch", title: "What Egg can touch" },
-  { id: "switches", title: "The three switches" },
-  { id: "secrets", title: "Keys and secrets" },
-  { id: "accounts", title: "Accounts and sign-in" },
-  { id: "browser", title: "Your browser and this site" },
-  { id: "limits", title: "Rate and size limits" },
-  { id: "tokens", title: "Access tokens" },
-  { id: "webhooks", title: "Webhooks" },
-  { id: "domains", title: "Domains" },
-  { id: "builds", title: "Builds" },
-  { id: "analytics", title: "Visitor analytics" },
-  { id: "logs", title: "What is logged and what is not" },
-  { id: "remove", title: "Disconnect a server, remove Egg" },
-  { id: "gaps", title: "What is not covered" },
-  { id: "report", title: "Report a vulnerability" },
+  { id: "short", title: "The short version" },
+  { id: "touch", title: "What Egg can touch", group: "On your container" },
+  { id: "switches", title: "The three switches", group: "On your container" },
+  { id: "secrets", title: "Keys and secrets", group: "Secrets and sign-in" },
+  { id: "accounts", title: "Accounts and sign-in", group: "Secrets and sign-in" },
+  { id: "browser", title: "Your browser and this site", group: "Secrets and sign-in" },
+  { id: "limits", title: "Rate and size limits", group: "Requests from outside" },
+  { id: "tokens", title: "Access tokens", group: "Requests from outside" },
+  { id: "webhooks", title: "Webhooks", group: "Requests from outside" },
+  { id: "domains", title: "Domains", group: "Requests from outside" },
+  { id: "builds", title: "Builds", group: "Builds and data" },
+  { id: "analytics", title: "Visitor analytics", group: "Builds and data" },
+  { id: "logs", title: "What is logged and what is not", group: "Builds and data" },
+  { id: "remove", title: "Disconnect a server, remove Egg", group: "Leaving and reporting" },
+  { id: "gaps", title: "What is not covered", group: "Leaving and reporting" },
+  { id: "report", title: "Report a vulnerability", group: "Leaving and reporting" },
 ] as const;
 
-const title = (id: (typeof SECTIONS)[number]["id"]) => SECTIONS.find((s) => s.id === id)!.title;
-const num = (id: (typeof SECTIONS)[number]["id"]) => SECTIONS.findIndex((s) => s.id === id) + 1;
+type SectionId = (typeof SECTIONS)[number]["id"];
+
+const title = (id: SectionId) => SECTIONS.find((s) => s.id === id)!.title;
+
+/**
+ * The page in eight sentences. Each one is stated again, with its detail, in
+ * the section it links to, so nothing is claimed here that is not explained
+ * below.
+ */
+const brief = (id: SectionId, text: string): Brief => ({ text, href: `#${id}`, section: title(id) });
+
+const IN_SHORT: Brief[] = [
+  brief("touch", "Egg works in four places on your container and nowhere else."),
+  brief("switches", "A new container starts with all three switches off: the terminal, file changes and removing leftovers."),
+  brief("secrets", "The SSH private key and your environment variables are encrypted before they are stored, with AES-256-GCM."),
+  brief("tokens", "An access token reaches only your own projects, servers and domains, and it cannot create another token."),
+  brief("builds", "Your code is built on your own Nest container, under a memory and CPU cap."),
+  brief("analytics", "Page analytics are off until you turn them on for a project, and the script sets no cookie."),
+  brief("remove", "Removing Egg takes two steps, and your apps keep running."),
+  brief("gaps", "The gaps that are known are listed on this page."),
+];
 
 export default function SecurityPage() {
   return (
     <>
       <header className="board-col pt-[60px] lg:pt-[120px]">
-        <h1 className="max-w-[18ch] font-pixel text-[clamp(2.25rem,5vw,4rem)] leading-[1.05] font-medium text-balance text-foreground">
-          How Egg protects your container
-        </h1>
-        <p className="mt-5 max-w-[60ch] text-[1.0625rem] leading-[1.75rem] text-reading">
+        <PageTitle>How Egg protects your container</PageTitle>
+        <Lead>
           Egg is an add-on that connects to a Hack Club Nest container you already own. It is an independent project,
           not part of Nest. This page says what Egg reaches, what it keeps, what it writes down, what it refuses and how
-          to get rid of it. In short: it only manages what it created, the risky features start switched off, every
-          secret is encrypted or hashed, and requests that are unsigned, too frequent or too large are turned away.
+          to get rid of it. Egg limits what it manages, starts risky features switched off, protects stored credentials,
+          and enforces request checks. Secrets can still be exposed on a compromised host or through deployed code.
+        </Lead>
+        <p className="m-0 mt-5">
+          <JumpLink href="#report">Report a vulnerability</JumpLink>
         </p>
+        <Notice title="Security is an ongoing effort, not a guarantee.">
+          We work to make Egg secure and review reported issues, but we cannot guarantee that it is free of
+          vulnerabilities, that every attack will be prevented, or that data will never be lost or exposed. Your hosting
+          configuration, dependencies, connected services, credentials, and the code you deploy affect the risk. Keep
+          backups, install updates, and enable only the access your projects need. The controls described here are a
+          technical account of the code, not a security certification.
+        </Notice>
       </header>
 
-      <div className="board-col mt-10 grid items-start gap-6 pb-[90px] lg:mt-[60px] lg:grid-cols-[15rem_minmax(0,1fr)] lg:gap-8 lg:pb-[150px]">
+      <div className={DOCUMENT_LAYOUT}>
         <Toc sections={SECTIONS} />
 
-        <article className="border-x border-b border-border bg-background">
-          <Section id="touch" title={title("touch")} number={num("touch")}>
+        <article className={SHEET}>
+          <InShort id="short" title={title("short")} items={IN_SHORT} />
+
+          <Section id="touch" title={title("touch")}>
             <p className="m-0">
               Egg reaches your container over SSH, as your Nest user, with a key you add yourself. On the container it
               works in four places and nowhere else.
@@ -95,7 +145,7 @@ export default function SecurityPage() {
             </p>
           </Section>
 
-          <Section id="switches" title={title("switches")} number={num("switches")}>
+          <Section id="switches" title={title("switches")}>
             <p className="m-0">
               A new container starts with all three switches off. When one is off, Egg refuses the request on the
               server, so it is not only hidden from the page. You change them in Account, under Container permissions.
@@ -127,7 +177,7 @@ export default function SecurityPage() {
             </p>
           </Section>
 
-          <Section id="secrets" title={title("secrets")} number={num("secrets")}>
+          <Section id="secrets" title={title("secrets")}>
             <Terms>
               <Term name="The SSH key">
                 Egg makes an ed25519 key for each Nest server you connect, and never reuses it for another server or
@@ -148,7 +198,7 @@ export default function SecurityPage() {
               </Term>
               <Term name="Environment variables">
                 Encrypted the same way as the SSH key, and write-only: the dashboard and the API list their names and
-                never their values. At deploy time Egg decrypts them, gives them to the build and writes them to a{" "}
+                never their values. At deploy time Egg decrypts them, gives them to the build on your container and writes them to a{" "}
                 <Code>.env</Code> file on your container with mode 600, so only your own user can read it. On the
                 container that file is plain text, protected by its permissions.
               </Term>
@@ -166,7 +216,7 @@ export default function SecurityPage() {
             </Terms>
           </Section>
 
-          <Section id="accounts" title={title("accounts")} number={num("accounts")}>
+          <Section id="accounts" title={title("accounts")}>
             <p className="m-0">
               You sign in with Hack Club. Egg asks for your name, email and Hack Club ID, and keeps those (plus a Slack
               ID when Hack Club sends one). It never sees your Hack Club password.
@@ -182,6 +232,11 @@ export default function SecurityPage() {
                 the one you are using. Doing either closes any open terminal on your account.
               </li>
               <li>
+                In local mode, the recovery key from <Code>.env.local</Code> is used only to set or reset the local
+                password. Egg stores a salted scrypt hash, and a password change or reset signs out every existing
+                browser and closes open terminals.
+              </li>
+              <li>
                 When Egg asks you to sign in again to confirm a sensitive change, it has to be the same Hack Club
                 account. A different account is turned away and your session is left as it was.
               </li>
@@ -192,7 +247,7 @@ export default function SecurityPage() {
             </Points>
           </Section>
 
-          <Section id="browser" title={title("browser")} number={num("browser")}>
+          <Section id="browser" title={title("browser")}>
             <Terms>
               <Term name="The return path after sign-in">
                 After you sign in, Egg sends you back to the page you came from, but only if that is a page on Egg. A
@@ -228,7 +283,7 @@ export default function SecurityPage() {
             </Terms>
           </Section>
 
-          <Section id="limits" title={title("limits")} number={num("limits")}>
+          <Section id="limits" title={title("limits")}>
             <p className="m-0">
               Egg counts requests and turns away the ones over these limits with a message that says how long to wait.
               Sign-in and access tokens are counted by network address, because the caller has no account yet. The rest
@@ -276,6 +331,7 @@ export default function SecurityPage() {
                 ["Deploy hook", `${F.deployHookBodyKb} KB`],
                 ["Most requests made with an access token", `${F.apiBodyKb} KB`],
                 ["JSON requests from a signed-in browser", `${F.dashboardBodyKb} KB`],
+                ["Analytics collector", `${F.analyticsCollectBodyBytes.toLocaleString("en-US")} bytes`],
                 ["MCP endpoint", `${F.mcpBodyKb} KB`],
                 ["GitHub delivery", `${F.githubBodyMb} MB`],
                 ["File upload", `${F.uploadMb} MB`],
@@ -287,7 +343,7 @@ export default function SecurityPage() {
             </p>
           </Section>
 
-          <Section id="tokens" title={title("tokens")} number={num("tokens")}>
+          <Section id="tokens" title={title("tokens")}>
             <p className="m-0">
               An access token lets a script or an AI agent use the API and the MCP endpoint. Each token has a name, a
               list of permissions called scopes (there are {TOKEN_SCOPES.length}) and an expiry of 7, 30, 90 or 365
@@ -324,10 +380,16 @@ export default function SecurityPage() {
             </p>
           </Section>
 
-          <Section id="webhooks" title={title("webhooks")} number={num("webhooks")}>
+          <Section id="webhooks" title={title("webhooks")}>
             <Sub>From GitHub to Egg</Sub>
             <p className="m-0">
               The GitHub endpoint is public, so the only thing that lets a request in is a valid signature.
+            </p>
+            <p className="m-0">
+              During an active maintenance window, Egg refuses all GitHub App events with 503 before recording them
+              as handled. This also pauses pull-request preview removal and integration updates. GitHub does not
+              automatically retry failed deliveries: an operator must redeliver them after the window, or deploy a
+              missed push manually. Egg does not keep a deferred-event queue.
             </p>
             <Points>
               <li>
@@ -335,9 +397,13 @@ export default function SecurityPage() {
                 same time whether it matches or not. A missing or wrong signature is refused and nothing runs.
               </li>
               <li>
-                Egg remembers each delivery id for {numberWord(F.deliveryHours)} hour. A signed delivery that arrives
-                again in that time, whether a replay or a retry that already worked, is answered without being run a
-                second time. If handling a delivery fails, the id is forgotten so GitHub&apos;s retry goes through.
+                GitHub signs the body, but not the <Code>x-github-event</Code> header. Egg accepts only supported event
+                names with event-specific fields and hashes both the event name and body for replay prevention. A
+                correctly labeled request is refused if it arrives again, even after a restart or with a different
+                delivery id. The digest is kept {F.deliveryDigestRetention}; if handling a delivery fails, it is removed
+                so GitHub&apos;s retry goes through. Because the event header is unsigned, a signed body that also matches
+                another supported event&apos;s shape could still be interpreted under that label; the action and field
+                checks reduce this ambiguity but cannot cryptographically remove it.
               </li>
               <li>
                 The database itself refuses a second active deploy of the same commit on the same branch from GitHub, a
@@ -346,7 +412,7 @@ export default function SecurityPage() {
                 start one. The second one is dropped, and a deploy hook answers 409.
               </li>
               <li>
-                The body is read up to {F.githubBodyMb} MB and no further. A branch name or commit hash from a push is
+                The body is read up to {F.githubBodyMb} MB and no further, and a request without a length or with a bad signature is refused before its body is read. A branch name or commit hash from a push is
                 checked before it reaches git, so a branch name that starts with a dash is refused instead of being read
                 as a git option.
               </li>
@@ -389,7 +455,7 @@ export default function SecurityPage() {
             </p>
           </Section>
 
-          <Section id="domains" title={title("domains")} number={num("domains")}>
+          <Section id="domains" title={title("domains")}>
             <p className="m-0">
               Nest routes the traffic for a domain, not Egg. What Egg decides is which domains it will record for your
               project and show as Active.
@@ -418,19 +484,39 @@ export default function SecurityPage() {
             </Points>
           </Section>
 
-          <Section id="builds" title={title("builds")} number={num("builds")}>
+          <Section id="builds" title={title("builds")}>
             <p className="m-0">
-              Your code is built in a Docker container on Egg&apos;s server, never on your Nest container.
+              Your code is built on your own Nest container, in a new release folder, under a memory and CPU cap.
+              Egg&apos;s server only clones the repository and sends the source.
             </p>
             <Points>
               <li>
-                The build gets {buildMemoryGb} GB of memory, {F.buildCpus} CPUs and at most {F.buildProcesses}{" "}
-                processes. It has every Linux capability removed, cannot gain new privileges and publishes no ports. It
-                can reach the internet, because installing packages needs that.
+                Egg clones your repository on its own server, packs the source and uploads it over SSH. Nothing is
+                installed or built on Egg&apos;s server. The GitHub token is used for the clone and is never sent to
+                your container.
               </li>
               <li>
-                Your environment variables reach the build, but a variable with a name such as <Code>DOCKER_HOST</Code>{" "}
-                or <Code>LD_PRELOAD</Code> cannot change how Egg runs Docker.
+                Before anything is uploaded, Egg checks your container for Node.js, the package manager, Python,{" "}
+                <Code>systemd-run</Code>, <Code>timeout</Code> and {F.buildMinFreeDiskMb} MB of free disk. If one is
+                missing, you get one line that says what to fix, and nothing is uploaded.
+              </li>
+              <li>
+                The build runs under a cap that the kernel enforces. Memory is {F.buildMemoryMb} MB by default, set for
+                each server, a project with a build step gets at least {F.buildStepFloorMb} MB while it builds if the
+                container has room for it, and it is never more than the container&apos;s memory minus {F.buildReserveMb} MB, which stays
+                free for your app. Under {F.buildMinCapMb} MB the build does not start. CPU is {F.buildCpuDefault}{" "}
+                cores by default, adjustable from {F.buildCpuMin} cores in {F.buildCpuStep}-core steps up to the
+                connected Nest server&apos;s reported core count. The build runs at a low priority, with no swap, at
+                most {F.buildProcesses} processes and for at most {F.buildMinutes} minutes. One build runs at a time on
+                a container.
+              </li>
+              <li>
+                Your app keeps running while the build runs. If the build fails, runs out of memory, times out or is
+                canceled, Egg deletes the new release folder and the running release stays.
+              </li>
+              <li>
+                Your environment variables reach the build. For the build they are written to a file with mode 600
+                that Egg deletes when the build ends.
               </li>
               <li>
                 A root folder or output folder in your repository that is a link leading outside the repository is
@@ -444,22 +530,33 @@ export default function SecurityPage() {
             </Points>
           </Section>
 
-          <Section id="analytics" title={title("analytics")} number={num("analytics")}>
+          <Section id="analytics" title={title("analytics")}>
             <p className="m-0">
               Page analytics are off until you turn them on for a project. They count the visitors of your site, not of
               Egg. The script you add to your site is built to collect as little as it can.
             </p>
             <Points>
               <li>It sets no cookie.</li>
+              <li>Route details default to <Code>/</Code>; only a site-supplied <Code>data-egg-path</Code> template is reported. Egg does not send the raw browser path.</li>
+              <li>Click tracking reads only the name on an element marked with <Code>data-egg-track</Code>, never its text or accessible label. Exception messages are not collected.</li>
               <li>
                 A referrer is stored as its host only, such as <Code>news.example.com</Code>, never the address or the
-                query string. The campaign values <Code>utm_source</Code>, <Code>utm_medium</Code> and{" "}
-                <Code>utm_campaign</Code> are cut to {F.utmChars} characters, and other parameters are not read.
+                query string. Campaign values are a separate switch, Campaigns, that is off until you turn it on.
+                It records <Code>utm_source</Code>, <Code>utm_medium</Code> and <Code>utm_campaign</Code> only when
+                the value is one you listed for the project, spelled exactly (up to {F.utmAllowlistMax} values for
+                each, {F.utmValueChars} characters at most). Any other value is dropped before it is stored, and
+                other parameters are not read.
               </li>
               <li>
                 An IP address is never stored. Egg uses it for a short rate limit held in memory. It also goes, with
                 the browser string, the project and the date, into a one-way hash that counts a day&apos;s visitors.
                 That hash changes every day, so it cannot follow anyone from one day to the next.
+              </li>
+              <li>
+                Record visitor countries is a separate switch that is off by default. When it is on, the address is
+                also looked up once, in the same request, in a country database that ships with Egg, so it is not sent
+                to another service. Only the two-letter country code is stored. Egg does not store or log the address
+                for this, and keeps no city, region or position.
               </li>
               <li>
                 When the browser sends Do Not Track or Global Privacy Control, the script sends nothing and adds no
@@ -473,13 +570,20 @@ export default function SecurityPage() {
                 changes counts as new.
               </li>
               <li>
-                Page views and events are deleted after {F.analyticsKeepDays} days. Live view heartbeats are deleted
-                after an hour.
+                Turning Referrers, Campaigns, Retention or Record visitor countries off deletes what that switch
+                stored for the project. The other switches stop recording, and what they stored stays until the retention period
+                deletes it.
+              </li>
+              <li>
+                Page views and events are deleted after {F.analyticsKeepDays[0]}, {F.analyticsKeepDays[1]} or{" "}
+                {F.analyticsKeepDays[2]} days, as you choose for each project, and after {F.analyticsKeepDefaultDays}{" "}
+                days until you choose. Live view heartbeats are deleted after an hour. The app runs cleanup independently of the deployment worker. Backups may retain older
+                database contents under their own retention.
               </li>
             </Points>
           </Section>
 
-          <Section id="logs" title={title("logs")} number={num("logs")}>
+          <Section id="logs" title={title("logs")}>
             <p className="m-0">
               Egg keeps an audit log of what happens on your account. Your Activity page shows your own entries, newest
               first.
@@ -519,7 +623,7 @@ export default function SecurityPage() {
             </p>
           </Section>
 
-          <Section id="remove" title={title("remove")} number={num("remove")}>
+          <Section id="remove" title={title("remove")}>
             <Sub>When you disconnect a server</Sub>
             <p className="m-0">
               Egg first closes any terminal open on that server, so a root shell cannot outlive its key. Then it deletes
@@ -540,14 +644,14 @@ export default function SecurityPage() {
               Removing Egg takes two steps. Do the second even if you skip the first, because it is the one that cuts
               off access.
             </p>
-            <ol className="m-0 flex list-decimal flex-col gap-2 pl-5 marker:text-muted-foreground">
+            <Steps>
               <li>In Egg, disconnect the server. Egg cannot connect to the container again. Check the box to also delete its projects, or leave it to keep them.</li>
               <li>
                 In the Nest dashboard, delete the key on the SSH Keys page. Egg shows the key&apos;s fingerprint, and
                 the key&apos;s comment is <Code>egg:</Code> followed by your Nest username. Once it is deleted,
                 nothing can use it, even a copy.
               </li>
-            </ol>
+            </Steps>
             <Sub>What stays on the container</Sub>
             <p className="m-0">
               Your apps keep running. The <Code>~/.egg</Code> folder, with its releases, <Code>shared/</Code>{" "}
@@ -558,7 +662,7 @@ export default function SecurityPage() {
             </p>
           </Section>
 
-          <Section id="gaps" title={title("gaps")} number={num("gaps")}>
+          <Section id="gaps" title={title("gaps")}>
             <p className="m-0">
               The behaviour on this page was checked against the code, and each fix came with a test. These are the
               gaps that are known.
@@ -579,23 +683,19 @@ export default function SecurityPage() {
                 has been chosen. The rules against framing, plug-ins and form hijacking are not affected.
               </li>
               <li>
-                Rate limits, the page-view and event limits of the analytics collector, and the delivery list are kept in
-                memory by each server process, so a restart clears them and each process counts on its own. Limits by
-                address work only when <Code>TRUST_PROXY</Code> is on. With it off, the collector counts every visitor
-                as one address.
-              </li>
-              <li>
-                The public endpoint that receives analytics page views reads the whole request body before it keeps the
-                first 5,000 characters. It has no size cap of its own yet.
+                Rate limits and the page-view and event limits of the analytics collector are kept in memory by each
+                server process, so a restart clears them and each process counts on its own. Limits by address work
+                only when <Code>TRUST_PROXY</Code> is on. With it off, the collector counts every visitor as one
+                address. GitHub replay digests are stored in the database, as described above.
               </li>
               <li>
                 The live view of a build log checks your sign-in when it opens and then keeps running for a few hours,
                 so it can outlast a sign-out.
               </li>
-              <li>The build container can reach the internet, as noted under Builds.</li>
               <li>
-                A person running Egg themselves can set <Code>BUILD_RUNNER=local</Code>, which builds with no
-                isolation at all. It is meant for development only, and only for code you trust.
+                A build runs as your Nest user, so it can read everything that user can read on your container, and it
+                can reach the internet. The cap limits memory and CPU. It does not limit what the build can reach.
+                Build only code you wrote or trust.
               </li>
               <li>
                 Dependencies are checked by running <Code>pnpm audit:prod</Code>, which fails on a high or critical
@@ -605,7 +705,7 @@ export default function SecurityPage() {
             </Points>
           </Section>
 
-          <Section id="report" title={title("report")} number={num("report")}>
+          <Section id="report" title={title("report")}>
             <p className="m-0">
               If you find a way to get past anything on this page, please tell the maintainer privately before telling
               anyone else.
@@ -629,6 +729,11 @@ export default function SecurityPage() {
             <p className="m-0">
               Please do not open a public issue for a vulnerability. Say what you found, the steps to repeat it and
               which page or endpoint it is on. Leave real keys, tokens and passwords out of the report.
+            </p>
+            <SecurityReportForm />
+            <p className="m-0 text-[0.9375rem] leading-6 text-muted-foreground">
+              Instance administrators can open the <TextLink href="/security/reports">private report inbox</TextLink>.
+              Access is restricted to the exact configured account.
             </p>
           </Section>
         </article>

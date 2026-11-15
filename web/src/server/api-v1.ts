@@ -315,6 +315,10 @@ export function endpointById(id: string): Endpoint | undefined {
  */
 export async function callEndpoint(p: Principal, ep: Endpoint, raw: unknown): Promise<unknown> {
   if (ep.scope !== null) requireScope(p, ep.scope);
+  if (!ep.readOnly && !["cancel_deployment", "terminal_close"].includes(ep.id)) {
+    const { maintenanceBlocksUser, maintenanceError } = await import("@/server/maintenance");
+    if (await maintenanceBlocksUser(p.userId)) throw maintenanceError();
+  }
   const parsed = ep.input.safeParse(raw ?? {});
   if (!parsed.success) throw zodToHttp(parsed.error);
   return ep.run(p, parsed.data as never);

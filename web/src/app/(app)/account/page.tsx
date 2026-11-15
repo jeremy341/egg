@@ -15,6 +15,11 @@ import { listServers } from "@/server/servers";
 import { normalizePermissions } from "@/lib/container-permissions";
 import { characterFor, shownName } from "@/lib/preferences";
 import { getPreferences } from "@/server/preferences";
+import { localModeEnabled } from "@/server/config";
+import { LocalPasswordCard } from "@/components/local-password-card";
+import { CleanupCard } from "@/components/cleanup-card";
+import { PasswordSignInCard } from "@/components/password-signin-card";
+import { hasOtherSignIn, passwordCredential, signInEnvironment } from "@/server/auth/password-signin";
 
 export const metadata = { title: "Account" };
 
@@ -30,11 +35,12 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 export default async function AccountPage() {
   const user = await requireUser();
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
-  const [sessions, installations, servers, prefs] = await Promise.all([
+  const [sessions, installations, servers, prefs, passwordSignIn] = await Promise.all([
     listSessions(user.id, token),
     listInstallations(user.id),
     listServers(user.id),
     getPreferences(user.id),
+    passwordCredential(user.id),
   ]);
 
   return (
@@ -104,6 +110,16 @@ export default async function AccountPage() {
         />
 
         <WebhooksCard />
+
+        {localModeEnabled() && user.hackClubId === "local:owner" ? <LocalPasswordCard /> : null}
+        {user.hackClubId.startsWith("local:") ? null : (
+          <PasswordSignInCard
+            enabled={!!passwordSignIn}
+            email={user.email}
+            canTurnOff={hasOtherSignIn(user, signInEnvironment())}
+          />
+        )}
+        <CleanupCard name={user.name} />
 
         <AccountView
           name={user.name}

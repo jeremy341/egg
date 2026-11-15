@@ -91,6 +91,8 @@ export type Project = {
   startCommand: string | null;
   healthPath: string;
   autoDeploy: boolean;
+  /** Where builds run: container (your Nest container, under a memory and CPU cap) or github (your GitHub Actions workflow). */
+  buildLocation: BuildLocation;
   serverId: string;
   monitor: "unknown" | "up" | "down";
   state: DeployState | null;
@@ -206,6 +208,8 @@ export type Usage = {
   diskTotalMb: number | null;
   checkedAt: string;
 };
+
+export type BuildLocation = "container" | "github";
 
 export type Runtime = "node" | "python" | "static" | "command";
 

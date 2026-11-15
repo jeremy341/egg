@@ -19,7 +19,7 @@ function ChartSkeleton() {
         <SkeletonText size="body" width="w-16" />
       </div>
       <div className="px-4 pt-4 pb-3">
-        <Skeleton className="h-[120px] w-full" />
+        <Skeleton className="h-[132px] w-full" />
         <SkeletonText size="caption" width="w-full" className="mt-1.5" />
       </div>
       <div className="grid grid-cols-3 divide-x border-t">

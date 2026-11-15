@@ -5,13 +5,15 @@ import { SettingsSkeleton } from "@/components/skeletons/settings";
 import { pixel } from "@/lib/fonts";
 import { cn } from "@/lib/utils";
 import { requireUser } from "@/server/auth/current";
+import { listThemes } from "@/server/custom-themes";
 import { getPreferences } from "@/server/preferences";
+import { CleanupCard } from "@/components/cleanup-card";
 
 export const metadata = { title: "Settings" };
 
 async function SettingsContent() {
   const user = await requireUser();
-  const prefs = await getPreferences(user.id);
+  const [prefs, themes] = await Promise.all([getPreferences(user.id), listThemes(user.id)]);
   return (
     <div className="motion-enter mx-auto max-w-[720px]">
       <div className="mb-6">
@@ -24,7 +26,8 @@ async function SettingsContent() {
           .
         </p>
       </div>
-      <SettingsForm initial={prefs} hackClubName={user.name} />
+      <SettingsForm initial={prefs} hackClubName={user.name} customThemes={themes} />
+      <div className="mt-6"><CleanupCard name={user.name} /></div>
     </div>
   );
 }

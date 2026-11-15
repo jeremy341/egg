@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CaretLeftIcon } from "@phosphor-icons/react";
+import { CaretLeftIcon, ShieldCheckIcon } from "@phosphor-icons/react";
 import { useAccount } from "@/components/account-context";
 import { PixelAvatar } from "@/components/ui/pixel-avatar";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -14,7 +14,7 @@ export const navItemClass =
   "touch-target flex h-8 items-center gap-2.5 rounded-md px-2 font-medium tracking-[-0.02em] transition-colors duration-(--dur-fast) focus-visible:outline-offset-[-2px]";
 export const navItemIdle =
   "text-muted-foreground hover:bg-[var(--ds-gray-alpha-100)] hover:text-foreground";
-export const navItemCurrent = "bg-[var(--ds-gray-alpha-100)] text-foreground";
+export const navItemCurrent = "bg-selected text-selected-foreground";
 
 /**
  * Items that open a new group get a little air above them, so nine links read
@@ -37,7 +37,7 @@ export function NavList({
 }) {
   const pathname = usePathname();
   const ctx = navFor(pathname);
-  const { projects } = useAccount();
+  const { projects, user } = useAccount();
   const projectName = ctx.project
     ? (projects.find((p) => p.slug === ctx.project?.slug)?.name ?? ctx.project.name)
     : null;
@@ -92,6 +92,7 @@ export function NavList({
           </Link>
         );
       })}
+      {user.isAdmin ? <Link href="/admin" onClick={onNavigate} aria-current={pathname.startsWith("/admin") ? "page" : undefined} className={cn(navItemClass, roomy && "h-11", "mt-2.5", pathname.startsWith("/admin") ? navItemCurrent : navItemIdle)}><ShieldCheckIcon aria-hidden="true" className="size-4 shrink-0" />Administration</Link> : null}
     </nav>
   );
 }

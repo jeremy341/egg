@@ -6,6 +6,7 @@ import { PencilSimpleIcon, TrashIcon } from "@phosphor-icons/react";
 import { api } from "@/components/api";
 import { Swap } from "@/components/motion/swap";
 import { AlertsCard, DeployHookCard, NotificationsCard, StatusPageCard } from "@/components/project-automation";
+import { ScheduledJobsCard } from "@/components/scheduled-jobs-card";
 import { PageHeader } from "@/components/page-header";
 import { buildBody, ProjectBuildFields, toBuildForm, type BuildForm } from "@/components/project-build-fields";
 import { EnvImportButton } from "@/components/env-import";
@@ -19,6 +20,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { PixelAvatar } from "@/components/ui/pixel-avatar";
 import type { ProjectView } from "@/server/queries";
 import { cn } from "@/lib/utils";
+import { CleanupCard } from "@/components/cleanup-card";
 
 type EnvVar = { id: string; key: string; target: "all" | "production" | "preview" };
 
@@ -345,16 +347,19 @@ export function ProjectSettings({
 
           <DeployHookCard project={project} />
 
+          <ScheduledJobsCard projectId={project.id} />
+
           <NotificationsCard project={project} />
 
           <AlertsCard project={project} />
 
           <StatusPageCard project={project} />
+          <CleanupCard name={project.slug} projectId={project.id} />
 
           <Card
             id="danger-heading"
             title="Delete Project"
-            description="Removes the project from Egg. Optionally stops it and deletes its releases on your server first."
+            description="Removes the project from Egg. Optionally stops it and deletes its releases on your server first. The lists below show what goes and what stays."
             tone="danger"
             footer={
               <>
@@ -383,6 +388,30 @@ export function ProjectSettings({
               />
               Also stop the service and delete releases on {project.nestUsername}.hackclub.app
             </label>
+            <div className="mb-4 grid gap-3 text-[13px] sm:grid-cols-2">
+              <div>
+                <p className="font-medium">Deleted</p>
+                <ul className="mt-1 list-disc space-y-0.5 pl-4 text-muted-foreground">
+                  <li>The project in Egg, with its deployment history, logs and environment variables</li>
+                  {removeRemote ? (
+                    <li>On your container: the service, its scheduled jobs, previews and all releases</li>
+                  ) : null}
+                </ul>
+              </div>
+              <div>
+                <p className="font-medium">Kept</p>
+                <ul className="mt-1 list-disc space-y-0.5 pl-4 text-muted-foreground">
+                  <li>
+                    The shared data folder, <span className="font-mono">~/.egg/{project.slug}/shared</span>
+                  </li>
+                  <li>Your GitHub repository and the GitHub App installation</li>
+                  <li>DNS records for custom domains</li>
+                  {removeRemote ? null : (
+                    <li>The app and its scheduled jobs keep running on your container, but Egg no longer manages them</li>
+                  )}
+                </ul>
+              </div>
+            </div>
             <Label htmlFor="del-confirm">
               Type <span className="font-mono text-foreground">{project.slug}</span> to confirm
             </Label>

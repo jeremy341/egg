@@ -79,6 +79,7 @@ export const DOCS_NAV: DocsGroup[] = [
         ],
       },
       { id: "hooks", title: "Deploy hooks", subsections: [] },
+      { id: "jobs", title: "Scheduled jobs", subsections: [] },
       { id: "notifications", title: "Notifications", subsections: [] },
       {
         id: "api",
@@ -144,7 +145,7 @@ export const DOCS_NAV: DocsGroup[] = [
         title: "Security",
         subsections: [
           { id: "security-key", title: "The SSH key and the host key" },
-          { id: "security-builds", title: "Sandboxed builds" },
+          { id: "security-builds", title: "Where builds run" },
           { id: "security-vars", title: "Variables and secrets" },
           { id: "security-signin", title: "Sign-in and requests" },
           { id: "security-visibility", title: "Who can see what" },
@@ -156,11 +157,11 @@ export const DOCS_NAV: DocsGroup[] = [
         subsections: [
           { id: "selfhost-start", title: "Starting your own copy" },
           { id: "selfhost-login", title: "Start on login" },
-          { id: "selfhost-config", title: "Settings the code reads" },
-          { id: "selfhost-worker", title: "The worker" },
+          { id: "selfhost-config", title: "Settings Egg reads" },
+          { id: "selfhost-worker", title: "The worker that runs builds" },
           { id: "selfhost-database", title: "The database and backups" },
           { id: "selfhost-apps", title: "Hack Club and GitHub apps" },
-          { id: "selfhost-server", title: "Run on your own server" },
+          { id: "selfhost-server", title: "Run on a Linux server with Docker Compose" },
           { id: "selfhost-platforms", title: "What works where" },
         ],
       },

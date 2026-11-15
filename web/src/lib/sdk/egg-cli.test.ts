@@ -39,6 +39,7 @@ const project = {
   startCommand: "npm start",
   healthPath: "/",
   autoDeploy: true,
+  buildLocation: "container",
   serverId: "srv_1",
   monitor: "up",
   state: "ready",

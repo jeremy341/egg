@@ -8,6 +8,7 @@ import { ConnectionAlert } from "@/components/connection-alert";
 import { ContainerBodySkeleton } from "@/components/container-skeleton";
 import { TypedConfirmDialog } from "@/components/container-typed-confirm";
 import { PageHeader } from "@/components/page-header";
+import { PixelMeter } from "@/components/pixel-kit";
 import { Label } from "@/components/settings-ui";
 import { StatusIndicator } from "@/components/status-dot";
 import { Alert } from "@/components/ui/alert";
@@ -18,7 +19,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { toast } from "@/components/ui/toast";
-import { checkBuildMemory } from "@/lib/build-memory";
+import { checkBuildCpu, checkBuildMemory } from "@/lib/build-memory";
 import { OFF_MESSAGES, PERMISSIONS_HREF } from "@/lib/container-permissions";
 import { cn } from "@/lib/utils";
 import type {
@@ -111,7 +112,6 @@ function Mono({ children, className }: { children: React.ReactNode; className?: 
 function Overview({ inventory }: { inventory: Inventory }) {
   const { disk } = inventory;
   const ratio = disk ? Math.min(disk.usedMb / disk.totalMb, 1) : 0;
-  const hot = ratio >= 0.8;
   const folderKb =
     inventory.projects.reduce((n, p) => n + (p.folderKb ?? 0), 0) +
     inventory.orphans.reduce((n, o) => n + (o.kind === "folder" ? (o.sizeKb ?? 0) : 0), 0);
@@ -138,20 +138,15 @@ function Overview({ inventory }: { inventory: Inventory }) {
       <div className="px-4 pt-3 pb-4">
         {disk ? (
           <>
-            <div
-              role="meter"
-              aria-label="Disk used"
-              aria-valuemin={0}
-              aria-valuemax={disk.totalMb}
-              aria-valuenow={disk.usedMb}
-              aria-valuetext={`${Math.round(ratio * 100)} percent used`}
-              className="h-1.5 overflow-hidden rounded-full bg-muted"
-            >
-              <div
-                className={cn("h-full rounded-full", hot ? "bg-warning" : "bg-foreground")}
-                style={{ width: `${Math.round(ratio * 100)}%` }}
-              />
-            </div>
+            {/* The same meter as the usage card on the Projects page: amber from 80%. */}
+            <PixelMeter
+              ratio={ratio}
+              label="Disk used"
+              now={disk.usedMb}
+              max={disk.totalMb}
+              valueText={`${Math.round(ratio * 100)} percent used`}
+              cells={40}
+            />
             <p className="mt-2 text-label text-muted-foreground">
               {Math.round(ratio * 100)}% used.
               {folderKb > 0 ? ` Egg folders take ${formatKb(folderKb)} of that.` : ""}
@@ -342,25 +337,31 @@ function OtherPortRow({ p }: { p: OtherPort }) {
 }
 
 type BuildMemory = { memoryMb: number; minMb: number; maxMb: number; defaultMb: number };
+type BuildCpu = { cpuCores: number; minCpus: number; maxCpus: number; defaultCpus: number; step: number };
 
 /**
- * The memory limit of the build sandbox for one server. It is read and saved
+ * The memory limit of a build on one server's container. It is read and saved
  * on its own, so it works even while the container itself cannot be reached.
  * The page keys it by server, so choosing another server starts it fresh.
  */
 function BuildMemoryField({ serverId }: { serverId: string }) {
   const [setting, setSetting] = useState<BuildMemory | null>(null);
   const [value, setValue] = useState("");
+  const [cpuSetting, setCpuSetting] = useState<BuildCpu | null>(null);
+  const [cpuValue, setCpuValue] = useState("");
   const [saving, setSaving] = useState(false);
+  const [savingCpu, setSavingCpu] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    api<{ buildMemory: BuildMemory }>(`/api/servers/${serverId}/build-memory`)
+    api<{ buildMemory: BuildMemory; buildCpu: BuildCpu }>(`/api/servers/${serverId}/build-memory`)
       .then((res) => {
         if (cancelled) return;
         setSetting(res.buildMemory);
         setValue(String(res.buildMemory.memoryMb));
+        setCpuSetting(res.buildCpu);
+        setCpuValue(String(res.buildCpu.cpuCores));
       })
       .catch((err: unknown) => {
         if (!cancelled) setLoadError(err instanceof Error ? err.message : "Could not read the build memory.");
@@ -373,6 +374,9 @@ function BuildMemoryField({ serverId }: { serverId: string }) {
   const parsed = value.trim() === "" ? Number.NaN : Number(value);
   const problem = setting ? checkBuildMemory(parsed, setting.maxMb) : null;
   const changed = setting !== null && parsed !== setting.memoryMb;
+  const parsedCpu = cpuValue.trim() === "" ? Number.NaN : Number(cpuValue);
+  const cpuProblem = cpuSetting ? checkBuildCpu(parsedCpu, cpuSetting.maxCpus) : null;
+  const cpuChanged = cpuSetting !== null && parsedCpu !== cpuSetting.cpuCores;
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -393,11 +397,31 @@ function BuildMemoryField({ serverId }: { serverId: string }) {
     }
   }
 
+  async function saveCpu(e: React.FormEvent) {
+    e.preventDefault();
+    if (!cpuSetting || cpuProblem) return;
+    setSavingCpu(true);
+    try {
+      const res = await api<{ buildCpu: BuildCpu }>(`/api/servers/${serverId}/build-memory`, {
+        method: "PUT",
+        body: { cpuCores: parsedCpu },
+      });
+      setCpuSetting(res.buildCpu);
+      setCpuValue(String(res.buildCpu.cpuCores));
+      toast.success(`Build CPU set to ${res.buildCpu.cpuCores} cores`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not save the build CPU limit.");
+    } finally {
+      setSavingCpu(false);
+    }
+  }
+
   return (
+    <>
     <Section
       id="container-build-memory"
       title="Build memory"
-      description="Your project is built on the Egg side, in a sandbox that gets this much memory. 2048 MB suits a standard Nest container. If your server can use more, raise it. A build that needs more memory than this stops with a message saying it ran out of memory, and you can raise the limit here and deploy again."
+      description="Your projects are built on your own container, never on Egg's machine. This sets the memory limit of a build. The allowed maximum follows the connected Nest server's reported memory, and the limit never goes above your container's memory minus 512 MB, which is kept for your app. Projects with a build step get at least 1024 MB while they build, if your container has room for it."
     >
       <form onSubmit={save} className="px-4 py-4">
         {loadError ? (
@@ -440,6 +464,53 @@ function BuildMemoryField({ serverId }: { serverId: string }) {
         )}
       </form>
     </Section>
+    <Section
+      id="container-build-cpu"
+      title="Build CPU"
+      description="This caps the CPU a build can use on your container. Its allowed maximum follows the connected Nest server's reported core count."
+    >
+      <form onSubmit={saveCpu} className="px-4 py-4">
+        {loadError ? (
+          <p className="text-label text-muted-foreground">{loadError}</p>
+        ) : !cpuSetting ? (
+          <p className="text-label text-muted-foreground">Reading the setting…</p>
+        ) : (
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="w-full sm:w-48">
+              <Label htmlFor="build-cpu">Build CPU limit (cores)</Label>
+              <Input
+                id="build-cpu"
+                type="number"
+                inputMode="decimal"
+                min={cpuSetting.minCpus}
+                max={cpuSetting.maxCpus}
+                step={cpuSetting.step}
+                value={cpuValue}
+                onChange={(e) => setCpuValue(e.target.value)}
+                aria-invalid={cpuProblem ? true : undefined}
+                aria-describedby="build-cpu-hint"
+                className="tabular"
+              />
+            </div>
+            <Button type="submit" loading={savingCpu} disabled={!cpuChanged || cpuProblem !== null}>
+              Save
+            </Button>
+            {cpuSetting.cpuCores !== cpuSetting.defaultCpus ? (
+              <Button type="button" variant="outline" onClick={() => setCpuValue(String(cpuSetting.defaultCpus))} disabled={savingCpu}>
+                Use {cpuSetting.defaultCpus} cores
+              </Button>
+            ) : null}
+            <p
+              id="build-cpu-hint"
+              className={cn("w-full text-label", cpuProblem ? "text-destructive" : "text-muted-foreground")}
+            >
+              {cpuProblem ?? `From ${cpuSetting.minCpus} to ${cpuSetting.maxCpus} cores in ${cpuSetting.step}-core steps. The default is ${cpuSetting.defaultCpus} cores.`}
+            </p>
+          </div>
+        )}
+      </form>
+    </Section>
+    </>
   );
 }
 
@@ -733,7 +804,7 @@ export function ContainerView({ servers }: { servers: ContainerServer[] }) {
       )}
 
       {serverId ? (
-        <div className="mt-6">
+        <div className="mt-6 space-y-6">
           <BuildMemoryField key={serverId} serverId={serverId} />
         </div>
       ) : null}

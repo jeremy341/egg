@@ -421,9 +421,13 @@ describe("current/ is the read-only live release", () => {
 });
 
 describe("the release's .env file is never shown", () => {
-  it("refuses to read or download current/.env or a release's .env, before SSH", async () => {
+  it("refuses to read or download runtime/build environment files before SSH", async () => {
     reply = () => ({ code: 0, stdout: `9\n${Buffer.from("TOKEN=abc").toString("base64")}` });
-    for (const path of ["current/.env", "releases/abc123/.env"]) {
+    for (const path of [
+      "current/.env",
+      "releases/abc123/.env",
+      "incoming/0a1b2c3d-0000-4000-8000-000000000000.buildenv",
+    ]) {
       for (const res of [
         await read(get("read", { path }), ctxFor(projectId)),
         await download(get("download", { path }), ctxFor(projectId)),

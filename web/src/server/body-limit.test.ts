@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { JSON_BODY_LIMIT, readJsonLimited, readTextLimited } from "@/server/body-limit";
+import { InFlightLimit, JSON_BODY_LIMIT, readBytesLimited, readJsonLimited, readTextLimited, webhookBodyReads } from "@/server/body-limit";
 import { HttpError } from "@/server/http";
 
 const post = (body: BodyInit | null, headers: Record<string, string> = {}) =>
@@ -68,5 +68,92 @@ describe("readJsonLimited", () => {
   it("still answers 413 when a fallback is given", async () => {
     const big = "x".repeat(JSON_BODY_LIMIT + 1);
     expect(await status(readJsonLimited(post(big), { fallback: {} }))).toBe(413);
+  });
+});
+
+describe("readBytesLimited options", () => {
+  it("shows every chunk to onChunk, in order, before it is kept", async () => {
+    const seen: string[] = [];
+    const bytes = await readBytesLimited(post(stream(["ab", "cd"])), 100, {
+      onChunk: (c) => seen.push(Buffer.from(c).toString()),
+    });
+    expect(seen).toEqual(["ab", "cd"]);
+    expect(bytes.toString()).toBe("abcd");
+  });
+
+  it("gives up with 408 when a body stalls past the idle timeout", async () => {
+    const stalled = new ReadableStream<Uint8Array>({ start: () => {} });
+    const err: unknown = await readBytesLimited(post(stalled), 100, { idleTimeoutMs: 20 }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(HttpError);
+    expect((err as HttpError).status).toBe(408);
+  });
+
+  it("does not time out a body that keeps arriving", async () => {
+    const enc = new TextEncoder();
+    const slow = new ReadableStream<Uint8Array>({
+      async start(c) {
+        for (const s of ["a", "b", "c"]) {
+          await new Promise((r) => setTimeout(r, 5));
+          c.enqueue(enc.encode(s));
+        }
+        c.close();
+      },
+    });
+    expect((await readBytesLimited(post(slow), 100, { idleTimeoutMs: 200 })).toString()).toBe("abc");
+  });
+
+  it("gives up with 408 at the overall deadline, even when bytes keep trickling in", async () => {
+    const enc = new TextEncoder();
+    let timer: ReturnType<typeof setInterval> | undefined;
+    // One byte every 10 ms, forever: never idle for long, so only the deadline can stop it.
+    const trickle = new ReadableStream<Uint8Array>({
+      start(c) {
+        timer = setInterval(() => c.enqueue(enc.encode("x")), 10);
+      },
+      cancel() {
+        clearInterval(timer);
+      },
+    });
+    const started = Date.now();
+    const err: unknown = await readBytesLimited(post(trickle), 10_000, { idleTimeoutMs: 500, deadlineMs: 80 }).catch(
+      (e: unknown) => e
+    );
+    clearInterval(timer);
+    expect(err).toBeInstanceOf(HttpError);
+    expect((err as HttpError).status).toBe(408);
+    expect(Date.now() - started).toBeLessThan(450);
+  });
+
+  it("leaves a quick body alone when a deadline is set", async () => {
+    expect((await readBytesLimited(post(stream(["ab", "cd"])), 100, { deadlineMs: 500 })).toString()).toBe("abcd");
+  });
+});
+
+describe("InFlightLimit", () => {
+  it("hands out at most max slots, and a released slot can be taken again", () => {
+    const limit = new InFlightLimit(2);
+    const a = limit.acquire();
+    const b = limit.acquire();
+    expect(a).not.toBeNull();
+    expect(b).not.toBeNull();
+    expect(limit.acquire()).toBeNull();
+    expect(limit.inFlight).toBe(2);
+    a?.();
+    expect(limit.inFlight).toBe(1);
+    expect(limit.acquire()).not.toBeNull();
+  });
+
+  it("counts a slot once, even if its release is called twice", () => {
+    const limit = new InFlightLimit(1);
+    const release = limit.acquire();
+    release?.();
+    release?.();
+    expect(limit.inFlight).toBe(0);
+    expect(limit.acquire()).not.toBeNull();
+    expect(limit.acquire()).toBeNull();
+  });
+
+  it("is the webhook pool of four", () => {
+    expect(webhookBodyReads.max).toBe(4);
   });
 });

@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/server/auth/current";
 import { config } from "@/server/config";
 import { safeEqual } from "@/server/crypto";
 import { installationsForCode, saveInstallations } from "@/server/github/app";
+import { maintenanceBlocksUser } from "@/server/maintenance";
 
 function back(status: string) {
   const res = NextResponse.redirect(new URL(`/new?github=${status}`, config().APP_URL), 303);
@@ -14,6 +15,9 @@ function back(status: string) {
 export async function GET(req: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.redirect(new URL("/login", config().APP_URL), 303);
+  if (await maintenanceBlocksUser(user.id)) {
+    return NextResponse.json({ error: { code: "maintenance", message: "GitHub linking is paused during maintenance. Connect it again after the window ends." } }, { status: 503, headers: { "Retry-After": "60" } });
+  }
 
   const code = req.nextUrl.searchParams.get("code");
   const state = req.nextUrl.searchParams.get("state");

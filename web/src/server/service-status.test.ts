@@ -8,7 +8,7 @@ import { createProject, deployBranch, type ProjectRow } from "@/server/projects"
 import { fetchServiceStatus, forgetServiceStatus, isFresh, lastKnownServiceStatus, parseServiceStatus } from "@/server/service-status";
 import { connectToServer, createServer, getServerForUser, type ServerRow } from "@/server/servers";
 import { NestSession } from "@/server/ssh/connection";
-import { fakeBuilder, freePort, installFakeSystemd, nodeApp } from "@/server/test/fake-nest";
+import { fakeBuilder, freePort, containerReadyFacts, installFakeContainerBuild, installFakeSystemd, nodeApp } from "@/server/test/fake-nest";
 import { useFreshDb } from "@/server/test/db";
 import { startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
 
@@ -96,6 +96,7 @@ describe("fetchServiceStatus on a mock Nest", () => {
     server = await createServer(userId, "sam-r", { host: "127.0.0.1", port: 1 });
     mock = await startMockSsh({ authorizedKeys: [server.publicKey] });
     installFakeSystemd(mock);
+    installFakeContainerBuild(mock);
     await ctx.db.update(schema.servers).set({ port: mock.port, hostKeyFingerprint: mock.hostKeyFingerprint }).where(eq(schema.servers.id, server.id));
     server = await getServerForUser(userId, server.id);
 
@@ -108,7 +109,9 @@ describe("fetchServiceStatus on a mock Nest", () => {
     });
     neverDeployed = await createProject(userId, { ...base, name: "Idle", startCommand: "node server.js", port: await freePort() });
     deps = {
-      build: fakeBuilder(() => nodeApp("v1")),
+      preflight: () => async () => containerReadyFacts,
+      lockPollMs: 50,
+      sourceBuild: fakeBuilder(() => nodeApp("v1")),
       connect: connectToServer,
       unitDir: `${mock.home.replace(/\\/g, "/")}/units`,
       healthTimeoutSeconds: 8,
