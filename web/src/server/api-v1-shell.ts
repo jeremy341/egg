@@ -16,6 +16,7 @@ import { HttpError, notFound } from "@/server/http";
 import { requireProjectFeature } from "@/server/permission-guards";
 import { getProjectForUser } from "@/server/projects";
 import { enforceRateLimit } from "@/server/rate-limit";
+import { isSecretFile, SECRET_FILE_CODE } from "@/server/secret-files";
 import { isSessionId, terminals, TERMINAL_LIMITS, type SessionInfo } from "@/server/terminal";
 
 /**
@@ -153,26 +154,16 @@ const MAX_DOWNLOAD_BYTES = 2 * 1024 * 1024;
 const pathInput = z.string().max(1024).describe("Path relative to the project's folder, such as shared/uploads/logo.png. Empty is the project folder.");
 
 /**
- * Nest Deploy writes a release's environment variables, in plain text, to
- * `.env` at the top of the release (`current/.env`, `releases/<id>/.env`).
- * Values are write-only everywhere in the API, so those files are not readable here.
- * (A shell can still read them: that is part of what the owner allows by turning
- * the terminal on, and why a terminal token is short-lived.)
+ * A release's `.env` holds the environment variable values in plain text, so it
+ * is not readable here (see secret-files.ts; the file manager refuses it too).
+ * A terminal token can still read it: that is why such a token is short-lived.
  */
-const ENV_FILE = /^(?:current|releases\/[^/]+)\/\.env$/;
-
 function refuseEnvFile(raw: string) {
-  let path: string;
-  try {
-    path = normalizePath(raw);
-  } catch {
-    return; // The file service reports a bad path itself.
-  }
-  if (ENV_FILE.test(path)) {
+  if (isSecretFile(raw)) {
     throw new HttpError(
       403,
       "That file holds the project's environment variable values, which are never returned by the API.",
-      "secret_file"
+      SECRET_FILE_CODE
     );
   }
 }

@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import Link from "next/link";
+import { CaretRightIcon } from "@phosphor-icons/react/dist/ssr";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { NestMark } from "@/components/nest-mark";
@@ -7,8 +8,9 @@ import { StatusIndicator } from "@/components/status-dot";
 import { LoadingRegion, Skeleton, SkeletonText } from "@/components/ui/skeleton";
 import { pixel } from "@/lib/fonts";
 import { timeAgo } from "@/lib/status";
-import { publicStatus, type Incident, type StripDay } from "@/server/status-page";
+import { publicStatus, type Incident } from "@/server/status-page";
 import { cn } from "@/lib/utils";
+import { STRIP_LEGEND, STRIP_TONE, dayDetail, dayLabel, stripSummary } from "./strip";
 
 type Props = { params: Promise<{ key: string }> };
 
@@ -23,31 +25,6 @@ const HEADLINE = {
   down: { text: "Not responding", detail: "The app has stopped answering.", glyph: "bg-[var(--status-error)]" },
   unknown: { text: "No data yet", detail: "Checks have not run for this app yet.", glyph: "bg-[var(--ds-gray-600)]" },
 } as const;
-
-const STRIP_TONE = {
-  up: "bg-ready",
-  partial: "bg-[var(--status-building)]",
-  down: "bg-[var(--status-error)]",
-  none: "bg-muted",
-} as const;
-
-function dayLabel(day: string): string {
-  return new Date(`${day}T00:00:00Z`).toLocaleDateString("en", { day: "numeric", month: "short", timeZone: "UTC" });
-}
-
-function dayTitle(d: StripDay): string {
-  const label = dayLabel(d.day);
-  if (d.state === "none") return `${label}: no checks yet`;
-  if (d.state === "up") return `${label}: answering all day`;
-  if (d.state === "partial") return `${label}: not answering for ${d.downMinutes} min`;
-  return `${label}: not answering for most of the day, ${d.downMinutes} min`;
-}
-
-/** The strip in words, for screen readers: counts of each kind of day. */
-function stripSummary(days: StripDay[], windowDays: number): string {
-  const count = (s: StripDay["state"]) => days.filter((d) => d.state === s).length;
-  return `Last ${windowDays} days: ${count("up")} answering all day, ${count("partial")} with an outage, ${count("down")} mostly down.`;
-}
 
 function lasted(i: Incident): string {
   if (!i.to) return "ongoing";
@@ -94,13 +71,57 @@ async function Content({ params }: Props) {
           <div className="mt-4">
             <div role="img" aria-label={stripSummary(status.days, status.windowDays)} className="flex h-6 gap-[3px]">
               {status.days.map((d) => (
-                <span key={d.day} title={dayTitle(d)} className={cn("min-w-0 flex-1", STRIP_TONE[d.state])} />
+                <span
+                  key={d.day}
+                  title={`${dayLabel(d.day)}: ${dayDetail(d)}`}
+                  className={cn("min-w-0 flex-1", STRIP_TONE[d.state])}
+                />
               ))}
             </div>
-            <div className="tabular mt-2 flex justify-between text-caption text-muted-foreground">
+            <div aria-hidden="true" className="tabular mt-2 flex justify-between text-caption text-muted-foreground">
               <span>{dayLabel(status.days[0].day)}</span>
               <span>Today</span>
             </div>
+            <ul aria-label="Key" className="mt-3 flex flex-wrap gap-x-5 gap-y-1.5 text-caption text-muted-foreground">
+              {STRIP_LEGEND.map((l) => (
+                <li key={l.state} className="inline-flex items-center gap-2">
+                  <span aria-hidden="true" className={cn("size-2.5 shrink-0 ring-1 ring-inset ring-border", STRIP_TONE[l.state])} />
+                  {l.label}
+                </li>
+              ))}
+            </ul>
+            {/* The same days as text, so no detail lives only in a colour or a hover tooltip. */}
+            <details className="disclosure mt-4 border-t pt-3">
+              <summary className="-mx-1 w-fit items-center gap-1.5 rounded-sm px-1 py-1.5 text-label font-medium max-sm:min-h-10">
+                <CaretRightIcon aria-hidden="true" className="disclosure-caret size-4" />
+                Show each day as text
+              </summary>
+              <div className="mt-2 max-h-64 overflow-auto border">
+                <table className="w-full text-label">
+                  <caption className="sr-only">Each of the last {status.windowDays} days, oldest first, in UTC</caption>
+                  <thead className="sticky top-0 bg-background-subtle text-left text-muted-foreground">
+                    <tr>
+                      <th scope="col" className="px-3 py-2 font-medium">
+                        Day
+                      </th>
+                      <th scope="col" className="px-3 py-2 font-medium">
+                        What happened
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="tabular">
+                    {status.days.map((d) => (
+                      <tr key={d.day} className="border-t">
+                        <th scope="row" className="px-3 py-1.5 text-left font-normal whitespace-nowrap">
+                          <time dateTime={d.day}>{dayLabel(d.day)}</time>
+                        </th>
+                        <td className="px-3 py-1.5">{dayDetail(d)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </details>
           </div>
         ) : null}
       </section>

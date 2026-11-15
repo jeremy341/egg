@@ -18,7 +18,7 @@ const SUPPORTED = [LATEST, "2025-03-26", "2024-11-05"];
 export const SERVER_INFO = { name: "nest-deploy", title: "Nest Deploy", version: "1.0.0" };
 
 const INSTRUCTIONS =
-  "Tools for the Nest Deploy projects of the token's owner. Call list_projects first to get project ids, " +
+  "Tools for the Nest Deploy projects of the token's owner. Call get_me first to see which scopes the token has, then list_projects to get project ids, " +
   "then list_deployments to see build state, and list_servers for server ids. " +
   "Tools that change things (create, update or delete a project, deploy, redeploy, cancel, rollback, set or remove " +
   "environment variables, add or remove domains, replace the deploy hook, write or delete files, use a terminal) change " +
@@ -46,7 +46,7 @@ function toTool(ep: Endpoint): McpTool {
   return {
     name: ep.id,
     title: ep.summary,
-    description: `${ep.description} Needs the ${ep.scope} scope.`,
+    description: `${ep.description} ${ep.scope ? `Needs the ${ep.scope} scope.` : "Needs no scope."}`,
     inputSchema,
     annotations: {
       readOnlyHint: ep.readOnly,

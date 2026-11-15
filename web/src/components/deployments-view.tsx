@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -43,6 +43,23 @@ import { cn } from "@/lib/utils";
 const LIST = "hairline-y overflow-hidden rounded-lg bg-card shadow-border-small";
 const PAGE = 25;
 
+const WIDE = "(min-width: 640px)";
+const subscribeWide = (notify: () => void) => {
+  const mq = window.matchMedia(WIDE);
+  mq.addEventListener("change", notify);
+  return () => mq.removeEventListener("change", notify);
+};
+
+/** The search box is narrow on phones: its placeholder must fit, so it gets a shorter one. */
+function useSearchPlaceholder() {
+  const wide = useSyncExternalStore(
+    subscribeWide,
+    () => window.matchMedia(WIDE).matches,
+    () => false
+  );
+  return wide ? "Search by commit, branch, author or #pr…" : "Search deployments";
+}
+
 type BulkResult = { id: string; ok: boolean; message?: string };
 
 const SORTS: { value: SortKey; label: string }[] = [
@@ -70,6 +87,7 @@ export function DeploymentsView({
   demo?: boolean;
 }) {
   const router = useRouter();
+  const searchPlaceholder = useSearchPlaceholder();
   const [query, setQuery] = useState<DeploymentQuery>(DEFAULT_QUERY);
   const [shown, setShown] = useState(PAGE);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
@@ -110,8 +128,8 @@ export function DeploymentsView({
     return [...seen].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
   }, [deployments]);
 
-  const visible = useMemo(() => applyDeploymentQuery(deployments, query), [deployments, query]);
-  const counts = useMemo(() => statusCounts(deployments, query), [deployments, query]);
+  const visible = useMemo(() => applyDeploymentQuery(deployments, query, now), [deployments, query, now]);
+  const counts = useMemo(() => statusCounts(deployments, query, now), [deployments, query, now]);
 
   if (deployments.length === 0) {
     return (
@@ -241,8 +259,8 @@ export function DeploymentsView({
             />
             <Input
               type="search"
-              aria-label="Search deployments"
-              placeholder="Search by commit, branch, author or #pr…"
+              aria-label="Search deployments by commit, branch, author or PR number"
+              placeholder={searchPlaceholder}
               value={query.search}
               onChange={(e) => set("search", e.target.value)}
               className="pl-8 max-sm:h-10"

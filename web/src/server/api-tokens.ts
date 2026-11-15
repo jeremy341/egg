@@ -36,6 +36,8 @@ export const SCOPES = [
   "files:read",
   "files:write",
   "terminal:use",
+  "webhooks:read",
+  "webhooks:write",
 ] as const;
 export type Scope = (typeof SCOPES)[number];
 
@@ -58,6 +60,8 @@ export const SCOPE_LABEL: Record<Scope, string> = {
   "files:read": "List and read files in a project's folder on the container",
   "files:write": "Create, change, rename and delete files in a project's shared/ folder (never the live release)",
   "terminal:use": "Open and use a shell on the container. Commands run for real",
+  "webhooks:read": "Read your webhooks and their recent deliveries (never their secrets)",
+  "webhooks:write": "Create, change, delete and test webhooks, and replace a webhook secret",
 };
 
 /**

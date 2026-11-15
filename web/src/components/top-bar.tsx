@@ -14,7 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
-import { navFor } from "@/lib/nav";
+import { hasOwnCreateButton, navFor } from "@/lib/nav";
 
 const crumbLink =
   "rounded-md px-2 py-1 text-muted-foreground transition-colors duration-(--dur-fast) hover:bg-[var(--ds-gray-alpha-100)] hover:text-foreground";
@@ -99,30 +99,33 @@ export function TopBar() {
       </p>
 
       <div className="ml-auto flex items-center gap-2">
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <Button
-                variant="ghost"
-                className="gap-1.5 px-2 font-medium tracking-[-0.02em] max-lg:size-10 max-lg:px-0"
-              />
-            }
-          >
-            <PlusIcon aria-hidden="true" />
-            <span className="max-lg:sr-only">Create New</span>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-52">
-            <DropdownMenuItem render={<Link href="/new" />}>
-              Project
-            </DropdownMenuItem>
-            <DropdownMenuItem render={<Link href="/domains" />}>
-              Domain
-            </DropdownMenuItem>
-            <DropdownMenuItem render={<Link href="/connect" />}>
-              Connect a server
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {/* The Projects page has its own "New project" button, so the bar leaves the verb to it. */}
+        {hasOwnCreateButton(pathname) ? null : (
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  className="gap-1.5 px-2 font-medium tracking-[-0.02em] max-lg:size-10 max-lg:px-0"
+                />
+              }
+            >
+              <PlusIcon aria-hidden="true" />
+              <span className="max-lg:sr-only">New</span>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52">
+              <DropdownMenuItem render={<Link href="/new" />}>
+                Project
+              </DropdownMenuItem>
+              <DropdownMenuItem render={<Link href="/domains" />}>
+                Domain
+              </DropdownMenuItem>
+              <DropdownMenuItem render={<Link href="/connect" />}>
+                Connect a server
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
     </header>
   );

@@ -4,6 +4,8 @@ import { DeploymentsView } from "@/components/deployments-view";
 import { PageHeader } from "@/components/page-header";
 import { FactLine, toneOf } from "@/components/pixel-kit";
 import { DeploymentsSkeleton } from "@/components/skeletons/deployments";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { requireUser } from "@/server/auth/current";
 import { deploymentViews, projectViews } from "@/server/queries";
 
@@ -27,6 +29,20 @@ async function Content({ params }: Props) {
     <div className="motion-enter">
       <PageHeader
         title="Deployments"
+        actions={
+          <div className="flex flex-col items-start gap-1 max-sm:w-full">
+            <a
+              href={`/api/projects/${project.id}/deployments/export`}
+              download
+              className={cn(buttonVariants({ variant: "outline" }), "px-3 max-sm:w-full")}
+            >
+              Export CSV
+            </a>
+            <p className="text-xs text-muted-foreground">
+              Time, commit, branch, environment, state and duration, up to 5,000 rows.
+            </p>
+          </div>
+        }
         description={
           newest ? (
             <FactLine tones={deployments.slice(0, 24).map((d) => toneOf(d.state))}>

@@ -23,11 +23,23 @@ export function fingerprintOfPublicKey(publicKeyLine: string): string {
 }
 
 /**
+ * ssh2 drops leading zero bytes from the raw ed25519 public key, so about one key in 256
+ * comes out as a 31-byte key that neither ssh2 nor OpenSSH can read. Draw again until the
+ * pair parses.
+ */
+export function generateEd25519Pair(comment?: string): { public: string; private: string } {
+  for (;;) {
+    const pair = utils.generateKeyPairSync("ed25519", comment ? { comment } : undefined);
+    if (!(utils.parseKey(pair.public) instanceof Error) && !(utils.parseKey(pair.private) instanceof Error)) return pair;
+  }
+}
+
+/**
  * A dedicated ed25519 key for one Nest server. It is never reused for another
  * user or service, so removing it from the Nest dashboard revokes our access.
  */
 export function generateServerKey(comment: string): GeneratedKey {
-  const pair = utils.generateKeyPairSync("ed25519", { comment });
+  const pair = generateEd25519Pair(comment);
   return {
     publicKey: pair.public.trim(),
     privateKey: pair.private,

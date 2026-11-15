@@ -240,12 +240,28 @@ describe("permissions API", () => {
     expect((await putPermissionsRoute(json("/x", "PUT", { terminal: true }), idCtx(samServer))).status).toBe(401);
   });
 
-  it("returns the defaults: terminal off, file changes off, leftover removal on", async () => {
+  it("returns the defaults for a new server: every switch off", async () => {
     const fresh = (await createServer(sam.id, "sam-p3")).id;
     const res = await getPermissionsRoute(json("/x", "GET"), idCtx(fresh));
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ permissions: { terminal: false, fileWrites: false, orphanRemoval: true } });
+    expect(await res.json()).toEqual({ permissions: { terminal: false, fileWrites: false, orphanRemoval: false } });
     await ctx.db.delete(schema.servers).where(eq(schema.servers.id, fresh));
+  });
+
+  it("leaves a server that already had leftover removal on exactly as it was", async () => {
+    // An older row: leftover removal was on by default when it was connected.
+    const legacy = (await createServer(sam.id, "sam-legacy")).id;
+    await ctx.db.update(schema.servers).set({ allowOrphanRemoval: true }).where(eq(schema.servers.id, legacy));
+    await setPermissions(sam.id, legacy, { terminal: false });
+    const res = await getPermissionsRoute(json("/x", "GET"), idCtx(legacy));
+    expect((await bodyOf(res)).permissions).toEqual({ terminal: false, fileWrites: false, orphanRemoval: true });
+    await ctx.db.delete(schema.servers).where(eq(schema.servers.id, legacy));
+  });
+
+  it("matches the schema: every container switch defaults to off", () => {
+    expect(schema.servers.allowTerminal.default).toBe(false);
+    expect(schema.servers.allowFileWrites.default).toBe(false);
+    expect(schema.servers.allowOrphanRemoval.default).toBe(false);
   });
 
   it("keeps file changes off for a new server, and every change route refuses with 403 disabled before SSH", async () => {
@@ -401,6 +417,21 @@ describe("enforcement", () => {
     expect(connect).toHaveBeenCalledTimes(1);
   });
 
+  // KNOWN GAP, reported to the lead. The browser terminal input route checks the switch only when a
+  // terminal opens; after that it relies on the permissions PUT closing the session in this process.
+  // The API v1 route (apiTerminalSend) re-checks the stored value on every call. Add
+  // `await requireProjectFeature(user.id, id, "terminal")` to the input and resize routes, then
+  // change `it.fails` to `it`.
+  it("refuses terminal input with 403 the moment the stored switch is off, even if the session is still open", async () => {
+    await setPermissions(sam.id, samServer, { terminal: true });
+    const opened = await bodyOf(await openTerminal(json("/x", "POST", {}), termCtx(samProject)));
+    // Flip the stored value directly, as another process or an admin edit would, so nothing closes the session.
+    await ctx.db.update(schema.servers).set({ allowTerminal: false }).where(eq(schema.servers.id, samServer));
+    const res = await sendInput(json("/x", "POST", { data: "ls" }), termCtx(samProject, opened.sessionId));
+    expect(res.status).toBe(403);
+    expect(shells[0].written).toEqual([]);
+  });
+
   it("answers 404, not 403, for someone else's project, and the switch is per server", async () => {
     expect((await openTerminal(json("/x", "POST", {}), termCtx(kimProject))).status).toBe(404);
     await setPermissions(sam.id, samOtherServer, { terminal: true });
@@ -456,6 +487,15 @@ describe("enforcement", () => {
     expect(sshWasUsed()).toBe(false);
   });
 
+  it("refuses leftover removal on a brand new server, with no switch ever touched, before SSH", async () => {
+    const fresh = (await createServer(sam.id, "sam-p5")).id;
+    const res = await removeOrphansRoute(json("/x", "POST", { ids: ["nd-old.service"] }), idCtx(fresh));
+    expect(res.status).toBe(403);
+    expect((await bodyOf(res)).error?.code).toBe("disabled");
+    expect(sshWasUsed()).toBe(false);
+    await ctx.db.delete(schema.servers).where(eq(schema.servers.id, fresh));
+  });
+
   it("refuses leftover removal with 403 while it is off, before validating or touching SSH", async () => {
     await setPermissions(sam.id, samServer, { orphanRemoval: false });
     for (const body of [{ ids: ["nd-old.service"] }, { ids: [] }, { nonsense: 1 }]) {
@@ -490,7 +530,8 @@ describe("rate limits", () => {
     expect(Number(res.headers.get("retry-after"))).toBeGreaterThanOrEqual(1);
     expect((await bodyOf(res)).error?.code).toBe("rate_limited");
     expect(shells[0].written).toHaveLength(RATE_LIMITS.terminalInput.limit);
-    // Another user is not affected.
+    // Another user is not affected: their own switch is on, so the request reaches the session lookup.
+    await setPermissions(kim.id, kimServer, { terminal: true });
     vi.mocked(getCurrentUser).mockResolvedValue(kim as never);
     const other = await sendInput(json("/x", "POST", { data: "a" }), termCtx(kimProject, "A".repeat(22)));
     expect(other.status).toBe(404);

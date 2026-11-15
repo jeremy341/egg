@@ -78,8 +78,10 @@ export type OrphanEntry = {
   sizeKb: number | null;
   /** Ports this orphan is listening on. */
   ports: number[];
-  /** False for a link, which Nest Deploy never removes. */
+  /** False for a link or anything Nest Deploy did not create, which it never removes. */
   removable: boolean;
+  /** True when it has no Nest Deploy marker: it looks like ours by name but is the user's. */
+  notOurs?: boolean;
 };
 
 export type OtherPort = {
@@ -266,7 +268,8 @@ export function classifyInventory(
       execStart: u.execStart,
       sizeKb: null,
       ports: ports.filter((x) => x.owner.type === "orphan" && x.owner.unit === name).map((x) => x.port),
-      removable: true,
+      removable: u.managed !== false,
+      ...(u.managed === false ? { notOurs: true } : {}),
     });
   }
   const slugs = new Set(projects.map((p) => p.slug));
@@ -282,7 +285,8 @@ export function classifyInventory(
       execStart: null,
       sizeKb: f.sizeKb,
       ports: [],
-      removable: !f.isLink,
+      removable: !f.isLink && f.managed !== false,
+      ...(f.managed === false ? { notOurs: true } : {}),
     });
   }
   orphans.sort((a, b) => a.slug.localeCompare(b.slug) || a.kind.localeCompare(b.kind));
@@ -492,7 +496,9 @@ export async function removeOrphans(
             results.set(id, {
               id,
               status: "refused",
-              message: "This is a link, so it was left alone.",
+              message: orphan.notOurs
+                ? "Nest Deploy did not create this, so it was left alone."
+                : "This is a link, so it was left alone.",
             });
             continue;
           }

@@ -13,6 +13,7 @@ import {
   PERMISSION_KEYS,
   PERMISSION_LABELS,
   PERMISSION_STATE,
+  SECTION_INTRO,
   needsFreshSignIn,
   normalizePermissions,
   type ContainerPermissions,
@@ -49,7 +50,7 @@ function toastFor(key: PermissionKey, value: boolean, label: string) {
 
 /**
  * The Account page section: one card per connected server, three switches in
- * each. Every switch saves on its own, straight away. Turning the terminal or
+ * each, all off for a new server. Every switch saves on its own, straight away. Turning the terminal or
  * file changes on sends you through a fresh Hack Club sign-in first.
  */
 export function ContainerPermissionsSection({ servers }: { servers: PermissionServer[] }) {
@@ -62,11 +63,7 @@ export function ContainerPermissionsSection({ servers }: { servers: PermissionSe
       <h2 id="container-permissions-heading" className="scroll-mt-20 text-title-2">
         Container permissions
       </h2>
-      <p className="mt-1 max-w-[62ch] text-muted-foreground">
-        Choose which features can reach each of your containers. A feature that is off is blocked by Nest Deploy
-        itself, not only hidden from the page. The terminal and file changes are off until you turn them on, and
-        turning them on asks you to sign in with Hack Club again first.
-      </p>
+      <p className="mt-1 max-w-[62ch] text-muted-foreground">{SECTION_INTRO}</p>
 
       {servers.length === 0 ? (
         <div className="mt-4 rounded-lg bg-card p-5 shadow-border-small">

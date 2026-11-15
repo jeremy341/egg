@@ -94,7 +94,7 @@ export function StatsSkeleton() {
         </div>
       </div>
 
-      <div className={cn(GRID, "mt-6")} aria-hidden="true">
+      <div className={cn(GRID, "mt-[30px]")} aria-hidden="true">
         <TextFrame />
         <div className={cn(FRAME, "hairline-y")}>
           {[0, 1].map((i) => (
@@ -116,7 +116,7 @@ export function StatsSkeleton() {
         </div>
       ))}
 
-      <div className="mt-14 max-w-[640px] lg:mt-20" aria-hidden="true">
+      <div className={cn(SECTION, "[&>*]:max-w-[640px]")} aria-hidden="true">
         <SkeletonText size="title-3" width="w-48" />
         <SkeletonText size="body" width="w-full" lines={5} className="mt-3" />
       </div>

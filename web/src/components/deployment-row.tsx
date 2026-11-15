@@ -57,14 +57,15 @@ export function DeploymentRow({
   return (
     <li
       className={cn(
-        "relative grid grid-cols-[minmax(0,1fr)] gap-x-4 gap-y-3 px-4 py-3",
+        // Phones: title on its own line, then status, environment and age, then the branch.
+        "relative grid grid-cols-[auto_auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 px-4 py-3 md:gap-x-4 md:gap-y-3",
         selectable && "pl-12",
         selected && "bg-[var(--ds-gray-alpha-100)]",
         !demo &&
           "row-focus transition-colors duration-(--dur-fast) hover:bg-[var(--ds-gray-alpha-100)]",
         showProject
-          ? "md:grid-cols-[150px_minmax(0,1fr)_110px_120px_minmax(0,160px)_88px_32px]"
-          : "md:grid-cols-[minmax(0,1fr)_110px_120px_minmax(0,160px)_88px_32px]",
+          ? "md:grid-cols-[150px_minmax(0,1fr)_110px_120px_272px_88px_32px]"
+          : "md:grid-cols-[minmax(0,1fr)_110px_120px_272px_88px_32px]",
         "md:items-center"
       )}
     >
@@ -92,8 +93,8 @@ export function DeploymentRow({
         </p>
       ) : null}
 
-      <div className="flex min-w-0 items-center justify-between gap-3 md:contents">
-        <p className="min-w-0 truncate">
+      <div className="contents">
+        <p className="min-w-0 truncate max-md:col-span-3">
           {showProject ? (
             <span className="mr-2 font-medium tracking-[-0.02em] md:hidden">
               {deployment.projectName}
@@ -110,16 +111,17 @@ export function DeploymentRow({
         {/* A finished, healthy release stays quiet; anything else keeps its full-weight word. */}
         <StatusDot
           state={deployment.state}
-          className={cn("shrink-0", deployment.state === "ready" && "font-normal text-muted-foreground")}
+          // Below sm the status has a line of its own, so a long label never squeezes the title or the pill.
+          className={cn("shrink-0 max-sm:col-span-3", deployment.state === "ready" && "font-normal text-muted-foreground")}
         />
       </div>
 
-      <div className="flex min-w-0 items-center justify-between gap-3 md:contents">
-        <div className="flex min-w-0 flex-1 items-center gap-3 md:contents">
+      <div className="contents">
+        <div className="contents">
           <span>
             <EnvPill deployment={deployment} />
           </span>
-          <p className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden font-mono md:gap-3 text-[13px] text-muted-foreground">
+          <p className="flex min-w-0 items-center gap-2 overflow-hidden font-mono text-[13px] text-muted-foreground max-md:order-1 max-md:col-span-3 md:gap-3">
             <span className="flex shrink-0 items-center gap-1 max-md:hidden">
               <GitCommitIcon aria-hidden="true" className="size-4 shrink-0" />
               {deployment.sha ? (
@@ -128,9 +130,11 @@ export function DeploymentRow({
                 deployment.id.slice(0, 7)
               )}
             </span>
-            <span className="flex min-w-0 flex-1 items-center gap-1 md:flex-none">
+            <span className="flex min-w-[12ch] items-center gap-1 max-md:flex-1 max-md:min-w-0">
               <GitBranchIcon aria-hidden="true" className="size-4 shrink-0" />
-              <span className="truncate">{deployment.branch}</span>
+              <span className="min-w-[12ch] truncate max-md:min-w-0" title={deployment.branch}>
+                {deployment.branch}
+              </span>
             </span>
             {deployment.pr ? (
               <span className="shrink-0 rounded-sm bg-[var(--ds-gray-100)] px-1.5 py-0.5 text-[11px] leading-none text-foreground">
@@ -139,7 +143,7 @@ export function DeploymentRow({
             ) : null}
           </p>
         </div>
-        <p className="flex shrink-0 items-center justify-end gap-2 text-muted-foreground">
+        <p className="flex shrink-0 items-center justify-end gap-2 text-muted-foreground max-md:min-w-0 max-md:justify-self-end max-sm:col-start-3">
           <span className="tabular whitespace-nowrap">{deployment.age}</span>
           <Avatar size="sm" className="max-sm:hidden">
             <AvatarFallback className="text-[10px] uppercase">

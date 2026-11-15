@@ -3,7 +3,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChartLineUpIcon } from "@phosphor-icons/react/dist/ssr";
 import { AnalyticsChart } from "@/components/analytics-chart";
+import { AnalyticsFeatures } from "@/components/analytics-features";
+import { ClicksCard, FunnelCard, TimeCard } from "@/components/analytics-insights";
 import { AnalyticsSetup } from "@/components/analytics-setup";
+import { TopList } from "@/components/analytics-top-list";
 import { Stagger } from "@/components/motion/stagger";
 import { PageHeader } from "@/components/page-header";
 import { DocsLink } from "@/components/settings-ui";
@@ -12,6 +15,9 @@ import { buttonVariants } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { requireUser } from "@/server/auth/current";
 import { analyticsSummary, snippet } from "@/server/analytics";
+import { getFeatures } from "@/server/analytics-config";
+import { clicksSummary, timeSummary } from "@/server/analytics-events";
+import { funnelSummary } from "@/server/analytics-funnel";
 import { projectViews } from "@/server/queries";
 import { cn } from "@/lib/utils";
 
@@ -53,52 +59,20 @@ function Stat({
   );
 }
 
-function TopList({
-  title,
-  rows,
-  empty,
-}: {
-  title: string;
-  rows: { label: string; views: number }[];
-  empty: string;
-}) {
-  const max = Math.max(1, ...rows.map((r) => r.views));
-  return (
-    <section className="overflow-hidden rounded-lg bg-card shadow-border-small">
-      <h2 className="border-b px-4 py-3 text-title-3">{title}</h2>
-      {rows.length === 0 ? (
-        <p className="px-4 py-5 text-muted-foreground">{empty}</p>
-      ) : (
-        <ul className="hairline-y">
-          {rows.map((r) => (
-            <li
-              key={r.label}
-              className="relative flex items-center justify-between gap-4 px-4 py-2.5 transition-colors duration-(--dur-fast) hover:bg-[var(--ds-gray-alpha-100)]"
-            >
-              <span
-                aria-hidden="true"
-                className="absolute inset-y-0 left-0 bg-[var(--ds-gray-100)]"
-                style={{ width: `${(r.views / max) * 100}%` }}
-              />
-              <span className="relative min-w-0 truncate font-mono text-[13px]">{r.label}</span>
-              <span className="tabular relative shrink-0 text-[13px] text-muted-foreground">
-                {number.format(r.views)}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
-
 async function Content({ params }: Props) {
   const { slug } = await params;
   const user = await requireUser();
   const project = (await projectViews(user.id)).find((p) => p.slug === slug);
   if (!project) notFound();
-  const summary = await analyticsSummary(user.id, project.id, 30);
   const on = Boolean(project.analyticsKey);
+  const features = await getFeatures(project.id);
+  // Only what the owner switched on is read, so a project with everything off does no extra work.
+  const [summary, clicks, time, funnel] = await Promise.all([
+    analyticsSummary(user.id, project.id, 30),
+    features.clicks ? clicksSummary(user.id, project.id, 30) : null,
+    features.time ? timeSummary(user.id, project.id, 30) : null,
+    features.funnel ? funnelSummary(user.id, project.id, 30) : null,
+  ]);
 
   return (
     <div className="motion-enter space-y-6">
@@ -152,10 +126,19 @@ async function Content({ params }: Props) {
         </>
       )}
 
+      {funnel ? <FunnelCard summary={funnel} /> : null}
+      {clicks || time ? (
+        <div className="grid gap-4 md:grid-cols-2">
+          {time ? <TimeCard summary={time} /> : null}
+          {clicks ? <ClicksCard summary={clicks} /> : null}
+        </div>
+      ) : null}
+
       <AnalyticsSetup
         projectId={project.id}
         initialSnippet={project.analyticsKey ? snippet(project.analyticsKey) : null}
       />
+      {on ? <AnalyticsFeatures projectId={project.id} initial={features} /> : null}
     </div>
   );
 }

@@ -7,6 +7,7 @@ import {
   PERMISSION_DESCRIPTIONS,
   PERMISSION_KEYS,
   PERMISSION_LABELS,
+  SECTION_INTRO,
   needsFreshSignIn,
   normalizePermissions,
   permissionsOrDefault,
@@ -72,12 +73,12 @@ describe("normalizePermissions", () => {
     expect(normalizePermissions({ terminal: true })).toEqual({
       terminal: true,
       fileWrites: false,
-      orphanRemoval: true,
+      orphanRemoval: false,
     });
     expect(normalizePermissions({ fileWrites: true })).toEqual({
       terminal: false,
       fileWrites: true,
-      orphanRemoval: true,
+      orphanRemoval: false,
     });
     expect(normalizePermissions({ fileWrites: false, orphanRemoval: false })).toEqual({
       terminal: false,
@@ -110,8 +111,43 @@ describe("permissionsOrDefault", () => {
 });
 
 describe("copy", () => {
-  it("defaults the terminal and file changes off, and leftover removal on", () => {
-    expect(DEFAULT_PERMISSIONS).toEqual({ terminal: false, fileWrites: false, orphanRemoval: true });
+  it("defaults every switch off", () => {
+    expect(DEFAULT_PERMISSIONS).toEqual({ terminal: false, fileWrites: false, orphanRemoval: false });
+    for (const key of PERMISSION_KEYS) expect(DEFAULT_PERMISSIONS[key]).toBe(false);
+  });
+
+  it("falls back to everything off when nothing usable was loaded", () => {
+    expect(normalizePermissions({ terminal: "yes", orphanRemoval: 1 })).toEqual({
+      terminal: false,
+      fileWrites: false,
+      orphanRemoval: false,
+    });
+  });
+
+  it("describes leftover removal as off by default, limited to nd- services and ~/.nest-deploy folders, without claiming older servers keep their setting", () => {
+    const d = PERMISSION_DESCRIPTIONS.orphanRemoval;
+    expect(d).toMatch(/Off by default/);
+    expect(d).not.toMatch(/On by default/);
+    expect(d).toContain("nd-");
+    expect(d).toContain("~/.nest-deploy");
+    expect(d).not.toMatch(/earlier keeps/);
+  });
+
+  it("tells the owner what the terminal can do to apps Nest Deploy did not deploy", () => {
+    expect(PERMISSION_DESCRIPTIONS.terminal).toMatch(/not deploy/);
+  });
+
+  it("says file changes only reach shared/ and never other apps", () => {
+    expect(PERMISSION_DESCRIPTIONS.fileWrites).toMatch(/only/);
+    expect(PERMISSION_DESCRIPTIONS.fileWrites).toContain("shared/");
+  });
+
+  it("says in the section intro that every switch starts off, that file changes were turned off once for all servers, and that a switch never restarts an app", () => {
+    expect(SECTION_INTRO).toMatch(/off until you turn them on/);
+    expect(SECTION_INTRO).not.toMatch(/connected earlier keep/);
+    expect(SECTION_INTRO).toMatch(/File changes were turned off for all servers once, in an update; after that, each switch keeps the value you set\./);
+    expect(SECTION_INTRO).toMatch(/never restarts/);
+    expect(SECTION_INTRO).not.toMatch(/[–—]/);
   });
 
   it("falls back to file changes off when nothing usable was loaded", () => {
@@ -162,6 +198,7 @@ describe("copy", () => {
       ...Object.values(PERMISSION_LABELS),
       ...Object.values(PERMISSION_DESCRIPTIONS),
       ...Object.values(OFF_MESSAGES),
+      SECTION_INTRO,
       ...Object.values(ENABLE_COPY).flatMap((c) => [c.title, c.description("x"), c.button]),
       LIVE_RELEASE_NOTICE.title,
       LIVE_RELEASE_NOTICE.body,

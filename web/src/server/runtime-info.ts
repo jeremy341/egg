@@ -2,12 +2,35 @@ import { and, eq } from "drizzle-orm";
 import { audit } from "@/server/audit";
 import { getDb, schema } from "@/server/db";
 import { DEFAULT_UNIT_DIR, unitName } from "@/server/deploy/layout";
+import { config } from "@/server/config";
 import { removePreview, removeProject, runtimeLogs, startUnit } from "@/server/deploy/remote";
 import { filterByLevel, journalSince, type LogLevel, type LogRange } from "@/lib/log-filter";
 import { HttpError } from "@/server/http";
 import { getProjectForUser } from "@/server/projects";
 import { getServerForUser, withServerSession } from "@/server/servers";
+import { SshError } from "@/server/ssh/connection";
 import { probeSession, type NestProbe } from "@/server/ssh/probe";
+
+function logsUpstreamError(err: SshError): HttpError {
+  switch (err.kind) {
+    case "timeout":
+      return new HttpError(
+        504,
+        "Timed out reading the logs. Your container may be stopped or starting; try again in a minute.",
+        "upstream"
+      );
+    case "auth":
+      return new HttpError(502, "Nest rejected the server's key, so the logs could not be read.", "upstream");
+    case "host-key":
+      return new HttpError(
+        502,
+        "The server's host key changed, so the logs were not read. Reconnect the server if you expected this.",
+        "upstream"
+      );
+    default:
+      return new HttpError(502, "Could not reach your container to read the logs. Try again in a minute.", "upstream");
+  }
+}
 
 /** Live output of the production service, read from journald over SSH. */
 export async function fetchRuntimeLogs(
@@ -27,9 +50,17 @@ export async function fetchRuntimeLogs(
   const level = filter.level ?? "all";
   const window = q || level !== "all" ? 1000 : lines;
   const since = filter.range ? journalSince(filter.range) : undefined;
-  const res = await withServerSession(server, (s) =>
-    s.script(runtimeLogs(unitName(project.slug), window, since), { timeoutMs: 30_000 })
-  );
+  let res;
+  try {
+    res = await withServerSession(server, (s) =>
+      s.script(runtimeLogs(unitName(project.slug), window, since), { timeoutMs: 30_000 })
+    );
+  } catch (err) {
+    // An SSH failure is the container's side, not ours: say so plainly and
+    // keep the raw socket detail out of the message.
+    if (err instanceof SshError) throw logsUpstreamError(err);
+    throw err;
+  }
   if (res.code !== 0) {
     throw new HttpError(502, "Could not read the logs from your container.", "upstream");
   }
@@ -98,7 +129,8 @@ export async function removeProjectFromServer(
 ) {
   const project = await getProjectForUser(userId, projectId);
   const server = await getServerForUser(userId, project.serverId);
-  const unitDir = options.unitDir ?? DEFAULT_UNIT_DIR;
+  // Same source as the deploy pipeline, so a removal looks where the unit was installed.
+  const unitDir = options.unitDir ?? (config().UNIT_DIR || DEFAULT_UNIT_DIR);
   const db = await getDb();
 
   const previews = await db

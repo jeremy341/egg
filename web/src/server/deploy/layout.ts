@@ -57,3 +57,22 @@ export function slugify(name: string) {
 
 /** Release ids are UUIDs: safe in paths and easy to recognise when pruning. */
 export const RELEASE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/**
+ * How Nest Deploy recognises what it created on a container. Anything without
+ * a marker belongs to the user and is never overwritten, stopped or removed.
+ *
+ * A unit carries a comment line near the top. Units written before the marker
+ * existed are recognised by their "Nest Deploy: " description. A project
+ * folder carries a marker file; older folders are recognised by holding only
+ * the entries we create (releases, incoming, shared, current) and no .git.
+ */
+export const UNIT_MARKER = "# nest-deploy:managed";
+export const FOLDER_MARKER = ".nest-deploy-managed";
+
+/** Shell helpers, ready to paste into a script. They only read. */
+export const SH_MARKER_HELPERS =
+  `nd_unit_marked() { [ -f "$1" ] && [ ! -L "$1" ] && { grep -q '^${UNIT_MARKER}' "$1" 2>/dev/null || grep -q '^Description=Nest Deploy: ' "$1" 2>/dev/null; }; }\n` +
+  `nd_dir_managed() { local d e n; d="$1"; [ -d "$d" ] && [ ! -L "$d" ] || return 1; [ -f "$d/${FOLDER_MARKER}" ] && return 0; [ -e "$d/.git" ] && return 1; ` +
+  `n=0; for e in "$d"/* "$d"/.[!.]*; do [ -e "$e" ] || [ -L "$e" ] || continue; ` +
+  `case "$(basename "$e")" in releases|incoming|shared|current|current.new) n=$((n+1));; *) return 1;; esac; done; [ "$n" -gt 0 ]; }\n`;

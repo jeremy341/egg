@@ -28,7 +28,7 @@ export const KIND_PREFIXES: Record<Exclude<ActivityKind, "other">, readonly stri
   deployments: ["deploy.", "hook."],
   domains: ["domain."],
   servers: ["server.", "container."],
-  access: ["token.", "account.", "auth."],
+  access: ["token.", "account.", "auth.", "webhook."],
   monitoring: ["monitor."],
   terminal: ["terminal.", "file."],
 };

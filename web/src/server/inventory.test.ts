@@ -15,6 +15,7 @@ import {
   type PreviewInfo,
   type ProjectInfo,
 } from "@/server/inventory";
+import { setPermissions } from "@/server/permissions";
 import { createProject } from "@/server/projects";
 import { createServer, getServerForUser, type ServerRow } from "@/server/servers";
 import { NestSession } from "@/server/ssh/connection";
@@ -377,10 +378,14 @@ esac`
     startCommand: "node server.js",
     port: 3100,
   });
-  const unitBody = '[Service]\nExecStart=/bin/bash -lc "exec node old.js"\n';
+  const unitBody = '# nest-deploy:managed project=x\n[Service]\nExecStart=/bin/bash -lc "exec node old.js"\n';
   for (const name of ["nd-blog.service", "nd-old.service", "nd-ghost-pv-12345678.service"]) {
     mock.writeFile(`${mock.home}/units/${name}`, unitBody);
   }
+  // Looks like ours by name, but the user made it: no marker.
+  mock.writeFile(`${mock.home}/units/nd-oldish.service`, '[Service]\nExecStart=/usr/bin/true\n');
+  mock.writeFile(`${mock.home}/.nest-deploy/oldish/my-notes.txt`, "keep me");
+  mock.writeFile(`${mock.home}/.nest-deploy/mycheckout/.git/config`, "[core]\n");
   for (const dir of ["blog/releases/r1", "old/releases/r1", "stray/shared"]) {
     mock.writeFile(`${mock.home}/.nest-deploy/${dir}/file.txt`, "hello world");
   }
@@ -405,8 +410,14 @@ describe("getInventory on a container", () => {
       ["blog", "nd-blog.service", true],
     ]);
     expect(inv.orphans.map((o) => o.id).sort()).toEqual(
-      ["nd-ghost-pv-12345678.service", "nd-old.service", "old", "stray"].sort()
+      ["mycheckout", "nd-ghost-pv-12345678.service", "nd-old.service", "nd-oldish.service", "old", "oldish", "stray"].sort()
     );
+    // Without our marker they are listed, but flagged as not ours and not removable.
+    const notOurs = inv.orphans.filter((o) => o.notOurs).map((o) => [o.id, o.removable]);
+    expect(notOurs.sort()).toEqual(
+      [["mycheckout", false], ["nd-oldish.service", false], ["oldish", false]].sort()
+    );
+    expect(inv.orphans.find((o) => o.id === "nd-old.service")?.removable).toBe(true);
     expect(inv.orphans.find((o) => o.id === "nd-old.service")?.execStart).toBe(
       '/bin/bash -lc "exec node old.js"'
     );
@@ -438,6 +449,32 @@ describe("removeOrphans", () => {
     expect(results.map((r) => r.status)).toEqual(["refused", "refused"]);
     expect(await exists("$HOME/units/nd-blog.service")).toBe(true);
     expect(await exists("$HOME/.nest-deploy/blog/releases/r1/file.txt")).toBe(true);
+  });
+
+  it("leaves a unit, a folder and a git checkout alone when they have no Nest Deploy marker", async () => {
+    const results = await removeOrphans(userId, row.id, ["nd-oldish.service", "oldish", "mycheckout"]);
+    expect(results.map((r) => r.status)).toEqual(["refused", "refused", "refused"]);
+    expect(await exists("$HOME/units/nd-oldish.service")).toBe(true);
+    expect(await exists("$HOME/.nest-deploy/oldish/my-notes.txt")).toBe(true);
+    expect(await exists("$HOME/.nest-deploy/mycheckout/.git/config")).toBe(true);
+  });
+
+  it("the removal scripts refuse an unmarked target even when called directly", async () => {
+    const { removeFolderScript, removeUnitScript, REMOVE_EXIT } = await import("@/server/ssh/inventory-probe");
+    const run = async (script: string) => {
+      const key = open(row.privateKeyEnc, `server:${row.id}`);
+      const s = await NestSession.connect({ host: "127.0.0.1", port: mock.port, username: "x", privateKey: key });
+      try {
+        return (await s.script(script)).code;
+      } finally {
+        s.close();
+      }
+    };
+    expect(await run(removeUnitScript(`${mock.home}/units`, "nd-oldish.service"))).toBe(REMOVE_EXIT.refused);
+    expect(await run(removeFolderScript("oldish"))).toBe(REMOVE_EXIT.refused);
+    expect(await run(removeFolderScript("mycheckout"))).toBe(REMOVE_EXIT.refused);
+    expect(await exists("$HOME/units/nd-oldish.service")).toBe(true);
+    expect(await exists("$HOME/.nest-deploy/oldish/my-notes.txt")).toBe(true);
   });
 
   it("rejects traversal and malformed names without touching anything", async () => {
@@ -489,8 +526,9 @@ describe("removeOrphans", () => {
       ["nd-ghost-pv-12345678.service", "nd-old.service", "old", "stray"].sort()
     );
 
+    // Only what is not ours is left.
     const after = await getInventory(userId, row.id);
-    expect(after.orphans).toEqual([]);
+    expect(after.orphans.map((o) => o.id).sort()).toEqual(["mycheckout", "nd-oldish.service", "oldish"]);
   });
 });
 
@@ -524,6 +562,8 @@ describe("the routes", () => {
 
   it("serve the inventory and validate the body for the owner", async () => {
     signedIn = asUser(userId, "Sam");
+    // Leftover removal is off by default on a new server.
+    await setPermissions(userId, row.id, { orphanRemoval: true });
     const { GET } = await import("@/app/api/servers/[id]/inventory/route");
     const { POST } = await import("@/app/api/servers/[id]/orphans/route");
 

@@ -148,6 +148,7 @@ describe("protocol", () => {
         "get_deployment",
         "get_deployment_logs",
         "get_logs",
+        "get_me",
         "get_notifications",
         "get_project",
         "get_project_resources",
@@ -261,12 +262,12 @@ describe("tools/call", () => {
 
   it("returns a missing scope as a tool error that names it", async () => {
     const secret = await token(["projects:read"]);
-    for (const ep of ENDPOINTS.filter((e) => e.scope !== "projects:read")) {
+    for (const ep of ENDPOINTS.filter((e) => e.scope !== null && e.scope !== "projects:read")) {
       // Every tool is called with one token here; the scope check is what is being tested, not the rate limit.
       rateLimiter().clear();
       const body = await (await call(secret, ep.id, { projectId, deploymentId: theirDeploymentId, serverId })).json();
       expect(body.result.isError, ep.id).toBe(true);
-      expect(text(body), ep.id).toContain(ep.scope);
+      expect(text(body), ep.id).toContain(ep.scope!);
     }
     expect(vi.mocked(withServerSession)).not.toHaveBeenCalled();
   });
@@ -388,7 +389,7 @@ describe("the expanded tool list", () => {
       expect(tools.get(name)!.description, name).toMatch(/untrusted/i);
     }
     for (const name of ["write_file", "delete_file", "make_folder"]) expect(tools.get(name)!.description, name).toMatch(/shared\//);
-    for (const ep of ENDPOINTS) expect(tools.get(ep.id)!.description).toContain(`Needs the ${ep.scope} scope.`);
+    for (const ep of ENDPOINTS) expect(tools.get(ep.id)!.description).toContain(ep.scope ? `Needs the ${ep.scope} scope.` : "Needs no scope.");
     for (const name of ["set_env_var", "rotate_deploy_hook"]) expect(tools.get(name)!.description).toMatch(/secret|write-only/i);
     expect(tools.get("rotate_deploy_hook")!.description).toMatch(/ONCE/);
   });

@@ -1,18 +1,17 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   ArrowUpRightIcon,
   BookOpenIcon,
-  BookOpenTextIcon,
   ListIcon,
   MagnifyingGlassIcon,
   XIcon,
 } from "@phosphor-icons/react";
 import { useFind } from "@/components/find-palette";
 import {
+  DocsLink,
   NavList,
   NavListSkeleton,
   navItemClass,
@@ -117,14 +116,7 @@ function Menu({ onClose }: { onClose: (returnFocus: boolean) => void }) {
         </Suspense>
       </div>
       <div className="mt-auto flex flex-col gap-0.5 border-t pt-3">
-        <Link
-          href="/docs"
-          onClick={() => onClose(false)}
-          className={cn(navItemClass, navItemIdle, "h-11")}
-        >
-          <BookOpenTextIcon aria-hidden="true" className="size-4 shrink-0" />
-          Docs
-        </Link>
+        <DocsLink roomy onNavigate={() => onClose(false)} />
         <a
           href="https://guides.hackclub.app"
           target="_blank"

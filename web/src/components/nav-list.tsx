@@ -6,7 +6,7 @@ import { CaretLeftIcon } from "@phosphor-icons/react";
 import { useAccount } from "@/components/account-context";
 import { PixelAvatar } from "@/components/ui/pixel-avatar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { navFor } from "@/lib/nav";
+import { DOCS_ITEM, navFor } from "@/lib/nav";
 import { cn } from "@/lib/utils";
 
 /** Shared by every row of the sidebar and the phone menu. 32px tall, 44px in the phone menu. */
@@ -93,6 +93,32 @@ export function NavList({
         );
       })}
     </nav>
+  );
+}
+
+/** The Docs row of the bottom group, marked current on any docs page. */
+export function DocsLink({
+  onNavigate,
+  roomy = false,
+}: {
+  onNavigate?: () => void;
+  roomy?: boolean;
+}) {
+  const active = DOCS_ITEM.active(usePathname());
+  const Icon = DOCS_ITEM.icon;
+  return (
+    <Link
+      href={DOCS_ITEM.href}
+      onClick={onNavigate}
+      aria-current={active ? "page" : undefined}
+      className={cn(navItemClass, roomy && "h-11", active ? navItemCurrent : navItemIdle)}
+    >
+      <Icon aria-hidden="true" className="size-4 shrink-0" weight={active ? "fill" : "regular"} />
+      {DOCS_ITEM.label}
+      {active ? (
+        <span aria-hidden="true" className="ml-auto size-1.5 shrink-0 rounded-[1px] bg-foreground" />
+      ) : null}
+    </Link>
   );
 }
 

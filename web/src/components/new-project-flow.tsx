@@ -13,6 +13,14 @@ import { api } from "@/components/api";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DetectedSummary,
+  DetectionWarnings,
+  EnvValueFields,
+  useRepoDetection,
+} from "@/components/env-import";
+import { ProjectConflicts } from "@/components/project-conflicts";
+import type { Conflict } from "@/server/adoption";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
@@ -77,6 +85,63 @@ function slugify(name: string) {
   );
 }
 
+type ConflictCheck =
+  | { status: "idle" }
+  | { status: "checking" }
+  | { status: "error"; message: string }
+  | { status: "ok"; conflicts: Conflict[] };
+
+/**
+ * Ask the chosen container, once the inputs are valid and the person has
+ * stopped typing, what is already there. Read-only. A failed check does not
+ * block: the deploy looks again before it changes anything.
+ */
+function useConflictCheck(args: {
+  serverId: string;
+  slug: string;
+  port: number;
+  repoFullName: string | null;
+  enabled: boolean;
+}): ConflictCheck {
+  const { serverId, slug, port, repoFullName, enabled } = args;
+  const key = enabled ? `${serverId}|${slug}|${port}|${repoFullName ?? ""}` : null;
+  const [loaded, setLoaded] = useState<{ key: string; result: ConflictCheck } | null>(null);
+
+  useEffect(() => {
+    if (!key) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      api<{ conflicts: Conflict[] }>("/api/projects/conflicts", {
+        body: { serverId, slug, port, repoFullName },
+      })
+        .then((r) => {
+          if (!cancelled) setLoaded({ key, result: { status: "ok", conflicts: r.conflicts } });
+        })
+        .catch((e) => {
+          if (!cancelled) {
+            setLoaded({
+              key,
+              result: {
+                status: "error",
+                message: e instanceof Error ? e.message : "Could not check this container.",
+              },
+            });
+          }
+        });
+    }, 600);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+    // The key stands for every argument.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+
+  if (!key) return { status: "idle" };
+  if (!loaded || loaded.key !== key) return { status: "checking" };
+  return loaded.result;
+}
+
 function Configure({
   source,
   servers,
@@ -96,10 +161,36 @@ function Configure({
   const [port, setPort] = useState("3000");
   const [startCommand, setStartCommand] = useState("");
   const [buildCommand, setBuildCommand] = useState("");
+  const [installCommand, setInstallCommand] = useState("");
   const [outputDir, setOutputDir] = useState("");
+  const [envValues, setEnvValues] = useState<Record<string, string>>({});
+  const [adopted, setAdopted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
+  // Set once the project exists, so a retry after a failed env save does not create it twice.
+  const createdRef = useRef<{ id: string; slug: string } | null>(null);
+
+  // Detect from the repository: what it is, and the env names it asks for.
+  const repoForDetect =
+    source.repoFullName ?? source.repoUrl.replace(/^https:\/\/github\.com\//, "");
+  const detected = useRepoDetection({
+    repo: repoForDetect,
+    branch: branch.trim() || source.branch,
+    installationId: source.installationId,
+    rootDir,
+  });
+  const detection = detected.status === "ok" ? detected.detection : null;
+
+  /** The user confirms the suggestions by pressing the button; the fields stay editable. */
+  function applyDetected() {
+    if (!detection || !detection.runtime) return;
+    setRuntime(detection.runtime);
+    setInstallCommand(detection.commands.install ?? "");
+    setBuildCommand(detection.commands.build ?? "");
+    setStartCommand(detection.commands.start ?? "");
+    setOutputDir(detection.outputDir ?? "");
+  }
 
   // The button that opened this step is gone; focus belongs to the new step.
   useEffect(() => {
@@ -109,32 +200,62 @@ function Configure({
   const nameOk = /^[a-z0-9][a-z0-9-]{0,38}[a-z0-9]?$/.test(name);
   const hint = RUNTIMES.find((r) => r.value === runtime)?.hint ?? "";
 
+  const portNumber = Number(port);
+  const portOk = port.trim() !== "" && Number.isInteger(portNumber) && portNumber >= 1 && portNumber <= 65535;
+  const check = useConflictCheck({
+    serverId,
+    slug: name,
+    port: portNumber,
+    repoFullName: repoForDetect.includes("/") ? repoForDetect.replace(/\.git$/, "") : null,
+    enabled: servers.length > 0 && Boolean(serverId) && nameOk && portOk,
+  });
+  const blocking = check.status === "ok" ? check.conflicts.filter((c) => c.blocking) : [];
+
   async function submit() {
     setError(null);
     setBusy(true);
     try {
-      const created = await api<{ project: { id: string; slug: string } }>("/api/projects", {
-        body: {
-          serverId,
-          name,
-          slug: name,
-          repoUrl: source.repoUrl,
-          repoFullName: source.repoFullName,
-          installationId: source.installationId,
-          productionBranch: branch,
-          rootDir: rootDir || ".",
-          runtime,
-          startCommand: startCommand.trim() || null,
-          buildCommand: buildCommand.trim() || null,
-          outputDir: runtime === "static" ? outputDir.trim() || null : null,
-          port: Number(port),
-        },
-      });
+      if (!createdRef.current) {
+        const created = await api<{ project: { id: string; slug: string } }>("/api/projects", {
+          body: {
+            serverId,
+            name,
+            slug: name,
+            repoUrl: source.repoUrl,
+            repoFullName: source.repoFullName,
+            installationId: source.installationId,
+            productionBranch: branch,
+            rootDir: rootDir || ".",
+            runtime,
+            startCommand: startCommand.trim() || null,
+            installCommand: installCommand.trim() || null,
+            buildCommand: buildCommand.trim() || null,
+            outputDir: runtime === "static" ? outputDir.trim() || null : null,
+            port: Number(port),
+            // The server turns automatic deploys off for an adopted project.
+            adopted,
+          },
+        });
+        createdRef.current = created.project;
+      }
+      const project = createdRef.current;
+      // Only names the user gave a value become variables, through the normal env path.
+      for (const e of detection?.env ?? []) {
+        const value = envValues[e.name] ?? "";
+        if (!value) continue;
+        try {
+          await api(`/api/projects/${project.id}/env`, { body: { key: e.name, value, target: "all" } });
+        } catch (err) {
+          throw new Error(
+            `The project was created, but ${e.name} was not saved: ${err instanceof Error ? err.message : "error"}. Press Deploy to try again.`
+          );
+        }
+      }
       const dep = await api<{ deployment: { id: string } }>(
-        `/api/projects/${created.project.id}/deploy`,
+        `/api/projects/${project.id}/deploy`,
         { body: {} }
       );
-      router.push(`/projects/${created.project.slug}/deployments/${dep.deployment.id}`);
+      router.push(`/projects/${project.slug}/deployments/${dep.deployment.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong");
       setBusy(false);
@@ -179,6 +300,22 @@ function Configure({
           </span>
         </p>
       </div>
+
+      <div role="status" aria-live="polite" className="empty:hidden">
+        {detected.status === "loading" ? (
+          <p className="mt-5 text-label text-muted-foreground">Looking at the repository…</p>
+        ) : detected.status === "error" ? (
+          <p className="mt-5 text-label text-muted-foreground">
+            {detected.message} You can still set everything by hand.
+          </p>
+        ) : null}
+      </div>
+      {detection ? (
+        <>
+          <DetectedSummary detection={detection} onUse={applyDetected} onPickRoot={setRootDir} />
+          <DetectionWarnings warnings={detection.warnings} />
+        </>
+      ) : null}
 
       <div className="mt-5 grid gap-4 sm:grid-cols-2">
         <div>
@@ -235,6 +372,10 @@ function Configure({
           <Input id="np-port" inputMode="numeric" value={port} onChange={(e) => setPort(e.target.value)} className="font-mono" />
         </div>
         <div className="sm:col-span-2">
+          <Label htmlFor="np-install">Install command (optional)</Label>
+          <Input id="np-install" value={installCommand} onChange={(e) => setInstallCommand(e.target.value)} placeholder="detected from your lockfile" className="font-mono" />
+        </div>
+        <div className="sm:col-span-2">
           <Label htmlFor="np-start">Start command (optional)</Label>
           <Input id="np-start" value={startCommand} onChange={(e) => setStartCommand(e.target.value)} placeholder={hint} className="font-mono" />
         </div>
@@ -247,6 +388,70 @@ function Configure({
             <Label htmlFor="np-out">Output directory</Label>
             <Input id="np-out" value={outputDir} onChange={(e) => setOutputDir(e.target.value)} placeholder="dist" className="font-mono" />
           </div>
+        ) : null}
+      </div>
+
+      {detection ? (
+        <EnvValueFields
+          env={detection.env}
+          values={envValues}
+          onChange={(name, value) => setEnvValues((v) => ({ ...v, [name]: value }))}
+        />
+      ) : null}
+
+      <div className="mt-5">
+        <label
+          htmlFor="np-adopt"
+          className="flex min-h-11 cursor-pointer items-start gap-3 rounded-md bg-[var(--ds-gray-100)] px-3 py-2.5"
+        >
+          <input
+            id="np-adopt"
+            type="checkbox"
+            className="mt-1 size-4 shrink-0"
+            checked={adopted}
+            onChange={(e) => setAdopted(e.target.checked)}
+            aria-describedby="np-adopt-note"
+          />
+          <span className="min-w-0">
+            <span className="block font-medium">Adopt an existing checkout</span>
+            <span className="block text-label text-muted-foreground">
+              This repository already runs on this container.
+            </span>
+          </span>
+        </label>
+        <p id="np-adopt-note" className="mt-1.5 text-label text-muted-foreground">
+          {adopted
+            ? "Adopted means the first deploy is manual, and automatic deploys start only after you confirm that first deploy works."
+            : "Tick this if you already run this repository here by hand. Otherwise automatic deploys stay on."}
+        </p>
+      </div>
+
+      <div className="mt-5">
+        <div role="status" aria-live="polite" className="empty:hidden">
+          {check.status === "checking" ? (
+            <p className="text-label text-muted-foreground">Checking this container…</p>
+          ) : check.status === "error" ? (
+            <p className="text-label text-muted-foreground">
+              Could not check this container just now: {check.message.replace(/\.$/, "")}. The deploy
+              checks again before it changes anything.
+            </p>
+          ) : null}
+        </div>
+        {check.status === "ok" ? <ProjectConflicts conflicts={check.conflicts} className="mt-3" /> : null}
+        {blocking.length > 0 ? (
+          <Alert tone="error" role="alert" className="mt-3">
+            <p id="np-blocked">
+              Deploy is turned off because {blocking.length === 1 ? "one thing" : `${blocking.length} things`} on
+              this container {blocking.length === 1 ? "is" : "are"} in the way. Nest Deploy will not stop or
+              change {blocking.length === 1 ? "it" : "them"} for you. Fix {blocking.length === 1 ? "it" : "them"}{" "}
+              on your container, or change the project name, server or port.
+            </p>
+            <p className="mt-1.5">
+              <Link href="/container" target="_blank" rel="noopener" className="link inline-flex min-h-10 items-center">
+                Open container status<span className="sr-only"> (opens in a new tab)</span>
+              </Link>
+            </p>
+          </Alert>
         ) : null}
       </div>
 
@@ -265,7 +470,8 @@ function Configure({
         className="mt-5 h-10 w-full"
         onClick={() => void submit()}
         loading={busy}
-        disabled={!nameOk || !serverId}
+        disabled={!nameOk || !serverId || blocking.length > 0}
+        aria-describedby={blocking.length > 0 ? "np-blocked" : undefined}
       >
         {busy ? "Starting deployment…" : "Deploy"}
       </Button>

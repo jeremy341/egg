@@ -47,11 +47,26 @@ function Step({
   );
 }
 
-function Probe({ label, children }: { label: string; children: React.ReactNode }) {
+function Probe({
+  label,
+  title,
+  wrap = false,
+  children,
+}: {
+  label: string;
+  /** Full value, shown on hover when the text is cut short. */
+  title?: string;
+  /** Break a long unbroken value (a fingerprint) onto more lines instead of cutting it. */
+  wrap?: boolean;
+  children: React.ReactNode;
+}) {
   return (
     <div className="flex justify-between gap-3">
       <dt className="shrink-0 text-muted-foreground">{label}</dt>
-      <dd className="min-w-0 truncate text-right">{children}</dd>
+      {/* Phones wrap every value so nothing is cut; from sm up a short value keeps one line. */}
+      <dd title={title} className={cn("min-w-0 text-right", wrap ? "break-all" : "break-words sm:truncate")}>
+        {children}
+      </dd>
     </div>
   );
 }
@@ -124,8 +139,12 @@ function ServerCard({ initial }: { initial: ServerView }) {
             />
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button onClick={() => void test()} loading={testing} className="px-3">
+        <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center">
+          <Button
+            onClick={() => void test()}
+            loading={testing}
+            className="col-span-2 px-3 sm:col-span-1"
+          >
             {testing ? "Connecting…" : "Test connection"}
           </Button>
           <ConfirmDialog
@@ -193,8 +212,10 @@ function ServerCard({ initial }: { initial: ServerView }) {
             />
             Reached your container
           </p>
-          <dl className="mt-3 grid gap-x-6 gap-y-2 sm:grid-cols-2">
-            <Probe label="System">{server.probe.os}</Probe>
+          <dl className="mt-3 grid grid-cols-[minmax(0,1fr)] gap-x-6 gap-y-2 sm:grid-cols-2">
+            <Probe label="System" title={server.probe.os}>
+              {server.probe.os}
+            </Probe>
             <Probe label="Logged in as">
               <span className="font-mono text-[13px]">
                 {server.probe.uid === 0 ? "root" : `uid ${server.probe.uid}`}
@@ -210,8 +231,10 @@ function ServerCard({ initial }: { initial: ServerView }) {
                 {server.probe.pythonVersion ?? "not installed"}
               </span>
             </Probe>
-            <Probe label="systemd">{server.probe.systemdState}</Probe>
-            <Probe label="Key fingerprint">
+            <Probe label="systemd" title={server.probe.systemdState}>
+              {server.probe.systemdState}
+            </Probe>
+            <Probe label="Key fingerprint" wrap title={server.keyFingerprint}>
               <span className="font-mono text-[12px]">{server.keyFingerprint}</span>
             </Probe>
           </dl>

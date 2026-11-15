@@ -17,12 +17,14 @@ import { getProjectForUser } from "@/server/projects";
  * date, so it can count one day's visitors but cannot follow a person.
  */
 
-const KEY_PREFIX = "nda_";
+export const KEY_PREFIX = "nda_";
 export const PAGEVIEW_KEEP_MS = 90 * 24 * 60 * 60 * 1000;
 
 export function snippet(key: string): string {
   const base = config().APP_URL.replace(/\/$/, "");
-  return `<script defer data-key="${key}" src="${base}/api/analytics/script"></script>`;
+  // The key is in the address too, so the server can send a script that only
+  // contains the features this project has switched on.
+  return `<script defer data-key="${key}" src="${base}/api/analytics/script?key=${key}"></script>`;
 }
 
 export async function enableAnalytics(userId: string, projectId: string) {
@@ -52,6 +54,10 @@ export async function disableAnalytics(userId: string, projectId: string) {
 // ------------------------------------------------------------ collecting
 
 const BOT = /bot|crawl|spider|slurp|preview|monitor|headless|lighthouse|curl|wget|python-requests/i;
+
+export function isBot(ua: string): boolean {
+  return BOT.test(ua);
+}
 
 /** "/a/b?x=1#y" becomes "/a/b". Anything that is not a path becomes "/". */
 export function cleanPath(raw: string): string {
@@ -97,7 +103,7 @@ export async function recordPageview(
   who: { ip: string; ua: string },
   now = new Date()
 ): Promise<boolean> {
-  if (!key.startsWith(KEY_PREFIX) || BOT.test(who.ua)) return false;
+  if (!key.startsWith(KEY_PREFIX) || isBot(who.ua)) return false;
   const parsed = hit.safeParse(raw);
   if (!parsed.success) throw new HttpError(400, "Bad page view", "validation");
   const db = await getDb();
@@ -125,7 +131,10 @@ export async function recordPageview(
 
 export async function prunePageviews(now = new Date()) {
   const db = await getDb();
-  await db.delete(schema.pageviews).where(lt(schema.pageviews.at, new Date(now.getTime() - PAGEVIEW_KEEP_MS)));
+  const cutoff = new Date(now.getTime() - PAGEVIEW_KEEP_MS);
+  await db.delete(schema.pageviews).where(lt(schema.pageviews.at, cutoff));
+  // Click, time and goal events age out on the same schedule, by day.
+  await db.delete(schema.analyticsEvents).where(lt(schema.analyticsEvents.day, cutoff.toISOString().slice(0, 10)));
 }
 
 // ------------------------------------------------------------ reading

@@ -5,7 +5,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { ClockCounterClockwiseIcon } from "@phosphor-icons/react";
 import { loadMoreActivity } from "@/app/(app)/activity/actions";
 import { ActivityFilterBar } from "@/components/activity-filters";
-import { ActivityRow } from "@/components/activity-row";
+import { groupRuns } from "@/components/activity-runs";
+import { ActivityRow, ActivityRun } from "@/components/activity-row";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -89,6 +90,8 @@ function ActivityResults({
   const { items, nextCursor: cursor, total, capped, now } = data;
 
   const filtered = isFiltered(filters);
+  // A kind filter or a search already narrows the list; folding it again would only hide what was asked for.
+  const foldRuns = filters.kind === "all" && !filters.q;
   const groups = useMemo(() => groupByDay(items, new Date(now)), [items, now]);
   const nowMs = Date.parse(now);
 
@@ -195,9 +198,14 @@ function ActivityResults({
                   </span>
                 </h2>
                 <ol className={LIST}>
-                  {g.items.map((item) => (
-                    <ActivityRow key={item.id} item={item} now={nowMs} />
-                  ))}
+                  {(foldRuns ? groupRuns(g.items) : g.items.map((item) => ({ type: "item" as const, item }))).map(
+                    (entry) =>
+                      entry.type === "run" ? (
+                        <ActivityRun key={entry.items[0].id} kind={entry.kind} items={entry.items} now={nowMs} />
+                      ) : (
+                        <ActivityRow key={entry.item.id} item={entry.item} now={nowMs} />
+                      )
+                  )}
                 </ol>
               </section>
             );

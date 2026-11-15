@@ -55,11 +55,13 @@ export type Endpoint = {
   method: HttpMethod;
   /** OpenAPI path template, relative to /api/v1. */
   path: string;
-  scope: Scope;
+  /** The scope a token needs, or null when any valid token may call it (only `get_me`). */
+  scope: Scope | null;
   bucket: Bucket;
   /** Success status. */
   status: 200 | 201 | 202;
   tag:
+    | "Account"
     | "Projects"
     | "Deployments"
     | "Logs"
@@ -96,7 +98,7 @@ export function endpoint<P extends Shape = Empty, Q extends Shape = Empty, B ext
   id: string;
   method: HttpMethod;
   path: string;
-  scope: Scope;
+  scope: Scope | null;
   bucket: Bucket;
   status?: Endpoint["status"];
   tag: Endpoint["tag"];

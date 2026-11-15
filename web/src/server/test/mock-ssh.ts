@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
 import { Server, utils, type Connection } from "ssh2";
-import { fingerprintOfPublicKey } from "@/server/ssh/keys";
+import { fingerprintOfPublicKey, generateEd25519Pair } from "@/server/ssh/keys";
 
 /**
  * A tiny in-process SSH server that behaves like a Nest container: public key
@@ -89,7 +89,7 @@ function runSync(home: string, command: string, input?: string) {
 }
 
 export async function startMockSsh(opts: MockSshOptions): Promise<MockSsh> {
-  const generated = opts.hostKey ? null : utils.generateKeyPairSync("ed25519");
+  const generated = opts.hostKey ? null : generateEd25519Pair();
   const hostKeyPrivate = opts.hostKey ?? generated!.private;
   const hostKeyPublic = opts.hostKey
     ? (() => {
@@ -151,7 +151,9 @@ export async function startMockSsh(opts: MockSshOptions): Promise<MockSsh> {
           stream.on("data", (d: Buffer) => chunks.push(d));
           stream.on("end", async () => {
             try {
+              const t0 = Date.now();
               const r = await handler(info.command, Buffer.concat(chunks));
+              if (process.env.MOCK_SSH_TIMING) console.error(`[mock-ssh ${Date.now() - t0}ms] ${info.command.slice(0, 80).replace(/\n/g, " ")}`);
               if (r.stdout) stream.write(r.stdout);
               if (r.stderr) stream.stderr.write(r.stderr);
               stream.exit(r.code);

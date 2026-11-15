@@ -807,7 +807,7 @@
 /* Text link: underline at low contrast that firms up on hover and focus. */
 @utility link {
   text-decoration: underline;
-  text-decoration-color: var(--ds-gray-alpha-500);
+  text-decoration-color: var(--ds-gray-alpha-600);
   text-underline-offset: 4px;
   text-decoration-thickness: 1px;
   transition: text-decoration-color var(--dur-fast) var(--ease-snappy);
@@ -1072,3 +1072,196 @@
     }
   }
 }
+
+/* ==========================================================================
+   Public site: board column and readout (home page, top bar, footer)
+   The page column's edges land on the 30px ruling of the layout's grid. Cells
+   are 30px; a lit square is inset 3px, as PixelField draws one at full swell.
+   ========================================================================== */
+.board-col {
+  box-sizing: border-box;
+  width: 100%;
+  padding-inline: 16px;
+}
+@media (min-width: 640px) {
+  .board-col {
+    padding-inline: 30px;
+  }
+}
+@supports (padding: round(up, 1px, 1px)) {
+  @media (min-width: 640px) {
+    /* At most 1380px of content (46 cells), centred on whole cells. */
+    .board-col {
+      padding-inline: max(30px, round(up, calc((100% - 1380px) / 2), 30px));
+    }
+  }
+}
+
+/* The first screen: text, then the readout on the same ruling. */
+.board-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 1200px) {
+  .board-hero {
+    grid-template-columns: minmax(0, 1fr) 420px;
+  }
+}
+@supports (width: round(down, 1px, 1px)) {
+  @media (min-width: 1200px) {
+    .board-hero {
+      grid-template-columns: round(down, calc(100% - 450px), 30px) 420px;
+    }
+  }
+}
+
+.rd-cell {
+  position: relative;
+  display: block;
+  flex: none;
+  width: 30px;
+  height: 30px;
+}
+.rd-cell::before {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  box-sizing: border-box;
+}
+.rd-cell[data-state="ghost"]::before {
+  border: 1px solid color-mix(in srgb, var(--foreground) 22%, transparent);
+}
+.rd-cell[data-state="ink"]::before {
+  background: var(--pixel-lit);
+}
+.rd-cell[data-state="accent"]::before {
+  background: var(--brand);
+}
+.rd-cell[data-state="fail"]::before {
+  border: 2px solid var(--pixel-lit);
+}
+/* A radio cell: the input is hidden, the cell shows the choice and the focus. */
+.rd-radio {
+  position: relative;
+  display: block;
+  cursor: pointer;
+}
+.rd-radio::after {
+  content: "";
+  position: absolute;
+  inset: -5px 0;
+}
+.rd-radio input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.rd-radio input:focus-visible + .rd-cell {
+  outline: 2px solid var(--ds-focus-color);
+  outline-offset: 1px;
+}
+.rd-radio input:checked + .rd-cell::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  bottom: -1px;
+  height: 2px;
+  background: var(--foreground);
+}
+
+/* The one entrance: push, build, port check, new release. Final state is the
+   server state; each cell is hidden until its turn, then steps on. */
+@keyframes rd-on {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes rd-scan {
+  0% {
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  40% {
+    opacity: 0;
+  }
+  60% {
+    opacity: 1;
+  }
+  80% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+@keyframes rd-demote {
+  from {
+    background: var(--brand);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .rd-on::before,
+  .rd-on::after {
+    animation: rd-on 1ms steps(1, end) var(--rd-at, 0s) backwards;
+  }
+  .rd-scan::before {
+    animation: rd-scan 0.5s steps(1, end) var(--rd-at, 0s) backwards;
+  }
+  .rd-demote::before {
+    animation: rd-demote 1ms steps(1, end) var(--rd-at, 0s) backwards;
+  }
+  .rd-line {
+    animation: rd-on 1ms steps(1, end) var(--rd-at, 0s) backwards;
+  }
+}
+
+/* Two columns of about 5:7, the second starting on a ruling line. */
+.board-split {
+  display: grid;
+  gap: 60px;
+}
+@media (min-width: 1024px) {
+  .board-split {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  }
+}
+@supports (width: round(down, 1px, 1px)) {
+  @media (min-width: 1024px) {
+    .board-split {
+      grid-template-columns: round(down, calc((100% - 60px) * 5 / 12), 30px) minmax(0, 1fr);
+    }
+  }
+}
+/* Three columns, each starting on a ruling line. */
+@media (min-width: 1024px) {
+  .board-thirds {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    column-gap: 60px;
+  }
+}
+@supports (width: round(down, 1px, 1px)) {
+  @media (min-width: 1024px) {
+    .board-thirds {
+      grid-template-columns: repeat(3, round(down, calc((100% - 120px) / 3), 30px));
+    }
+  }
+}
+/* Home page: the same 5:7 split with the wide column first. */
+@media (min-width: 1024px) {
+  .board-split-rev {
+    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  }
+}
+@supports (width: round(down, 1px, 1px)) {
+  @media (min-width: 1024px) {
+    .board-split-rev {
+      grid-template-columns: minmax(0, 1fr) round(down, calc((100% - 60px) * 5 / 12), 30px);
+    }
+  }
+}
+/* END public site: board column and readout */

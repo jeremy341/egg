@@ -401,6 +401,28 @@ describe("current/ is the read-only live release", () => {
   });
 });
 
+describe("the release's .env file is never shown", () => {
+  it("refuses to read or download current/.env or a release's .env, before SSH", async () => {
+    reply = () => ({ code: 0, stdout: `9\n${Buffer.from("TOKEN=abc").toString("base64")}` });
+    for (const path of ["current/.env", "releases/abc123/.env"]) {
+      for (const res of [
+        await read(get("read", { path }), ctxFor(projectId)),
+        await download(get("download", { path }), ctxFor(projectId)),
+      ]) {
+        const e = await errorOf(res);
+        expect(e, path).toMatchObject({ status: 403, code: "secret_file" });
+        expect(e.message).not.toContain("TOKEN");
+      }
+    }
+    expect(sshWasUsed()).toBe(false);
+  });
+
+  it("still reads a .env the owner keeps in shared/", async () => {
+    reply = () => ({ code: 0, stdout: `5\n${Buffer.from("A=1\nB").toString("base64")}` });
+    expect((await read(get("read", { path: "shared/.env" }), ctxFor(projectId))).status).toBe(200);
+  });
+});
+
 describe("failures from the container", () => {
   it("turns an unreachable container into a plain 502, not a 500", async () => {
     vi.mocked(withServerSession).mockRejectedValue(

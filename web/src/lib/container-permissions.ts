@@ -20,13 +20,16 @@ export type PermissionKey = keyof ContainerPermissions;
 export const PERMISSION_KEYS: readonly PermissionKey[] = ["terminal", "fileWrites", "orphanRemoval"];
 
 /**
- * The terminal is a root shell, and a file change can change the code the app
- * runs the next time it restarts, so both are off until the owner turns them on.
+ * Every switch starts off. The terminal is a root shell, a file change can change
+ * the code the app runs on its next restart, and leftover removal deletes
+ * services and folders. Servers connected before this default kept the value
+ * they already had; only servers connected from now on start with all three off.
+ * Anything unreadable falls back to off too, never to on.
  */
 export const DEFAULT_PERMISSIONS: Readonly<ContainerPermissions> = {
   terminal: false,
   fileWrites: false,
-  orphanRemoval: true,
+  orphanRemoval: false,
 };
 
 export const PERMISSION_LABELS: Record<PermissionKey, string> = {
@@ -35,14 +38,22 @@ export const PERMISSION_LABELS: Record<PermissionKey, string> = {
   orphanRemoval: "Removing leftovers",
 };
 
+/**
+ * What each switch can do, written for someone who already has apps running on
+ * the container: say what is reached, and what is not.
+ */
 export const PERMISSION_DESCRIPTIONS: Record<PermissionKey, string> = {
   terminal:
-    "A shell on your container, running as root. Off by default. Anyone with access to your Nest Deploy account can use it while it is on.",
+    "A shell on your container, running as root. Off by default. Anything you type runs for real, so it can stop or change any app on the container, including apps Nest Deploy did not deploy. Anyone with access to your Nest Deploy account can use it while it is on.",
   fileWrites:
-    "Create, edit, rename, delete and upload files in each project's shared/ folder. Off by default, because a file change can change the code your app runs the next time it restarts, which makes this close to terminal access. The live release (current/) is always read only.",
+    "Create, edit, rename, delete and upload files in each project's shared/ folder only. Nothing else on the container is written to, and the live release (current/) is always read only. Off by default, because a file change can change the code your app runs the next time it restarts, which makes this close to terminal access.",
   orphanRemoval:
-    "Stop and remove services and folders that no project uses any more. On by default. Removal still asks you to confirm each time.",
+    "Stop and remove services whose names start with nd- and folders inside ~/.nest-deploy that no project uses any more. Off by default. Anything outside those names is never touched, but a service or folder you made yourself with a matching name would look like a leftover, so each removal asks you to confirm.",
 };
+
+/** The paragraph under the Account section heading. */
+export const SECTION_INTRO =
+  "Choose which features can reach each of your containers. A feature that is off is blocked by Nest Deploy itself, not only hidden from the page. The terminal, file changes and removing leftovers are off until you turn them on. File changes were turned off for all servers once, in an update; after that, each switch keeps the value you set. Turning the terminal or file changes on asks you to sign in with Hack Club again first. Turning a switch on or off never restarts an app, and never touches anything Nest Deploy did not create.";
 
 /** Words for the visible state next to a switch (never colour alone). */
 export const PERMISSION_STATE: Record<"on" | "off", string> = { on: "On", off: "Off" };

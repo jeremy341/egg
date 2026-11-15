@@ -1,6 +1,9 @@
 import { shellQuote } from "@/server/ssh/connection";
 import {
+  FOLDER_MARKER,
   RELEASE_ID,
+  SH_MARKER_HELPERS,
+  UNIT_MARKER,
   currentLink,
   incomingArchive,
   projectDir,
@@ -16,11 +19,40 @@ import {
 
 const HEAD = "set -euo pipefail\n";
 
+/** Exit code when a folder or service on the container is not ours and must not be touched. */
+export const NOT_OURS_EXIT = 30;
+
+/**
+ * Create the project's folders. Refuses (exit 30) when ~/.nest-deploy/<slug>
+ * is a link, or holds something Nest Deploy did not put there, such as the
+ * user's own git checkout. An empty folder is fine. Once created, the folder
+ * gets a marker so later runs and the cleanup know it is ours.
+ */
 export function prepareDirs(home: string, slug: string) {
   const p = projectDir(home, slug);
   return (
     HEAD +
-    `mkdir -p ${shellQuote(`${p}/incoming`)} ${shellQuote(`${p}/releases`)} ${shellQuote(sharedDir(home, slug))}\n`
+    SH_MARKER_HELPERS +
+    `p=${shellQuote(p)}\n` +
+    `if [ -L "$p" ]; then echo "$p is a link, so Nest Deploy will not write into it." >&2; exit ${NOT_OURS_EXIT}; fi\n` +
+    `if [ -e "$p" ] && [ ! -d "$p" ]; then echo "$p exists and is not a folder." >&2; exit ${NOT_OURS_EXIT}; fi\n` +
+    `if [ -d "$p" ] && ! nd_dir_managed "$p" && [ -n "$(ls -A "$p")" ]; then echo "$p already exists and was not created by Nest Deploy, so it was left alone." >&2; exit ${NOT_OURS_EXIT}; fi\n` +
+    `mkdir -p ${shellQuote(`${p}/incoming`)} ${shellQuote(`${p}/releases`)} ${shellQuote(sharedDir(home, slug))}\n` +
+    `: > ${shellQuote(`${p}/${FOLDER_MARKER}`)}\n`
+  );
+}
+
+/**
+ * Exit 30 when a service file with this name already exists and Nest Deploy
+ * did not write it. Run before the unit is written, so a deploy never replaces
+ * a service the user made.
+ */
+export function guardUnitFree(unitDir: string, unit: string) {
+  return (
+    HEAD +
+    SH_MARKER_HELPERS +
+    `f=${shellQuote(`${unitDir}/${unit}`)}\n` +
+    `if { [ -e "$f" ] || [ -L "$f" ]; } && ! nd_unit_marked "$f"; then echo "${unit} already exists and was not created by Nest Deploy, so it was left alone." >&2; exit ${NOT_OURS_EXIT}; fi\n`
   );
 }
 
@@ -70,6 +102,7 @@ export function unitFile(args: {
     ? `Environment=PATH=${args.pathPrefix}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n`
     : "";
   return (
+    `${UNIT_MARKER} project=${args.slug}\n` +
     `[Unit]\nDescription=${args.description.replace(/[\r\n]/g, " ")}\nAfter=network.target\n\n` +
     `[Service]\nType=simple\nWorkingDirectory=${args.workDir}\n` +
     `EnvironmentFile=${args.envFile}\n` +
@@ -173,12 +206,27 @@ export function removePreview(args: {
   unitDir: string;
 }) {
   return (
-    `systemctl stop ${shellQuote(args.unit)} >/dev/null 2>&1 || true\n` +
-    `systemctl disable ${shellQuote(args.unit)} >/dev/null 2>&1 || true\n` +
-    `rm -f ${shellQuote(`${args.unitDir}/${args.unit}`)}\n` +
-    `systemctl daemon-reload >/dev/null 2>&1 || true\n` +
-    `[[ ${shellQuote(args.releaseId)} =~ ^[0-9a-f-]{36}$ ]] && rm -rf ${shellQuote(releaseDir(args.home, args.slug, args.releaseId))}\n` +
+    SH_MARKER_HELPERS +
+    removeOwnUnit(args.unitDir, args.unit) +
+    `if nd_dir_managed ${shellQuote(projectDir(args.home, args.slug))} && [[ ${shellQuote(args.releaseId)} =~ ^[0-9a-f-]{36}$ ]]; then rm -rf ${shellQuote(releaseDir(args.home, args.slug, args.releaseId))}; fi\n` +
     `true\n`
+  );
+}
+
+/**
+ * Stop, disable and delete a service file, but only when it carries our
+ * marker. A service with the same name that someone else wrote is left alone.
+ * Needs SH_MARKER_HELPERS earlier in the script.
+ */
+function removeOwnUnit(unitDir: string, unit: string) {
+  const file = shellQuote(`${unitDir}/${unit}`);
+  return (
+    `if nd_unit_marked ${file}; then\n` +
+    `  systemctl stop ${shellQuote(unit)} >/dev/null 2>&1 || true\n` +
+    `  systemctl disable ${shellQuote(unit)} >/dev/null 2>&1 || true\n` +
+    `  rm -f ${file}\n` +
+    `  systemctl daemon-reload >/dev/null 2>&1 || true\n` +
+    `elif [ -e ${file} ] || [ -L ${file} ]; then echo ${shellQuote(`${unit} was not created by Nest Deploy, so it was left alone.`)}; fi\n`
   );
 }
 
@@ -191,14 +239,15 @@ export function removeProject(args: {
   deleteData: boolean;
 }) {
   const p = projectDir(args.home, args.slug);
+  // The folder is only touched when Nest Deploy made it: a user's own checkout
+  // at the same path is never deleted, with or without "delete data".
+  const remove = args.deleteData
+    ? `rm -rf ${shellQuote(p)}`
+    : `rm -rf ${shellQuote(`${p}/releases`)} ${shellQuote(`${p}/incoming`)} ${shellQuote(`${p}/current`)}`;
   return (
-    `systemctl stop ${shellQuote(args.unit)} >/dev/null 2>&1 || true\n` +
-    `systemctl disable ${shellQuote(args.unit)} >/dev/null 2>&1 || true\n` +
-    `rm -f ${shellQuote(`${args.unitDir}/${args.unit}`)}\n` +
-    `systemctl daemon-reload >/dev/null 2>&1 || true\n` +
-    (args.deleteData
-      ? `rm -rf ${shellQuote(p)}\n`
-      : `rm -rf ${shellQuote(`${p}/releases`)} ${shellQuote(`${p}/incoming`)} ${shellQuote(`${p}/current`)}\n`) +
+    SH_MARKER_HELPERS +
+    removeOwnUnit(args.unitDir, args.unit) +
+    `if nd_dir_managed ${shellQuote(p)}; then ${remove}; elif [ -e ${shellQuote(p)} ] || [ -L ${shellQuote(p)} ]; then echo ${shellQuote(`${p} was not created by Nest Deploy, so it was left alone.`)}; fi\n` +
     `true\n`
   );
 }

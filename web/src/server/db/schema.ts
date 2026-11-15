@@ -78,10 +78,13 @@ export const servers = sqliteTable(
     keyFingerprint: text("key_fingerprint").notNull(),
     /** Pinned host key of the bastion (trust on first use). */
     hostKeyFingerprint: text("host_key_fingerprint"),
-    /** Container permissions. Defaults are the safer choice: the terminal and file changes are off until you turn them on. */
+    /**
+     * Container permissions. Every switch is off for a new server until you turn it on.
+     * A server connected before leftover removal became off by default keeps its stored value.
+     */
     allowTerminal: integer("allow_terminal", { mode: "boolean" }).notNull().default(false),
     allowFileWrites: integer("allow_file_writes", { mode: "boolean" }).notNull().default(false),
-    allowOrphanRemoval: integer("allow_orphan_removal", { mode: "boolean" }).notNull().default(true),
+    allowOrphanRemoval: integer("allow_orphan_removal", { mode: "boolean" }).notNull().default(false),
     status: text("status", { enum: ["pending", "connected", "error"] })
       .notNull()
       .default("pending"),
@@ -375,6 +378,47 @@ export const pageviews = sqliteTable(
   (t) => [index("pageviews_project_at_idx").on(t.projectId, t.at)]
 );
 
+/**
+ * Which extra things a project's analytics script may record. Every switch is
+ * off until the owner turns it on, and a project with no row here has them all
+ * off. `funnelSteps` is a JSON array of { kind: "page" | "track", value }.
+ */
+export const analyticsSettings = sqliteTable("analytics_settings", {
+  projectId: text("project_id")
+    .primaryKey()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  clicks: integer("clicks", { mode: "boolean" }).notNull().default(false),
+  time: integer("time", { mode: "boolean" }).notNull().default(false),
+  funnel: integer("funnel", { mode: "boolean" }).notNull().default(false),
+  funnelSteps: text("funnel_steps"),
+  updatedAt: ts("updated_at").notNull(),
+});
+
+/**
+ * Opt-in analytics events other than page views. `kind` is "click" (`label` is
+ * a short element label), "time" (`bucket` is a time-on-page bucket) or
+ * "goal" (`label` is a funnel step name). Click and time rows carry no visitor
+ * id and no timestamp, only the UTC `day` and the project. A goal row also
+ * carries the same daily salted `visitor` hash as a page view and the time
+ * (`at`), because a funnel has to count a visitor once and in order.
+ */
+export const analyticsEvents = sqliteTable(
+  "analytics_events",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    day: text("day").notNull(),
+    kind: text("kind").notNull(),
+    label: text("label"),
+    bucket: text("bucket"),
+    visitor: text("visitor"),
+    at: ts("at"),
+  },
+  (t) => [index("analytics_events_project_day_idx").on(t.projectId, t.day, t.kind)]
+);
+
 /** Memory, CPU and restarts of one project's service, sampled by the worker. */
 export const projectSamples = sqliteTable(
   "project_samples",
@@ -417,4 +461,62 @@ export const alertEvents = sqliteTable(
     muted: integer("muted", { mode: "boolean" }).notNull().default(false),
   },
   (t) => [index("alert_events_project_idx").on(t.projectId, t.firedAt)]
+);
+
+// --- outbound webhooks (webhooks-anchor) ---
+
+export const WEBHOOK_EVENTS = [
+  "deployment.started",
+  "deployment.succeeded",
+  "deployment.failed",
+] as const;
+export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
+
+/**
+ * An address the owner wants told about deployments. The secret is sealed
+ * (never stored in the clear) and shown once. `projectId` null means every
+ * project the owner has; `events` is a JSON array of WEBHOOK_EVENTS.
+ */
+export const webhooks = sqliteTable(
+  "webhooks",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    projectId: text("project_id").references(() => projects.id, { onDelete: "cascade" }),
+    url: text("url").notNull(),
+    secretEnc: text("secret_enc").notNull(),
+    events: text("events").notNull(),
+    active: integer("active", { mode: "boolean" }).notNull().default(true),
+    createdAt: ts("created_at").notNull(),
+    updatedAt: ts("updated_at").notNull(),
+    secretRotatedAt: ts("secret_rotated_at"),
+  },
+  (t) => [index("webhooks_user_idx").on(t.userId)]
+);
+
+/** One delivery of one event to one webhook, kept for 30 days. */
+export const webhookDeliveries = sqliteTable(
+  "webhook_deliveries",
+  {
+    id: text("id").primaryKey(),
+    webhookId: text("webhook_id")
+      .notNull()
+      .references(() => webhooks.id, { onDelete: "cascade" }),
+    event: text("event").notNull(),
+    deploymentId: text("deployment_id"),
+    status: text("status", { enum: ["pending", "success", "failed"] })
+      .notNull()
+      .default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    /** Short code only (for example http_500, timeout, blocked_address), never a response body. */
+    lastErrorCode: text("last_error_code"),
+    createdAt: ts("created_at").notNull(),
+    finishedAt: ts("finished_at"),
+  },
+  (t) => [
+    index("webhook_deliveries_webhook_idx").on(t.webhookId, t.createdAt),
+    index("webhook_deliveries_created_idx").on(t.createdAt),
+  ]
 );

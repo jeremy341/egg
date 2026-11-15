@@ -78,12 +78,17 @@ function byDuration(dir: 1 | -1) {
   };
 }
 
+/**
+ * `now` comes from the caller's state, read after mount. Until then (null) a
+ * time range is not applied, so the server render and the first client render
+ * match and nothing reads the clock during render.
+ */
 export function applyDeploymentQuery(
   list: DeploymentView[],
   q: DeploymentQuery,
-  now = Date.now()
+  now: number | null = null
 ): DeploymentView[] {
-  const since = q.range === "any" ? null : now - RANGE_MS[q.range];
+  const since = q.range === "any" || now === null ? null : now - RANGE_MS[q.range];
   const out = list.filter(
     (d) =>
       statusMatches(d, q.status) &&
@@ -109,7 +114,7 @@ export function applyDeploymentQuery(
 export function statusCounts(
   list: DeploymentView[],
   q: DeploymentQuery,
-  now = Date.now()
+  now: number | null = null
 ): Record<StatusFilter, number> {
   const base = applyDeploymentQuery(list, { ...q, status: "all" }, now);
   return {

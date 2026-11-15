@@ -4,6 +4,7 @@ import { ContainerPermissionsSection } from "@/components/container-permissions"
 import { Card } from "@/components/settings-ui";
 import { PageHeader } from "@/components/page-header";
 import { PixelAvatar } from "@/components/ui/pixel-avatar";
+import { WebhooksCard } from "@/components/webhooks-card";
 import { timeAgo } from "@/lib/status";
 import { browserLabel, listInstallations, listSessions } from "@/server/account";
 import { requireUser } from "@/server/auth/current";
@@ -90,6 +91,8 @@ export default async function AccountPage() {
             permissions: normalizePermissions(permissionsOf(s)),
           }))}
         />
+
+        <WebhooksCard />
 
         <AccountView
           name={user.name}

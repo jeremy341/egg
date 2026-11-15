@@ -13,6 +13,7 @@ import {
 } from "@/server/files-paths";
 import { HttpError } from "@/server/http";
 import { getProjectForUser, type ProjectRow } from "@/server/projects";
+import { isSecretFile, SECRET_FILE_CODE } from "@/server/secret-files";
 import { getServerForUser, withServerSession } from "@/server/servers";
 import { SshError, shellQuote, type ExecOptions, type ExecResult } from "@/server/ssh/connection";
 
@@ -463,12 +464,21 @@ export function listProjectDir(userId: string, projectId: string, path: string) 
   return guarded(userId, projectId, () => normalizePath(path), (c) => listDir(c.session, c.root, path));
 }
 
+/** Path rules for reading, plus the same `.env` refusal the API has (secret-files.ts). */
+function checkReadable(path: string) {
+  normalizePath(path);
+  if (isSecretFile(path)) throw new HttpError(403, SECRET_FILE_MESSAGE, SECRET_FILE_CODE);
+}
+
+const SECRET_FILE_MESSAGE =
+  "This file holds the project's environment variable values, so it is not shown here. Change the values in the project's settings.";
+
 export function readProjectFile(userId: string, projectId: string, path: string) {
-  return guarded(userId, projectId, () => normalizePath(path), (c) => readFile(c.session, c.root, path));
+  return guarded(userId, projectId, () => checkReadable(path), (c) => readFile(c.session, c.root, path));
 }
 
 export function downloadProjectFile(userId: string, projectId: string, path: string, limit: number = DOWNLOAD_LIMIT) {
-  return guarded(userId, projectId, () => normalizePath(path), (c) => downloadFile(c.session, c.root, path, limit));
+  return guarded(userId, projectId, () => checkReadable(path), (c) => downloadFile(c.session, c.root, path, limit));
 }
 
 /** Who made a change, when it was an API access token and not the browser. Added to the audit entry. */

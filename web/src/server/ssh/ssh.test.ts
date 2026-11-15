@@ -1,6 +1,7 @@
 import { writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { utils } from "ssh2";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { NestSession, SshError, shellQuote } from "@/server/ssh/connection";
 import { fingerprintOfPublicKey, generateServerKey } from "@/server/ssh/keys";
@@ -18,6 +19,16 @@ describe("keys", () => {
 
   it("never reuses a key", () => {
     expect(generateServerKey("a").publicKey).not.toBe(generateServerKey("a").publicKey);
+  });
+
+  // ssh2 strips leading zero bytes from the raw ed25519 public key, which corrupts
+  // about 1 key in 256. Every key we hand out must still parse and sign.
+  it("always generates a key that parses back, even when the raw key starts with a zero byte", () => {
+    for (let i = 0; i < 3000; i++) {
+      const key = generateServerKey(`k${i}`);
+      expect(fingerprintOfPublicKey(key.publicKey), key.publicKey).toBe(key.fingerprint);
+      expect(utils.parseKey(key.privateKey)).not.toBeInstanceOf(Error);
+    }
   });
 });
 

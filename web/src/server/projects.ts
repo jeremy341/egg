@@ -71,10 +71,16 @@ export const createProjectInput = z.object({
   port,
   healthPath: z.string().trim().max(200).regex(/^\//, "Must start with /").default("/"),
   autoDeploy: z.boolean().default(true),
+  /**
+   * The project is being adopted from a container that already runs things
+   * (an existing checkout, or a cleared conflict). It starts with auto deploy
+   * off, so nothing ships until the first deploy has been confirmed by hand.
+   */
+  adopted: z.boolean().default(false),
 });
 
 export const updateProjectInput = createProjectInput
-  .omit({ serverId: true, slug: true, repoUrl: true, repoFullName: true, installationId: true })
+  .omit({ serverId: true, slug: true, repoUrl: true, repoFullName: true, installationId: true, adopted: true })
   .partial();
 
 export type CreateProjectInput = z.infer<typeof createProjectInput>;
@@ -160,7 +166,7 @@ export async function createProject(userId: string, raw: unknown): Promise<Proje
     outputDir: input.outputDir || null,
     port: input.port,
     healthPath: input.healthPath,
-    autoDeploy: input.autoDeploy,
+    autoDeploy: input.adopted ? false : input.autoDeploy,
     createdAt: now,
     updatedAt: now,
   });

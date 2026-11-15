@@ -1,112 +1,105 @@
-import {
-  LoadingRegion,
-  Skeleton,
-  SkeletonCard,
-  SkeletonPageHeader,
-  SkeletonText,
-  skeletonWidth,
-} from "@/components/ui/skeleton";
+import { LoadingRegion, Skeleton, SkeletonCard, SkeletonText, skeletonWidth } from "@/components/ui/skeleton";
 
-/** The card's title and description lines, then whatever body you pass. */
-function CardBody({ children }: { children: React.ReactNode }) {
+/** A group's title and count on the left, its note on the right, as GroupHeading lays them out. */
+function GroupHeadingSkeleton({ title = "w-16", note = "w-28" }: { title?: string; note?: string }) {
   return (
-    <div className="p-5">
-      <SkeletonText size="title-2" width="w-40" />
-      <SkeletonText size="body" width="w-full" className="mt-1" />
-      <div className="mt-4">{children}</div>
+    <div className="mb-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-0.5">
+      <SkeletonText size="body" width={title} />
+      <SkeletonText size="label" width={note} />
     </div>
   );
 }
 
-/** The create form: name, three permission rows, expiry and a button. */
-function FormSkeleton() {
+/**
+ * The token list while it loads: the Active heading, then rows in one card.
+ * Each row has a name and status, the prefix, Edit and Revoke, and the four
+ * facts (permissions, created, last used, expiry).
+ */
+export function TokenListSkeleton({ rows = 3 }: { rows?: number }) {
   return (
-    <div className="space-y-4 rounded-md p-4 shadow-border-base" aria-hidden="true">
-      <SkeletonText size="body" width="w-28" />
-      <div>
-        <SkeletonText size="label" width="w-14" className="mb-1.5" />
-        <Skeleton className="h-9 w-full max-sm:h-10" />
-      </div>
-      <div>
-        <SkeletonText size="label" width="w-24" className="mb-1.5" />
-        <div className="hairline-y overflow-hidden rounded-md shadow-border-base">
-          {[0, 1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="flex min-h-11 items-center gap-3 px-3 py-2.5">
-              <Skeleton className="size-4 rounded-sm" />
-              <SkeletonText size="body" width={skeletonWidth(i + 2)} className="min-w-0" />
+    <div aria-hidden="true">
+      <GroupHeadingSkeleton />
+      <SkeletonCard>
+        <div className="hairline-y">
+          {Array.from({ length: rows }, (_, i) => (
+            <div key={i} className="px-4 py-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-3">
+                    <SkeletonText size="body" width={skeletonWidth(i + 2)} />
+                    <SkeletonText size="label" width="w-14" />
+                  </div>
+                  <SkeletonText size="caption" width="w-24" className="mt-0.5" />
+                </div>
+                <div className="flex shrink-0 gap-1.5">
+                  <Skeleton className="h-7 w-11 max-sm:h-10" />
+                  <Skeleton className="h-7 w-16 max-sm:h-10" />
+                </div>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2.5 sm:grid-cols-4">
+                {[0, 1, 2, 3].map((j) => (
+                  <div key={j}>
+                    <SkeletonText size="caption" width="w-14" />
+                    <SkeletonText size="label" width="w-20" className="mt-0.5" />
+                  </div>
+                ))}
+              </div>
             </div>
           ))}
         </div>
-      </div>
-      <div>
-        <SkeletonText size="label" width="w-24" className="mb-1.5" />
-        <Skeleton className="h-9 w-48 max-sm:h-10 max-sm:w-full" />
-      </div>
-      <Skeleton className="h-8 w-32 max-sm:h-10 max-sm:w-full" />
+      </SkeletonCard>
     </div>
   );
 }
 
-/** The token list while it loads: a heading line and rows with a name, a prefix, chips and dates. */
-export function TokenListSkeleton({ rows = 2 }: { rows?: number }) {
+/** The right column: heading, two addresses, the first call and three docs links. */
+function HubSkeleton() {
   return (
     <div aria-hidden="true">
-      <div className="hairline-y overflow-hidden rounded-md shadow-border-base">
-        {Array.from({ length: rows }, (_, i) => (
-          <div key={i} className="px-3 py-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <SkeletonText size="body" width={skeletonWidth(i)} />
-                <SkeletonText size="label" width="w-24" />
+      <SkeletonText size="body" width="w-44" className="mb-2" />
+      <SkeletonCard>
+        <div className="hairline-y">
+          {[0, 1].map((i) => (
+            <div key={i} className="flex items-start gap-3 px-4 py-3">
+              <div className="min-w-0 flex-1">
+                <SkeletonText size="caption" width="w-14" />
+                <SkeletonText size="label" width="w-full" lines={2} className="mt-0.5" />
               </div>
               <Skeleton className="h-7 w-16 max-sm:h-10" />
             </div>
-            <div className="mt-2 flex gap-1.5">
-              <Skeleton className="h-5 w-24 rounded-sm" />
-              <Skeleton className="h-5 w-28 rounded-sm" />
+          ))}
+        </div>
+        <div className="border-t px-4 py-3">
+          <SkeletonText size="caption" width="w-16" />
+          <SkeletonText size="label" width="w-full" lines={3} className="mt-0.5 mb-3" />
+          <Skeleton className="h-28 w-full" />
+        </div>
+        <div className="hairline-y border-t">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="flex min-h-10 items-center px-4 py-2 max-sm:min-h-11">
+              <SkeletonText size="label" width={skeletonWidth(i + 3)} />
             </div>
-            <div className="mt-3 grid gap-2 sm:grid-cols-3">
-              {[0, 1, 2].map((j) => (
-                <SkeletonText key={j} size="label" width="w-28" />
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      </SkeletonCard>
     </div>
   );
 }
 
-/** /developer. The tokens card (form, list) and the agents card, as the real page lays them out. */
+/** /developer, as the real page lays it out: header with Create token, the token list, and the addresses card. */
 export function DeveloperSkeleton() {
   return (
-    <LoadingRegion label="Loading developer settings…" className="mx-auto max-w-[760px]">
-      <SkeletonPageHeader description />
-      <div className="space-y-6">
-        <SkeletonCard>
-          <CardBody>
-            <div className="space-y-6">
-              <FormSkeleton />
-              <div>
-                <SkeletonText size="body" width="w-28" className="mb-2" />
-                <TokenListSkeleton />
-              </div>
-            </div>
-          </CardBody>
-        </SkeletonCard>
-        <SkeletonCard>
-          <CardBody>
-            <div className="space-y-6">
-              {[0, 1, 2, 3].map((i) => (
-                <div key={i} className="space-y-2">
-                  <SkeletonText size="body" width="w-40" />
-                  <SkeletonText size="body" width="w-full" lines={2} />
-                </div>
-              ))}
-              <Skeleton className="h-20 w-full" />
-            </div>
-          </CardBody>
-        </SkeletonCard>
+    <LoadingRegion label="Loading developer settings…" className="mx-auto max-w-[1120px]">
+      <div aria-hidden="true" className="mb-6 flex flex-wrap items-end justify-between gap-4">
+        <div className="min-w-0">
+          <SkeletonText size="title-1" width="w-40" />
+          <SkeletonText size="body" width="w-full" lines={2} className="mt-1 w-[min(64ch,100%)] max-sm:w-full" />
+        </div>
+        <Skeleton className="h-8 w-32 max-sm:h-10 max-sm:w-full" />
+      </div>
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start lg:gap-6">
+        <TokenListSkeleton />
+        <HubSkeleton />
       </div>
     </LoadingRegion>
   );
