@@ -1,11 +1,16 @@
+import { createHmac } from "node:crypto";
 import { and, desc, eq, gte, lt, sql } from "drizzle-orm";
 import { z } from "zod";
+import { featuresForKey, getAnalyticsDefaults } from "@/server/analytics-config";
+import { cleanPath, cleanReferrer, cleanUtm } from "@/server/analytics-fields";
 import { audit } from "@/server/audit";
 import { config } from "@/server/config";
 import { randomToken, sha256Hex } from "@/server/crypto";
 import { getDb, schema } from "@/server/db";
 import { HttpError } from "@/server/http";
 import { getProjectForUser } from "@/server/projects";
+
+export { cleanPath, cleanReferrer };
 
 /**
  * Page-view analytics for the apps people deploy.
@@ -15,10 +20,19 @@ import { getProjectForUser } from "@/server/projects";
  * referring site and nothing else. We store no IP address and set no cookie.
  * The visitor id is a hash of IP, browser and project that is salted with the
  * date, so it can count one day's visitors but cannot follow a person.
+ *
+ * Everything beyond the path is a switch the owner turns on: referrers and
+ * campaigns, clicks, time, a funnel, speed and errors, custom events, the live
+ * view and retention. The collector reads the switches too, so it stores nothing
+ * for a feature that is off, whatever a copy of the script sends.
  */
 
 export const KEY_PREFIX = "nda_";
 export const PAGEVIEW_KEEP_MS = 90 * 24 * 60 * 60 * 1000;
+/** Live view heartbeats are deleted after an hour. */
+export const LIVE_KEEP_MS = 60 * 60 * 1000;
+/** The live view counts what happened in this window. */
+export const LIVE_WINDOW_MS = 5 * 60 * 1000;
 
 export function snippet(key: string): string {
   const base = config().APP_URL.replace(/\/$/, "");
@@ -36,6 +50,26 @@ export async function enableAnalytics(userId: string, projectId: string) {
     .update(schema.projects)
     .set({ analyticsKey: key, updatedAt: new Date() })
     .where(eq(schema.projects.id, project.id));
+  // A project that has never had settings starts from the person's account defaults
+  // (all off unless they chose otherwise). One that already has settings keeps them.
+  const defaults = await getAnalyticsDefaults(userId);
+  if (Object.values(defaults).some(Boolean)) {
+    await db
+      .insert(schema.analyticsSettings)
+      .values({
+        projectId: project.id,
+        clicks: defaults.clicks ?? false,
+        time: defaults.time ?? false,
+        funnel: defaults.funnel ?? false,
+        referrers: defaults.referrers ?? false,
+        vitals: defaults.vitals ?? false,
+        events: defaults.events ?? false,
+        live: defaults.live ?? false,
+        retention: defaults.retention ?? false,
+        updatedAt: new Date(),
+      })
+      .onConflictDoNothing();
+  }
   await audit(userId, "analytics.enable", project.id);
   return { key, snippet: snippet(key) };
 }
@@ -59,32 +93,36 @@ export function isBot(ua: string): boolean {
   return BOT.test(ua);
 }
 
-/** "/a/b?x=1#y" becomes "/a/b". Anything that is not a path becomes "/". */
-export function cleanPath(raw: string): string {
-  let p = raw.trim();
-  p = p.split("#")[0].split("?")[0];
-  if (!p.startsWith("/")) return "/";
-  p = p.slice(0, 200);
-  return p.length > 1 ? p.replace(/\/+$/, "") || "/" : p;
-}
-
-/** The host of a referrer, or null when there is none or it is not a web address. */
-export function cleanReferrer(raw: string | null | undefined): string | null {
-  if (!raw) return null;
-  try {
-    const u = new URL(raw);
-    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
-    return u.hostname.replace(/^www\./, "").slice(0, 100) || null;
-  } catch {
-    return null;
-  }
-}
-
 export function visitorHash(args: { projectId: string; ip: string; ua: string; day: string }): string {
   return sha256Hex(`${config().APP_SECRET}|${args.day}|${args.projectId}|${args.ip}|${args.ua}`).slice(0, 16);
 }
 
-const hit = z.object({ p: z.string().max(2000).default("/"), r: z.string().max(2000).optional() });
+export const RETENTION_PERIOD_MS = 90 * 24 * 60 * 60 * 1000;
+
+/** The id in the visitor's browser: random letters and digits, as the script makes it. */
+export const BROWSER_ID = /^[A-Za-z0-9]{16,64}$/;
+
+/**
+ * The code stored for a visitor who has the retention switch on: an HMAC-SHA256 of
+ * the random id in their browser and the project. The key is derived from the server
+ * secret and the number of the current 90 day period, so it changes every 90 days
+ * and the codes of one period cannot be matched with those of the next. The raw id
+ * is never stored. 32 hex characters.
+ */
+export function retentionCode(args: { projectId: string; browserId: string; at: Date }): string {
+  const period = Math.floor(args.at.getTime() / RETENTION_PERIOD_MS);
+  const key = createHmac("sha256", config().APP_SECRET).update(`analytics retention v1|${period}`).digest();
+  return createHmac("sha256", key).update(`${args.projectId}|${args.browserId}`).digest("hex").slice(0, 32);
+}
+
+const hit = z.object({
+  p: z.string().max(2000).default("/"),
+  r: z.string().max(2000).optional(),
+  us: z.string().max(400).optional(),
+  um: z.string().max(400).optional(),
+  uc: z.string().max(400).optional(),
+  i: z.string().max(100).optional(),
+});
 
 // One page view per second per project and address is generous for a person and
 // stops a loop from filling the database.
@@ -107,18 +145,23 @@ export async function recordPageview(
   const parsed = hit.safeParse(raw);
   if (!parsed.success) throw new HttpError(400, "Bad page view", "validation");
   const db = await getDb();
-  const project = await db
-    .select({ id: schema.projects.id })
-    .from(schema.projects)
-    .where(eq(schema.projects.analyticsKey, key))
-    .get();
-  if (!project) return false;
+  const found = await featuresForKey(key);
+  if (!found) return false;
+  const project = { id: found.projectId };
+  const f = found.features;
   if (tooFast(`${project.id}|${who.ip}`, now.getTime())) return false;
+  const d = parsed.data;
+  // Each extra is stored only while its switch is on.
+  const utm = f.referrers ? cleanUtm({ source: d.us, medium: d.um, campaign: d.uc }) : null;
   await db.insert(schema.pageviews).values({
     projectId: project.id,
     at: now,
-    path: cleanPath(parsed.data.p),
-    referrer: cleanReferrer(parsed.data.r),
+    path: cleanPath(d.p),
+    referrer: f.referrers ? cleanReferrer(d.r) : null,
+    utmSource: utm?.source ?? null,
+    utmMedium: utm?.medium ?? null,
+    utmCampaign: utm?.campaign ?? null,
+    vid: f.retention && d.i && BROWSER_ID.test(d.i) ? retentionCode({ projectId: project.id, browserId: d.i, at: now }) : null,
     visitor: visitorHash({
       projectId: project.id,
       ip: who.ip,
@@ -133,8 +176,12 @@ export async function prunePageviews(now = new Date()) {
   const db = await getDb();
   const cutoff = new Date(now.getTime() - PAGEVIEW_KEEP_MS);
   await db.delete(schema.pageviews).where(lt(schema.pageviews.at, cutoff));
-  // Click, time and goal events age out on the same schedule, by day.
+  // Click, time, goal and custom events age out on the same schedule, by day.
   await db.delete(schema.analyticsEvents).where(lt(schema.analyticsEvents.day, cutoff.toISOString().slice(0, 10)));
+  await db.delete(schema.analyticsVitals).where(lt(schema.analyticsVitals.at, cutoff));
+  await db.delete(schema.analyticsErrors).where(lt(schema.analyticsErrors.at, cutoff));
+  // Heartbeats are only for the last few minutes, so they go after an hour.
+  await db.delete(schema.analyticsLive).where(lt(schema.analyticsLive.at, new Date(now.getTime() - LIVE_KEEP_MS)));
 }
 
 // ------------------------------------------------------------ reading
@@ -203,5 +250,44 @@ export async function analyticsSummary(
     daily,
     pages: pages.map((p) => ({ path: p.path, views: Number(p.views) })),
     referrers: referrers.map((r) => ({ host: r.host ?? "", views: Number(r.views) })),
+  };
+}
+
+export type CampaignsSummary = {
+  days: number;
+  rows: { campaign: string; source: string | null; medium: string | null; views: number }[];
+};
+
+/** The top campaigns (the utm_campaign of a page view) with their source and medium, for the last `days` days. */
+export async function campaignsSummary(
+  userId: string,
+  projectId: string,
+  days = 30,
+  now = new Date()
+): Promise<CampaignsSummary> {
+  const project = await getProjectForUser(userId, projectId);
+  const db = await getDb();
+  const since = new Date(now.getTime() - days * 86_400_000);
+  const rows = await db
+    .select({
+      campaign: schema.pageviews.utmCampaign,
+      source: schema.pageviews.utmSource,
+      medium: schema.pageviews.utmMedium,
+      views: sql<number>`count(*)`,
+    })
+    .from(schema.pageviews)
+    .where(
+      and(
+        eq(schema.pageviews.projectId, project.id),
+        gte(schema.pageviews.at, since),
+        sql`${schema.pageviews.utmCampaign} is not null`
+      )
+    )
+    .groupBy(schema.pageviews.utmCampaign, schema.pageviews.utmSource, schema.pageviews.utmMedium)
+    .orderBy(desc(sql`count(*)`), schema.pageviews.utmCampaign)
+    .limit(10);
+  return {
+    days,
+    rows: rows.map((r) => ({ campaign: r.campaign ?? "", source: r.source, medium: r.medium, views: Number(r.views) })),
   };
 }

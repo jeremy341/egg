@@ -92,6 +92,20 @@
       "when": 1793989480588,
       "tag": "0012_reflective_shard",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1794092564706,
+      "tag": "0013_security_prefs",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1794137106358,
+      "tag": "0014_analytics",
+      "breakpoints": true
     }
   ]
 }

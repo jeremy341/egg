@@ -1,0 +1,40 @@
+import { Suspense } from "react";
+import Link from "next/link";
+import { SettingsForm } from "@/components/settings-form";
+import { SettingsSkeleton } from "@/components/skeletons/settings";
+import { pixel } from "@/lib/fonts";
+import { cn } from "@/lib/utils";
+import { requireUser } from "@/server/auth/current";
+import { getPreferences } from "@/server/preferences";
+
+export const metadata = { title: "Settings" };
+
+async function SettingsContent() {
+  const user = await requireUser();
+  const prefs = await getPreferences(user.id);
+  return (
+    <div className="motion-enter mx-auto max-w-[720px]">
+      <div className="mb-6">
+        <h1 className="font-pixel text-left text-[28px] leading-9 font-medium">Settings</h1>
+        <p className="mt-1 max-w-[64ch] text-muted-foreground">
+          How Egg looks and behaves for you. Your Hack Club details are on the{" "}
+          <Link href="/account" className="link">
+            account page
+          </Link>
+          .
+        </p>
+      </div>
+      <SettingsForm initial={prefs} hackClubName={user.name} />
+    </div>
+  );
+}
+
+export default function SettingsPage() {
+  return (
+    <div className={cn(pixel.variable)}>
+      <Suspense fallback={<SettingsSkeleton />}>
+        <SettingsContent />
+      </Suspense>
+    </div>
+  );
+}

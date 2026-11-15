@@ -8,10 +8,12 @@ const nextConfig: NextConfig = {
     proxyClientMaxBodySize: "50mb",
   },
   partialPrefetching: true,
-  // Security headers on every route. Next.js inlines the scripts that hydrate a page, so
-  // script-src needs 'unsafe-inline' until a per-request nonce is added in the proxy.
-  // 'unsafe-eval' is for the dev server's hot reload only. frame-ancestors, base-uri,
-  // object-src and form-action are the parts that matter most and need no relaxing.
+  // Security headers on every route. script-src keeps 'unsafe-inline' on purpose: with
+  // cacheComponents the pages have a prerendered shell, and its inline bootstrap scripts are
+  // built before any request exists, so they cannot carry a per-request nonce (a nonce policy
+  // blocked hydration in a production build). A strict nonce policy needs cacheComponents off.
+  // frame-ancestors, base-uri, object-src and form-action are the parts that matter most and
+  // need no relaxing.
   async headers() {
     const production = process.env.NODE_ENV === "production";
     const csp = [

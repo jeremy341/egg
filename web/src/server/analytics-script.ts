@@ -5,8 +5,10 @@
  * Rules the script keeps:
  *  - it sends nothing, and adds no listener, when the browser sends Do Not Track
  *    or Global Privacy Control, and on localhost;
- *  - it sets no cookie and stores nothing in the browser;
- *  - every listener it adds is removed when the page is left for good.
+ *  - it sets no cookie. It stores one random id in localStorage only while the
+ *    owner has retention on, and removes that id when retention is off;
+ *  - it sends the referrer's host only, never the address or the query string;
+ *  - every listener, observer and timer it adds is removed when the page is left for good.
  */
 
 export type ScriptFeatures = {
@@ -14,6 +16,16 @@ export type ScriptFeatures = {
   time: boolean;
   /** data-egg-track names that are steps of the funnel. Empty when funnels are off. */
   goals: string[];
+  /** Send the referring host and the utm_ values, once per page load. */
+  referrers?: boolean;
+  /** Send web vitals (once, when the page is hidden) and JavaScript errors. */
+  vitals?: boolean;
+  /** Send a track event, with the optional data-egg-value, for a click on a data-egg-track element. */
+  events?: boolean;
+  /** Send a heartbeat every 60 seconds while the page is visible. Needs the retention id. */
+  live?: boolean;
+  /** Make, keep and send a random id from localStorage. */
+  retention?: boolean;
 };
 
 const HEAD = `(function () {
@@ -43,12 +55,48 @@ const HEAD = `(function () {
   }
 `;
 
+// A random id kept in localStorage, never a cookie. Only a project with retention
+// on makes one. Without it, an id left by an earlier setting is removed.
+const ID_ON = `  var id = "";
+  try {
+    id = localStorage.getItem("_egg_id") || "";
+    if (!id) {
+      var a = new Uint8Array(12);
+      crypto.getRandomValues(a);
+      id = Array.prototype.map.call(a, function (b) { return (b + 256).toString(16).slice(1); }).join("");
+      localStorage.setItem("_egg_id", id);
+    }
+  } catch (e) {
+    id = "";
+  }
+`;
+const ID_OFF = `  try { localStorage.removeItem("_egg_id"); } catch (e) {}
+`;
+
+// The referrer's host and the three utm_ values, from the first page of a visit
+// only. A link inside the site is not a referrer, and the address is never sent.
+const REFERRERS = `    if (first) {
+      try {
+        var h = new URL(document.referrer).hostname;
+        if (h && h !== host) o.r = h;
+      } catch (e) {}
+      var q = new URLSearchParams(location.search);
+      var u = { us: "utm_source", um: "utm_medium", uc: "utm_campaign" };
+      for (var k in u) {
+        var v = (q.get(u[k]) || "").trim().slice(0, 80);
+        if (v) o[k] = v;
+      }
+    }
+`;
+
 const VIEW = `  function send() {
     var path = location.pathname;
     if (path === last) return;
-@FLUSH@    last = path;
-    post({ p: path, r: document.referrer || undefined });
-  }
+@FLUSH@    var first = last === null;
+    last = path;
+    var o = { p: path };
+@REFERRERS@@ID@    post(o);
+@RESET@  }
   var push = history.pushState;
   var wrapped = function () {
     push.apply(this, arguments);
@@ -61,6 +109,7 @@ const VIEW = `  function send() {
 
 // One delegated listener for the whole document. It only looks at links,
 // buttons and elements the owner marked, and it reads a label, never a value.
+// A data-egg-value is read only on an element the owner marked with data-egg-track.
 const CLICKS = `  on(document, "click", function (e) {
     var t = e.target;
     var el = t && t.closest && t.closest("[data-egg-track],a,button,[role=button],[role=link],summary");
@@ -99,6 +148,53 @@ const TIME = `  var acc = 0;
   });
 `;
 
+// Speed: the browser's own PerformanceObserver, no library. One summary for the
+// page load, sent once when the page is hidden, each number rounded. Errors: the
+// message, the file name without its address, and the line; at most 5 a page view.
+const VITALS = `  var vit = {};
+  var shift = 0;
+  var p0 = location.pathname;
+  var sentV = 0;
+  var ne = 0;
+  function watch(type, fn, extra) {
+    try {
+      var po = new PerformanceObserver(function (l) { l.getEntries().forEach(fn); });
+      po.observe(Object.assign({ type: type, buffered: true }, extra));
+      off.push(function () { po.disconnect(); });
+    } catch (e) {}
+  }
+  watch("largest-contentful-paint", function (e) { vit.lcp = e.startTime; });
+  watch("layout-shift", function (e) { if (!e.hadRecentInput) vit.cls = shift += e.value; });
+  watch("paint", function (e) { if (e.name === "first-contentful-paint") vit.fcp = e.startTime; });
+  watch("event", function (e) { if (e.interactionId && e.duration > (vit.inp || 0)) vit.inp = e.duration; }, { durationThreshold: 40 });
+  try { vit.ttfb = performance.getEntriesByType("navigation")[0].responseStart; } catch (e) {}
+  function sendVitals() {
+    if (sentV) return;
+    sentV = 1;
+    var o = { e: "vitals", p: p0 };
+    var any = 0;
+    for (var k in vit) {
+      o[k] = k === "cls" ? Math.round(vit[k] * 1e3) / 1e3 : Math.round(vit[k]);
+      any = 1;
+    }
+    if (any) post(o);
+  }
+  on(document, "visibilitychange", function () { if (document.hidden) sendVitals(); });
+  function bad(m, f, l) {
+    if (ne++ > 4) return;
+    post({ e: "err", m: String(m).slice(0, 200), f: String(f || "").split(/[?#]/)[0].split("/").pop(), l: l | 0 });
+  }
+  on(window, "error", function (e) { bad(e.message, e.filename, e.lineno); });
+  on(window, "unhandledrejection", function (e) { var r = e.reason; bad((r && r.message) || r, "", 0); });
+`;
+
+// A heartbeat while the page is visible, for the "on the site now" count.
+const LIVE = `  if (id) {
+    var hb = setInterval(function () { if (!document.hidden) post({ e: "ping", i: id }); }, 6e4);
+    off.push(function () { clearInterval(hb); });
+  }
+`;
+
 const TAIL = `  function stop() {
     while (off.length) off.pop()();
   }
@@ -115,22 +211,46 @@ function literal(value: string): string {
   return JSON.stringify(value).replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
 }
 
+/**
+ * Take out what a browser does not need: indentation and whole-line comments.
+ * Nothing in the script depends on either, and it shrinks what every page downloads.
+ */
+function squeeze(code: string): string {
+  return code
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("//"))
+    .join("\n")
+    .concat("\n");
+}
+
 export function buildScript(f: ScriptFeatures): string {
   const goals = f.goals;
+  const retention = Boolean(f.retention);
   let clicks = "";
-  if (f.clicks || goals.length) {
+  if (f.clicks || goals.length || f.events) {
     let send = "";
     if (f.clicks) send += '    post({ e: "click", l: l });\n';
+    if (f.events) {
+      send +=
+        '    if (name) {\n      var v = el.getAttribute("data-egg-value");\n      post(v && v.length < 41 ? { e: "track", n: name, v: v } : { e: "track", n: name });\n    }\n';
+    }
     if (goals.length) {
       send += `    if (name && [${goals.map(literal).join(",")}].indexOf(name) > -1) post({ e: "goal", n: name });\n`;
     }
     clicks = CLICKS.replace("@SEND@", send);
   }
-  return (
+  const code =
     HEAD +
+    (retention ? ID_ON : ID_OFF) +
     (f.time ? TIME : "") +
-    VIEW.replace("@FLUSH@", f.time ? "    if (last !== null) flush();\n" : "") +
+    (f.vitals ? VITALS : "") +
+    VIEW.replace("@FLUSH@", f.time ? "    if (last !== null) flush();\n" : "")
+      .replace("@REFERRERS@", f.referrers ? REFERRERS : "")
+      .replace("@ID@", retention ? "    if (id) o.i = id;\n" : "")
+      .replace("@RESET@", f.vitals ? "    ne = 0;\n" : "") +
     clicks +
-    TAIL.replace("@LEAVE@", f.time ? "    flush();\n" : "")
-  );
+    (f.live && retention ? LIVE : "") +
+    TAIL.replace("@LEAVE@", (f.time ? "    flush();\n" : "") + (f.vitals ? "    sendVitals();\n" : ""));
+  return squeeze(code);
 }

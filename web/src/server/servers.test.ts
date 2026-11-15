@@ -222,7 +222,7 @@ describe("testing a connection", () => {
     await mock?.stop();
   });
 
-  it("fails helpfully until the key is added, then pins the host key and probes", async () => {
+  it("fails helpfully until the key is added, then asks to confirm the host key before it pins and probes", async () => {
     // The mock starts with no authorized keys: the user has not pasted ours yet.
     mock = await startMockSsh({ authorizedKeys: [] });
     const row = await createServer(userId, "sam-test", { host: "127.0.0.1", port: mock.port });
@@ -240,8 +240,15 @@ describe("testing a connection", () => {
     mock = await startMockSsh({ authorizedKeys: [row.publicKey] });
     await ctx.db.update(schema.servers).set({ port: mock.port }).where(eq(schema.servers.id, row.id));
 
+    // First sight of the host: its fingerprint is shown, nothing is pinned, nothing is run.
     const second = await testServer(userId, row.id);
-    expect(second.ok).toBe(true);
+    expect(second).toMatchObject({ ok: false, kind: "host-key-unconfirmed", hostKey: mock.hostKeyFingerprint, error: "Confirm host key" });
+    expect((await getServerForUser(userId, row.id)).hostKeyFingerprint).toBeNull();
+    expect(mock.commands).toEqual([]);
+
+    // The owner confirms the fingerprint they were shown.
+    const third = await testServer(userId, row.id, { confirmHostKey: mock.hostKeyFingerprint });
+    expect(third.ok).toBe(true);
     const saved = await getServerForUser(userId, row.id);
     expect(saved.status).toBe("connected");
     expect(saved.lastError).toBeNull();
@@ -249,13 +256,28 @@ describe("testing a connection", () => {
     expect(saved.probe).toContain("uid");
   });
 
-  it("pins the host key on the first connection of any kind, so a deploy cannot be sent to a different host later", async () => {
+  it("refuses every other kind of connection until the host key is confirmed, then pins exactly what was confirmed", async () => {
     const row = await createServer(userId, "sam-tofu", { host: "127.0.0.1", port: 1 });
     const first = await startMockSsh({ authorizedKeys: [row.publicKey] });
     await ctx.db.update(schema.servers).set({ port: first.port }).where(eq(schema.servers.id, row.id));
     expect((await getServerForUser(userId, row.id)).hostKeyFingerprint).toBeNull();
 
-    (await connectToServer(await getServerForUser(userId, row.id))).close();
+    // A deploy, a file change or a shell is not allowed to be the first connection.
+    await expect(connectToServer(await getServerForUser(userId, row.id))).rejects.toMatchObject({
+      status: 409,
+      code: "host_key_unconfirmed",
+    });
+    expect(first.commands).toEqual([]);
+    expect((await getServerForUser(userId, row.id)).hostKeyFingerprint).toBeNull();
+
+    // Confirming a fingerprint other than the one the host presents is refused, and pins nothing.
+    const wrong = "SHA256:" + "C".repeat(43);
+    await expect(
+      connectToServer(await getServerForUser(userId, row.id), { confirmHostKey: wrong })
+    ).rejects.toMatchObject({ kind: "host-key" });
+    expect((await getServerForUser(userId, row.id)).hostKeyFingerprint).toBeNull();
+
+    (await connectToServer(await getServerForUser(userId, row.id), { confirmHostKey: first.hostKeyFingerprint })).close();
     const pinned = await getServerForUser(userId, row.id);
     expect(pinned.hostKeyFingerprint).toBe(first.hostKeyFingerprint);
     await first.stop();

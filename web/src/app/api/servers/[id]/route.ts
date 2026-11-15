@@ -1,3 +1,4 @@
+import { JSON_BODY_LIMIT, readTextLimited } from "@/server/body-limit";
 import { HttpError, authed, handle, ok, zodToHttp } from "@/server/http";
 import { deleteServer, disconnectBody, getServerForUser, publicServer } from "@/server/servers";
 
@@ -16,7 +17,7 @@ export const GET = handle<Ctx>(async (_req, { params }) => {
 export const DELETE = handle<Ctx>(async (req, { params }) => {
   const user = await authed();
   const { id } = await params;
-  const raw = await req.text();
+  const raw = await readTextLimited(req, JSON_BODY_LIMIT);
   let parsed: unknown = {};
   if (raw.trim()) {
     try {

@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { BookOpenIcon, GearSixIcon, PlusIcon, SignOutIcon } from "@phosphor-icons/react";
+import { BookOpenIcon, GearSixIcon, PlusIcon, SignOutIcon, UserCircleIcon } from "@phosphor-icons/react";
 import { useAccount } from "@/components/account-context";
-import { PixelAvatar } from "@/components/ui/pixel-avatar";
+import { CharacterAvatar } from "@/components/ui/character-avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,17 +29,21 @@ export function UserMenu({ className }: { className?: string }) {
           className
         )}
       >
-        <PixelAvatar seed={user.name} size={20} />
-        <span className="min-w-0 flex-1 truncate">{user.name}</span>
+        <CharacterAvatar id={user.avatar} size={20} />
+        <span className="min-w-0 flex-1 truncate">{user.shownName}</span>
       </DropdownMenuTrigger>
       <DropdownMenuContent className="w-60" align="start" side="top">
         <DropdownMenuGroup>
-          <DropdownMenuLabel>Signed in as {user.name}</DropdownMenuLabel>
+          <DropdownMenuLabel>Signed in as {user.shownName}</DropdownMenuLabel>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
-        <DropdownMenuItem render={<Link href="/account" />}>
+        <DropdownMenuItem render={<Link href="/settings" />}>
           <GearSixIcon />
-          Account settings
+          Settings
+        </DropdownMenuItem>
+        <DropdownMenuItem render={<Link href="/account" />}>
+          <UserCircleIcon />
+          Account
         </DropdownMenuItem>
         <DropdownMenuItem render={<Link href="/connect" />}>
           <PlusIcon />

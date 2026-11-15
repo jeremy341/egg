@@ -1,10 +1,11 @@
 import { eq } from "drizzle-orm";
 import { z } from "zod";
+import { parseAnalyticsDefaults, type AnalyticsDefaults } from "@/lib/analytics-defaults";
 import { audit } from "@/server/audit";
 import { getDb, schema } from "@/server/db";
 import { HttpError } from "@/server/http";
 import { getProjectForUser } from "@/server/projects";
-import { cleanPath } from "@/server/analytics";
+import { TRACK_NAME, cleanPath } from "@/server/analytics-fields";
 
 /**
  * Which opt-in analytics features a project has switched on. Everything is off
@@ -19,15 +20,36 @@ export type AnalyticsFeatures = {
   time: boolean;
   funnel: boolean;
   steps: FunnelStep[];
+  /** The referring site and the campaign values of a page view. */
+  referrers: boolean;
+  /** Web vitals and script errors. */
+  vitals: boolean;
+  /** Custom events with an optional value. */
+  events: boolean;
+  /** The "on the site now" numbers. */
+  live: boolean;
+  /** A random id in the visitor's browser, for new versus returning visitors. */
+  retention: boolean;
 };
 
-export const NO_FEATURES: AnalyticsFeatures = { clicks: false, time: false, funnel: false, steps: [] };
+export const NO_FEATURES: AnalyticsFeatures = {
+  clicks: false,
+  time: false,
+  funnel: false,
+  steps: [],
+  referrers: false,
+  vitals: false,
+  events: false,
+  live: false,
+  retention: false,
+};
+
+const SWITCHES = ["clicks", "time", "funnel", "referrers", "vitals", "events", "live", "retention"] as const;
 
 export const MIN_STEPS = 2;
 export const MAX_STEPS = 6;
 
-/** A data-egg-track name: short, plain, and safe to put inside a script. */
-export const TRACK_NAME = /^[A-Za-z0-9][A-Za-z0-9 _.:-]{0,39}$/;
+export { TRACK_NAME };
 
 const step = z
   .object({ kind: z.enum(["page", "track"]), value: z.string().trim().min(1).max(200) })
@@ -53,6 +75,11 @@ export const featuresPatch = z.object({
   clicks: z.boolean().optional(),
   time: z.boolean().optional(),
   funnel: z.boolean().optional(),
+  referrers: z.boolean().optional(),
+  vitals: z.boolean().optional(),
+  events: z.boolean().optional(),
+  live: z.boolean().optional(),
+  retention: z.boolean().optional(),
   steps: z.array(step).max(MAX_STEPS, `A funnel has at most ${MAX_STEPS} steps`).optional(),
 });
 export type FeaturesPatch = z.input<typeof featuresPatch>;
@@ -72,7 +99,31 @@ function fromRow(row: typeof schema.analyticsSettings.$inferSelect | undefined):
   if (!row) return { ...NO_FEATURES, steps: [] };
   const steps = parseSteps(row.funnelSteps);
   // A funnel with fewer than two steps measures nothing, so it counts as off.
-  return { clicks: row.clicks, time: row.time, funnel: row.funnel && steps.length >= MIN_STEPS, steps };
+  return {
+    clicks: row.clicks,
+    time: row.time,
+    funnel: row.funnel && steps.length >= MIN_STEPS,
+    steps,
+    referrers: row.referrers,
+    vitals: row.vitals,
+    events: row.events,
+    live: row.live,
+    retention: row.retention,
+  };
+}
+
+/**
+ * The features a person wants on for projects they turn analytics on for from now
+ * on. Empty (everything off) when they have saved nothing.
+ */
+export async function getAnalyticsDefaults(userId: string): Promise<AnalyticsDefaults> {
+  const db = await getDb();
+  const row = await db
+    .select({ analyticsDefaults: schema.userPreferences.analyticsDefaults })
+    .from(schema.userPreferences)
+    .where(eq(schema.userPreferences.userId, userId))
+    .get();
+  return parseAnalyticsDefaults(row?.analyticsDefaults);
 }
 
 /** The switches for a project. No permission check: for internal callers that already have one. */
@@ -123,8 +174,15 @@ export async function updateFeatures(userId: string, projectId: string, raw: Fea
     time: patch.time ?? row?.time ?? false,
     funnel: patch.funnel ?? row?.funnel ?? false,
     steps: patch.steps ?? parseSteps(row?.funnelSteps),
+    referrers: patch.referrers ?? row?.referrers ?? false,
+    vitals: patch.vitals ?? row?.vitals ?? false,
+    events: patch.events ?? row?.events ?? false,
+    live: patch.live ?? row?.live ?? false,
+    retention: patch.retention ?? row?.retention ?? false,
   };
-  if (next.funnel && next.steps.length < MIN_STEPS) {
+  // A funnel switched on by the account defaults has no steps yet and waits for them, so
+  // only a change to the funnel itself is held to the two-step minimum.
+  if ((patch.funnel !== undefined || patch.steps !== undefined) && next.funnel && next.steps.length < MIN_STEPS) {
     throw new HttpError(400, `A funnel needs at least ${MIN_STEPS} steps`, "validation");
   }
   const values = {
@@ -132,19 +190,34 @@ export async function updateFeatures(userId: string, projectId: string, raw: Fea
     time: next.time,
     funnel: next.funnel,
     funnelSteps: next.steps.length ? JSON.stringify(next.steps) : null,
+    referrers: next.referrers,
+    vitals: next.vitals,
+    events: next.events,
+    live: next.live,
+    retention: next.retention,
     updatedAt: new Date(),
   };
   await db
     .insert(schema.analyticsSettings)
     .values({ projectId: project.id, ...values })
     .onConflictDoUpdate({ target: schema.analyticsSettings.projectId, set: values });
-  const changed = (["clicks", "time", "funnel"] as const).filter((k) => next[k] !== (row?.[k] ?? false));
+  // Turning retention off deletes the codes already stored, so "off" also means "forgotten".
+  if (row?.retention && !next.retention) {
+    await db.update(schema.pageviews).set({ vid: null }).where(eq(schema.pageviews.projectId, project.id));
+    await db.delete(schema.analyticsLive).where(eq(schema.analyticsLive.projectId, project.id));
+  }
+  const changed = SWITCHES.filter((k) => next[k] !== (row?.[k] ?? false));
   if (changed.length || patch.steps) {
     await audit(userId, "analytics.settings", project.id, {
       clicks: next.clicks,
       time: next.time,
       funnel: next.funnel,
       steps: next.steps.length,
+      referrers: next.referrers,
+      vitals: next.vitals,
+      events: next.events,
+      live: next.live,
+      retention: next.retention,
     });
   }
   return fromRow({ projectId: project.id, ...values });

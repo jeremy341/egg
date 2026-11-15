@@ -60,8 +60,8 @@ export function AnalyticsSetup({
         </div>
       ) : null}
       <ul className="mt-4 list-disc space-y-1 pl-5 text-label text-muted-foreground marker:text-subtle-foreground">
-        <li>By default it records the page path and the site a visitor came from, and nothing else. Clicks, time on page and funnels are separate switches, off until you turn them on.</li>
-        <li>No cookies, and no IP address or browser details are stored.</li>
+        <li>By default it records the page path and nothing else. Referrers, clicks, time on page, funnels, speed and errors, events, the live view and retention are separate switches, off until you turn them on.</li>
+        <li>No cookies, and no IP address or browser details are stored. Only retention keeps anything in the visitor&apos;s browser, and it says so when you turn it on.</li>
         <li>It stays quiet for visitors whose browser sends Do Not Track or Global Privacy Control, and on localhost.</li>
         <li>Numbers are kept for 90 days.</li>
       </ul>

@@ -128,6 +128,7 @@ export const DOCS_NAV: DocsGroup[] = [
         id: "account",
         title: "Account",
         subsections: [
+          { id: "account-settings", title: "The Settings page" },
           { id: "account-signin", title: "Signing in and out" },
           { id: "account-sessions", title: "Signed-in browsers" },
           { id: "account-delete", title: "Deleting your account" },

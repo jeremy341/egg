@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowsClockwiseIcon,
@@ -28,6 +28,7 @@ import {
   type LogLevel,
   type LogRange,
 } from "@/lib/log-filter";
+import { newerLines } from "@/lib/log-page";
 import { cn } from "@/lib/utils";
 
 /**
@@ -65,6 +66,13 @@ export function LogsView({
 }) {
   const [projectId, setProjectId] = useState(projects[0]?.id ?? "");
   const [lines, setLines] = useState<string[]>([]);
+  // Lines older than `lines`, added by "Load older lines". They sit above the live ones.
+  const [older, setOlder] = useState<string[]>([]);
+  // Where the lines before the oldest one on screen start, and the view it was given for.
+  const [cursor, setCursor] = useState<{ value: string; scope: string } | null>(null);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [olderError, setOlderError] = useState<string | null>(null);
+  const [olderNote, setOlderNote] = useState("");
   const [loading, setLoading] = useState(false);
   // False until the first read for this project has finished. Only that first
   // read shows skeleton lines; later reads (search, auto refresh) keep the old
@@ -81,6 +89,18 @@ export function LogsView({
   // Only the newest request may write its result, so a slow answer for the
   // project you just left cannot land under the one you are looking at.
   const latest = useRef(0);
+  // Counts every time the older lines are thrown away, so an older read that was
+  // still on its way cannot land under lines it no longer belongs to.
+  const epoch = useRef(0);
+  const olderBusy = useRef(false);
+  const shownRef = useRef({ older, lines });
+  const box = useRef<HTMLDivElement | null>(null);
+  const anchor = useRef<{ height: number; top: number } | null>(null);
+  const scope = `${projectId}|${term}|${range}|${level}`;
+
+  useEffect(() => {
+    shownRef.current = { older, lines };
+  });
 
   useEffect(() => {
     const t = setTimeout(() => setTerm(query.trim()), 350);
@@ -95,11 +115,27 @@ export function LogsView({
       const mine = ++latest.current;
       if (!quiet) setLoading(true);
       try {
-        const res = await api<{ lines: string[] }>(
+        const res = await api<{ lines: string[]; older?: string | null }>(
           `/api/projects/${projectId}/runtime-logs?lines=300&range=${range}&level=${level}${term ? `&q=${encodeURIComponent(term)}` : ""}`
         );
         if (mine !== latest.current) return;
-        setLines(res.lines);
+        // With older lines on screen the automatic refresh only adds what is new
+        // under them, so reading further back is not undone every five seconds.
+        const shown = shownRef.current;
+        const added =
+          quiet && shown.older.length > 0 ? newerLines([...shown.older, ...shown.lines], res.lines) : null;
+        if (quiet && olderBusy.current && shown.older.length === 0) {
+          // Older lines are on their way for the lines on screen: keep those as they are.
+        } else if (added) {
+          if (added.length > 0) setLines((l) => [...l, ...added]);
+        } else {
+          epoch.current++;
+          setOlder([]);
+          setOlderError(null);
+          setOlderNote("");
+          setLines(res.lines);
+          setCursor(res.older ? { value: res.older, scope: `${projectId}|${term}|${range}|${level}` } : null);
+        }
         setError(null);
       } catch (e) {
         if (mine !== latest.current) return;
@@ -122,7 +158,50 @@ export function LogsView({
 
   // Only the "Warnings and errors" view marks each line. Stack trace lines take
   // the level of the error above them, so the whole trace is marked.
-  const levels = useMemo(() => (level === "problems" ? lineLevels(lines) : null), [level, lines]);
+  const all = useMemo(() => (older.length > 0 ? [...older, ...lines] : lines), [older, lines]);
+  const levels = useMemo(() => (level === "problems" ? lineLevels(all) : null), [level, all]);
+
+  // Older lines go above the ones on screen. Keep what the reader was looking at in place.
+  useLayoutEffect(() => {
+    const el = box.current;
+    const a = anchor.current;
+    if (!el || !a) return;
+    anchor.current = null;
+    el.scrollTop = a.top + (el.scrollHeight - a.height);
+  }, [older]);
+
+  async function loadOlder() {
+    // The cursor only fits the view it was given for.
+    if (!cursor || cursor.scope !== scope || olderBusy.current) return;
+    const mine = epoch.current;
+    olderBusy.current = true;
+    setLoadingOlder(true);
+    setOlderError(null);
+    try {
+      const res = await api<{ lines: string[]; older?: string | null }>(
+        `/api/projects/${projectId}/runtime-logs?lines=300&range=${range}&level=${level}${term ? `&q=${encodeURIComponent(term)}` : ""}&before=${encodeURIComponent(cursor.value)}`
+      );
+      if (mine !== epoch.current) return;
+      const el = box.current;
+      anchor.current = el ? { height: el.scrollHeight, top: el.scrollTop } : null;
+      setOlder((o) => [...res.lines, ...o]);
+      setCursor(res.older ? { value: res.older, scope } : null);
+      setOlderNote(
+        res.lines.length === 0
+          ? res.older
+            ? "No matching lines in that stretch. Load older lines to keep looking."
+            : "No older lines."
+          : `${res.lines.length} older ${res.lines.length === 1 ? "line" : "lines"} loaded${res.older ? "" : ". That is the start of the logs for this time range"}.`
+      );
+    } catch (e) {
+      // The lines already shown stay; pressing the button tries the same read again.
+      if (mine !== epoch.current) return;
+      setOlderError(e instanceof Error ? e.message : "Could not read older lines");
+    } finally {
+      olderBusy.current = false;
+      setLoadingOlder(false);
+    }
+  }
 
   useEffect(() => {
     if (timer.current) clearInterval(timer.current);
@@ -151,16 +230,22 @@ export function LogsView({
     // Another project's lines must not sit under this one's name while it loads.
     setProjectId(id);
     setLines([]);
+    epoch.current++;
+    setOlder([]);
+    setCursor(null);
+    setOlderError(null);
+    setOlderNote("");
     setReady(false);
   }
 
-  const showSkeleton = !ready && lines.length === 0;
+  const showSkeleton = !ready && all.length === 0;
+  const canLoadOlder = cursor !== null && cursor.scope === scope && !showSkeleton && !(error && all.length === 0);
 
   // Saves exactly the lines on screen, as plain text.
   function download() {
     const name = projects.find((p) => p.id === projectId)?.name ?? "project";
     const url = URL.createObjectURL(
-      new Blob([logFileText(lines)], { type: "text/plain;charset=utf-8" })
+      new Blob([logFileText(all)], { type: "text/plain;charset=utf-8" })
     );
     const a = document.createElement("a");
     a.href = url;
@@ -201,8 +286,8 @@ export function LogsView({
           <Button
             variant="outline"
             onClick={download}
-            disabled={lines.length === 0}
-            aria-label={`Download ${lines.length} visible ${lines.length === 1 ? "line" : "lines"} as a text file`}
+            disabled={all.length === 0}
+            aria-label={`Download ${all.length} visible ${all.length === 1 ? "line" : "lines"} as a text file`}
           >
             <DownloadSimpleIcon aria-hidden="true" />
             Download
@@ -244,7 +329,7 @@ export function LogsView({
       <p className="tabular min-h-[18px] text-label text-muted-foreground">
         {!showSkeleton && !error ? (
           <>
-            {lines.length} {lines.length === 1 ? "line" : "lines"} from{" "}
+            {all.length} {all.length === 1 ? "line" : "lines"} from{" "}
             <span className="text-foreground">
               {projects.find((p) => p.id === projectId)?.name}
             </span>
@@ -253,9 +338,32 @@ export function LogsView({
         ) : null}
       </p>
 
+      {/* What loading older lines did, said once for screen readers. */}
+      <p role="status" className="sr-only">
+        {olderNote}
+      </p>
+
+      {canLoadOlder ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            variant="outline"
+            loading={loadingOlder}
+            onClick={() => void loadOlder()}
+          >
+            {loadingOlder ? "Loading older lines…" : "Load older lines"}
+          </Button>
+          {olderError ? (
+            <p role="alert" className="text-label text-destructive">
+              {olderError}. The lines above are still here.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
       {/* A failed read with nothing to show is already explained above, so no second empty panel. */}
-      {error && lines.length === 0 ? null : (
+      {error && all.length === 0 ? null : (
         <div
+          ref={box}
           role="log"
           aria-label="Runtime logs"
           aria-busy={showSkeleton || undefined}
@@ -273,7 +381,7 @@ export function LogsView({
                 />
               </div>
             ))
-          ) : lines.length === 0 ? (
+          ) : all.length === 0 ? (
             <p className="px-4 py-12 text-center font-sans text-muted-foreground">
               {term
                   ? `No lines match “${term}”.`
@@ -282,7 +390,7 @@ export function LogsView({
                     : "Nothing printed in this time range. Try a longer one."}
             </p>
           ) : (
-            lines.map((l, i) => {
+            all.map((l, i) => {
               const mark = levels?.[i];
               if (!levels) {
                 return (

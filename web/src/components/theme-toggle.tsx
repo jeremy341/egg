@@ -1,14 +1,14 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { useTheme } from "next-themes";
 import { MonitorIcon, MoonIcon, SunIcon } from "@phosphor-icons/react";
 import { Segmented } from "@/components/segmented";
+import { useThemeChoice } from "@/components/use-theme-choice";
 
 const subscribe = () => () => {};
 
 export function ThemeToggle() {
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme } = useThemeChoice();
   // The stored theme is only known in the browser, so render it after hydration.
   const mounted = useSyncExternalStore(
     subscribe,

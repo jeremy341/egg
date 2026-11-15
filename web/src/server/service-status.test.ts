@@ -5,7 +5,7 @@ import { open } from "@/server/crypto";
 import { schema } from "@/server/db";
 import { runDeployJob, type PipelineDeps } from "@/server/deploy/pipeline";
 import { createProject, deployBranch, type ProjectRow } from "@/server/projects";
-import { fetchServiceStatus, parseServiceStatus } from "@/server/service-status";
+import { fetchServiceStatus, forgetServiceStatus, isFresh, lastKnownServiceStatus, parseServiceStatus } from "@/server/service-status";
 import { connectToServer, createServer, getServerForUser, type ServerRow } from "@/server/servers";
 import { NestSession } from "@/server/ssh/connection";
 import { fakeBuilder, freePort, installFakeSystemd, nodeApp } from "@/server/test/fake-nest";
@@ -96,7 +96,7 @@ describe("fetchServiceStatus on a mock Nest", () => {
     server = await createServer(userId, "sam-r", { host: "127.0.0.1", port: 1 });
     mock = await startMockSsh({ authorizedKeys: [server.publicKey] });
     installFakeSystemd(mock);
-    await ctx.db.update(schema.servers).set({ port: mock.port }).where(eq(schema.servers.id, server.id));
+    await ctx.db.update(schema.servers).set({ port: mock.port, hostKeyFingerprint: mock.hostKeyFingerprint }).where(eq(schema.servers.id, server.id));
     server = await getServerForUser(userId, server.id);
 
     const base = { serverId: server.id, repoUrl: "https://github.com/example/demo", runtime: "node" as const };
@@ -150,5 +150,44 @@ describe("fetchServiceStatus on a mock Nest", () => {
   it("belongs to the owner", async () => {
     const other = (await upsertUser({ id: "u2", name: "Alex", email: null, slackId: null })).id;
     await expect(fetchServiceStatus(other, project.id)).rejects.toMatchObject({ status: 404 });
+  });
+
+  it("reuses a reading for 30 seconds, and Check now bypasses it", async () => {
+    forgetServiceStatus(project.id);
+    let clock = 1_000_000;
+    const now = () => clock;
+    // The service was stopped by the test above.
+    const first = await lastKnownServiceStatus(userId, project.id, { now });
+    expect(first.cached).toBe(false);
+    expect(["failed", "stopped"]).toContain(first.status.state);
+
+    await sh("systemctl start egg-status-app.service");
+    clock += 10_000;
+    const second = await lastKnownServiceStatus(userId, project.id, { now });
+    expect(second.cached).toBe(true);
+    expect(second.status.checkedAt).toBe(first.status.checkedAt);
+    expect(["failed", "stopped"]).toContain(second.status.state);
+
+    const forced = await lastKnownServiceStatus(userId, project.id, { now, fresh: true });
+    expect(forced.cached).toBe(false);
+    expect(forced.status.state).toBe("running");
+
+    // Past 30 seconds the stored reading is no longer used.
+    clock += 31_000;
+    expect((await lastKnownServiceStatus(userId, project.id, { now })).cached).toBe(false);
+  });
+
+  it("checks ownership before it hands out a stored reading", async () => {
+    await lastKnownServiceStatus(userId, project.id);
+    const other = (await upsertUser({ id: "u3", name: "Eve", email: null, slackId: null })).id;
+    await expect(lastKnownServiceStatus(other, project.id)).rejects.toMatchObject({ status: 404 });
+  });
+});
+
+describe("isFresh", () => {
+  it("is true under the limit, false at or past it, false for a clock that went backwards", () => {
+    expect(isFresh(1000, 1000 + 29_999)).toBe(true);
+    expect(isFresh(1000, 1000 + 30_000)).toBe(false);
+    expect(isFresh(1000, 500)).toBe(false);
   });
 });

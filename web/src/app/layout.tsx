@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/toast";
+import { bootScript } from "@/lib/preferences";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -31,6 +32,15 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full`}
     >
+      <head>
+        {/*
+          Sets the accent, density and motion choices on <html> from the egg_prefs
+          cookie, and hands the theme to next-themes, before the first paint. A
+          script rather than cookies() here: reading cookies in the root layout
+          would make every public page render per request.
+        */}
+        <script dangerouslySetInnerHTML={{ __html: bootScript() }} />
+      </head>
       <body className="min-h-full flex flex-col">
         <ThemeProvider>
           <TooltipProvider>

@@ -7,7 +7,7 @@ import { DeploymentsSkeleton } from "@/components/skeletons/deployments";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { requireUser } from "@/server/auth/current";
-import { deploymentViews, projectViews } from "@/server/queries";
+import { deploymentPage, projectViews } from "@/server/queries";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -21,9 +21,15 @@ async function Content({ params }: Props) {
   const user = await requireUser();
   const project = (await projectViews(user.id)).find((p) => p.slug === slug);
   if (!project) notFound();
-  const deployments = await deploymentViews(user.id, { projectId: project.id });
+  // The first page only; the list asks for older ones when you press Load older.
+  const { rows: deployments, nextCursor } = await deploymentPage(user.id, {
+    projectId: project.id,
+    limit: 25,
+  });
 
   const newest = deployments[0];
+  // With more pages behind this one the number is a floor, not a total.
+  const count = `${deployments.length}${nextCursor ? "+" : ""}`;
 
   return (
     <div className="motion-enter">
@@ -46,7 +52,7 @@ async function Content({ params }: Props) {
         description={
           newest ? (
             <FactLine tones={deployments.slice(0, 24).map((d) => toneOf(d.state))}>
-              {deployments.length} {deployments.length === 1 ? "deployment" : "deployments"}. The
+              {count} {deployments.length === 1 && !nextCursor ? "deployment" : "deployments"}. The
               newest {newest.state === "error" ? "failed" : `is ${newest.state}`}
               {newest.age ? `, ${newest.age}` : ""}.
             </FactLine>
@@ -55,7 +61,11 @@ async function Content({ params }: Props) {
           )
         }
       />
-      <DeploymentsView deployments={deployments} showProject={false} />
+      <DeploymentsView
+        deployments={deployments}
+        showProject={false}
+        paging={{ projectId: project.id, nextCursor }}
+      />
     </div>
   );
 }

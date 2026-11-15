@@ -1,5 +1,45 @@
 # Security audit: execution, files, terminal, SSH, deploy, webhooks, GitHub
 
+## Status after the May–November round
+
+Checked against the code on 2026-11-08. Paths are under `web/`. The original tables below are kept as they were written.
+
+| # | Status | Where |
+|---|---|---|
+| 1 | Fixed | `src/server/projects.ts` `assertInstallationOwned` (called from `createProject`); `src/server/github/webhook.ts` `installationTrusted` also checks the event's installation against the project |
+| 2 | Fixed | `src/server/deploy/build.ts` `resolveInside` compares real paths |
+| 3 | Fixed | `src/server/deploy/build.ts` `buildCliEnv` |
+| 4 | Fixed, stronger | `src/server/servers.ts` `connectToServer` and `testServer`: a new server's fingerprint is shown and must be confirmed before any command runs; an unpinned server answers 409 `host_key_unconfirmed` (`src/app/api/servers/[id]/test/route.ts` takes `confirmHostKey`; UI in `src/components/connect-flow.tsx`) |
+| 5 | Fixed | `src/server/files.ts` file scripts resolve links with `readlink -f` before refusing a release `.env` |
+| 6 | Fixed | `src/server/deploy/pipeline.ts` `setState` keeps `canceled` |
+| 7 | Partly fixed | Counted body caps: `src/app/api/webhooks/github/route.ts` (25 MB), `src/app/api/hooks/deploy/[token]/route.ts` (4 KB). Replay guard is in memory per process: `src/server/github/webhook.ts` `DELIVERY_TTL_MS`. The database now also refuses duplicate active deploys (migration `drizzle/0013_security_prefs.sql`; `src/server/db/errors.ts` `isUniqueViolation`; handled in `webhook.ts` and `src/server/hooks.ts`, which answers 409 `busy`) |
+| 8 | Fixed | `src/server/deploy/build.ts` `assertGitRef`, `assertGitSha`; `webhook.ts` `isSafeBranch` |
+| 9 | Fixed, widened | `src/server/deploy/redact.ts` and `src/server/deploy/logger.ts`. Base64 and URL-encoded forms are masked, and values of 2 to 3 characters are masked where they stand alone. One-character values are not masked, on purpose, so `CI=1` stays readable |
+| 10 | Fixed | `src/server/ssh/connection.ts` `DEFAULT_MAX_OUTPUT_BYTES` (128 MB) |
+| 11 | Fixed | `src/server/terminal.ts` `TERMINAL_LIMITS.maxSessionsPerUser` (5) |
+| 12 | Fixed | `src/app/api/projects/[id]/terminal/[sessionId]/input/route.ts` and `.../files/write/route.ts` use `src/server/body-limit.ts` |
+| 13 | Fixed | `src/server/files.ts` `FILE_READ_LIMIT` (120 a minute) |
+| 14 | Fixed | `src/app/api/projects/[id]/files/download/route.ts` `attachment()` |
+| 15 | Fixed | `src/server/files.ts` writes the mode as octal only |
+| 16 | Fixed | `src/server/net-guard.ts` treats `3fff::/20` as not public |
+
+Old "Not fixed" list:
+
+- Signed-in JSON routes with no cap: **fixed**, 256 KB in `src/server/body-limit.ts` (`readJsonLimited`, used by `readJson` in `src/server/http.ts`).
+- Check-then-act deploy dedupe: **fixed** by the unique indexes `deployments_active_webhook_commit_idx`, `deployments_active_hook_idx` and `jobs_active_deployment_idx` (`drizzle/0013_security_prefs.sql`). The migration first ends older duplicates, keeping the newest.
+- First-use pinning cannot see a man in the middle: **partly fixed**. The fingerprint is now confirmed by the owner, but Egg has no earlier key to compare with, so the check is only as good as the owner's comparison with the one Nest shows.
+- `BUILD_RUNNER=local` unsandboxed: **open**, by design (development only). `.env.example` says "local = no isolation".
+- Short and encoded secrets not masked: **fixed** except one-character values, see item 9.
+- Replay list is per process: **open**.
+
+## Still open
+
+1. `BUILD_RUNNER=local` runs build scripts on the host with no isolation (`src/server/deploy/build.ts`, around line 505). Development only.
+2. The replay list (`webhook.ts`), rate limits (`src/server/rate-limit.ts`) and the analytics collector windows are per process.
+3. The deploy log stream (`src/app/api/deployments/[id]/stream/route.ts`) checks the session once, when it opens, and can run for about 3.75 hours.
+4. The build container can reach the internet (needed for package installs).
+5. Masking finds the exact value, its base64 and its URL-encoded form. A secret printed in any other form is not masked.
+
 Scope: `web/src/server` (files, terminal, ssh, deploy, inventory, webhooks, notify, github) and the matching routes. Every fix has a test.
 
 ## Findings

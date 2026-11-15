@@ -27,7 +27,9 @@ const SECTIONS = [
   { id: "limits", title: "Rate and size limits" },
   { id: "tokens", title: "Access tokens" },
   { id: "webhooks", title: "Webhooks" },
+  { id: "domains", title: "Domains" },
   { id: "builds", title: "Builds" },
+  { id: "analytics", title: "Visitor analytics" },
   { id: "logs", title: "What is logged and what is not" },
   { id: "remove", title: "Disconnect a server, remove Egg" },
   { id: "gaps", title: "What is not covered" },
@@ -136,10 +138,13 @@ export default function SecurityPage() {
                 it in the Nest dashboard.
               </Term>
               <Term name="The Nest host key">
-                The first time Egg connects to a server, it records the SSH host key that answered and keeps it. Every
-                connection after that, whether a deploy, a file change or anything else, is checked against it. If the
-                key has changed, Egg stops before it sends a key, a variable or a file, and tells you. If you expected
-                the change, disconnect the server and connect it again.
+                The first time you connect a server, Egg reaches it, reads the fingerprint of its SSH host key and
+                stops. It shows you that fingerprint and waits. Nothing else is sent to the server, and no deploy, file
+                change or terminal can run, until you check it against the one Nest shows for your server and confirm
+                it. Until then every other request for that server is refused with <Code>host_key_unconfirmed</Code>.
+                After you confirm, Egg keeps the key. Every connection after that is checked against it. If the key has
+                changed, Egg stops before it sends a key, a variable or a file, and tells you. If you expected the
+                change, disconnect the server and connect it again.
               </Term>
               <Term name="Environment variables">
                 Encrypted the same way as the SSH key, and write-only: the dashboard and the API list their names and
@@ -227,7 +232,8 @@ export default function SecurityPage() {
             <p className="m-0">
               Egg counts requests and turns away the ones over these limits with a message that says how long to wait.
               Sign-in and access tokens are counted by network address, because the caller has no account yet. The rest
-              are counted for each account.
+              are counted for each account. When sign-in is over its limit, the sign-in page says so and asks you to
+              wait a minute.
             </p>
             <LimitTable
               caption="Rate limits"
@@ -249,22 +255,36 @@ export default function SecurityPage() {
               The token limit is checked before a token is looked up, so guessing tokens cannot be used to wear down the
               database. Only tokens that turn out to be wrong count towards it.
             </p>
+            <Sub>Where the address comes from</Sub>
+            <p className="m-0">
+              The setting <Code>TRUST_PROXY</Code> is off by default. While it is off, Egg ignores the{" "}
+              <Code>X-Forwarded-For</Code> and <Code>X-Real-IP</Code> headers, because anyone can send them, and the
+              limits by address do not apply, since a request then has no address Egg can trust. Whoever runs Egg sets
+              it to <Code>1</Code> only when every request comes through a reverse proxy they run. Egg then takes the
+              last entry of <Code>X-Forwarded-For</Code>, the one that proxy added itself, and not the first, which the
+              sender could have written.
+            </p>
             <Sub>Size limits</Sub>
             <p className="m-0">
               Egg reads a request body only up to a limit, and counts the bytes as they arrive. A sender that lies about
-              the size, or sends no size at all, is cut off at the limit.
+              the size, or sends no size at all, is cut off at the limit. A request over its limit gets a 413 answer.
             </p>
             <LimitTable
               caption="Size limits"
               head={["Request", "Largest body"]}
               rows={[
                 ["Deploy hook", `${F.deployHookBodyKb} KB`],
-                ["Most API requests", `${F.apiBodyKb} KB`],
+                ["Most requests made with an access token", `${F.apiBodyKb} KB`],
+                ["JSON requests from a signed-in browser", `${F.dashboardBodyKb} KB`],
                 ["MCP endpoint", `${F.mcpBodyKb} KB`],
                 ["GitHub delivery", `${F.githubBodyMb} MB`],
                 ["File upload", `${F.uploadMb} MB`],
               ]}
             />
+            <p className="m-0">
+              File uploads keep their own, larger limit, because they carry file contents. A few routes have smaller
+              limits of their own, such as terminal input.
+            </p>
           </Section>
 
           <Section id="tokens" title={title("tokens")} number={num("tokens")}>
@@ -320,6 +340,12 @@ export default function SecurityPage() {
                 second time. If handling a delivery fails, the id is forgotten so GitHub&apos;s retry goes through.
               </li>
               <li>
+                The database itself refuses a second active deploy of the same commit on the same branch from GitHub, a
+                second active deploy started by a deploy hook for the same project, and a second live job for one
+                deployment. Two deliveries that arrive at the same moment, or on two server processes, cannot both
+                start one. The second one is dropped, and a deploy hook answers 409.
+              </li>
+              <li>
                 The body is read up to {F.githubBodyMb} MB and no further. A branch name or commit hash from a push is
                 checked before it reaches git, so a branch name that starts with a dash is refused instead of being read
                 as a git option.
@@ -363,6 +389,35 @@ export default function SecurityPage() {
             </p>
           </Section>
 
+          <Section id="domains" title={title("domains")} number={num("domains")}>
+            <p className="m-0">
+              Nest routes the traffic for a domain, not Egg. What Egg decides is which domains it will record for your
+              project and show as Active.
+            </p>
+            <Points>
+              <li>
+                A name on Nest&apos;s list of reserved names, such as <Code>admin</Code> or <Code>api</Code>, is refused,
+                with a few more Egg adds for itself. That holds as a name on its own and as the name under{" "}
+                <Code>hackclub.app</Code>, <Code>hackclub.com</Code> and <Code>hackclub.dev</Code>.
+              </li>
+              <li>
+                Under <Code>hackclub.app</Code> you can only use your own Nest name,{" "}
+                <Code>&lt;your-name&gt;.hackclub.app</Code>, and names under it.
+              </li>
+              <li>
+                A custom domain has to be a public domain name. An IP address, <Code>localhost</Code> and internal names
+                such as <Code>.local</Code> are refused.
+              </li>
+              <li>
+                A custom domain stays Pending until Egg finds the DNS record Nest checks for: a TXT record{" "}
+                <Code>domain-verification=&lt;your-name&gt;</Code>, or a CNAME to{" "}
+                <Code>&lt;your-name&gt;.hackclub.app</Code>. Your own Nest name, and a subdomain of a domain you have
+                already verified on the same server, are Active at once. If the record of a verified domain goes
+                missing, it is marked Invalid and is not deleted.
+              </li>
+            </Points>
+          </Section>
+
           <Section id="builds" title={title("builds")} number={num("builds")}>
             <p className="m-0">
               Your code is built in a Docker container on Egg&apos;s server, never on your Nest container.
@@ -385,6 +440,41 @@ export default function SecurityPage() {
                 When you import a project from GitHub, Egg checks that the GitHub connection belongs to your account
                 before it uses it, so nobody can use another person&apos;s connection to clone their private
                 repositories.
+              </li>
+            </Points>
+          </Section>
+
+          <Section id="analytics" title={title("analytics")} number={num("analytics")}>
+            <p className="m-0">
+              Page analytics are off until you turn them on for a project. They count the visitors of your site, not of
+              Egg. The script you add to your site is built to collect as little as it can.
+            </p>
+            <Points>
+              <li>It sets no cookie.</li>
+              <li>
+                A referrer is stored as its host only, such as <Code>news.example.com</Code>, never the address or the
+                query string. The campaign values <Code>utm_source</Code>, <Code>utm_medium</Code> and{" "}
+                <Code>utm_campaign</Code> are cut to {F.utmChars} characters, and other parameters are not read.
+              </li>
+              <li>
+                An IP address is never stored. Egg uses it for a short rate limit held in memory. It also goes, with
+                the browser string, the project and the date, into a one-way hash that counts a day&apos;s visitors.
+                That hash changes every day, so it cannot follow anyone from one day to the next.
+              </li>
+              <li>
+                When the browser sends Do Not Track or Global Privacy Control, the script sends nothing and adds no
+                listener. The collector also drops a request that carries either signal.
+              </li>
+              <li>
+                Returning visitors are counted only when you turn retention on for the project. The script then keeps a
+                random id in the browser&apos;s local storage, not in a cookie, and removes it when retention is
+                turned off. Egg stores only an HMAC of that id with the project, made with a key that changes every{" "}
+                {F.retentionRotationDays} days. The id itself is never stored. A visitor who returns after the key
+                changes counts as new.
+              </li>
+              <li>
+                Page views and events are deleted after {F.analyticsKeepDays} days. Live view heartbeats are deleted
+                after an hour.
               </li>
             </Points>
           </Section>
@@ -417,9 +507,11 @@ export default function SecurityPage() {
             <p className="m-0">
               Build output, and the error message shown for a failed deploy, are stored with your environment variable
               values masked. A value that runs over several lines, such as a private key, is masked line by line for
-              every line of 8 characters or more. Values shorter than 4 characters are not masked, and neither is a
-              value the build prints in another form, such as base64 or URL encoded, so do not rely on masking for those.
-              At most {F.buildLogLines.toLocaleString("en-US")} lines are kept for one deployment, then one line says
+              every line of 8 characters or more. The base64 and URL-encoded forms of a value are masked too. A value of
+              2 or 3 characters is masked only where it stands alone, not inside a longer word or number. A value of
+              one character is never masked, on purpose, so that a setting such as <Code>CI=1</Code> stays readable
+              in the log. Masking only finds the forms listed here, so a build that prints a secret in some other form
+              will show it. At most {F.buildLogLines.toLocaleString("en-US")} lines are kept for one deployment, then one line says
               the rest was cut.
             </p>
             <p className="m-0">
@@ -473,23 +565,42 @@ export default function SecurityPage() {
             </p>
             <Points>
               <li>
-                Egg cannot tell whether something sat between it and Nest the very first time it connected, because
-                there was no earlier host key to compare with. Every connection after that is checked.
+                Egg can only be as sure of a new server as you are. It shows you the fingerprint, but it has no earlier
+                key to compare it with. If you confirm without checking it against the one Nest shows, something sitting
+                between Egg and Nest on that first connection would not be noticed. Every connection after that is
+                checked.
               </li>
               <li>
-                The content policy still allows inline scripts, because the framework that renders Egg puts its start-up
-                scripts inline. The rules against framing, plug-ins and form hijacking are not affected.
+                The content policy still allows inline scripts, so a script injected into a page would not be blocked
+                by it. A per-request nonce, which would close this, is not in place. It breaks the app under the
+                current setup: the pages are built ahead of time with <Code>cacheComponents</Code>, so their start-up
+                scripts exist before any request and cannot carry a nonce. Two ways to fix it are known: turn{" "}
+                <Code>cacheComponents</Code> off, or move to Next&apos;s experimental subresource-integrity mode. Neither
+                has been chosen. The rules against framing, plug-ins and form hijacking are not affected.
               </li>
               <li>
-                Rate limits and the delivery list are kept in memory by each server process, so a restart clears them
-                and each process counts on its own. Limits by address go by the address the hosting proxy reports, and
-                are not applied when there is none.
+                Rate limits, the page-view and event limits of the analytics collector, and the delivery list are kept in
+                memory by each server process, so a restart clears them and each process counts on its own. Limits by
+                address work only when <Code>TRUST_PROXY</Code> is on. With it off, the collector counts every visitor
+                as one address.
               </li>
               <li>
-                Requests from a signed-in browser to the dashboard have no body limit of their own beyond an overall{" "}
-                {F.uploadMb} MB cap. The routes that take uploads need that room.
+                The public endpoint that receives analytics page views reads the whole request body before it keeps the
+                first 5,000 characters. It has no size cap of its own yet.
+              </li>
+              <li>
+                The live view of a build log checks your sign-in when it opens and then keeps running for a few hours,
+                so it can outlast a sign-out.
               </li>
               <li>The build container can reach the internet, as noted under Builds.</li>
+              <li>
+                A person running Egg themselves can set <Code>BUILD_RUNNER=local</Code>, which builds with no
+                isolation at all. It is meant for development only, and only for code you trust.
+              </li>
+              <li>
+                Dependencies are checked by running <Code>pnpm audit:prod</Code>, which fails on a high or critical
+                finding. There is no CI workflow yet, so nothing runs it automatically.
+              </li>
             </Points>
           </Section>
 

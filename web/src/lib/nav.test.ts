@@ -14,6 +14,7 @@ const PATHS = [
   "/docs",
   "/docs/quickstart",
   "/account",
+  "/settings",
   "/projects/demo/deployments",
   "/projects/demo/deployments/abc12345",
   "/projects/demo/analytics",

@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { ZodError, type ZodType } from "zod";
 import { getCurrentUser } from "@/server/auth/current";
 import type { SessionUser } from "@/server/auth/session";
+import { readJsonLimited } from "@/server/body-limit";
 import { config } from "@/server/config";
 
 export class HttpError extends Error {
@@ -32,12 +33,7 @@ export async function authed(): Promise<SessionUser> {
 }
 
 export async function readJson<T>(req: NextRequest, schema: ZodType<T>): Promise<T> {
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    throw new HttpError(400, "Request body must be JSON", "bad_json");
-  }
+  const body = await readJsonLimited(req);
   const parsed = schema.safeParse(body);
   if (!parsed.success) throw zodToHttp(parsed.error);
   return parsed.data;

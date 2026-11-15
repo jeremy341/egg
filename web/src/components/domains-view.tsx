@@ -22,7 +22,6 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
-import { domainCause } from "@/lib/connection-error";
 import { cn } from "@/lib/utils";
 
 type DomainRow = {
@@ -33,19 +32,46 @@ type DomainRow = {
   nestUsername: string;
   projectName: string | null;
   projectId: string | null;
+  /** nest: a name Nest hands out. subdomain: under a domain already verified here. custom: needs a DNS record. */
+  kind: "nest" | "subdomain" | "custom";
   cname: string | null;
+  txt: string | null;
+  /** Shown as active, but the DNS record is gone. */
+  dnsWarning?: boolean;
 };
 
-type Instructions = { steps: string[]; cname: { name: string; value: string } | null };
-
-const STATUS: Record<
-  DomainRow["status"],
-  { label: string; tone: "ready" | "neutral" | "error" }
-> = {
-  valid: { label: "Valid", tone: "ready" },
-  pending: { label: "Not checked", tone: "neutral" },
-  invalid: { label: "Needs attention", tone: "error" },
+type Instructions = {
+  steps: string[];
+  cname: { name: string; value: string } | null;
+  txt: { name: string; value: string } | null;
 };
+
+const DNS_LOST = "DNS no longer points here. Check your record.";
+
+function statusFor(d: DomainRow): { label: string; tone: "ready" | "neutral" | "error" } {
+  if (d.status === "invalid" || d.dnsWarning) return { label: "Needs attention", tone: "error" };
+  if (d.status === "valid") return { label: "Active", tone: "ready" };
+  return { label: d.kind === "custom" ? "Waiting for DNS" : "Not checked", tone: "neutral" };
+}
+
+/** The records a custom domain can use, and the next two steps, shown while it waits for DNS. */
+function RecordsToAdd({ d }: { d: DomainRow }) {
+  if (!d.cname || !d.txt) return null;
+  return (
+    <div className="mt-2 max-w-[60ch] space-y-2">
+      <p className="text-label text-foreground">
+        At your DNS provider, add a CNAME record for <span className="font-mono">{d.domain}</span> pointing to:
+      </p>
+      <CopyField label={`CNAME value for ${d.domain}`} value={d.cname} />
+      <p className="text-label text-muted-foreground">Or a TXT record on the same name with the value:</p>
+      <CopyField label={`TXT value for ${d.domain}`} value={d.txt} />
+      <p className="text-label text-muted-foreground">
+        Then add the domain on the Domains page of your Nest dashboard, with target port{" "}
+        <span className="font-mono">{d.port}</span>, and press Check.
+      </p>
+    </div>
+  );
+}
 
 const FIELD_LABEL = "mb-1.5 block text-label text-muted-foreground";
 
@@ -256,7 +282,7 @@ export function DomainsView({
             className={cn("text-label", error ? "text-destructive" : "text-muted-foreground")}
           >
             {error?.text ??
-              "Nest maps domains to ports on its own dashboard. Add it here too so Egg can check DNS."}
+              "Your Nest name is free. A custom domain needs a DNS record first. Egg shows it as active once DNS checks out."}
           </p>
           <Button type="submit" disabled={!domain.trim()} loading={adding}>
             {adding ? "Adding…" : "Add domain"}
@@ -276,10 +302,14 @@ export function DomainsView({
                 <li key={s}>{s}</li>
               ))}
             </ol>
-            {instructions.data.cname ? (
+            {instructions.data.cname && instructions.data.txt ? (
               <div className="mt-3 space-y-2">
+                <p className="text-label">Add either one of these records:</p>
                 <CopyField label="CNAME name" value={instructions.data.cname.name} />
                 <CopyField label="CNAME value" value={instructions.data.cname.value} />
+                <p className="text-label">or</p>
+                <CopyField label="TXT name" value={instructions.data.txt.name} />
+                <CopyField label="TXT value" value={instructions.data.txt.value} />
               </div>
             ) : null}
           </Alert>
@@ -290,7 +320,7 @@ export function DomainsView({
         <EmptyState
           icon={<GlobeSimpleIcon />}
           title="No domains yet"
-          description="Type a domain and its port above to have Egg check its DNS. Nest does the routing, so add the same domain on its dashboard too."
+          description="Type a domain and its port above. Egg tells you which DNS record to add and shows the domain as active once DNS checks out. Nest does the routing, so add the same domain on its dashboard too."
         />
       ) : (
         <Stagger
@@ -298,7 +328,7 @@ export function DomainsView({
           className="hairline-y overflow-hidden rounded-lg bg-card shadow-border-small"
         >
           {initial.map((d) => {
-            const s = STATUS[d.status];
+            const s = statusFor(d);
             return (
               <li key={d.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 py-3">
                 <div className="min-w-0 max-sm:w-full">
@@ -312,27 +342,33 @@ export function DomainsView({
                       <Swap value={notes[d.id]}>{notes[d.id]}</Swap>
                     </p>
                   ) : null}
-                  {d.status === "invalid" ? (
+                  {d.status === "invalid" || d.dnsWarning ? (
+                    <p id={`cause-${d.id}`} role="alert" className="mt-1 max-w-[60ch] text-label text-foreground">
+                      {DNS_LOST}
+                      {reasons[d.id] ? <> {reasons[d.id]}</> : null}
+                    </p>
+                  ) : reasons[d.id] ? (
                     <p id={`cause-${d.id}`} className="mt-1 max-w-[60ch] text-label text-foreground">
-                      {domainCause(reasons[d.id])}
+                      {reasons[d.id]}
                     </p>
                   ) : null}
+                  {d.kind === "custom" && (d.status !== "valid" || d.dnsWarning) ? <RecordsToAdd d={d} /> : null}
                   <div role="status" aria-label={`App check for ${d.domain}`}>
                     <DomainAppCheck result={appResults[d.id]} />
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="mr-1 text-label">
-                    <Swap value={d.status}>
+                    <Swap value={s.label}>
                       <StatusIndicator tone={s.tone} label={s.label} />
                     </Swap>
                   </span>
                   <Button
-                    variant={d.status === "invalid" ? "default" : "outline"}
+                    variant={d.status === "invalid" || d.dnsWarning ? "default" : "outline"}
                     size="sm"
                     disabled={checking === d.id}
                     aria-label={checking === d.id ? undefined : `Check ${d.domain}`}
-                    aria-describedby={d.status === "invalid" ? `cause-${d.id}` : undefined}
+                    aria-describedby={d.status === "invalid" || d.dnsWarning || reasons[d.id] ? `cause-${d.id}` : undefined}
                     onClick={() => void check(d.id)}
                   >
                     <ArrowsClockwiseIcon className={cn(checking === d.id && "animate-spin")} />

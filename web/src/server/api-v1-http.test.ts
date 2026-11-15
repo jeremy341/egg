@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApiToken } from "@/server/api-tokens";
 import { authenticate, readCappedText } from "@/server/api-v1-http";
 import { upsertUser } from "@/server/auth/session";
@@ -15,7 +15,11 @@ beforeAll(async () => {
   secret = (await createApiToken(user.id, { name: "t", scopes: ["projects:read"] })).secret;
 });
 afterAll(async () => ctx.cleanup());
-beforeEach(() => rateLimiter().clear());
+beforeEach(() => {
+  vi.stubEnv("TRUST_PROXY", "1");
+  rateLimiter().clear();
+});
+afterEach(() => vi.unstubAllEnvs());
 
 const withToken = (token: string, ip?: string) =>
   new Request("http://localhost:3000/api/v1/me", {

@@ -4,6 +4,7 @@ import { audit } from "@/server/audit";
 import { pickCloneSettings, type CloneSettings } from "@/server/clone-settings";
 import { newId, open, seal } from "@/server/crypto";
 import { getDb, schema, type Db } from "@/server/db";
+import { pageLimit, selectDeploymentPage, type DeploymentFilter } from "@/server/deployment-page";
 import { RUNTIMES } from "@/server/db/schema";
 import { assertCloneUrl, BuildError } from "@/server/deploy/build";
 import { isValidSlug, slugify } from "@/server/deploy/layout";
@@ -509,17 +510,27 @@ export async function ownedDeployment(userId: string, deploymentId: string) {
 }
 
 export async function listDeployments(userId: string, projectId?: string, limit = 50) {
-  const db = await getDb();
-  const where = projectId
-    ? and(eq(schema.projects.userId, userId), eq(schema.deployments.projectId, projectId))
-    : eq(schema.projects.userId, userId);
-  return db
-    .select({ deployment: schema.deployments, projectName: schema.projects.name, projectSlug: schema.projects.slug })
-    .from(schema.deployments)
-    .innerJoin(schema.projects, eq(schema.projects.id, schema.deployments.projectId))
-    .where(where)
-    .orderBy(desc(schema.deployments.createdAt))
-    .limit(limit);
+  return (await listDeploymentsPage(userId, { projectId, limit })).rows;
+}
+
+/**
+ * One page of deployments, newest first, with a `nextCursor` for the page
+ * after it (null on the last page). A cursor that is not valid is a 400.
+ */
+export async function listDeploymentsPage(
+  userId: string,
+  options: { projectId?: string; limit?: number; cursor?: string | null; filter?: DeploymentFilter } = {}
+) {
+  const { rows, nextCursor } = await selectDeploymentPage(userId, {
+    projectId: options.projectId,
+    cursor: options.cursor,
+    filter: options.filter,
+    limit: options.limit === undefined ? 50 : pageLimit(options.limit),
+  });
+  return {
+    rows: rows.map(({ d, p }) => ({ deployment: d, projectName: p.name, projectSlug: p.slug })),
+    nextCursor,
+  };
 }
 
 export async function deploymentLogs(userId: string, deploymentId: string, afterId = 0, limit = 1000) {

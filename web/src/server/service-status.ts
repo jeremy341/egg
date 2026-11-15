@@ -110,3 +110,59 @@ export async function fetchServiceStatus(userId: string, projectId: string): Pro
   }
   return parseServiceStatus(res.stdout);
 }
+
+// ------------------------------------------------------------ last known status
+
+/**
+ * How long a service reading is reused. The monitor writes its own samples
+ * every few minutes, but they carry no health-path answer, so the page keeps
+ * the last full reading for a short while instead of opening an SSH session on
+ * every view. "Check now" bypasses it.
+ */
+export const STATUS_TTL_MS = 30_000;
+const STATUS_CACHE_MAX = 500;
+
+type Reading = { status: ServiceStatus; at: number };
+const recentReadings = new Map<string, Reading>();
+const readingsInFlight = new Map<string, Promise<ServiceStatus>>();
+
+/** Pure: is a reading taken at `at` still fresh at `now`. */
+export function isFresh(at: number, now: number, ttlMs = STATUS_TTL_MS): boolean {
+  return now >= at && now - at < ttlMs;
+}
+
+/** Forget the stored reading for a project, for example after a restart. */
+export function forgetServiceStatus(projectId: string) {
+  recentReadings.delete(projectId);
+}
+
+/**
+ * The last reading for a project if it is under `STATUS_TTL_MS` old, otherwise
+ * a new one. Ownership is always checked first. `fresh` skips the stored
+ * reading. The `status.checkedAt` field says when the container was asked.
+ */
+export async function lastKnownServiceStatus(
+  userId: string,
+  projectId: string,
+  opts: { fresh?: boolean; now?: () => number } = {}
+): Promise<{ status: ServiceStatus; cached: boolean }> {
+  const now = opts.now ?? Date.now;
+  const project = await getProjectForUser(userId, projectId);
+  const hit = recentReadings.get(project.id);
+  if (!opts.fresh && hit && isFresh(hit.at, now())) return { status: hit.status, cached: true };
+
+  // Two people (or two tabs) asking at once share one SSH session.
+  let pending = readingsInFlight.get(project.id);
+  if (!pending) {
+    pending = fetchServiceStatus(userId, project.id).finally(() => readingsInFlight.delete(project.id));
+    readingsInFlight.set(project.id, pending);
+  }
+  const status = await pending;
+  recentReadings.delete(project.id);
+  recentReadings.set(project.id, { status, at: now() });
+  if (recentReadings.size > STATUS_CACHE_MAX) {
+    const oldest = recentReadings.keys().next().value;
+    if (oldest !== undefined) recentReadings.delete(oldest);
+  }
+  return { status, cached: false };
+}

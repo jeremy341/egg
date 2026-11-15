@@ -63,9 +63,10 @@ function Item({
 }
 
 /**
- * How the production service is doing right now, read from the container.
- * It checks when the page opens and again every 30 seconds while the tab is
- * visible, and has a button for checking on demand.
+ * How the production service is doing, read from the container. The server
+ * reuses a reading under 30 seconds old, so opening the page does not always
+ * open an SSH session. It looks again every 30 seconds while the tab is
+ * visible, shows when the reading was taken, and Check now always asks.
  */
 export function ServiceCard({ projectId }: { projectId: string }) {
   const [status, setStatus] = useState<ServiceStatus | null>(null);
@@ -75,11 +76,14 @@ export function ServiceCard({ projectId }: { projectId: string }) {
   const inFlight = useRef(false);
 
   /** Ask the container. State changes only happen after the answer arrives. */
-  const check = useCallback(async () => {
+  const check = useCallback(async (fresh = false) => {
     if (inFlight.current) return;
     inFlight.current = true;
     try {
-      const res = await api<{ status: ServiceStatus }>(`/api/projects/${projectId}/status`);
+      // The server reuses a reading under 30 seconds old; `fresh` always asks the container.
+      const res = await api<{ status: ServiceStatus }>(
+        `/api/projects/${projectId}/status${fresh ? "?fresh=1" : ""}`
+      );
       setStatus(res.status);
       setError(null);
     } catch (err) {
@@ -92,7 +96,7 @@ export function ServiceCard({ projectId }: { projectId: string }) {
 
   const checkNow = useCallback(() => {
     setLoading(true);
-    void check();
+    void check(true);
   }, [check]);
 
   /** Throws on failure, so the confirm dialog stays open and shows the message. */
@@ -101,7 +105,7 @@ export function ServiceCard({ projectId }: { projectId: string }) {
     await api(`/api/projects/${projectId}/restart`, { method: "POST", body: {} });
     setRestartMsg({ ok: true, text: "Restarted." });
     // Give systemd a moment before asking how it came back.
-    setTimeout(() => void check(), 2500);
+    setTimeout(() => void check(true), 2500);
   }, [projectId, check]);
 
   useEffect(() => {
@@ -167,51 +171,64 @@ export function ServiceCard({ projectId }: { projectId: string }) {
       </div>
 
       {status ? (
-        <dl className="grid gap-x-6 gap-y-5 p-4 sm:grid-cols-2 lg:grid-cols-5">
-          <Item label="Status" lead>
-            <Swap value={status.state}>
-              <StatusIndicator
-                tone={TONE[status.state]}
-                pending={status.state === "starting"}
-                label={LABEL[status.state]}
-              />
-            </Swap>
-          </Item>
-          <Item label="Uptime">
-            <Swap
-              value={status.uptimeSeconds !== null ? formatUptime(status.uptimeSeconds) : "No reading"}
-              className="tabular"
-            >
-              {status.uptimeSeconds !== null ? formatUptime(status.uptimeSeconds) : "No reading"}
-            </Swap>
-          </Item>
-          <Item label="Memory">
-            <Swap value={status.memoryMb ?? "No reading"} className="tabular">
-              {status.memoryMb !== null ? `${status.memoryMb} MB` : "No reading"}
-            </Swap>
-          </Item>
-          <Item label="Restarts">
-            <Swap value={status.restarts ?? "No reading"} className="tabular">
-              {status.restarts ?? "No reading"}
-            </Swap>
-          </Item>
-          <Item label="Health check">
-            <Swap value={http ? `${http.code}-${http.ms}` : "none"}>
-              {http === null || http === undefined ? (
-                <span className="font-normal text-muted-foreground">Not checked</span>
-              ) : http.code === 0 ? (
-                <span className="text-destructive">No answer</span>
-              ) : (
-                <span className="tabular">
-                  HTTP {http.code}
-                  {http.ms !== null ? (
-                    <span className="font-normal text-muted-foreground"> in {http.ms} ms</span>
-                  ) : null}
-                </span>
-              )}
-            </Swap>
-          </Item>
-        </dl>
+        <>
+          <dl className="grid gap-x-6 gap-y-5 p-4 sm:grid-cols-2 lg:grid-cols-5">
+            <Item label="Status" lead>
+              <Swap value={status.state}>
+                <StatusIndicator
+                  tone={TONE[status.state]}
+                  pending={status.state === "starting"}
+                  label={LABEL[status.state]}
+                />
+              </Swap>
+            </Item>
+            <Item label="Uptime">
+              <Swap
+                value={status.uptimeSeconds !== null ? formatUptime(status.uptimeSeconds) : "No reading"}
+                className="tabular"
+              >
+                {status.uptimeSeconds !== null ? formatUptime(status.uptimeSeconds) : "No reading"}
+              </Swap>
+            </Item>
+            <Item label="Memory">
+              <Swap value={status.memoryMb ?? "No reading"} className="tabular">
+                {status.memoryMb !== null ? `${status.memoryMb} MB` : "No reading"}
+              </Swap>
+            </Item>
+            <Item label="Restarts">
+              <Swap value={status.restarts ?? "No reading"} className="tabular">
+                {status.restarts ?? "No reading"}
+              </Swap>
+            </Item>
+            <Item label="Health check">
+              <Swap value={http ? `${http.code}-${http.ms}` : "none"}>
+                {http === null || http === undefined ? (
+                  <span className="font-normal text-muted-foreground">Not checked</span>
+                ) : http.code === 0 ? (
+                  <span className="text-destructive">No answer</span>
+                ) : (
+                  <span className="tabular">
+                    HTTP {http.code}
+                    {http.ms !== null ? (
+                      <span className="font-normal text-muted-foreground"> in {http.ms} ms</span>
+                    ) : null}
+                  </span>
+                )}
+              </Swap>
+            </Item>
+          </dl>
+          <p className="border-t px-4 py-2 text-caption text-muted-foreground">
+            Checked{" "}
+            <time dateTime={status.checkedAt} className="tabular">
+              {new Date(status.checkedAt).toLocaleTimeString(undefined, {
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
+              })}
+            </time>
+            . Readings are reused for 30 seconds; Check now asks the container again.
+          </p>
+        </>
       ) : error ? null : (
         <div role="status">
           <span className="sr-only">Checking your container…</span>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readTextLimited } from "@/server/body-limit";
+import { JSON_BODY_LIMIT, readJsonLimited, readTextLimited } from "@/server/body-limit";
 import { HttpError } from "@/server/http";
 
 const post = (body: BodyInit | null, headers: Record<string, string> = {}) =>
@@ -35,5 +35,38 @@ describe("readTextLimited", () => {
 
   it("accepts a body exactly at the limit", async () => {
     expect(await readTextLimited(post(stream(["a".repeat(50), "b".repeat(50)])), 100)).toHaveLength(100);
+  });
+});
+
+describe("readJsonLimited", () => {
+  const status = async (p: Promise<unknown>) => ((await p.catch((e: unknown) => e)) as HttpError).status;
+
+  it("has a 256 KB default cap", () => {
+    expect(JSON_BODY_LIMIT).toBe(256 * 1024);
+  });
+
+  it("parses a small JSON body", async () => {
+    expect(await readJsonLimited(post('{"a":1}'))).toEqual({ a: 1 });
+  });
+
+  it("answers 413 for a body over the default cap, declared or streamed", async () => {
+    const big = JSON.stringify({ v: "x".repeat(JSON_BODY_LIMIT) });
+    expect(await status(readJsonLimited(post(big)))).toBe(413);
+    expect(await status(readJsonLimited(post(stream([big.slice(0, 200_000), big.slice(200_000)]))))).toBe(413);
+  });
+
+  it("honours a smaller explicit cap", async () => {
+    expect(await status(readJsonLimited(post('{"a":"0123456789"}'), { maxBytes: 8 }))).toBe(413);
+  });
+
+  it("answers 400 for text that is not JSON, or the fallback when one is given", async () => {
+    expect(await status(readJsonLimited(post("nope")))).toBe(400);
+    expect(await readJsonLimited(post("nope"), { fallback: {} })).toEqual({});
+    expect(await readJsonLimited(post(""), { fallback: undefined })).toBeUndefined();
+  });
+
+  it("still answers 413 when a fallback is given", async () => {
+    const big = "x".repeat(JSON_BODY_LIMIT + 1);
+    expect(await status(readJsonLimited(post(big), { fallback: {} }))).toBe(413);
   });
 });

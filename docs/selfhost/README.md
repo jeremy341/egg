@@ -6,8 +6,8 @@ To change the name, colours, ports or build memory, see [customising.md](customi
 
 ## What you need
 
-- **Node.js 20.9 or newer.** Next.js 16 will not start on anything older. Check with `node -v`.
-- **pnpm.** The repo pins `pnpm@11.20.0`. Run `corepack enable`, or install it with `npm install -g pnpm`.
+- **Node.js 22.13 or newer.** The repo pins `pnpm@11.20.0`, and that pnpm needs Node 22.13. (Next.js 16 alone would run on Node 20.9.) Check with `node -v`.
+- **pnpm.** Run `corepack enable`, or install it with `npm install -g pnpm`. On Windows, run either in a terminal opened as administrator if it reports a permission error.
 - **Git.**
 - **Docker**, if you want builds to run in a sandbox. This is the default. You can skip it by setting `BUILD_RUNNER=local` (see "Where builds run").
 - **A server to deploy to.** Egg deploys to a Hack Club Nest container over SSH. You can also try it with a stand-in server on this machine (see "Connecting a server").
@@ -25,10 +25,10 @@ Every command below runs from the `web/` folder.
 ## 2. Create the env file
 
 ```bash
-pnpm setup
+pnpm run setup
 ```
 
-This writes `web/.env.local` with a fresh random `APP_SECRET`. It never overwrites a file that already exists. Open `.env.local` and add this line:
+Type `pnpm run setup`, not `pnpm setup`. pnpm has a built-in command called `setup` that does something else. This writes `web/.env.local` with a fresh random `APP_SECRET`. It never overwrites a file that already exists. Open `.env.local` and add this line:
 
 ```
 LOCAL_MODE=1
@@ -36,7 +36,7 @@ LOCAL_MODE=1
 
 That is the only switch you need for a private, local install. Leave `APP_URL=http://localhost:3000` as it is.
 
-`pnpm setup` also writes `DEV_LOGIN=1`. That switch only works with `pnpm dev` and is ignored in a production build. It is harmless to leave, and you can set it to `0`.
+The setup script also writes `DEV_LOGIN=1`. That switch only works with `pnpm dev` and is ignored in a production build. It is harmless to leave, and you can set it to `0`.
 
 ## 3. First run
 
@@ -49,7 +49,7 @@ Open <http://localhost:3000/login> and press **Sign in on this computer**. You l
 
 For a quick try without a build, `pnpm dev` also works, and it reloads while you edit code.
 
-The deployment worker runs inside the web process (`RUN_WORKER=1`), so one command starts everything.
+The deployment worker runs inside the web process (`RUN_WORKER=1`, which the setup script writes), so one command starts everything. If you set `RUN_WORKER` to anything else, run `pnpm worker` in a second terminal, or deployments stay queued.
 
 ## What local mode does
 
@@ -73,7 +73,7 @@ Egg deploys by SSH. A key made just for one server is stored sealed in your data
 
 1. On the Projects page, choose to connect a server and enter your Nest username, the name you log in with, for example `sam-r`.
 2. Egg shows you a public key. Paste it into the SSH Keys page of the Nest dashboard.
-3. Run the connection test. Egg connects, pins the host key and checks the container.
+3. Press **Test connection**. The first time, Egg reaches the host, reads its host key, hangs up and shows the fingerprint under **Confirm host key**. Nothing is sent to the server until you check the fingerprint against the one Nest shows for your server and press **Confirm host key**. Egg then pins that key, refuses any other one, and checks the container.
 
 The key gives Egg the same access as your own login, so treat the machine that runs Egg accordingly. Removing the key in the Nest dashboard ends its access.
 
@@ -85,7 +85,7 @@ To try deploys without a Nest account, run a stand-in container beside Egg:
 pnpm fake-nest      # in a second terminal
 ```
 
-Then add the lines it prints to `.env.local`, for example:
+It prints a `UNIT_DIR=` line and the fingerprint of its host key. Add these three lines to `.env.local`:
 
 ```
 NEST_HOST=127.0.0.1
@@ -93,7 +93,9 @@ NEST_PORT=2222
 UNIT_DIR=<the path fake-nest prints>
 ```
 
-Restart Egg. `fake-nest` accepts the public key of every server saved in your database and runs commands on Linux (WSL on Windows). It is a trial tool, never a substitute for a real Nest container.
+Restart Egg, then add the server. Set the three values first: each server keeps the host and port it was created with. At **Confirm host key**, the fingerprint on the page should match the `Host key` line that `fake-nest` printed.
+
+`fake-nest` accepts the public key of every server saved in your database and runs commands on Linux. On Windows that means WSL: it needs a WSL distribution called `Ubuntu`, or set `TEST_WSL_DISTRO` to the name of yours before you start it. It is a trial tool, never a substitute for a real Nest container.
 
 ### Where builds run
 
@@ -115,6 +117,7 @@ Every name in the first table is read in `web/src/server/config.ts`. Put them in
 | `DATABASE_URL` | `file:./data/egg.db` | The database. A path starting with `file:` is relative to `web/`. |
 | `LOCAL_MODE` | `0` | `1` or `true` turns on the local sign-in button. See "What local mode does". |
 | `LOCAL_MODE_ALLOW_REMOTE` | `0` | `1` lets `LOCAL_MODE` run when `APP_URL` is not local. Does nothing when `LOCAL_MODE` is off. |
+| `TRUST_PROXY` | `0` | `1` or `true` makes Egg believe the `X-Forwarded-For` and `X-Real-IP` headers for each visitor's address. Set it to `1` only when every request reaches Egg through a reverse proxy you run, which sets those headers itself. Without it every visitor counts as one address: analytics cannot tell visitors apart by address, and the limits on sign-in attempts and invalid access tokens do not apply. On your own computer, leave it off. |
 | `DEV_LOGIN` | `0` | `1` shows a fake sign-in with a name field. Works only with `pnpm dev`. |
 | `HACKCLUB_CLIENT_ID`, `HACKCLUB_CLIENT_SECRET` | empty | Hack Club Auth app credentials. Needed only if you want Hack Club sign-in. |
 | `GITHUB_APP_ID`, `GITHUB_APP_SLUG`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET` | empty | A GitHub App, for private repositories, the repository picker and deploy on push. Set them together. Public repositories deploy by URL without it. Setup is in [backend-setup.md](../backend-setup.md). |
@@ -131,11 +134,25 @@ These are read elsewhere in the code, not in `config.ts`:
 
 | Variable | Default | What it does | Read in |
 | --- | --- | --- | --- |
-| `RUN_WORKER` | unset in the code, `1` from `pnpm setup` | `1` runs the deployment queue inside the web process. Anything else means run `pnpm worker` yourself. | `web/src/instrumentation.ts` |
+| `RUN_WORKER` | unset in the code, `1` from the setup script | `1` runs the deployment queue inside the web process. Anything else means run `pnpm worker` yourself. | `web/src/instrumentation.ts` |
 | `WORKER_CONCURRENCY` | `2` | How many deployments run at once. One project never builds twice at the same time. | `web/src/instrumentation.ts`, `web/worker/index.ts` |
 | `MONITOR_INTERVAL_MS` | `300000` | How often the uptime monitor checks, in milliseconds. `0` turns it off. | `web/src/server/jobs.ts` |
 | `PORT` | `3000` | The port `pnpm start` listens on. Set `APP_URL` to match. | Next.js |
 | `FAKE_NEST_PORT` | `2222` | The port `pnpm fake-nest` listens on. Set `NEST_PORT` to match. | `web/scripts/fake-nest.ts` |
+
+## Other commands
+
+All run from the `web/` folder.
+
+| Command | What it does |
+| --- | --- |
+| `pnpm worker` | Runs the deployment queue on its own, when `RUN_WORKER` is not `1`. |
+| `pnpm fake-nest` | The stand-in Nest container. See "Trying everything on one machine". |
+| `pnpm seed:demo` | Fills the database with sample projects for the `dev` user of the `DEV_LOGIN` form. `pnpm seed:demo --reset` removes them. |
+| `pnpm test`, `pnpm typecheck`, `pnpm lint` | The tests, the TypeScript check and the linter. |
+| `pnpm audit:prod` | Checks the production dependencies for known high-severity problems. |
+
+To use Egg from a terminal or a script, make an access token on the Developer page and see the [command line guide](../developers/cli.md). It runs as `node scripts/egg-cli.mjs` and needs Node 22.18 or newer; the guide says what to do on an older Node.
 
 ## Changing the build memory and the Nest username
 
@@ -172,7 +189,10 @@ Database changes are applied automatically the first time the new version opens 
 | You see | Why | Fix |
 | --- | --- | --- |
 | "Invalid environment configuration" with `LOCAL_MODE` in it | `LOCAL_MODE=1` but `APP_URL` is not a local address. | Set `APP_URL=http://localhost:3000`, or read the override above. |
-| "Invalid environment configuration" with `APP_SECRET` in it | The secret is missing or shorter than 32 characters. | Run `pnpm setup`, or set a longer one. |
+| "Invalid environment configuration" with `APP_SECRET` in it | The secret is missing or shorter than 32 characters. | Run `pnpm run setup`, or set a longer one. |
+| "Confirm host key" when you press Test connection, and deploys say "Confirm host key: open the Connect page, check the fingerprint of this server and confirm it first." | The first connection to a server waits for you to confirm its fingerprint. | Open the Connect page, press Test connection, then Confirm host key. |
+| "The host key of ... changed" | The server presented a different key from the one you confirmed. Egg sent nothing. | If you expected it, press Disconnect, add the server again and confirm the new fingerprint. |
+| Deployments stay Queued | No worker is running. | Set `RUN_WORKER=1` and restart, or run `pnpm worker`. |
 | No "Sign in on this computer" button | `LOCAL_MODE` is not `1` or `true`, or Egg was not restarted after the change. | Edit `.env.local` and restart. |
 | "Local sign-in only works from this computer" | You opened Egg through a network address, not localhost. | Open <http://localhost:3000>. |
 | A build fails at once with a Docker error | Docker is not running or not installed. | Start Docker, or set `BUILD_RUNNER=local`. |

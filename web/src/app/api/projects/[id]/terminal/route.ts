@@ -1,3 +1,4 @@
+import { readJsonLimited } from "@/server/body-limit";
 import { z } from "zod";
 import { authed, handle, ok } from "@/server/http";
 import { requireProjectFeature } from "@/server/permission-guards";
@@ -22,7 +23,7 @@ export const POST = handle<Ctx>(async (req, { params }) => {
   const user = await authed();
   const { id } = await params;
   await requireProjectFeature(user.id, id, "terminal");
-  const raw = await req.json().catch(() => undefined);
+  const raw = await readJsonLimited(req, { fallback: undefined });
   const size = sizeInput.parse(raw);
   const session = await terminals().open(user.id, id, size);
   return ok(session, 201);

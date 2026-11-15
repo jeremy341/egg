@@ -1,9 +1,13 @@
 import { authed, handle, ok } from "@/server/http";
 import { parseLogLevel, parseLogRange } from "@/lib/log-filter";
-import { fetchRuntimeLogs } from "@/server/runtime-info";
+import { fetchRuntimeLogPage } from "@/server/runtime-info";
 
 type Ctx = { params: Promise<{ id: string }> };
 
+/**
+ * Answers `{ lines, older }`. `older` is a cursor for the lines before these, or
+ * null when the journal has none; send it back as `before` to read them.
+ */
 export const GET = handle<Ctx>(async (req, { params }) => {
   const user = await authed();
   const { id } = await params;
@@ -15,5 +19,6 @@ export const GET = handle<Ctx>(async (req, { params }) => {
     ? parseLogRange(req.nextUrl.searchParams.get("range"))
     : undefined;
   const level = parseLogLevel(req.nextUrl.searchParams.get("level"));
-  return ok({ lines: await fetchRuntimeLogs(user.id, id, lines, q, { range, level }) });
+  const before = req.nextUrl.searchParams.get("before");
+  return ok(await fetchRuntimeLogPage(user.id, id, lines, q, { range, level, before }));
 });

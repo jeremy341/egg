@@ -43,7 +43,7 @@ export function ProjectCard({
     return (
       <Link
         href={href}
-        className="flex min-h-12 items-center gap-3 px-4 py-3 transition-colors duration-(--dur-fast) hover:bg-[var(--ds-gray-alpha-100)]"
+        className="density-row flex min-h-12 items-center gap-3 px-4 py-3 transition-colors duration-(--dur-fast) hover:bg-[var(--ds-gray-alpha-100)]"
       >
         <PixelAvatar seed={project.slug} size={20} />
         <span className="min-w-0 flex-1 truncate font-medium tracking-[-0.02em]">
@@ -68,7 +68,7 @@ export function ProjectCard({
   // The card link is stretched over the whole card (the name's `after`), so the
   // commit link can sit above it without being nested inside another anchor.
   return (
-    <div className="card-interactive row-focus relative flex h-full flex-col gap-4 rounded-lg bg-card p-4 shadow-border-small">
+    <div className="card-interactive density-card row-focus relative flex h-full flex-col gap-4 rounded-lg bg-card p-4 shadow-border-small">
       <div className="flex items-center gap-3">
         <PixelAvatar seed={project.slug} size={32} />
         <div className="min-w-0 flex-1">

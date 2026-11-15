@@ -8,7 +8,8 @@ import { StatusIndicator } from "@/components/status-dot";
 import { LoadingRegion, Skeleton, SkeletonText } from "@/components/ui/skeleton";
 import { pixel } from "@/lib/fonts";
 import { timeAgo } from "@/lib/status";
-import { publicStatus, type Incident } from "@/server/status-page";
+import { getCachedPublicStatus } from "@/server/status-page-cache";
+import type { Incident } from "@/server/status-page";
 import { cn } from "@/lib/utils";
 import { STRIP_LEGEND, STRIP_TONE, dayDetail, dayLabel, stripSummary } from "./strip";
 
@@ -34,12 +35,15 @@ function lasted(i: Incident): string {
   return h < 24 ? `${h} h ${m % 60} min` : `${Math.floor(h / 24)} d ${h % 24} h`;
 }
 
+const VALID_KEY = /^[A-Za-z0-9_-]{8,40}$/;
+
 const column = "relative mx-auto w-full max-w-[640px] px-4 py-16";
 
 async function Content({ params }: Props) {
   await connection();
   const { key } = await params;
-  const status = await publicStatus(key);
+  // A key that cannot exist never reaches the cache, so junk addresses do not fill it.
+  const status = VALID_KEY.test(key) ? await getCachedPublicStatus(key) : null;
   if (!status) notFound();
   const head = HEADLINE[status.state];
 

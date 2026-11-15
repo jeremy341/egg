@@ -7,6 +7,7 @@ import { runAppCheck, type AppCheckReport, type Probe } from "@/server/app-check
 import { newId } from "@/server/crypto";
 import { getDb, schema, type Db } from "@/server/db";
 import { HttpError, notFound } from "@/server/http";
+import { checkDomainPolicy, isNestName, ownedParentOf } from "@/server/domain-policy";
 import { getServerForUser } from "@/server/servers";
 
 /**
@@ -42,27 +43,53 @@ export function cnameTarget(nestUsername: string) {
   return `${nestUsername}.hackclub.app`;
 }
 
-export function dashboardInstructions(domain: string, port: number, nestUsername: string) {
-  const isNestName = domain.endsWith(".hackclub.app");
+/** The TXT value Nest accepts as proof that the domain belongs to this account. */
+export function txtValue(nestUsername: string) {
+  return `domain-verification=${nestUsername}`;
+}
+
+export type VerifiedBy = "dns" | "nest" | "parent";
+
+/**
+ * What to do, in order: the DNS record, then the Nest dashboard, then Check. A Nest name needs
+ * no record, and neither does a subdomain of a domain that is already verified on this server.
+ */
+export function dashboardInstructions(
+  domain: string,
+  port: number,
+  nestUsername: string,
+  verifiedBy: VerifiedBy = isNestName(domain, nestUsername) ? "nest" : "dns"
+) {
+  const nestStep = `Open the Domains page in the Nest dashboard, add ${domain}, and set its target port to ${port}.`;
+  if (verifiedBy !== "dns") {
+    return {
+      steps: [nestStep, `Come back here and press Check.`],
+      cname: null,
+      txt: null,
+    };
+  }
   return {
-    steps: isNestName
-      ? [
-          `Open the Domains page in the Nest dashboard.`,
-          `Add ${domain} and set its target port to ${port}.`,
-        ]
-      : [
-          `At your DNS provider, create a CNAME record for ${domain} pointing to ${cnameTarget(nestUsername)}.`,
-          `Open the Domains page in the Nest dashboard, add ${domain}, and set its target port to ${port}.`,
-          `Come back here and press Check.`,
-        ],
-    cname: isNestName ? null : { name: domain, value: cnameTarget(nestUsername) },
+    steps: [
+      `At your DNS provider, add either a CNAME record for ${domain} pointing to ${cnameTarget(nestUsername)}, or a TXT record on ${domain} with the value ${txtValue(nestUsername)}. Nest checks the same record when you add the domain, so add it first.`,
+      nestStep,
+      `Come back here and press Check. ${domain} shows as active once the record is found.`,
+    ],
+    cname: { name: domain, value: cnameTarget(nestUsername) },
+    txt: { name: domain, value: txtValue(nestUsername) },
   };
+}
+
+function isUniqueViolation(err: unknown): boolean {
+  const text = `${(err as Error)?.message ?? ""} ${(err as { cause?: Error })?.cause?.message ?? ""}`;
+  return /UNIQUE|unique constraint|duplicate key/i.test(text);
 }
 
 export async function addDomain(userId: string, raw: unknown) {
   const input = domainInput.parse(raw);
   const server = await getServerForUser(userId, input.serverId);
   const domain = normalizeDomain(input.domain);
+  const policy = checkDomainPolicy(domain, server.nestUsername);
+  if (!policy.allowed) throw new HttpError(400, policy.message, "validation");
   const db = await getDb();
 
   if (input.projectId) {
@@ -73,25 +100,42 @@ export async function addDomain(userId: string, raw: unknown) {
       .get();
     if (!project || project.serverId !== server.id) throw notFound("Project not found");
   }
+  // One answer whether the domain is yours already or on someone else's server: it is taken.
   if (await db.select().from(schema.domains).where(eq(schema.domains.domain, domain)).get()) {
     throw new HttpError(409, `${domain} is already added.`, "conflict");
   }
 
+  // Nest names need no check, and neither does a subdomain of a domain already verified on this server.
+  const mine = await db
+    .select()
+    .from(schema.domains)
+    .where(and(eq(schema.domains.userId, userId), eq(schema.domains.serverId, server.id)));
+  const verifiedBy: VerifiedBy = isNestName(domain, server.nestUsername)
+    ? "nest"
+    : ownedParentOf(domain, mine)
+      ? "parent"
+      : "dns";
+
   const id = newId();
-  await db.insert(schema.domains).values({
-    id,
-    userId,
-    serverId: server.id,
-    projectId: input.projectId ?? null,
-    domain,
-    port: input.port,
-    status: "pending",
-    createdAt: new Date(),
-  });
+  try {
+    await db.insert(schema.domains).values({
+      id,
+      userId,
+      serverId: server.id,
+      projectId: input.projectId ?? null,
+      domain,
+      port: input.port,
+      status: verifiedBy === "dns" ? "pending" : "valid",
+      createdAt: new Date(),
+    });
+  } catch (err) {
+    if (isUniqueViolation(err)) throw new HttpError(409, `${domain} is already added.`, "conflict");
+    throw err;
+  }
   await audit(userId, "domain.add", input.projectId ?? null, { domain });
   return {
     domain: (await db.select().from(schema.domains).where(eq(schema.domains.id, id)).get())!,
-    instructions: dashboardInstructions(domain, input.port, server.nestUsername),
+    instructions: dashboardInstructions(domain, input.port, server.nestUsername, verifiedBy),
   };
 }
 
@@ -185,9 +229,84 @@ export async function moveDomainsToPort(db: Pick<Db, "update">, projectId: strin
 export type Resolver = {
   resolveCname: (name: string) => Promise<string[]>;
   resolve4: (name: string) => Promise<string[]>;
+  resolveTxt: (name: string) => Promise<string[][]>;
 };
 
-/** Check whether DNS already sends the domain to this Nest account. */
+/** ok: the record is there. missing: it is not. unknown: the lookup itself failed, so say nothing about the record. */
+export type DnsState = "ok" | "missing" | "unknown";
+export type DnsCheck = { state: DnsState; reason: string | null };
+
+const NO_RECORD = new Set(["ENODATA", "ENOTFOUND", "ENODOMAIN"]);
+const LOOKUP_FAILED = "DNS could not be checked right now. Try again in a minute.";
+const NOT_IN_NEST = "The name does not resolve yet. Add it in the Nest dashboard first.";
+
+/**
+ * The check Nest runs when a domain is added (checkDNSVerification): a TXT record
+ * `domain-verification=<username>` on the name, or a CNAME to `<username>.hackclub.app`.
+ * A Nest name has no record we control, so it only has to resolve.
+ */
+export async function checkDns(domain: string, nestUsername: string, resolver: Resolver = dns): Promise<DnsCheck> {
+  const target = cnameTarget(nestUsername);
+
+  if (isNestName(domain, nestUsername)) {
+    try {
+      return (await resolver.resolve4(domain)).length > 0
+        ? { state: "ok", reason: null }
+        : { state: "missing", reason: NOT_IN_NEST };
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code ?? "";
+      return NO_RECORD.has(code)
+        ? { state: "missing", reason: NOT_IN_NEST }
+        : { state: "unknown", reason: LOOKUP_FAILED };
+    }
+  }
+
+  try {
+    const records = await resolver.resolveTxt(domain);
+    if (records.some((r) => r.join("") === txtValue(nestUsername))) return { state: "ok", reason: null };
+  } catch {
+    // Nest ignores a TXT lookup that fails and goes on to the CNAME, so do the same.
+  }
+
+  try {
+    const cnames = (await resolver.resolveCname(domain)).map((c) => c.replace(/\.$/, "").toLowerCase());
+    if (cnames.includes(target.toLowerCase())) return { state: "ok", reason: null };
+    return {
+      state: "missing",
+      reason: cnames.some((c) => c.endsWith(".hackclub.app"))
+        ? `The CNAME points to ${cnames[0]}, but it should point to ${target}.`
+        : `The CNAME points to ${cnames[0]}. It should point to ${target}.`,
+    };
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code ?? "";
+    return NO_RECORD.has(code)
+      ? {
+          state: "missing",
+          reason: `No CNAME found yet. Create one pointing to ${target}, or add a TXT record with the value ${txtValue(nestUsername)}. DNS changes can take a few minutes.`,
+        }
+      : { state: "unknown", reason: LOOKUP_FAILED };
+  }
+}
+
+const CACHE_MS = 60_000;
+const READ_TIMEOUT_MS = 2_500;
+const dnsCache = new Map<string, { at: number; state: DnsState }>();
+const cacheKey = (domain: string, nestUsername: string) => `${domain}|${nestUsername}`;
+function remember(domain: string, nestUsername: string, state: DnsState) {
+  if (state === "unknown") return;
+  if (dnsCache.size > 500) dnsCache.clear();
+  dnsCache.set(cacheKey(domain, nestUsername), { at: Date.now(), state });
+}
+/** Test hook: forget what the last checks found. */
+export function clearDnsCache() {
+  dnsCache.clear();
+}
+
+/**
+ * Check DNS and the stored status together. A verified domain whose record is gone
+ * becomes "invalid" (never deleted); a domain still waiting stays "pending"; a failed
+ * lookup changes nothing.
+ */
 export async function verifyDomain(
   userId: string,
   domainId: string,
@@ -201,41 +320,91 @@ export async function verifyDomain(
     .get();
   if (!row) throw notFound("Domain not found");
   const server = await getServerForUser(userId, row.serverId);
-  const target = cnameTarget(server.nestUsername);
 
-  let status: "valid" | "invalid" = "invalid";
-  let reason: string | null = null;
+  const nest = isNestName(row.domain, server.nestUsername);
+  const siblings = await db
+    .select()
+    .from(schema.domains)
+    .where(and(eq(schema.domains.userId, userId), eq(schema.domains.serverId, row.serverId)));
+  const parent = nest
+    ? null
+    : ownedParentOf(
+        row.domain,
+        siblings.filter((s) => s.id !== row.id)
+      );
 
-  try {
-    const cnames = (await resolver.resolveCname(row.domain)).map((c) => c.replace(/\.$/, "").toLowerCase());
-    if (cnames.includes(target)) {
-      status = "valid";
-    } else if (cnames.some((c) => c.endsWith(".hackclub.app"))) {
-      reason = `The CNAME points to ${cnames[0]}, but it should point to ${target}.`;
-    } else {
-      reason = `The CNAME points to ${cnames[0]}. It should point to ${target}.`;
+  const result: DnsCheck = parent
+    ? { state: "ok", reason: null }
+    : await checkDns(row.domain, server.nestUsername, resolver);
+  remember(row.domain, server.nestUsername, result.state);
+
+  if (result.state !== "unknown") {
+    // Only a record verified through DNS can go bad. A Nest name or a subdomain of a
+    // verified domain keeps its status when the lookup fails; the reason is still shown.
+    const lost = result.state === "missing" && row.status === "valid" && !nest;
+    const status = result.state === "ok" ? "valid" : lost ? "invalid" : row.status;
+    await db.update(schema.domains).set({ status, lastCheckedAt: new Date() }).where(eq(schema.domains.id, row.id));
+  }
+  return { status: result.state === "ok" ? "valid" : "invalid", reason: result.reason };
+}
+
+type ActiveRow = { id: string; domain: string; status: string; nestUsername: string };
+
+/**
+ * Domains shown as active whose DNS record no longer matches. The Domains page calls this on
+ * every read, so answers are cached for 60 seconds per domain and a slow lookup gives up after
+ * a couple of seconds and says nothing. A subdomain that rides on a verified parent follows the
+ * parent. Returns the ids to warn about. Nothing is changed or removed.
+ */
+export async function activeDomainWarnings(rows: ActiveRow[], resolver: Resolver = dns): Promise<Set<string>> {
+  const active = rows.filter((r) => r.status === "valid" && !isNestName(r.domain, r.nestUsername));
+  const parentOf = (r: ActiveRow) =>
+    ownedParentOf(
+      r.domain,
+      active.filter((a) => a.id !== r.id && a.nestUsername === r.nestUsername)
+    );
+  const rootOf = (r: ActiveRow): ActiveRow => {
+    let cur = r;
+    for (let i = 0; i < 10; i++) {
+      const p = parentOf(cur);
+      if (!p) return cur;
+      cur = p;
     }
-  } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code;
-    if (row.domain.endsWith(`.${server.nestUsername}.hackclub.app`) || row.domain === target) {
-      // A name Nest hands out has no CNAME we control; an A record is enough.
-      try {
-        status = (await resolver.resolve4(row.domain)).length > 0 ? "valid" : "invalid";
-      } catch {
-        reason = "The name does not resolve yet. Add it in the Nest dashboard first.";
-      }
-    } else if (code === "ENODATA" || code === "ENOTFOUND") {
-      reason = `No CNAME found yet. Create one pointing to ${target}. DNS changes can take a few minutes.`;
-    } else {
-      reason = "DNS could not be checked right now. Try again in a minute.";
-    }
+    return cur;
+  };
+
+  const roots = new Map<string, ActiveRow>();
+  for (const r of active) {
+    const root = rootOf(r);
+    roots.set(root.id, root);
   }
 
-  await db
-    .update(schema.domains)
-    .set({ status, lastCheckedAt: new Date() })
-    .where(eq(schema.domains.id, row.id));
-  return { status, reason };
+  const bad = new Set<string>();
+  await Promise.all(
+    [...roots.values()].map(async (r) => {
+      const hit = dnsCache.get(cacheKey(r.domain, r.nestUsername));
+      let state: DnsState;
+      if (hit && Date.now() - hit.at < CACHE_MS) {
+        state = hit.state;
+      } else {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const timeout = new Promise<DnsCheck>((resolve) => {
+          timer = setTimeout(() => resolve({ state: "unknown", reason: null }), READ_TIMEOUT_MS);
+        });
+        try {
+          state = (await Promise.race([checkDns(r.domain, r.nestUsername, resolver), timeout])).state;
+        } finally {
+          clearTimeout(timer);
+        }
+        remember(r.domain, r.nestUsername, state);
+      }
+      if (state === "missing") bad.add(r.id);
+    })
+  );
+
+  const warned = new Set<string>();
+  for (const r of active) if (bad.has(rootOf(r).id)) warned.add(r.id);
+  return warned;
 }
 
 export type DomainAppCheck =

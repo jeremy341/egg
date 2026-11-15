@@ -1,3 +1,4 @@
+import { trustProxyEnabled } from "@/server/config";
 import { HttpError } from "@/server/http";
 
 /**
@@ -91,13 +92,26 @@ export function rateLimiter(): SlidingWindowLimiter {
 }
 
 /**
- * The caller's address, or null when no proxy header says. The right-most
- * X-Forwarded-For entry is the one our own proxy appended; the left-most is
- * whatever the client wrote, so it is never trusted.
+ * Pick the caller's address. With the proxy trusted (TRUST_PROXY), it is the
+ * right-most X-Forwarded-For entry, which is the one our own proxy appended (the
+ * left-most is whatever the client wrote), then X-Real-IP. With it off, the
+ * headers are ignored, because anyone can send them, and the socket address is
+ * used if the caller has one. Route handlers do not expose the socket, so this
+ * is usually null and the address-based limits do not apply.
  */
-export function clientIp(headers: Headers): string | null {
+export function pickClientIp(
+  headers: Headers,
+  trustProxy: boolean,
+  socketAddress?: string | null
+): string | null {
+  if (!trustProxy) return socketAddress?.trim() || null;
   const last = headers.get("x-forwarded-for")?.split(",").pop()?.trim();
   return last || headers.get("x-real-ip")?.trim() || null;
+}
+
+/** The caller's address under the TRUST_PROXY setting, or null when there is none to trust. */
+export function clientIp(headers: Headers, socketAddress?: string | null): string | null {
+  return pickClientIp(headers, trustProxyEnabled(), socketAddress);
 }
 
 function tooMany(what: string, retryAfterSeconds: number) {

@@ -1,5 +1,20 @@
 # Security audit: dependencies and configuration
 
+## Status after the May–November round
+
+Checked on 2026-11-08. Paths are under `web/`.
+
+| Section | Status | Where |
+|---|---|---|
+| 1. Production dependencies | Open, low risk | `corepack pnpm audit --prod --audit-level high` exits 0 (no high or critical). `pnpm audit --prod` still lists 1 moderate (minimatch) and 1 low (deepmerge), both through `shadcn`, which is still in `dependencies` in `package.json`. The optional fix (move `shadcn` to `devDependencies`, or add overrides) has not been done |
+| 1a. Repeatable audit command | Fixed | `package.json` script `audit:prod` = `pnpm audit --prod --audit-level high`. **There is no CI workflow yet** (no `.github/workflows`), so nothing runs it automatically; it is run by hand |
+| 2. Security headers | Fixed, with one gap | `next.config.ts` `headers()` sends CSP, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` and (in production) HSTS on every route, pinned by `src/app/(marketing)/security/security-facts.test.ts`. The CSP still has `'unsafe-inline'` for scripts; a nonce breaks the app under `cacheComponents`, and the two fixes (turn `cacheComponents` off, or Next's experimental SRI mode) have not been chosen |
+| 3. Committed secrets | No change | `git ls-files` shows only `web/.env.example` |
+| 4. `--user` on Windows | Open, low | `src/server/deploy/build.ts` still sets `--user` only when `process.platform !== "win32"` |
+| 4. Build network access | Open, by design | No `--network` restriction; package installs need it |
+
+Still open: the two `shadcn` advisories (section 1), `--user` on Windows, the CSP nonce, no CI workflow for `audit:prod`.
+
 Date: 2026-11-06. Scope: `web/`.
 
 ## 1. Production dependencies

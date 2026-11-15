@@ -58,7 +58,7 @@ export function DeploymentRow({
     <li
       className={cn(
         // Phones: title on its own line, then status, environment and age, then the branch.
-        "relative grid grid-cols-[auto_auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 px-4 py-3 md:gap-x-4 md:gap-y-3",
+        "density-row relative grid grid-cols-[auto_auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 px-4 py-3 md:gap-x-4 md:gap-y-3",
         selectable && "pl-12",
         selected && "bg-[var(--ds-gray-alpha-100)]",
         !demo &&

@@ -214,19 +214,35 @@ export async function deleteServer(
   });
 }
 
+/** A SHA256 host key fingerprint as `ssh-keygen -l` prints it. */
+export const HOST_KEY_FINGERPRINT = /^SHA256:[A-Za-z0-9+/]{43}$/;
+
 /**
- * Open an SSH session using the stored key and pinned host key. A server that
- * has not been tested yet has no pinned key, so the first session that gets
- * through pins what it saw: deploys, file changes and every later connection
- * then refuse a different host, instead of sending environment values and
- * files to whatever answers.
+ * Open an SSH session using the stored key and pinned host key. A server whose
+ * host key has not been confirmed has no pinned key, and nothing connects to it
+ * until the owner has confirmed the fingerprint: `confirmHostKey` is that
+ * fingerprint, as the owner saw it. The connection must present exactly that key,
+ * and only then is it recorded. Without a confirmation an unpinned server is
+ * refused, so a deploy, a file change or a shell can never be the first
+ * connection that trusts whatever answered.
  */
-export async function connectToServer(server: ServerRow): Promise<NestSession> {
+export async function connectToServer(
+  server: ServerRow,
+  opts: { confirmHostKey?: string } = {}
+): Promise<NestSession> {
   if (server.status === "disconnected") {
     throw new HttpError(
       409,
       `${server.nestUsername} is disconnected. Connect it again to manage its projects.`,
       "disconnected"
+    );
+  }
+  const pinned = server.hostKeyFingerprint;
+  if (!pinned && !opts.confirmHostKey) {
+    throw new HttpError(
+      409,
+      "Confirm host key: open the Connect page, check the fingerprint of this server and confirm it first.",
+      "host_key_unconfirmed"
     );
   }
   const privateKey = open(server.privateKeyEnc, `server:${server.id}`);
@@ -235,9 +251,9 @@ export async function connectToServer(server: ServerRow): Promise<NestSession> {
     port: server.port,
     username: server.nestUsername,
     privateKey,
-    pinnedHostKey: server.hostKeyFingerprint,
+    pinnedHostKey: pinned ?? opts.confirmHostKey,
   });
-  if (!server.hostKeyFingerprint && session.hostKeyFingerprint) {
+  if (!pinned && session.hostKeyFingerprint) {
     try {
       const db = await getDb();
       await db
@@ -267,18 +283,44 @@ export async function withServerSession<T>(
 
 export type TestResult =
   | { ok: true; probe: NestProbe; issues: ProbeIssue[] }
-  | { ok: false; error: string; kind: SshError["kind"] | "unknown" };
+  | { ok: false; error: string; kind: SshError["kind"] | "unknown" }
+  /** First connection: the owner has to confirm `hostKey` before anything else is sent. */
+  | { ok: false; error: string; kind: "host-key-unconfirmed"; hostKey: string };
 
 /**
- * Connect, pin the host key on first use, probe the container and save the
- * outcome. Never throws for connection problems; they are returned.
+ * Connect, probe the container and save the outcome. The first time, the host
+ * key is not trusted on sight: the call reaches the host, reports its
+ * fingerprint and stops. The owner confirms it (the same call with
+ * `confirmHostKey` set to what they saw) and only then is it pinned. Never
+ * throws for connection problems; they are returned.
  */
-export async function testServer(userId: string, serverId: string): Promise<TestResult> {
+export async function testServer(
+  userId: string,
+  serverId: string,
+  opts: { confirmHostKey?: string } = {}
+): Promise<TestResult> {
   const server = await getServerForUser(userId, serverId);
   const db = await getDb();
 
   try {
-    const session = await connectToServer(server);
+    if (!server.hostKeyFingerprint && !opts.confirmHostKey) {
+      // Look, do not trust: reach the host, read its key, hang up.
+      const seen = await NestSession.connect({
+        host: server.host,
+        port: server.port,
+        username: server.nestUsername,
+        privateKey: open(server.privateKeyEnc, `server:${server.id}`),
+      });
+      seen.close();
+      const message = "Confirm host key";
+      await db
+        .update(schema.servers)
+        .set({ lastError: message, lastCheckedAt: new Date() })
+        .where(eq(schema.servers.id, server.id));
+      return { ok: false, error: message, kind: "host-key-unconfirmed", hostKey: seen.hostKeyFingerprint };
+    }
+
+    const session = await connectToServer(server, { confirmHostKey: opts.confirmHostKey });
     try {
       const probe = await probeSession(session);
       const issues = probeIssues(probe);

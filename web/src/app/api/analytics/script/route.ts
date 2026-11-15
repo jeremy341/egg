@@ -4,11 +4,12 @@ import { buildScript } from "@/server/analytics-script";
 
 /**
  * The analytics snippet, built for the key in the address. It reports the page
- * path and the referring site, once per page load. A project that has switched
- * on clicks, time on page or funnel steps gets those few extra lines and
- * nothing else; with every switch off it is the plain page view script. It does
- * nothing when the browser sends Do Not Track or Global Privacy Control, sets
- * no cookie and stores nothing in the browser.
+ * path, once per page load. A project that has switched on a feature (referrers,
+ * clicks, time on page, a funnel, speed and errors, custom events, the live view
+ * or retention) gets those few extra lines and nothing else; with every switch
+ * off it is the plain page view script. It does nothing when the browser sends
+ * Do Not Track or Global Privacy Control, sets no cookie, and stores a random id
+ * in the browser only while retention is on.
  *
  * An unknown key, or an older snippet with no key in the address, gets the plain
  * script, so nothing about a key can be probed from here.
@@ -21,6 +22,11 @@ export async function GET(req: NextRequest) {
     clicks: f.clicks,
     time: f.time,
     goals: f.funnel ? f.steps.filter((s) => s.kind === "track").map((s) => s.value) : [],
+    referrers: f.referrers,
+    vitals: f.vitals,
+    events: f.events,
+    live: f.live,
+    retention: f.retention,
   });
   return new Response(script, {
     headers: {

@@ -42,6 +42,11 @@ describe("security headers", () => {
     expect((await headersFor())["content-security-policy"]).toContain("'unsafe-eval'");
   });
 
+  it("keeps 'unsafe-inline' for scripts: the prerendered shell cannot carry a request nonce", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    expect((await headersFor())["content-security-policy"]).toContain("script-src 'self' 'unsafe-inline'");
+  });
+
   it("sends HSTS in production only", async () => {
     vi.stubEnv("NODE_ENV", "production");
     expect((await headersFor())["strict-transport-security"]).toMatch(/^max-age=\d+; includeSubDomains$/);

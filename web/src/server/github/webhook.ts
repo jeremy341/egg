@@ -1,5 +1,6 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb, schema } from "@/server/db";
+import { isUniqueViolation } from "@/server/db/errors";
 import { assertGitRef, assertGitSha } from "@/server/deploy/build";
 import { attachPullRequest, closePullRequestPreviews } from "@/server/github/pulls";
 import { enqueueDeployment } from "@/server/projects";
@@ -153,15 +154,20 @@ export async function handleGithubEvent(
       .get();
     if (dup) continue;
 
-    const dep = await enqueueDeployment(project, {
-      env: branch === project.productionBranch ? "production" : "preview",
-      source: "webhook",
-      branch,
-      commitSha: p.after,
-      commitMessage: p.head_commit?.message?.split("\n")[0]?.slice(0, 300) ?? null,
-      author: p.head_commit?.author?.username ?? p.head_commit?.author?.name ?? p.pusher?.name ?? null,
-    });
-    created.push(dep.id);
+    try {
+      const dep = await enqueueDeployment(project, {
+        env: branch === project.productionBranch ? "production" : "preview",
+        source: "webhook",
+        branch,
+        commitSha: p.after,
+        commitMessage: p.head_commit?.message?.split("\n")[0]?.slice(0, 300) ?? null,
+        author: p.head_commit?.author?.username ?? p.head_commit?.author?.name ?? p.pusher?.name ?? null,
+      });
+      created.push(dep.id);
+    } catch (err) {
+      // The unique index caught a racing duplicate of the same commit.
+      if (!isUniqueViolation(err)) throw err;
+    }
   }
   return { handled: true, deployments: created };
 }
@@ -228,14 +234,18 @@ async function handlePullRequest(payload: unknown): Promise<WebhookResult> {
     if (!project.autoDeploy || branch === project.productionBranch) continue;
     const existing = await attachPullRequest(project.id, branch, sha, number);
     if (existing) continue;
-    const dep = await enqueueDeployment(project, {
-      env: "preview",
-      source: "webhook",
-      branch,
-      commitSha: sha,
-      prNumber: number,
-    });
-    created.push(dep.id);
+    try {
+      const dep = await enqueueDeployment(project, {
+        env: "preview",
+        source: "webhook",
+        branch,
+        commitSha: sha,
+        prNumber: number,
+      });
+      created.push(dep.id);
+    } catch (err) {
+      if (!isUniqueViolation(err)) throw err;
+    }
   }
   return { handled: true, deployments: created };
 }

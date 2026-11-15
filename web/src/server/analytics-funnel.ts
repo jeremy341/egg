@@ -68,7 +68,7 @@ export type FunnelSummary = {
 };
 
 /** A share of `part` in `whole`, never 0 while part is above 0 or 100 while it is below `whole`. */
-function share(part: number, whole: number): number {
+export function share(part: number, whole: number): number {
   let p = Math.round((part / whole) * 100);
   if (p === 100 && part < whole) p = 99;
   if (p === 0 && part > 0) p = 1;
