@@ -14,7 +14,7 @@ type Weekday = { weekday: string; count: Count };
 /** Mark kinds are drawn differently so nothing is implied that is not known. */
 function Legend({ children }: { children: React.ReactNode }) {
   return (
-    <ul aria-label="How to read the chart" className="mt-4 flex flex-wrap gap-x-5 gap-y-1.5 text-caption text-muted-foreground">
+    <ul aria-label="How to read the chart" className="mt-5 flex flex-wrap gap-x-5 gap-y-1.5 text-caption text-muted-foreground">
       {children}
     </ul>
   );
@@ -41,9 +41,9 @@ export function WeekdayChart({ buckets, windowDays }: { buckets: Weekday[]; wind
 
   return (
     <figure>
-      <figcaption className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-        <span className="text-label font-medium">Deployments by weekday</span>
-        <span aria-hidden="true" className="tabular text-right text-caption text-muted-foreground">
+      <figcaption className="flex flex-col gap-0.5">
+        <span className="text-body font-medium">Deployments by weekday</span>
+        <span aria-hidden="true" className="tabular min-h-4 text-caption text-muted-foreground">
           {active
             ? `${active.weekday}: ${describeCount(active.count)}`
             : busiest
@@ -52,7 +52,7 @@ export function WeekdayChart({ buckets, windowDays }: { buckets: Weekday[]; wind
         </span>
       </figcaption>
 
-      <div className="mt-3">
+      <div className="mt-4">
         <div
           role="img"
           aria-label={summary}
@@ -72,7 +72,7 @@ export function WeekdayChart({ buckets, windowDays }: { buckets: Weekday[]; wind
                 className="flex h-full min-w-0 flex-col items-stretch justify-end"
                 onPointerEnter={() => setHover(i)}
               >
-                <span className="tabular mb-1 block h-4 truncate text-center text-caption text-muted-foreground">
+                <span className="tabular mb-1 block h-4 truncate text-caption text-muted-foreground">
                   {few ? "" : formatCount(b.count)}
                 </span>
                 <div
@@ -90,7 +90,7 @@ export function WeekdayChart({ buckets, windowDays }: { buckets: Weekday[]; wind
             );
           })}
         </div>
-        <div aria-hidden="true" className="mt-2 grid grid-cols-7 gap-2 text-center text-caption text-muted-foreground sm:gap-3">
+        <div aria-hidden="true" className="mt-2 grid grid-cols-7 gap-2 text-caption text-muted-foreground sm:gap-3">
           {buckets.map((b) => (
             <span key={b.weekday}>{b.weekday.slice(0, 3)}</span>
           ))}

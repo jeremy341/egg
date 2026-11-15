@@ -30,29 +30,17 @@ const steps = (id: string, title: string, items: Step[], level: 2 | 3 = 3) => (
   <Steps id={id} title={title} items={items.map(toStep)} level={level} />
 );
 
-/** A limit's name with, under it, the file in the code that holds the number. */
-const named = (name: string, source?: string): ReactNode =>
-  source ? (
-    <>
-      {name}
-      <span className="mt-0.5 block text-[13px] leading-5 font-normal text-muted-foreground">
-        In the code: <C>{source}</C>
-      </span>
-    </>
-  ) : (
-    name
-  );
-
 /** Limits as name, value and what happens at it. The optional last item is the file that sets the number. */
 const limits = (id: string, rows: [string, string, ReactNode, string?][], level: 2 | 3 = 2) => {
   const items: LimitItem[] = rows.map(([name, value, atLimit, source]) => ({
-    name: named(name, source),
+    name,
+    source,
     value,
     atLimit,
   }));
   return (
     <Limits id={id} items={items} level={level}>
-      These numbers are read from the code that enforces them. Under each name is the file that holds the number,
+      These numbers are read from the code that enforces them. Under each message is the file that holds the number,
       relative to the web/src folder.
     </Limits>
   );

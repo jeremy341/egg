@@ -39,9 +39,9 @@ export function StatsChart({ daily }: { daily: Day[] }) {
 
   return (
     <figure>
-      <figcaption className="flex items-baseline justify-between gap-3">
-        <span className="text-label font-medium">Deployments per day</span>
-        <span aria-hidden="true" className="tabular min-w-0 truncate text-right text-caption text-muted-foreground">
+      <figcaption className="flex flex-col gap-0.5">
+        <span className="text-body font-medium">Deployments per day</span>
+        <span aria-hidden="true" className="tabular min-h-4 text-caption text-muted-foreground">
           {active
             ? `${formatDay(active.date)}: ${describeCount(active.count)}`
             : max >= 10
@@ -50,7 +50,7 @@ export function StatsChart({ daily }: { daily: Day[] }) {
         </span>
       </figcaption>
 
-      <div className="mt-3 grid grid-cols-[2.25rem_minmax(0,1fr)] gap-x-2">
+      <div className="mt-4 grid grid-cols-[2.25rem_minmax(0,1fr)] gap-x-2">
         <div
           aria-hidden="true"
           className={cn("tabular flex flex-col justify-between text-right text-caption text-muted-foreground", PLOT_H)}
@@ -105,7 +105,7 @@ export function StatsChart({ daily }: { daily: Day[] }) {
 
       <ul
         aria-label="How to read the bars"
-        className="mt-4 flex flex-wrap gap-x-5 gap-y-1.5 text-caption text-muted-foreground"
+        className="mt-5 flex flex-wrap gap-x-5 gap-y-1.5 text-caption text-muted-foreground"
       >
         <li className="flex items-center gap-2">
           <span aria-hidden="true" className="size-2.5 shrink-0 bg-foreground" />
@@ -121,20 +121,20 @@ export function StatsChart({ daily }: { daily: Day[] }) {
         </li>
       </ul>
 
-      <details className="disclosure mt-4 border-t pt-3">
+      <details className="disclosure mt-6 border-t pt-3">
         <summary className="-mx-1 w-fit items-center gap-1.5 rounded-sm px-1 py-1.5 text-label font-medium max-sm:min-h-10">
           <CaretRightIcon aria-hidden="true" className="disclosure-caret size-4" />
           Show the numbers as a table
         </summary>
         <div className="mt-2 max-h-64 overflow-auto border">
-          <table className="w-full text-label">
+          <table className="w-full text-left text-label">
             <caption className="sr-only">Total deployments per UTC day, rounded</caption>
-            <thead className="sticky top-0 bg-background-subtle text-left text-muted-foreground">
+            <thead className="sticky top-0 bg-background-subtle text-muted-foreground">
               <tr>
-                <th scope="col" className="px-3 py-2 font-medium">
+                <th scope="col" className="w-1/2 px-3 py-2 font-medium">
                   Day (UTC)
                 </th>
-                <th scope="col" className="px-3 py-2 text-right font-medium">
+                <th scope="col" className="px-3 py-2 font-medium">
                   Deployments
                 </th>
               </tr>
@@ -142,10 +142,10 @@ export function StatsChart({ daily }: { daily: Day[] }) {
             <tbody className="tabular">
               {[...daily].reverse().map((d) => (
                 <tr key={d.date} className="border-t">
-                  <th scope="row" className="px-3 py-1.5 text-left font-normal">
+                  <th scope="row" className="px-3 py-1.5 font-normal">
                     <time dateTime={d.date}>{formatDay(d.date)}</time>
                   </th>
-                  <td className="px-3 py-1.5 text-right">{formatCount(d.count)}</td>
+                  <td className="px-3 py-1.5">{formatCount(d.count)}</td>
                 </tr>
               ))}
             </tbody>

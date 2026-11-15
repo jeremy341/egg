@@ -23,28 +23,16 @@ const steps = (page: string, items: Step[]) => (
   <Steps id={`${page}-steps`} items={items.map(toStep)} level={levelOf(page)} />
 );
 
-/** A limit's name with, under it, the file in the code that holds the number. */
-const named = (name: string, source?: string): ReactNode =>
-  source ? (
-    <>
-      {name}
-      <span className="mt-0.5 block text-[13px] leading-5 font-normal text-muted-foreground">
-        In the code: <C>{source}</C>
-      </span>
-    </>
-  ) : (
-    name
-  );
-
 const limits = (page: string, rows: [string, string, ReactNode, string?][]) => {
   const items: LimitItem[] = rows.map(([name, value, atLimit, source]) => ({
-    name: named(name, source),
+    name,
+    source,
     value,
     atLimit,
   }));
   return (
     <Limits id={`${page}-limits`} items={items} level={levelOf(page)}>
-      These numbers are read from the code that enforces them. Under each name is the file that holds the number,
+      These numbers are read from the code that enforces them. Under each message is the file that holds the number,
       relative to the web/src folder.
     </Limits>
   );
@@ -2543,7 +2531,8 @@ export function isFromEgg(secret, header, body) {
           ["Attempts", "3, with pauses of 2 and 10 seconds", "A failed delivery is listed with a short reason, such as “receiver answered 500” or “could not connect”.", "server/webhooks.ts"],
           ["Signature age", "300 seconds", "Your code should refuse an older timestamp.", "server/webhook-sign.ts"],
           ["Delivery history", "30 days", "Older rows are removed.", "server/webhooks.ts"],
-        ] as [string, string, ReactNode, string][]).map(([name, value, atLimit, source]) => ({ name: named(name, source), value, atLimit }))}
+        ] as [string, string, ReactNode, string][]).map(([name, value, atLimit, source]) => ({ name,
+    source, value, atLimit }))}
       />
       {related([
         ["monitoring", "Monitoring and uptime"],

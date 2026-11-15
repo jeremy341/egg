@@ -39,7 +39,7 @@ export function RuntimeBar({ runtimes }: { runtimes: Runtime[] }) {
 
   return (
     <figure>
-      <figcaption className="text-label font-medium">Projects by runtime</figcaption>
+      <figcaption className="text-body font-medium">Projects by runtime</figcaption>
 
       {drawn.length === 0 ? (
         <p className="mt-3 border border-dashed px-3 py-4 text-label text-muted-foreground">
@@ -59,7 +59,7 @@ export function RuntimeBar({ runtimes }: { runtimes: Runtime[] }) {
 
       <ul className="mt-4 hairline-y border-y">
         {runtimes.map((r) => (
-          <li key={r.runtime} className="flex items-center gap-3 py-2 text-label">
+          <li key={r.runtime} className="grid grid-cols-[0.625rem_minmax(0,8rem)_minmax(0,1fr)] items-center gap-3 py-2 text-label">
             <span
               aria-hidden="true"
               className={
@@ -68,8 +68,8 @@ export function RuntimeBar({ runtimes }: { runtimes: Runtime[] }) {
                   : `size-2.5 shrink-0 ${styleFor(r.runtime).swatch}`
               }
             />
-            <span className="min-w-0 flex-1">{styleFor(r.runtime).label}</span>
-            <span className="tabular text-right">{formatCount(r.count)}</span>
+            <span className="min-w-0">{styleFor(r.runtime).label}</span>
+            <span className="tabular">{formatCount(r.count)}</span>
           </li>
         ))}
       </ul>

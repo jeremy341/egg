@@ -3,7 +3,7 @@ import { CaretRightIcon } from "@phosphor-icons/react/dist/ssr";
 import { cn } from "@/lib/utils";
 import { CodeBlock } from "./code-block";
 import { HeadingAnchor } from "./heading-anchor";
-import { Callout, H2_CLASS, H3_CLASS, MEASURE, PROSE_TEXT, Table } from "./prose";
+import { Callout, H2_CLASS, H3_CLASS, LimitsTable, MEASURE, PROSE_TEXT } from "./prose";
 
 // The blocks a docs page is made of after its opening sentence:
 //   Steps, then Limits, then WhatCanGoWrong, with a WorkedExample wherever a
@@ -54,12 +54,12 @@ function BlockHeading({
   );
 }
 
-const gapAbove = (level: Level) => (level === 2 ? "mt-[90px] max-sm:mt-[60px]" : "mt-[60px] max-sm:mt-[45px]");
+const gapAbove = (level: Level) => (level === 2 ? "mt-12 max-sm:mt-10" : "mt-8");
 
 /** A path through the dashboard: "Project, Settings, Domains", drawn as one line. */
 function UiPath({ path }: { path: string[] }) {
   return (
-    <p className="mt-[15px] flex flex-wrap items-center gap-x-1 text-[15px] leading-[30px] font-medium text-foreground">
+    <p className="mt-3 flex flex-wrap items-center gap-x-1 text-[15px] leading-6 font-medium text-foreground">
       <span className="sr-only">In the dashboard: </span>
       {path.map((p, i) => (
         <span key={`${p}-${i}`} className="inline-flex items-center gap-1">
@@ -79,18 +79,18 @@ function UiPath({ path }: { path: string[] }) {
 /** The numbered list itself, without a heading. */
 function StepList({ items, className }: { items: StepItem[]; className?: string }) {
   return (
-    <ol className={cn("mt-[30px]", className)}>
+    <ol className={cn("mt-8", className)}>
       {items.map((s, i) => (
-        <li key={s.title} className="grid grid-cols-[30px_minmax(0,1fr)] gap-x-[15px] pb-[30px] last:pb-0">
-          {/* A lit cell holds the number: 24px square inset 3px in a 30px cell. */}
+        <li key={s.title} className="grid grid-cols-[24px_minmax(0,1fr)] gap-x-4 pb-8 last:pb-0">
+          {/* A lit cell holds the number: a 24px square, level with the first line. */}
           <span
             aria-hidden="true"
-            className="m-[3px] flex size-6 items-center justify-center bg-[var(--pixel-lit)] text-[13px] leading-none font-semibold text-background tabular-nums"
+            className="mt-px flex size-6 items-center justify-center bg-[var(--pixel-lit)] text-[13px] leading-none font-semibold text-background tabular-nums"
           >
             {i + 1}
           </span>
           <div className="min-w-0">
-            <p className="text-[17px] leading-[30px] font-semibold text-foreground">
+            <p className="text-[16px] leading-[26px] font-semibold text-foreground">
               <span className="sr-only">Step {i + 1}: </span>
               {s.title}
             </p>
@@ -130,7 +130,7 @@ export function Steps({
       <BlockHeading id={id} title={title} level={level} className={gapAbove(level)} />
       {quickReference ? (
         <>
-          <p className={cn("mt-[30px]", MEASURE, PROSE_TEXT)}>The whole sequence at a glance:</p>
+          <p className={cn("mt-4", MEASURE, PROSE_TEXT)}>The whole sequence at a glance:</p>
           <CodeBlock label={quickReference.label} code={quickReference.code} />
         </>
       ) : null}
@@ -147,6 +147,8 @@ export type LimitItem = {
   value: ReactNode;
   /** What happens when the limit is reached. */
   atLimit: ReactNode;
+  /** The file in the code that holds the number, relative to web/src. Several: "a.ts and b.ts". Shown last, muted. */
+  source?: string;
 };
 
 /**
@@ -173,12 +175,8 @@ export function Limits({
   return (
     <>
       <BlockHeading id={id} title={title} level={level} className={gapAbove(level)} />
-      {children ? <p className={cn("mt-[30px]", MEASURE, PROSE_TEXT)}>{children}</p> : null}
-      <Table
-        caption={title}
-        head={["Limit", "Value", "What happens at it"]}
-        rows={items.map((l) => [l.name, l.value, l.atLimit])}
-      />
+      {children ? <p className={cn("mt-4", MEASURE, PROSE_TEXT)}>{children}</p> : null}
+      <LimitsTable caption={title} rows={items} />
     </>
   );
 }
@@ -212,10 +210,10 @@ export function WhatCanGoWrong({
   return (
     <>
       <BlockHeading id={id} title={title} level={level} className={gapAbove(level)} />
-      <ul className="mt-[30px] divide-y overflow-hidden rounded-md border bg-background">
+      <ul className="mt-8 divide-y border-y">
         {items.map((p, i) => (
-          <li key={i} className="px-4 py-3 max-sm:px-3">
-            <p className="text-[15px] leading-[30px] font-semibold text-foreground">
+          <li key={i} className="py-4">
+            <p className="text-[15px] leading-6 font-semibold text-foreground">
               {typeof p.symptom === "string" ? (
                 <code className="rounded-[3px] bg-[var(--ds-gray-100)] px-1.5 py-px font-mono text-[14px] shadow-[inset_0_0_0_1px_var(--ds-gray-alpha-200)] [overflow-wrap:anywhere]">
                   {p.symptom}
@@ -224,7 +222,7 @@ export function WhatCanGoWrong({
                 p.symptom
               )}
             </p>
-            <div className={cn(MEASURE, "text-[16px] leading-[30px] text-reading")}>{p.fix}</div>
+            <div className={cn("mt-1", MEASURE, PROSE_TEXT)}>{p.fix}</div>
           </li>
         ))}
       </ul>
@@ -260,22 +258,22 @@ export function WorkedExample({
   level?: Level;
 }) {
   const Part = level === 2 ? "h3" : "h4";
-  const part = "text-[13px] leading-[30px] font-semibold text-muted-foreground";
+  const part = "text-[13px] leading-5 font-semibold text-muted-foreground";
   return (
     <section aria-labelledby={id} className={gapAbove(level)}>
       <BlockHeading id={id} title={`${label}: ${title}`} level={level} />
-      <div className="mt-[15px] divide-y overflow-hidden rounded-md border bg-background">
-        <div className="px-4 py-3 max-sm:px-3">
+      <div className="mt-4 divide-y border-y">
+        <div className="py-5">
           <Part className={part}>Given</Part>
-          <div className={cn(MEASURE, PROSE_TEXT)}>{given}</div>
+          <div className={cn("mt-1", MEASURE, PROSE_TEXT)}>{given}</div>
         </div>
-        <div className="px-4 py-3 max-sm:px-3">
+        <div className="py-5">
           <Part className={part}>Do</Part>
-          <StepList items={steps} className="mt-0" />
+          <StepList items={steps} className="mt-3" />
         </div>
-        <div className="px-4 py-3 max-sm:px-3">
+        <div className="py-5">
           <Part className={part}>Result</Part>
-          <div className={cn(MEASURE, PROSE_TEXT)}>{result}</div>
+          <div className={cn("mt-1", MEASURE, PROSE_TEXT)}>{result}</div>
         </div>
       </div>
     </section>

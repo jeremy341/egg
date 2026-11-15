@@ -4,7 +4,8 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { CaretDownIcon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { sectionTitle } from "../_data/nav";
-import { DocsNavBody, useCurrentDocsPage } from "./docs-nav";
+import { useCurrentDocsPage } from "./docs-nav";
+import { DocsPageList } from "./docs-sidebar";
 import { scanPageHeadings, type PageHeading } from "./use-page-headings";
 
 /**
@@ -106,7 +107,7 @@ export function DocsSectionNav() {
               </nav>
             ) : null}
             <nav aria-label="Docs pages">
-              <DocsNavBody onNavigate={close} />
+              <DocsPageList onNavigate={close} />
             </nav>
           </div>
         </div>

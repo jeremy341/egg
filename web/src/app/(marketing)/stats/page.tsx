@@ -1,12 +1,32 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { connection } from "next/server";
-import { ArrowDownRightIcon, ArrowUpRightIcon, EqualsIcon } from "@phosphor-icons/react/dist/ssr";
-import { DIRECTION_WORDS, describeCount, formatDuration, type Direction } from "@/lib/stats-format";
+import {
+  ArrowDownRightIcon,
+  ArrowUpRightIcon,
+  EqualsIcon,
+} from "@phosphor-icons/react/dist/ssr";
+import {
+  DIRECTION_WORDS,
+  describeCount,
+  formatDuration,
+  type Direction,
+} from "@/lib/stats-format";
 import { cn } from "@/lib/utils";
 import { getPublicStats } from "@/server/stats-cache";
-import { Figure, FrameLabel, NotEnough, SectionHead, Total, Value } from "./_components/figures";
-import { FRAME, GRID, SECTION, WRAP } from "./_components/layout";
+import {
+  BlockLabel,
+  Cells,
+  Figure,
+  FigureLine,
+  GroupLabel,
+  NotEnough,
+  SectionHead,
+  Stat,
+  Unit,
+  Value,
+} from "./_components/figures";
+import { PAD, SPLIT, SURFACE, WRAP } from "./_components/layout";
 import { RuntimeBar } from "./_components/runtime-bar";
 import { StatsChart } from "./_components/stats-chart";
 import { StatsHeader } from "./_components/stats-header";
@@ -43,271 +63,344 @@ async function StatsBody() {
   const mon = s.monitoring;
 
   return (
-    <>
-      <section aria-labelledby="usage">
+    <div className={SURFACE}>
+      <section aria-labelledby="usage" className="divide-y">
         <SectionHead id="usage" title="Usage">
           Who is signing up and how much is being deployed.
         </SectionHead>
 
-        <div className={cn(GRID, "mt-8")}>
-          <section aria-labelledby="deploys" className={FRAME}>
-            <div className="p-5">
-              <h3 id="deploys" className="text-label text-muted-foreground">
-                Deployments in the last {s.windowDays} days
-              </h3>
-              <p className="mt-2 flex min-h-14 items-center">
-                <Figure count={d.total} display />
+        <section aria-labelledby="deploys" className={PAD}>
+          <BlockLabel id="deploys">
+            Deployments in the last {s.windowDays} days
+          </BlockLabel>
+          <p className="mt-4 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+            <Figure count={d.total} display />
+            <Unit large>deployments</Unit>
+          </p>
+          <div className="mt-8 border-t pt-8">
+            <StatsChart daily={d.daily} />
+          </div>
+        </section>
+
+        <section aria-labelledby="totals">
+          <GroupLabel id="totals">Totals</GroupLabel>
+          <Cells as="dl" className="sm:grid-cols-2 lg:grid-cols-5">
+            <Stat label="Accounts signed up" unit="accounts" hint="All time">
+              <Figure count={s.accounts} />
+            </Stat>
+            <Stat
+              label="Servers connected"
+              unit="servers"
+              hint="Connected at the last check"
+            >
+              <Figure count={s.serversConnected} />
+            </Stat>
+            <Stat
+              label="Projects deployed"
+              unit="projects"
+              hint="With at least one successful deployment"
+            >
+              <Figure count={s.projectsDeployed} />
+            </Stat>
+            <Stat
+              label="Public status pages"
+              unit="pages"
+              hint="Projects with a status page switched on"
+            >
+              <Figure count={s.statusPages} />
+            </Stat>
+            <Stat
+              label="Domains mapped"
+              unit="domains"
+              hint="Custom domains whose DNS check passed"
+            >
+              <Figure count={s.domainsMapped} />
+            </Stat>
+          </Cells>
+        </section>
+
+        <div className={cn("grid lg:grid-cols-2", SPLIT)}>
+          <section aria-labelledby="growth">
+            <GroupLabel id="growth">
+              New accounts in the last {growth.windowDays} days
+            </GroupLabel>
+            <div className={PAD}>
+              <FigureLine>
+                <Figure count={growth.last} />
+                <Unit>accounts</Unit>
+                <span className="inline-flex items-center gap-1.5 text-title-3">
+                  <DirectionIcon
+                    aria-hidden="true"
+                    className="size-4 shrink-0"
+                  />
+                  {DIRECTION_WORDS[growth.direction]}
+                </span>
+              </FigureLine>
+              <p className="mt-2 max-w-[56ch] text-caption text-muted-foreground">
+                {growth.percentChange !== null
+                  ? `${growth.percentChange > 0 ? "+" : ""}${growth.percentChange}% compared with the ${growth.windowDays} days before, when ${describeCount(growth.previous)} accounts signed up.`
+                  : `Compared with the ${growth.windowDays} days before, when ${describeCount(growth.previous)} accounts signed up. A percentage is shown only when both weeks have at least ${growth.minimumForPercent} sign-ups.`}
               </p>
-              <div className="mt-5">
-                <StatsChart daily={d.daily} />
-              </div>
             </div>
           </section>
 
-          <section aria-labelledby="totals" className={FRAME}>
-            <h3 id="totals" className="sr-only">
-              Totals
-            </h3>
-            <dl className="hairline-y">
-              <Total label="Accounts signed up" hint="All time">
-                <Figure count={s.accounts} />
-              </Total>
-              <Total label="Servers connected" hint="Connected at the last check">
-                <Figure count={s.serversConnected} />
-              </Total>
-              <Total label="Projects deployed" hint="With at least one successful deployment">
-                <Figure count={s.projectsDeployed} />
-              </Total>
-              <Total label="Public status pages" hint="Projects with a status page switched on">
-                <Figure count={s.statusPages} />
-              </Total>
-              <Total label="Domains mapped" hint="Custom domains whose DNS check passed">
-                <Figure count={s.domainsMapped} />
-              </Total>
-            </dl>
-          </section>
-        </div>
-
-        <div className={cn(GRID, "mt-[30px]")}>
-          <section aria-labelledby="growth" className={cn(FRAME, "p-5")}>
-            <FrameLabel id="growth">New accounts in the last {growth.windowDays} days</FrameLabel>
-            <p className="mt-1 flex min-h-10 flex-wrap items-center gap-x-4 gap-y-1">
-              <Figure count={growth.last} />
-              <span className="inline-flex items-center gap-1.5 text-title-2">
-                <DirectionIcon aria-hidden="true" className="size-5 shrink-0" />
-                {DIRECTION_WORDS[growth.direction]}
-              </span>
-            </p>
-            <p className="mt-2 text-label text-muted-foreground">
-              {growth.percentChange !== null
-                ? `${growth.percentChange > 0 ? "+" : ""}${growth.percentChange}% compared with the ${growth.windowDays} days before, when ${describeCount(growth.previous)} accounts signed up.`
-                : `Compared with the ${growth.windowDays} days before, when ${describeCount(growth.previous)} accounts signed up. A percentage is shown only when both weeks have at least ${growth.minimumForPercent} sign-ups.`}
-            </p>
-          </section>
-
-          <section aria-labelledby="api" className={FRAME}>
-            <h3 id="api" className="sr-only">
-              API and agent use
-            </h3>
-            <dl className="hairline-y">
-              <Total label="Access tokens active" hint="Not revoked and not expired">
-                <Figure count={s.api.tokensActive} small />
-              </Total>
-              <Total label="Deployments through the API" hint={`Started by a token, last ${s.windowDays} days`}>
-                <Figure count={s.api.deploymentsViaApi} small />
-              </Total>
-            </dl>
-            <p className="border-t px-5 py-3 text-caption text-muted-foreground">
-              The first is a count of access tokens, not of how much they are used. The second counts deployments that
-              scripts and AI agents started with one.
+          <section aria-labelledby="api">
+            <GroupLabel id="api">API and agent use</GroupLabel>
+            <Cells as="dl" className="grid-cols-1 sm:grid-cols-2">
+              <Stat
+                label="Access tokens active"
+                unit="tokens"
+                hint="Not revoked and not expired"
+              >
+                <Figure count={s.api.tokensActive} />
+              </Stat>
+              <Stat
+                label="Deployments through the API"
+                unit="deployments"
+                hint={`Started by a token, last ${s.windowDays} days`}
+              >
+                <Figure count={s.api.deploymentsViaApi} />
+              </Stat>
+            </Cells>
+            <p className="max-w-[56ch] px-5 pb-5 text-caption text-muted-foreground sm:px-[30px]">
+              The first is a count of access tokens, not of how much they are
+              used. The second counts deployments that scripts and AI agents
+              started with one.
             </p>
           </section>
         </div>
       </section>
 
-      <section aria-labelledby="reliability" className={SECTION}>
+      <section aria-labelledby="reliability" className="divide-y">
         <SectionHead id="reliability" title="Reliability">
           How deployments end, how long they take, and whether the apps are up.
         </SectionHead>
 
-        <div className={cn(GRID, "mt-8")}>
-          <section aria-labelledby="outcomes" className={FRAME}>
-            <h3 id="outcomes" className="px-5 pt-5 text-label text-muted-foreground">
-              How deployments ended in the last {s.windowDays} days
-            </h3>
-            <dl className="mt-3 hairline-y border-t">
-              <Total label="Ready" hint="Built and running">
-                <Figure count={d.outcomes.ready} small />
-              </Total>
-              <Total label="Failed" hint="Ended with an error">
-                <Figure count={d.outcomes.error} small />
-              </Total>
-              <Total label="Canceled" hint="Stopped before they finished">
-                <Figure count={d.outcomes.canceled} small />
-              </Total>
-            </dl>
-            <div className="border-t p-5">
-              <FrameLabel level={4}>Share that succeeded</FrameLabel>
-              <p className="mt-1 flex min-h-10 items-center">
-                {rate.percent === null ? <NotEnough /> : <Value>{rate.percent}%</Value>}
-              </p>
-              <p className="mt-2 text-label text-muted-foreground">
-                {rate.percent === null
-                  ? `A percentage is shown once at least ${rate.minimumFinished} deployments have finished in the last ${s.windowDays} days (ready or failed).`
-                  : `Of ${describeCount(rate.finished)} deployments that finished in the last ${s.windowDays} days, ready or failed. Canceled ones are not counted.`}
-              </p>
-            </div>
+        <section aria-labelledby="outcomes">
+          <GroupLabel id="outcomes">
+            How deployments ended in the last {s.windowDays} days
+          </GroupLabel>
+          <Cells as="dl" className="sm:grid-cols-3">
+            <Stat label="Ready" unit="deployments" hint="Built and running">
+              <Figure count={d.outcomes.ready} />
+            </Stat>
+            <Stat label="Failed" unit="deployments" hint="Ended with an error">
+              <Figure count={d.outcomes.error} />
+            </Stat>
+            <Stat
+              label="Canceled"
+              unit="deployments"
+              hint="Stopped before they finished"
+            >
+              <Figure count={d.outcomes.canceled} />
+            </Stat>
+          </Cells>
+        </section>
+
+        <div className={cn("grid lg:grid-cols-3", SPLIT)}>
+          <section aria-labelledby="success" className={PAD}>
+            <BlockLabel id="success">Share that succeeded</BlockLabel>
+            <FigureLine>
+              {rate.percent === null ? (
+                <NotEnough />
+              ) : (
+                <Value>{rate.percent}%</Value>
+              )}
+            </FigureLine>
+            <p className="mt-2 text-caption text-muted-foreground">
+              {rate.percent === null
+                ? `A percentage is shown once at least ${rate.minimumFinished} deployments have finished in the last ${s.windowDays} days (ready or failed).`
+                : `Of ${describeCount(rate.finished)} deployments that finished in the last ${s.windowDays} days, ready or failed. Canceled ones are not counted.`}
+            </p>
           </section>
 
-          <div className="flex flex-col gap-[30px]">
-            <section aria-labelledby="build" className={cn(FRAME, "p-5")}>
-              <FrameLabel id="build">Build time, start to finish</FrameLabel>
-              {build.medianSeconds === null || build.p90Seconds === null ? (
-                <>
-                  <p className="mt-1 flex min-h-10 items-center">
-                    <NotEnough />
-                  </p>
-                  <p className="mt-2 text-label text-muted-foreground">
-                    Times are shown once at least {build.minimumFinished} deployments have finished in the last{" "}
-                    {s.windowDays} days.
-                  </p>
-                </>
-              ) : (
-                <>
-                  <dl className="mt-1 grid grid-cols-2 gap-4">
-                    <div>
-                      <dt className="text-caption text-muted-foreground">Median</dt>
-                      <dd className="flex min-h-10 items-center">
-                        <Value>{formatDuration(build.medianSeconds)}</Value>
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-caption text-muted-foreground">90th percentile</dt>
-                      <dd className="flex min-h-10 items-center">
-                        <Value>{formatDuration(build.p90Seconds)}</Value>
-                      </dd>
-                    </div>
-                  </dl>
-                  <p className="mt-2 text-label text-muted-foreground">
-                    Half finished within the median, nine in ten within the 90th percentile. From{" "}
-                    {describeCount(build.finished)} deployments that finished in the last {s.windowDays} days, in
-                    whole seconds.
-                  </p>
-                </>
-              )}
-            </section>
+          <section aria-labelledby="build" className={PAD}>
+            <BlockLabel id="build">Build time, start to finish</BlockLabel>
+            {build.medianSeconds === null || build.p90Seconds === null ? (
+              <>
+                <FigureLine>
+                  <NotEnough />
+                </FigureLine>
+                <p className="mt-2 text-caption text-muted-foreground">
+                  Times are shown once at least {build.minimumFinished}{" "}
+                  deployments have finished in the last {s.windowDays} days.
+                </p>
+              </>
+            ) : (
+              <>
+                <dl className="mt-3 flex flex-wrap gap-x-8 gap-y-3">
+                  <div>
+                    <dt className="text-caption text-muted-foreground">
+                      Median
+                    </dt>
+                    <dd className="flex min-h-10 items-center">
+                      <Value>{formatDuration(build.medianSeconds)}</Value>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-caption text-muted-foreground">
+                      90th percentile
+                    </dt>
+                    <dd className="flex min-h-10 items-center">
+                      <Value>{formatDuration(build.p90Seconds)}</Value>
+                    </dd>
+                  </div>
+                </dl>
+                <p className="mt-2 text-caption text-muted-foreground">
+                  Half finished within the median, nine in ten within the 90th
+                  percentile. From {describeCount(build.finished)} deployments
+                  that finished in the last {s.windowDays} days, in whole
+                  seconds.
+                </p>
+              </>
+            )}
+          </section>
 
-            <section aria-labelledby="uptime" className={cn(FRAME, "p-5")}>
-              <FrameLabel id="uptime">Apps that were up at their last check</FrameLabel>
-              <p className="mt-1 flex min-h-10 items-center">
-                {mon.upPercent === null ? <NotEnough /> : <Value>{mon.upPercent}%</Value>}
-              </p>
-              <p className="mt-2 text-label text-muted-foreground">
-                {mon.upPercent === null
-                  ? `A percentage is shown once at least ${mon.minimumChecked} projects have had an uptime check.`
-                  : `Of ${describeCount(mon.checked)} projects with an uptime check. It is a snapshot of the latest check, not an average over time.`}
-              </p>
-            </section>
-          </div>
+          <section aria-labelledby="uptime" className={PAD}>
+            <BlockLabel id="uptime">
+              Apps that were up at their last check
+            </BlockLabel>
+            <FigureLine>
+              {mon.upPercent === null ? (
+                <NotEnough />
+              ) : (
+                <Value>{mon.upPercent}%</Value>
+              )}
+            </FigureLine>
+            <p className="mt-2 text-caption text-muted-foreground">
+              {mon.upPercent === null
+                ? `A percentage is shown once at least ${mon.minimumChecked} projects have had an uptime check.`
+                : `Of ${describeCount(mon.checked)} projects with an uptime check. It is a snapshot of the latest check, not an average over time.`}
+            </p>
+          </section>
         </div>
       </section>
 
-      <section aria-labelledby="shape" className={SECTION}>
+      <section aria-labelledby="shape" className="divide-y">
         <SectionHead id="shape" title="Shape of the work">
           Which days deployments happen on, and what the projects are made of.
         </SectionHead>
 
-        <div className={cn(GRID, "mt-8")}>
-          <section aria-labelledby="weekday" className={FRAME}>
+        <div
+          className={cn(
+            "grid lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]",
+            SPLIT,
+          )}
+        >
+          <section aria-labelledby="weekday" className={PAD}>
             <h3 id="weekday" className="sr-only">
               Deployments by weekday
             </h3>
-            <div className="p-5">
-              <WeekdayChart buckets={d.byWeekday} windowDays={s.windowDays} />
-              <p className="mt-3 text-caption text-muted-foreground">
-                The same {s.windowDays} days, so some weekdays are counted five times and others four.
-              </p>
-            </div>
+            <WeekdayChart buckets={d.byWeekday} windowDays={s.windowDays} />
+            <p className="mt-4 text-caption text-muted-foreground">
+              The same {s.windowDays} days, so some weekdays are counted five
+              times and others four.
+            </p>
           </section>
 
-          <div className="flex flex-col gap-[30px]">
-            <section aria-labelledby="env" className={FRAME}>
-              <h3 id="env" className="px-5 pt-5 text-label text-muted-foreground">
+          <div className="divide-y">
+            <section aria-labelledby="env">
+              <GroupLabel id="env">
                 Deployments by environment, last {s.windowDays} days
-              </h3>
-              <dl className="mt-3 hairline-y border-t">
-                <Total label="Production" hint="From the production branch">
-                  <Figure count={d.byEnvironment.production} small />
-                </Total>
-                <Total label="Preview" hint="From any other branch or a pull request">
-                  <Figure count={d.byEnvironment.preview} small />
-                </Total>
-              </dl>
+              </GroupLabel>
+              <Cells as="dl" className="sm:grid-cols-2">
+                <Stat
+                  label="Production"
+                  unit="deployments"
+                  hint="From the production branch"
+                >
+                  <Figure count={d.byEnvironment.production} />
+                </Stat>
+                <Stat
+                  label="Preview"
+                  unit="deployments"
+                  hint="From any other branch or a pull request"
+                >
+                  <Figure count={d.byEnvironment.preview} />
+                </Stat>
+              </Cells>
             </section>
 
-            <section aria-labelledby="runtimes" className={FRAME}>
+            <section aria-labelledby="runtimes" className={PAD}>
               <h3 id="runtimes" className="sr-only">
                 Runtimes in use
               </h3>
-              <div className="p-5">
-                <RuntimeBar runtimes={s.runtimes} />
-              </div>
+              <RuntimeBar runtimes={s.runtimes} />
             </section>
           </div>
         </div>
       </section>
 
-      <section aria-labelledby="about" className={cn(SECTION, "[&>*]:max-w-[640px]")}>
-        <h2 id="about" className="text-title-3">
-          About these numbers
-        </h2>
-        <div className="mt-3 space-y-3 text-body-lg text-reading">
-          <p>
-            These are totals from Egg itself, with days counted in UTC. They say how much it is used. They are not a
-            measure of uptime, and they say nothing about how any one app is running.
-          </p>
+      <section
+        aria-labelledby="about"
+        className="grid max-lg:divide-y lg:grid-cols-[minmax(0,4fr)_minmax(0,8fr)] lg:divide-x"
+      >
+        <div className={PAD}>
+          <h2 id="about" className="font-pixel text-docs-h2">
+            About these numbers
+          </h2>
         </div>
 
-        <h3 className="mt-8 text-title-3">How they are rounded</h3>
-        <ul className="mt-3 list-disc space-y-2 pl-5 text-body-lg text-reading marker:text-muted-foreground">
-          <li>
-            A count under 10 reads &ldquo;fewer than 10&rdquo;. A larger one keeps two significant figures, so 1,234
-            shows as 1,200.
-          </li>
-          <li>
-            Each bar, weekday and runtime follows the same rule, so none of them can point at one person. The one
-            exception is a day with no deployments at all, which shows as 0.
-          </li>
-          <li>
-            A percentage says what it is a share of, and it appears only when at least 50 items sit behind it. Below
-            that it reads &ldquo;Not enough data&rdquo;. The same 50 is the minimum for build times, and the weekly
-            change in sign-ups needs 50 in both weeks.
-          </li>
-        </ul>
+        <div className={PAD}>
+          <div className="max-w-[65ch]">
+            <p className="text-body-lg text-reading">
+              These are totals from Egg itself, with days counted in UTC. They
+              say how much it is used. They are not a measure of uptime, and
+              they say nothing about how any one app is running.
+            </p>
 
-        <h3 className="mt-8 text-title-3">What goes in, and what does not</h3>
-        <p className="mt-3 text-body-lg text-reading">
-          Only counts are read. No names, emails, repository or project names, domains, logs or file contents are used
-          for these numbers. The count of deployments through the API reads only how many were started by a token, not
-          whose they were. The last day of each 30 day window is today, so it is a part day. How Egg treats your data
-          beyond these totals is on the{" "}
-          <Link href="/security" className="link">
-            Security page
-          </Link>
-          .
-        </p>
+            <h3 className="mt-8 text-docs-h3">How they are rounded</h3>
+            <ul className="mt-3 list-disc space-y-2 pl-5 text-body-lg text-reading marker:text-muted-foreground">
+              <li>
+                A count under 10 reads &ldquo;fewer than 10&rdquo;. A larger one
+                keeps two significant figures, so 1,234 shows as 1,200.
+              </li>
+              <li>
+                Each bar, weekday and runtime follows the same rule, so none of
+                them can point at one person. The one exception is a day with no
+                deployments at all, which shows as 0.
+              </li>
+              <li>
+                A percentage says what it is a share of, and it appears only
+                when at least 50 items sit behind it. Below that it reads
+                &ldquo;Not enough data&rdquo;. The same 50 is the minimum for
+                build times, and the weekly change in sign-ups needs 50 in both
+                weeks.
+              </li>
+            </ul>
 
-        <p className="mt-6 text-label text-muted-foreground">
-          Last updated{" "}
-          <time dateTime={s.generatedAt}>{updatedFormat.format(new Date(s.generatedAt))} UTC</time>. Refreshed at most
-          every 5 minutes. Every number here is also in the{" "}
-          <Link href="/api/stats" prefetch={false} className="link">
-            JSON
-          </Link>
-          .
-        </p>
+            <h3 className="mt-8 text-docs-h3">
+              What goes in, and what does not
+            </h3>
+            <p className="mt-3 text-body-lg text-reading">
+              Only counts are read. No names, emails, repository or project
+              names, domains, logs or file contents are used for these numbers.
+              The count of deployments through the API reads only how many were
+              started by a token, not whose they were. The last day of each 30
+              day window is today, so it is a part day. How Egg treats your data
+              beyond these totals is on the{" "}
+              <Link href="/security" className="link">
+                Security page
+              </Link>
+              .
+            </p>
+
+            <p className="mt-8 border-t pt-4 text-label text-muted-foreground">
+              Last updated{" "}
+              <time dateTime={s.generatedAt}>
+                {updatedFormat.format(new Date(s.generatedAt))} UTC
+              </time>
+              . Refreshed at most every 5 minutes. Every number here is also in
+              the{" "}
+              <Link href="/api/stats" prefetch={false} className="link">
+                JSON
+              </Link>
+              .
+            </p>
+          </div>
+        </div>
       </section>
-    </>
+    </div>
   );
 }
 

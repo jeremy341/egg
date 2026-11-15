@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { HOME_FACTS, TOKEN_SCOPES, numberWord } from "@/components/marketing/home-facts";
 import { REPO_URL } from "@/lib/site";
 import { SECURITY_FACTS } from "./_components/facts";
+import { Toc } from "./_components/toc";
 import { Code, LimitTable, Points, Section, Sub, Term, Terms, TextLink } from "./_components/parts";
 
 export const metadata: Metadata = {
@@ -34,6 +35,7 @@ const SECTIONS = [
 ] as const;
 
 const title = (id: (typeof SECTIONS)[number]["id"]) => SECTIONS.find((s) => s.id === id)!.title;
+const num = (id: (typeof SECTIONS)[number]["id"]) => SECTIONS.findIndex((s) => s.id === id) + 1;
 
 export default function SecurityPage() {
   return (
@@ -51,24 +53,10 @@ export default function SecurityPage() {
       </header>
 
       <div className="board-col mt-10 grid items-start gap-6 pb-[90px] lg:mt-[60px] lg:grid-cols-[15rem_minmax(0,1fr)] lg:gap-8 lg:pb-[150px]">
-        <nav aria-label="On this page" className="border border-border bg-background p-5 lg:sticky lg:top-24">
-          <p className="m-0 text-[0.875rem] leading-6 font-semibold text-foreground">On this page</p>
-          <ul className="m-0 mt-2 grid list-none grid-cols-1 gap-x-6 p-0 sm:grid-cols-2 lg:grid-cols-1">
-            {SECTIONS.map((s) => (
-              <li key={s.id}>
-                <a
-                  href={`#${s.id}`}
-                  className="block py-1.5 text-[0.9375rem] leading-6 text-muted-foreground underline decoration-transparent underline-offset-4 outline-offset-2 transition-[color,text-decoration-color] duration-(--dur-fast) hover:text-foreground hover:decoration-current focus-visible:outline-2 focus-visible:outline-[var(--ds-focus-color)]"
-                >
-                  {s.title}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </nav>
+        <Toc sections={SECTIONS} />
 
-        <article className="border border-border bg-background">
-          <Section id="touch" title={title("touch")}>
+        <article className="border-x border-b border-border bg-background">
+          <Section id="touch" title={title("touch")} number={num("touch")}>
             <p className="m-0">
               Egg reaches your container over SSH, as your Nest user, with a key you add yourself. On the container it
               works in four places and nowhere else.
@@ -105,7 +93,7 @@ export default function SecurityPage() {
             </p>
           </Section>
 
-          <Section id="switches" title={title("switches")}>
+          <Section id="switches" title={title("switches")} number={num("switches")}>
             <p className="m-0">
               A new container starts with all three switches off. When one is off, Egg refuses the request on the
               server, so it is not only hidden from the page. You change them in Account, under Container permissions.
@@ -137,7 +125,7 @@ export default function SecurityPage() {
             </p>
           </Section>
 
-          <Section id="secrets" title={title("secrets")}>
+          <Section id="secrets" title={title("secrets")} number={num("secrets")}>
             <Terms>
               <Term name="The SSH key">
                 Egg makes an ed25519 key for each Nest server you connect, and never reuses it for another server or
@@ -173,7 +161,7 @@ export default function SecurityPage() {
             </Terms>
           </Section>
 
-          <Section id="accounts" title={title("accounts")}>
+          <Section id="accounts" title={title("accounts")} number={num("accounts")}>
             <p className="m-0">
               You sign in with Hack Club. Egg asks for your name, email and Hack Club ID, and keeps those (plus a Slack
               ID when Hack Club sends one). It never sees your Hack Club password.
@@ -199,7 +187,7 @@ export default function SecurityPage() {
             </Points>
           </Section>
 
-          <Section id="browser" title={title("browser")}>
+          <Section id="browser" title={title("browser")} number={num("browser")}>
             <Terms>
               <Term name="The return path after sign-in">
                 After you sign in, Egg sends you back to the page you came from, but only if that is a page on Egg. A
@@ -235,7 +223,7 @@ export default function SecurityPage() {
             </Terms>
           </Section>
 
-          <Section id="limits" title={title("limits")}>
+          <Section id="limits" title={title("limits")} number={num("limits")}>
             <p className="m-0">
               Egg counts requests and turns away the ones over these limits with a message that says how long to wait.
               Sign-in and access tokens are counted by network address, because the caller has no account yet. The rest
@@ -279,7 +267,7 @@ export default function SecurityPage() {
             />
           </Section>
 
-          <Section id="tokens" title={title("tokens")}>
+          <Section id="tokens" title={title("tokens")} number={num("tokens")}>
             <p className="m-0">
               An access token lets a script or an AI agent use the API and the MCP endpoint. Each token has a name, a
               list of permissions called scopes (there are {TOKEN_SCOPES.length}) and an expiry of 7, 30, 90 or 365
@@ -316,7 +304,7 @@ export default function SecurityPage() {
             </p>
           </Section>
 
-          <Section id="webhooks" title={title("webhooks")}>
+          <Section id="webhooks" title={title("webhooks")} number={num("webhooks")}>
             <Sub>From GitHub to Egg</Sub>
             <p className="m-0">
               The GitHub endpoint is public, so the only thing that lets a request in is a valid signature.
@@ -375,7 +363,7 @@ export default function SecurityPage() {
             </p>
           </Section>
 
-          <Section id="builds" title={title("builds")}>
+          <Section id="builds" title={title("builds")} number={num("builds")}>
             <p className="m-0">
               Your code is built in a Docker container on Egg&apos;s server, never on your Nest container.
             </p>
@@ -401,7 +389,7 @@ export default function SecurityPage() {
             </Points>
           </Section>
 
-          <Section id="logs" title={title("logs")}>
+          <Section id="logs" title={title("logs")} number={num("logs")}>
             <p className="m-0">
               Egg keeps an audit log of what happens on your account. Your Activity page shows your own entries, newest
               first.
@@ -439,7 +427,7 @@ export default function SecurityPage() {
             </p>
           </Section>
 
-          <Section id="remove" title={title("remove")}>
+          <Section id="remove" title={title("remove")} number={num("remove")}>
             <Sub>When you disconnect a server</Sub>
             <p className="m-0">
               Egg first closes any terminal open on that server, so a root shell cannot outlive its key. Then it deletes
@@ -478,7 +466,7 @@ export default function SecurityPage() {
             </p>
           </Section>
 
-          <Section id="gaps" title={title("gaps")}>
+          <Section id="gaps" title={title("gaps")} number={num("gaps")}>
             <p className="m-0">
               The behaviour on this page was checked against the code, and each fix came with a test. These are the
               gaps that are known.
@@ -505,7 +493,7 @@ export default function SecurityPage() {
             </Points>
           </Section>
 
-          <Section id="report" title={title("report")}>
+          <Section id="report" title={title("report")} number={num("report")}>
             <p className="m-0">
               If you find a way to get past anything on this page, please tell the maintainer privately before telling
               anyone else.
