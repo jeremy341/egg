@@ -36,7 +36,7 @@ Old "Not fixed" list:
 
 1. `BUILD_RUNNER=local` runs build scripts on the host with no isolation (`src/server/deploy/build.ts`, around line 505). Development only.
 2. The replay list (`webhook.ts`), rate limits (`src/server/rate-limit.ts`) and the analytics collector windows are per process.
-3. The deploy log stream (`src/app/api/deployments/[id]/stream/route.ts`) checks the session once, when it opens, and can run for about 3.75 hours.
+3. ~~The deploy log stream checks the session once, when it opens, and can run for about 3.75 hours.~~ **Fixed.** `src/app/api/deployments/[id]/stream/route.ts` ends the stream after `MAX_AGE_MS` (15 minutes) and re-checks the session and the project's read access at least every 5 seconds, before it sends more log lines. Tests: `src/server/deployment-stream-bounds.test.ts` ("stops a stream when its session is revoked", "rechecks a session before fetching another page").
 4. The build container can reach the internet (needed for package installs).
 5. Masking finds the exact value, its base64 (also inside a longer base64 string such as a Basic auth header, for values of 8 characters or more) and its URL-encoded form (upper or lower case hex). A secret printed in any other form is not masked.
 
