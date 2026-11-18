@@ -617,7 +617,11 @@ export async function runDeployJob(
       dep.port,
       project.healthPath,
       deps.healthTimeoutSeconds
-    ), recordStage, null, Boolean);
+    ), recordStage, null, Boolean).catch((err: unknown) => {
+      // A dropped SSH link during the check is treated like an unhealthy app, so the revert below still runs.
+      log.error(`The health check failed: ${err instanceof Error ? err.message : String(err)}`);
+      return false;
+    });
 
     if (!ok) {
       await logJournal(session, log, unitInfo.unit);
