@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/components/api";
 import { Card, Label } from "@/components/settings-ui";
@@ -23,6 +23,8 @@ export function CleanupCard({ name, projectId }: { name: string; projectId?: str
   const [confirmIdle, setConfirmIdle] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Set when a status poll fails, so only that error is cleared by the next good poll (not a retry or cancel error).
+  const pollFailed = useRef(false);
   const cleanupId = status?.id;
   const cleanupState = status?.state;
   useEffect(() => {
@@ -39,9 +41,12 @@ export function CleanupCard({ name, projectId }: { name: string; projectId?: str
         if (response.status === 401 && !projectId) { router.push("/login"); router.refresh(); return; }
         const result = await response.json();
         if (!response.ok) throw new Error(result.error?.message ?? "Could not refresh cleanup status.");
-        if (alive) setStatus(result.cleanup);
+        if (alive) {
+          if (pollFailed.current) { pollFailed.current = false; setError(null); }
+          setStatus(result.cleanup);
+        }
         if (result.cleanup.state === "done" && projectId) { router.push("/projects"); router.refresh(); }
-      } catch (err) { if (alive) setError(err instanceof Error ? err.message : "Could not refresh cleanup status."); }
+      } catch (err) { if (alive) { pollFailed.current = true; setError(err instanceof Error ? err.message : "Could not refresh cleanup status."); } }
     };
     const timer = setInterval(() => void poll(), 5_000);
     return () => { alive = false; clearInterval(timer); };

@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
+import type { ZodError } from "zod";
 import { upsertUser } from "@/server/auth/session";
+import { zodToHttp } from "@/server/http";
 import { schema } from "@/server/db";
 import {
   isHealthy,
@@ -34,7 +36,21 @@ import { createServer } from "@/server/servers";
 import { parseServiceStatus } from "@/server/service-status";
 import { useFreshDb } from "@/server/test/db";
 
-const LIMITS = { diskPct: 90, memoryPct: 90, cpuPct: 90 };
+/**
+ * The status and code the API answers a refused call with. The service layer throws a ZodError
+ * from its parse; the route wrapper maps it with zodToHttp to a 400 "validation". Anything else
+ * (a TypeError from a bug, say) fails the mapping, so it fails the test rather than passing.
+ */
+async function refusalOf(attempt: Promise<unknown>) {
+  return attempt.then(
+    () => {
+      throw new Error("The call was accepted, but it should have been refused.");
+    },
+    (err: unknown) => zodToHttp(err as ZodError)
+  );
+}
+
+const LIMITS ={ diskPct: 90, memoryPct: 90, cpuPct: 90 };
 const usage = (over: Partial<Record<string, number | null>> = {}) => ({
   cpuLoad: 0.2,
   cpus: 4,
@@ -416,7 +432,11 @@ describe("muting", () => {
   });
 
   it("rejects an unknown duration", async () => {
-    await expect(setMute(userId, project.id, { duration: "1w" })).rejects.toBeTruthy();
+    await expect(refusalOf(setMute(userId, project.id, { duration: "1w" }))).resolves.toMatchObject({
+      status: 400,
+      code: "validation",
+      message: expect.stringMatching(/^duration: /),
+    });
   });
 });
 
@@ -477,9 +497,21 @@ describe("settings", () => {
   });
 
   it("refuses bad values with a 400 and changes nothing", async () => {
-    await expect(setAlertSettings(userId, project.id, { diskPct: 101 })).rejects.toBeTruthy();
-    await expect(setAlertSettings(userId, project.id, { memoryPct: -3 })).rejects.toBeTruthy();
-    await expect(setAlertSettings(userId, project.id, { cpuPct: 50.5 })).rejects.toBeTruthy();
+    await expect(refusalOf(setAlertSettings(userId, project.id, { diskPct: 101 }))).resolves.toMatchObject({
+      status: 400,
+      code: "validation",
+      message: "diskPct: The disk limit cannot be above 100.",
+    });
+    await expect(refusalOf(setAlertSettings(userId, project.id, { memoryPct: -3 }))).resolves.toMatchObject({
+      status: 400,
+      code: "validation",
+      message: "memoryPct: The memory limit must be at least 1.",
+    });
+    await expect(refusalOf(setAlertSettings(userId, project.id, { cpuPct: 50.5 }))).resolves.toMatchObject({
+      status: 400,
+      code: "validation",
+      message: "cpuPct: The CPU limit must be a whole number.",
+    });
     expect((await row()).alertDiskPct).toBe(90);
   });
 

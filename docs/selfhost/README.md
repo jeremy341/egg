@@ -400,7 +400,7 @@ Then generate a private key and put the values in `.env.local`:
 
 Egg treats GitHub as set up only when the App ID, private key, client id, client secret and webhook secret are all non-empty. Set all six, then restart Egg. The **Install the GitHub App** button on the New project page then appears.
 
-The repository also holds `web/scripts/create-github-app.mjs`, which creates the App through GitHub's manifest form and writes the values into `.env.local`. It is not mentioned anywhere else and it was not tested for this guide. Two things to know before you use it: it assumes `APP_URL` is `http://localhost:3100` unless you set `APP_URL` in the environment when you run it, and it leaves the webhook secret empty, so Egg will not count GitHub as set up until you add `GITHUB_WEBHOOK_SECRET` yourself.
+The repository also holds `web/scripts/create-github-app.mjs`, which creates the App through GitHub's manifest form and writes the values into `.env.local`. It is not mentioned anywhere else and it was not tested for this guide. Two things to know before you use it: it reads `APP_URL` from `web/.env.local` (setup writes `http://localhost:3000`) unless you set `APP_URL` in the environment when you run it, and it leaves the webhook secret empty, so Egg will not count GitHub as set up until you add `GITHUB_WEBHOOK_SECRET` yourself.
 
 ### Webhooks need an address GitHub can reach
 

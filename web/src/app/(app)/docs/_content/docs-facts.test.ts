@@ -590,7 +590,7 @@ describe("Run Egg yourself and the self-hosting guide", () => {
     expect(read("web/scripts/setup.mjs")).toContain("LOCAL_MODE_SECRET=");
     expect(read("web/scripts/create-github-app.mjs")).toContain('process.env.APP_URL ?? "http://localhost:3100"');
     expect(read("web/scripts/create-github-app.mjs")).toContain('app.webhook_secret ?? ""');
-    expect(guide).toContain("http://localhost:3100");
+    expect(guide).toContain("reads `APP_URL` from `web/.env.local`");
     expect(page).toContain("pnpm fake-nest");
     expect(page).toContain("pnpm egg start");
   });
