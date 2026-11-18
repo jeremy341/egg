@@ -9,7 +9,7 @@ import { ContainerBodySkeleton } from "@/components/container-skeleton";
 import { TypedConfirmDialog } from "@/components/container-typed-confirm";
 import { PageHeader } from "@/components/page-header";
 import { PixelMeter } from "@/components/pixel-kit";
-import { Label } from "@/components/settings-ui";
+import { DocsLink, Label } from "@/components/settings-ui";
 import { StatusIndicator } from "@/components/status-dot";
 import { Alert } from "@/components/ui/alert";
 import { ConfirmDialog } from "@/components/ui/alert-dialog";
@@ -76,12 +76,15 @@ function Section({
   title,
   count,
   description,
+  learnMore,
   children,
 }: {
   id: string;
   title: string;
   count?: number;
   description: React.ReactNode;
+  /** Where the detail lives: the docs page and a topic that finishes the link's accessible name. */
+  learnMore?: { href: string; topic: string };
   children: React.ReactNode;
 }) {
   return (
@@ -95,6 +98,9 @@ function Section({
             <Badge variant="secondary" className="tabular">
               {count}
             </Badge>
+          ) : null}
+          {learnMore ? (
+            <DocsLink href={learnMore.href} topic={learnMore.topic} label="Learn more" className="ml-auto" />
           ) : null}
         </div>
         <div className="mt-0.5 max-w-[68ch] text-label text-muted-foreground">{description}</div>
@@ -421,7 +427,8 @@ function BuildMemoryField({ serverId }: { serverId: string }) {
     <Section
       id="container-build-memory"
       title="Build memory"
-      description="Your projects are built on your own container, never on Egg's machine. This sets the memory limit of a build. The allowed maximum follows the connected Nest server's reported memory, and the limit never goes above your container's memory minus 512 MB, which is kept for your app. Projects with a build step get at least 1024 MB while they build, if your container has room for it."
+      description="The memory limit of a build that runs on your container."
+      learnMore={{ href: "/docs/container#container-build-memory", topic: "build memory" }}
     >
       <form onSubmit={save} className="px-4 py-4">
         {loadError ? (
@@ -467,7 +474,8 @@ function BuildMemoryField({ serverId }: { serverId: string }) {
     <Section
       id="container-build-cpu"
       title="Build CPU"
-      description="This caps the CPU a build can use on your container. Its allowed maximum follows the connected Nest server's reported core count."
+      description="The CPU a build can use on your container."
+      learnMore={{ href: "/docs/container#container-build-cpu", topic: "build CPU" }}
     >
       <form onSubmit={saveCpu} className="px-4 py-4">
         {loadError ? (
@@ -582,7 +590,8 @@ function Body({
             id="container-orphans"
             title="Orphans"
             count={orphans.length}
-            description="An orphan is a service or folder Egg created earlier that none of your projects use any more. A leftover service keeps running and a leftover folder keeps using disk. Removing a service stops it and deletes its unit file. Deleting a folder permanently deletes the files inside it."
+            description="Services and folders Egg created earlier that none of your projects use any more."
+            learnMore={{ href: "/docs/container#container-leftovers", topic: "removing leftovers" }}
           >
             {!canRemove ? (
               <div className="border-b px-4 py-3">

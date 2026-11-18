@@ -158,6 +158,8 @@ export const RATE_LIMITS = {
   buildEnv: { limit: 30, windowMs: 60 * 60_000, what: "build variable reads" },
   // "Test connection" in settings: it makes GitHub requests, so it is per signed-in user, per minute.
   githubCheck: { limit: 10, windowMs: 60_000, what: "GitHub connection tests" },
+  // Opening the pull request that adds the build workflow makes GitHub write calls, so it is per signed-in user.
+  workflowPublish: { limit: 6, windowMs: 60_000, what: "workflow pull requests" },
   // The public homepage feed, per client address. It is cached for a minute, so this only stops a flood.
   publicFeed: { limit: 60, windowMs: 60_000, what: "the public deployments feed" },
   // Every request the proxy sees (pages and API), per client address.

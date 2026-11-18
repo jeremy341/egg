@@ -265,8 +265,8 @@ export function Table({
                 scope="col"
                 className={cn(
                   "border-b py-2.5 px-4 text-left text-[13px] font-medium text-muted-foreground",
-                  wide && head.indexOf(h) === 0 && "w-[30%]",
-                  wide && head.indexOf(h) === head.length - 1 && "w-[24%]"
+                  wide && head.indexOf(h) === 0 && "w-[26%]",
+                  wide && head.indexOf(h) === head.length - 1 && "w-[32%]"
                 )}
               >
                 {h}
@@ -288,9 +288,9 @@ export function Table({
                       ? "font-medium text-foreground [&_code]:[overflow-wrap:anywhere]"
                       : "text-reading [&_code]:[overflow-wrap:normal]",
                     j === 0 && !wide && "sm:w-[34%]",
-                    j === 0 && wide && "sm:w-[30%]",
+                    j === 0 && wide && "sm:w-[26%]",
                     // The last column (the default, or the start command) gets room of its own, so it never narrows to a sliver.
-                    wide && j === r.length - 1 && j !== 0 && "sm:w-[24%]"
+                    wide && j === r.length - 1 && j !== 0 && "sm:w-[32%]"
                   )}
                 >
                   {cell}

@@ -38,7 +38,7 @@ export default function FlowLayout({ children }: { children: React.ReactNode }) 
               <ServerSwitcher />
             </div>
             <p className="pointer-events-none absolute left-1/2 hidden -translate-x-1/2 font-medium tracking-[-0.02em] md:block">
-              New Project
+              New project
             </p>
             <Button
               variant="ghost"

@@ -252,9 +252,10 @@ export function ProjectSettings({
           <Card
             id="env-heading"
             title="Environment Variables"
-            description="Stored encrypted. They are written to your server when you deploy, and values are never shown again."
+            description="Stored encrypted. Values are never shown again."
             docsHref="/docs/env"
             docsTopic="environment variables"
+            docsLabel="Learn more"
           >
             <form
               onSubmit={addEnv}
@@ -367,7 +368,7 @@ export function ProjectSettings({
           <Card
             id="danger-heading"
             title="Delete Project"
-            description="Removes the project from Egg. Optionally stops it and deletes its releases on your server first. The lists below show what goes and what stays."
+            description="Removes the project from Egg. The lists below show what goes and what stays."
             tone="danger"
             footer={
               <>

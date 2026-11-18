@@ -61,6 +61,7 @@ export function DeployHookCard({ project }: { project: ProjectView }) {
       description="A private URL that starts a deployment when something sends it a POST. Use it from CI, a cron job or a script."
       docsHref="/docs/hooks"
       docsTopic="deploy hooks"
+      docsLabel="Learn more"
     >
       {url ? (
         <div className="motion-enter space-y-3">
@@ -85,11 +86,6 @@ export function DeployHookCard({ project }: { project: ProjectView }) {
       ) : (
         <p className="text-muted-foreground">No hook yet. Create one to get a URL you can call from CI.</p>
       )}
-      <p className="mt-3 text-label text-muted-foreground">
-        An optional body of <code className="font-mono">{`{ "branch": "my-branch" }`}</code> builds
-        that branch as a preview. One deployment runs at a time: a second call while one is running
-        gets a 409.
-      </p>
       {error ? (
         <Alert tone="error" role="alert" className="mt-3">
           {error}
@@ -292,18 +288,16 @@ export function StatusPageCard({ project }: { project: ProjectView }) {
     <Card
       id="status-page-heading"
       title="Public Status Page"
-      description="A page anyone with the link can open to see whether this app is answering. It shows the name, the current state and recent outages, and nothing else."
+      description="A public page that shows whether this app is answering."
       docsHref="/docs/status-page"
       docsTopic="the public status page"
+      docsLabel="Learn more"
     >
       {url ? (
         <CopyField value={url} label="Status page URL" />
       ) : (
         <p className="text-muted-foreground">Not published.</p>
       )}
-      <p className="mt-3 text-label text-muted-foreground">
-        It reflects the worker&apos;s checks, which run every few minutes. Unpublishing makes the old link stop working.
-      </p>
       {error ? (
         <Alert tone="error" role="alert" className="mt-3">
           {error}
@@ -521,9 +515,10 @@ export function AlertsCard({ project }: { project: ProjectView }) {
     <Card
       id="alerts-heading"
       title="Alerts"
-      description="Choose what counts as a problem, which problems reach your webhook, and when to stay quiet. Every alert is kept in the history below, even when it is not sent."
+      description="Choose what counts as a problem and when to stay quiet."
       docsHref="/docs/notifications"
       docsTopic="alerts"
+      docsLabel="Learn more"
       footer={
         settings ? (
           <>

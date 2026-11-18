@@ -1,6 +1,6 @@
 # Plan: build in GitHub Actions, deploy the finished release to the container
 
-Status (2026-11-13): built on the server side. Egg accepts a finished release from a GitHub Actions workflow with scoped build credentials (`web/src/server/builds/`, migration `0030_github_builds`); uploads have an idle and total time limit and a concurrency cap. Still open from this plan: a workflow generator in the dashboard and a "test connection" button. The text below is the original plan.
+Status (2026-11-13): built on the server side. Egg accepts a finished release from a GitHub Actions workflow with scoped build credentials (`web/src/server/builds/`, migration `0030_github_builds`); uploads have an idle and total time limit and a concurrency cap. The dashboard can now open a pull request that adds the workflow to the repository (`POST /api/projects/[id]/github-workflow/publish`, `web/src/server/builds/workflow-publish.ts`). That needs the GitHub App to have Contents, Pull requests and Workflows read and write; without them the dashboard falls back to copy and download. The text below is the original plan.
 
 ## Why
 

@@ -12,6 +12,8 @@ import {
 import { api } from "@/components/api";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { BuildLocationChoice } from "@/components/build-location-choice";
+import type { BuildLocation } from "@/server/db/schema";
 import { Button } from "@/components/ui/button";
 import {
   DetectedSummary,
@@ -142,7 +144,7 @@ function useConflictCheck(args: {
   return loaded.result;
 }
 
-function Configure({
+export function Configure({
   source,
   servers,
   onBack,
@@ -165,6 +167,11 @@ function Configure({
   const [outputDir, setOutputDir] = useState("");
   const [envValues, setEnvValues] = useState<Record<string, string>>({});
   const [adopted, setAdopted] = useState(false);
+  // Only a project linked through the GitHub app can build on GitHub: the app opens the pull request and receives
+  // the release. A pasted public URL has no link, so it keeps building on the container and sends no choice.
+  const canChooseBuild = source.installationId !== null;
+  const [buildLocation, setBuildLocation] = useState<BuildLocation>("github");
+  const buildsOnGithub = canChooseBuild && buildLocation === "github";
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -234,6 +241,7 @@ function Configure({
             port: Number(port),
             // The server turns automatic deploys off for an adopted project.
             adopted,
+            ...(canChooseBuild ? { buildLocation } : {}),
           },
         });
         createdRef.current = created.project;
@@ -247,9 +255,17 @@ function Configure({
           await api(`/api/projects/${project.id}/env`, { body: { key: e.name, value, target: "all" } });
         } catch (err) {
           throw new Error(
-            `The project was created, but ${e.name} was not saved: ${err instanceof Error ? err.message : "error"}. Press Deploy to try again.`
+            `The project was created, but ${e.name} was not saved: ${err instanceof Error ? err.message : "error"}. ${
+              buildsOnGithub ? "Add it in the project settings." : "Press Deploy to try again."
+            }`
           );
         }
+      }
+      if (buildsOnGithub) {
+        // A GitHub Actions build waits for a release that only the workflow can send, and the workflow is not
+        // there yet. Go to the guided setup instead of starting a deployment that would wait for nothing.
+        router.push(`/projects/${project.slug}/settings#builds-heading`);
+        return;
       }
       const dep = await api<{ deployment: { id: string } }>(
         `/api/projects/${project.id}/deploy`,
@@ -286,7 +302,7 @@ function Configure({
         tabIndex={-1}
         className="text-title-2 focus:outline-none focus-visible:outline-none"
       >
-        New Project
+        New project
       </h1>
 
       <div className="mt-5 rounded-md bg-[var(--ds-gray-100)] px-3 py-2.5">
@@ -399,6 +415,24 @@ function Configure({
         />
       ) : null}
 
+      {canChooseBuild ? (
+        <div className="mt-5">
+          <BuildLocationChoice
+            name="np-build-location"
+            legend="How should Egg build it?"
+            showLegend
+            value={buildLocation}
+            onChange={setBuildLocation}
+            describedBy="np-build-note"
+          />
+          <p id="np-build-note" className="mt-1.5 text-label text-muted-foreground">
+            {buildsOnGithub
+              ? "Next you make the build credentials and add the workflow file. The first build runs after that."
+              : "Egg builds on your container and deploys when the build finishes."}
+          </p>
+        </div>
+      ) : null}
+
       <div className="mt-5">
         <label
           htmlFor="np-adopt"
@@ -410,7 +444,7 @@ function Configure({
             className="mt-1 size-4 shrink-0"
             checked={adopted}
             onChange={(e) => setAdopted(e.target.checked)}
-            aria-describedby="np-adopt-note"
+            aria-describedby={adopted ? "np-adopt-note" : undefined}
           />
           <span className="min-w-0">
             <span className="block font-medium">Start with automatic deploys off</span>
@@ -419,11 +453,14 @@ function Configure({
             </span>
           </span>
         </label>
-        <p id="np-adopt-note" className="mt-1.5 text-label text-muted-foreground">
-          {adopted
-            ? "The first deploy is manual, and automatic deploys start only after you confirm that first deploy works. Egg changes nothing it did not create, so stop your old process yourself if it holds the port."
-            : "Tick this if you already run this repository here by hand. Otherwise automatic deploys stay on."}
-        </p>
+        {adopted ? (
+          <p id="np-adopt-note" className="mt-1.5 text-label text-muted-foreground">
+            The first deploy is manual. Automatic deploys start after you confirm it works.{" "}
+            <Link href="/docs/container#container-adopt" className="link font-medium">
+              Learn more
+            </Link>
+          </p>
+        ) : null}
       </div>
 
       <div className="mt-5">
@@ -461,7 +498,10 @@ function Configure({
 
       <p className="mt-4 text-label text-muted-foreground">
         Your app must listen on the <code className="font-mono">PORT</code> environment variable on{" "}
-        <code className="font-mono">0.0.0.0</code>. Environment variables can be added in the project settings.
+        <code className="font-mono">0.0.0.0</code>.{" "}
+        <Link href="/docs/projects#projects-guarantees" className="link font-medium">
+          Learn more
+        </Link>
       </p>
 
       {error ? (
@@ -478,7 +518,7 @@ function Configure({
         disabled={!nameOk || !serverId || blocking.length > 0}
         aria-describedby={blocking.length > 0 ? "np-blocked" : undefined}
       >
-        {busy ? "Starting deployment…" : "Deploy"}
+        {buildsOnGithub ? (busy ? "Creating project…" : "Create and set up builds") : busy ? "Starting deployment…" : "Deploy"}
       </Button>
       <Button
         type="button"
@@ -666,7 +706,7 @@ export function NewProjectFlow({
 
       <section aria-labelledby="import-heading" className="mt-8">
         <h2 id="import-heading" className="mb-3 text-title-2">
-          Import Git Repository
+          Choose a repository
         </h2>
 
         {hasInstall ? (
