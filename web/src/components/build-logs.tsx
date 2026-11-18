@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import {
   CaretRightIcon,
@@ -19,6 +19,9 @@ export type LogLine = {
   message: string;
 };
 
+const subscribeNone = () => () => {};
+
+/** Local time of day. Only called after mount, so the server and the first client render never differ. */
 function clock(iso: string) {
   const d = new Date(iso);
   const p = (n: number, w = 2) => String(n).padStart(w, "0");
@@ -49,13 +52,19 @@ export function BuildLogs({
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const active = isActive(rawState);
+  // Local time after mount; the server render shows a placeholder so the two never disagree.
+  const mounted = useSyncExternalStore(subscribeNone, () => true, () => false);
+  // The newest line id this page has. The stream resumes after it. It is a ref, not an effect
+  // dependency: the page refreshes every few seconds and passes a new `initialLines` each time,
+  // which must not close and reopen the stream.
+  const lastId = useRef(initialLines.at(-1)?.id ?? 0);
 
   useEffect(() => {
     if (!active) return;
-    const last = initialLines.at(-1)?.id ?? 0;
-    const es = new EventSource(`/api/deployments/${deploymentId}/stream?after=${last}`);
+    const es = new EventSource(`/api/deployments/${deploymentId}/stream?after=${lastId.current}`);
     es.addEventListener("log", (e) => {
       const line = JSON.parse((e as MessageEvent).data) as LogLine;
+      lastId.current = Math.max(lastId.current, line.id);
       setLines((prev) => (prev.some((p) => p.id === line.id) ? prev : [...prev, line]));
     });
     es.addEventListener("state", () => {
@@ -68,7 +77,7 @@ export function BuildLogs({
       router.refresh();
     };
     return () => es.close();
-  }, [active, deploymentId, initialLines, router]);
+  }, [active, deploymentId, router]);
 
   // Keep the status badge above the log fresh while a deployment runs.
   useEffect(() => {
@@ -154,7 +163,7 @@ export function BuildLogs({
             ) : (
               visible.map((l) => (
                 <p key={l.id} className="log-line flex gap-4 whitespace-pre-wrap">
-                  <span className="tabular shrink-0 text-subtle-foreground">{clock(l.at)}</span>
+                  <span className="tabular shrink-0 text-subtle-foreground">{mounted ? clock(l.at) : "--:--:--.---"}</span>
                   <span
                     className={cn(
                       "break-all",

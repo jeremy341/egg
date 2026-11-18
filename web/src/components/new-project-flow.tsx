@@ -210,6 +210,7 @@ export function Configure({
   const headingRef = useRef<HTMLHeadingElement>(null);
   // Set once the project exists, so a retry after a failed env save does not create it twice.
   const createdRef = useRef<{ id: string; slug: string } | null>(null);
+  const portRef = useRef<HTMLInputElement>(null);
 
   // Detect from the repository: what it is, and the env names it asks for.
   const repoForDetect =
@@ -239,11 +240,18 @@ export function Configure({
     headingRef.current?.focus({ preventScroll: true });
   }, []);
 
-  const nameOk = /^[a-z0-9][a-z0-9-]{0,38}[a-z0-9]?$/.test(name);
+  // The same rule as the server's isValidSlug (server/deploy/layout.ts): it must end with a letter or digit.
+  const nameOk = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/.test(name);
   const hint = RUNTIMES.find((r) => r.value === runtime)?.hint ?? "";
 
   const portNumber = Number(port);
-  const portOk = port.trim() !== "" && Number.isInteger(portNumber) && portNumber >= 1 && portNumber <= 65535;
+  // The server's rule (server/projects.ts): 1024 to 65535, except the preview range 20000 to 29999.
+  const portOk =
+    port.trim() !== "" &&
+    Number.isInteger(portNumber) &&
+    portNumber >= 1024 &&
+    portNumber <= 65535 &&
+    (portNumber < 20000 || portNumber > 29999);
   const check = useConflictCheck({
     serverId,
     slug: name,
@@ -254,6 +262,12 @@ export function Configure({
   const blocking = check.status === "ok" ? check.conflicts.filter((c) => c.blocking) : [];
 
   async function submit() {
+    // The port lives in Advanced. Open it and mark the field rather than send a port the server refuses.
+    if (!portOk) {
+      setAdvancedOpen(true);
+      window.requestAnimationFrame(() => portRef.current?.focus());
+      return;
+    }
     setError(null);
     setBusy(true);
     try {
@@ -399,7 +413,7 @@ export function Configure({
           />
           {!nameOk ? (
             <p id="np-name-error" className="mt-1.5 text-label text-destructive">
-              Use lowercase letters, numbers and hyphens.
+              Use lowercase letters, numbers and hyphens. Start and end with a letter or number, up to 40 characters.
             </p>
           ) : null}
         </div>
@@ -441,7 +455,21 @@ export function Configure({
             </div>
             <div>
               <Label htmlFor="np-port">Port your app listens on</Label>
-              <Input id="np-port" inputMode="numeric" value={port} onChange={(e) => setPort(e.target.value)} className="font-mono" />
+              <Input
+                ref={portRef}
+                id="np-port"
+                inputMode="numeric"
+                value={port}
+                onChange={(e) => setPort(e.target.value)}
+                aria-invalid={!portOk}
+                aria-describedby={portOk ? undefined : "np-port-error"}
+                className="font-mono"
+              />
+              {!portOk ? (
+                <p id="np-port-error" className="mt-1.5 text-label text-destructive">
+                  Use a port from 1024 to 19999 or 30000 to 65535. Ports 20000 to 29999 are for previews.
+                </p>
+              ) : null}
             </div>
             <div className="sm:col-span-2">
               <Label htmlFor="np-install">Install command (optional)</Label>

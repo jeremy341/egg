@@ -321,7 +321,7 @@ export function ProjectSettings({
           >
             <form
               onSubmit={addEnv}
-              className="grid gap-3 sm:grid-cols-[1fr_1.4fr_130px_auto] sm:items-end"
+              className="grid gap-3 sm:grid-cols-2 min-[1280px]:grid-cols-[1fr_1.4fr_130px_auto] sm:items-end"
             >
               <div>
                 <Label htmlFor="env-key">Name</Label>
@@ -360,7 +360,8 @@ export function ProjectSettings({
                   <option value="preview">{ENV_TARGET_LABEL.preview}</option>
                 </NativeSelect>
               </div>
-              <Button type="submit" disabled={!key.trim()} loading={envSaving}>
+              {/* The stored value is never shown, so an update must carry a new one. Saving blank would erase it. */}
+              <Button type="submit" disabled={!key.trim() || (editing && !value)} loading={envSaving}>
                 {envSaving ? "Saving…" : editing ? "Update" : "Save"}
               </Button>
             </form>

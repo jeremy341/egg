@@ -216,7 +216,11 @@ export function detectFiles(dir: string): ProjectFiles {
   const hasPackageJson = has("package.json");
   if (hasPackageJson) {
     try {
-      const pkg = JSON.parse(readFileSync(path.join(dir, "package.json"), "utf8"));
+      // Only a regular, small file is read. A symlink to a device or a huge file must not be read into memory.
+      const manifest = path.join(dir, "package.json");
+      const stat = lstatSync(manifest);
+      if (!stat.isFile() || stat.size > 1_000_000) throw new Error("package.json is not a small regular file");
+      const pkg = JSON.parse(readFileSync(manifest, "utf8"));
       hasBuildScript = typeof pkg?.scripts?.build === "string";
       if (typeof pkg?.engines?.node === "string") nodeEngine = pkg.engines.node.trim().slice(0, 200) || null;
     } catch {
