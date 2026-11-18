@@ -155,6 +155,10 @@ function smallestGapMinutes(s: Schedule): number | null {
   times.sort((a, b) => a - b);
   let min = Infinity;
   for (let i = 1; i < times.length; i++) min = Math.min(min, times[i] - times[i - 1]);
+  // The last time wraps round midnight to the first, so 23:58 and 00:00 are two minutes apart. That only holds on
+  // a day the job runs every day: with a day or weekday limit, 23:58 and 00:00 fall on different scheduled days.
+  const everyDay = s.days.length === 0 && s.weekdays.length === 0;
+  if (everyDay) min = Math.min(min, times[0] + 1440 - times[times.length - 1]);
   return min;
 }
 

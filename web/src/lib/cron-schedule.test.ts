@@ -63,6 +63,17 @@ describe("parseSchedule", () => {
     expect(parseSchedule("0 0,1 * * *").hours).toEqual([0, 1]);
   });
 
+  it("counts the gap across midnight", () => {
+    // 23:58 and 00:00 are two minutes apart.
+    expect(() => parseSchedule("0,58 23,0 * * *")).toThrow(ScheduleError);
+    expect(() => parseSchedule("0,58 23,0 * * *")).toThrow(/every 2 minutes/);
+  });
+
+  it("does not count midnight when the job runs on one weekday only", () => {
+    // Monday 23:58 is never followed by Tuesday 00:00 in the same run, so this is allowed.
+    expect(() => parseSchedule("0,58 23,0 * * 1")).not.toThrow();
+  });
+
   it("rejects absurd input without hanging", () => {
     expect(() => parseSchedule("0 0 * * * ".repeat(30))).toThrow(/too long/);
     expect(() => parseSchedule("1".repeat(500))).toThrow(/too long/);

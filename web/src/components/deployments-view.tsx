@@ -219,7 +219,17 @@ export function DeploymentsView({
     return () => clearTimeout(t);
   }, [serverMode, query.search, loadFirst]);
 
-  const set = <K extends keyof DeploymentQuery>(key: K, value: DeploymentQuery[K]) => {
+  // Paged mode: a row action (such as Cancel) refreshes the page and hands in a new `deployments`.
+  // The rows loaded here would otherwise stay stale, so start again from the newest page, as the
+  // bulk actions do. The first render is skipped: `loaded` was seeded from it.
+  const seenDeployments = useRef(deployments);
+  useEffect(() => {
+    if (seenDeployments.current === deployments) return;
+    seenDeployments.current = deployments;
+    if (serverMode) void loadFirst(queryRef.current);
+  }, [deployments, serverMode, loadFirst]);
+
+  const set =<K extends keyof DeploymentQuery>(key: K, value: DeploymentQuery[K]) => {
     const next = { ...query, [key]: value };
     setQuery(next);
     setShown(PAGE); // a new filter starts again from the top of the list
