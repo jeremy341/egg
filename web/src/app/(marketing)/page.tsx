@@ -5,7 +5,6 @@ import "@/components/marketing/home.css";
 import { BuildLogs } from "@/components/build-logs";
 import { DeploymentsView } from "@/components/deployments-view";
 import { GridFrame } from "@/components/marketing/grid-frame";
-import { HeroFieldLoader } from "@/components/marketing/hero-field-loader";
 import { HOME_FACTS, numberWord } from "@/components/marketing/home-facts";
 import { REPO_URL } from "@/lib/site";
 import { feedRowsToViews, homepageListMode, LIVE_CAPTION, SAMPLE_CAPTION } from "@/lib/public-feed";
@@ -33,8 +32,8 @@ const primary = cn(
 const secondary = cn(pill, "shadow-border-base bg-background hover:bg-[var(--ds-gray-100)]");
 
 /**
- * Text and two buttons over a field of creatures (HeroFieldLoader: a canvas and its controls,
- * loaded in the browser after this text; without it the hero is the plain grid). The headline is scanned in a pixel column at a time and the
+ * Text and two buttons, with the chicken (ChickenFieldLoader, in the layout) walking over the page
+ * in the browser; without them the hero is the plain grid. The headline is scanned in a pixel column at a time and the
  * rest rises in while the scan finishes. The hero fills the first screen under the 60px header, so
  * nothing else shows on load; the frame below starts under the fold (see GridFrame). It is sized
  * in svh, not dvh, so it does not change height (and push the page) when a phone's toolbar
@@ -45,13 +44,11 @@ function Hero() {
     <section data-no-ripple className="cf-hero flex min-h-[calc(100svh-3.75rem)] flex-col">
       <div className={cn(wrap, "cf-copy flex flex-1 flex-col items-center justify-center pt-16 pb-24 text-center xl:pb-16")}>
         <h1
-          data-field-zone=""
           className="hero-wipe font-pixel mx-auto max-w-[12ch] text-[clamp(3.5rem,10.5vw,11rem)] leading-[0.92] font-medium text-balance"
         >
           Deploy to your Nest.
         </h1>
         <p
-          data-field-zone=""
           style={{ "--rise-delay": "0.55s" } as React.CSSProperties}
           className="hero-rise mx-auto mt-9 max-w-[46ch] text-[clamp(1.125rem,1.7vw,1.5rem)] leading-[1.5] text-muted-foreground text-balance"
         >
@@ -59,7 +56,6 @@ function Hero() {
           builds and goes live on it, with logs, rollbacks and previews.
         </p>
         <div
-          data-field-zone=""
           style={{ "--rise-delay": "0.65s" } as React.CSSProperties}
           className="hero-rise mt-10 flex flex-wrap justify-center gap-3"
         >
@@ -74,15 +70,16 @@ function Hero() {
           </a>
         </div>
         <p
-          data-field-zone=""
           style={{ "--rise-delay": "0.75s" } as React.CSSProperties}
           className="hero-rise mt-7 max-w-[52ch] text-[14px] leading-6 text-muted-foreground text-balance"
         >
           Free. Made by a Hack Club member, and not an official Hack Club product.
         </p>
       </div>
-      {/* After the text, so its buttons follow the hero links in the tab order. */}
-      <HeroFieldLoader />
+      <p className="cf-hint" aria-hidden="true">
+        <span className="cf-fine">Click the grid to feed the chicken. Poke it, stroke it, pick it up.</span>
+        <span className="cf-coarse">Tap the grid to feed the chicken. Tap it to poke it.</span>
+      </p>
     </section>
   );
 }

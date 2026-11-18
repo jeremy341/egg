@@ -548,70 +548,33 @@
   margin-top: 60px;
 }
 
-/* ---- the hero field ------------------------------------------------------------------------ */
+/* ---- the chickens -------------------------------------------------------------------------- */
 
 /*
- * A canvas of creatures behind the hero text (hero-field.tsx, field/). The page stays black and
- * white: the only colour is in the creatures and in the small swatch on each switcher button.
- * The canvas takes no pointer events. The controls sit in the hero's bottom padding, so they
- * never push or cover the text, and they are squared like the frame below.
+ * The chickens walk over the whole page (chicken-field.tsx, field/), not just the hero. Their
+ * canvas is fixed and takes no pointer events; this is only the line of help at the bottom of
+ * the hero, under the text, so it never pushes or covers anything.
  */
 .egg-home .cf-hero {
   position: relative;
-  isolation: isolate;
 }
-.egg-home .cf-canvas {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  /* The engine reads this for the keyboard characters. */
-  font-family: var(--font-geist-mono), ui-monospace, monospace;
-}
-.egg-home .cf-copy {
-  position: relative;
-  z-index: 1;
-  transition: opacity 200ms cubic-bezier(0.23, 1, 0.32, 1);
-}
-/* H, or the button: the text steps aside and the field has the whole hero. */
-.egg-home .cf-hero[data-ui="off"] .cf-copy {
-  visibility: hidden;
-  opacity: 0;
-  transition:
-    opacity 200ms cubic-bezier(0.23, 1, 0.32, 1),
-    visibility 0s 200ms;
-}
-
-.egg-home .cf-bar {
+.egg-home .cf-hint {
   position: absolute;
   right: 0;
   bottom: 0;
   left: 0;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 0 16px 12px;
-  pointer-events: none;
+  padding: 0 16px 14px;
+  color: var(--muted-foreground);
   font-family: var(--font-geist-mono), ui-monospace, monospace;
   font-size: 12px;
   line-height: 16px;
-  animation: cf-in 400ms cubic-bezier(0.23, 1, 0.32, 1) 300ms backwards;
+  text-align: center;
+  animation: cf-in 400ms cubic-bezier(0.23, 1, 0.32, 1) 1200ms backwards;
 }
 @keyframes cf-in {
   from {
     opacity: 0;
   }
-}
-.egg-home .cf-bar > * {
-  pointer-events: auto;
-}
-.egg-home .cf-hint {
-  color: var(--muted-foreground);
-  text-align: center;
 }
 .egg-home .cf-coarse {
   display: none;
@@ -624,109 +587,8 @@
     display: inline;
   }
 }
-.egg-home .cf-controls {
-  display: flex;
-  gap: 8px;
-}
-.egg-home .cf-switch {
-  display: flex;
-}
-.egg-home .cf-bar button {
-  position: relative;
-  display: inline-flex;
-  min-width: 40px;
-  height: 40px;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  padding: 0 10px;
-  background: var(--background);
-  box-shadow: inset 0 0 0 1px var(--rule);
-  color: var(--muted-foreground);
-  white-space: nowrap;
-  cursor: pointer;
-  transition:
-    color 140ms ease-out,
-    background-color 140ms ease-out,
-    transform 120ms ease-out;
-}
-/* Neighbours share one hairline. */
-.egg-home .cf-switch button + button {
-  margin-left: -1px;
-}
-.egg-home .cf-bar button[aria-pressed="true"] {
-  z-index: 1;
-  box-shadow: inset 0 0 0 1px var(--foreground);
-  color: var(--foreground);
-}
-@media (hover: hover) {
-  .egg-home .cf-bar button:hover {
-    background: var(--ds-gray-100);
-    color: var(--foreground);
-  }
-}
-.egg-home .cf-bar button:active {
-  transform: scale(0.97);
-}
-.egg-home .cf-bar button:focus-visible {
-  z-index: 2;
-  outline: 2px solid var(--ds-focus-color);
-  outline-offset: 2px;
-}
-.egg-home .cf-sw {
-  width: 8px;
-  height: 8px;
-  flex: none;
-  background: var(--sw-l);
-}
-.dark .egg-home .cf-sw {
-  background: var(--sw-d);
-}
-.egg-home .cf-key {
-  font-variant-numeric: tabular-nums;
-  opacity: 0.75;
-}
-/* On a phone a button is a swatch and its number; the name stays for screen readers. */
-.egg-home .cf-name {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-.egg-home .cf-toggle .cf-key {
-  display: none;
-}
-/* Text hidden: the creature buttons and the hint go too. The button that brings it back stays. */
-.egg-home .cf-bar[data-shown="false"] .cf-hint,
-.egg-home .cf-bar[data-shown="false"] .cf-switch {
-  visibility: hidden;
-}
 @media (min-width: 640px) {
-  .egg-home .cf-bar {
-    padding: 0 30px 15px;
-  }
-  .egg-home .cf-bar button {
-    min-width: 30px;
-    height: 30px;
-  }
-  .egg-home .cf-name {
-    position: static;
-    width: auto;
-    height: auto;
-    overflow: visible;
-    clip-path: none;
-  }
-}
-@media (min-width: 1280px) {
-  .egg-home .cf-bar {
-    flex-direction: row;
-    justify-content: space-between;
-  }
-}
-@media (hover: hover) {
-  .egg-home .cf-toggle .cf-key {
-    display: inline;
+  .egg-home .cf-hint {
+    padding-bottom: 18px;
   }
 }

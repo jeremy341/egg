@@ -4,6 +4,8 @@ import { MobileMenu } from "@/components/marketing/mobile-menu";
 import { SiteHeader } from "@/components/marketing/site-header";
 import { NestMark } from "@/components/nest-mark";
 import { FooterSwitch } from "@/components/marketing/footer-switch";
+import { ChickenFieldLoader } from "@/components/marketing/chicken-field-loader";
+import { ChickenToggle } from "@/components/marketing/chicken-toggle";
 import { PixelField } from "@/components/pixel-field";
 import { ThemeButton } from "@/components/theme-button";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -35,6 +37,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
         style={{ backgroundSize: `${GRID_CELL}px ${GRID_CELL}px` }}
       />
       <PixelField fixed tone="mono" cell={GRID_CELL} />
+      <ChickenFieldLoader />
       <a
         href="#top"
         className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-(--z-skip) focus:rounded-md focus:bg-background focus:px-3 focus:py-2 focus:shadow-menu"
@@ -128,6 +131,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
                 <div className="mt-2">
                   <ThemeToggle />
                 </div>
+                <ChickenToggle className={`${footerLink} mt-1 text-left`} />
               </nav>
             </div>
           </footer>
