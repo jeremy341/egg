@@ -160,6 +160,8 @@ export const RATE_LIMITS = {
   githubCheck: { limit: 10, windowMs: 60_000, what: "GitHub connection tests" },
   // Opening the pull request that adds the build workflow makes GitHub write calls, so it is per signed-in user.
   workflowPublish: { limit: 6, windowMs: 60_000, what: "workflow pull requests" },
+  // Granting or removing an administrator, per signed-in administrator. Rare by design, so a low ceiling.
+  adminGrant: { limit: 10, windowMs: 60_000, what: "administrator changes" },
   // The public homepage feed, per client address. It is cached for a minute, so this only stops a flood.
   publicFeed: { limit: 60, windowMs: 60_000, what: "the public deployments feed" },
   // Every request the proxy sees (pages and API), per client address.
