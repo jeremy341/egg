@@ -128,6 +128,8 @@ const tile =
 const LIGHT_PRESETS = PRESETS.filter((p) => p.scheme === "light");
 const DARK_PRESETS = PRESETS.filter((p) => p.scheme === "dark");
 const APPEARANCE_KEYS = ["matchDevice", "lightPreset", "darkPreset", "preset", "density", "reducedMotion"] as const;
+/** Fields saved to the account. A failed save puts back only the ones it changed. */
+const ACCOUNT_KEYS = ["displayName", "defaultBranch", "avatar", "analyticsDefaults"] as const;
 
 /** A custom theme as a picker tile: the same four colours a built-in theme shows. */
 function customDef(t: CustomThemeView): PresetDef {
@@ -227,11 +229,10 @@ export function SettingsForm({
     } catch (err) {
       const text = err instanceof Error ? err.message : "Could not save";
       // Appearance already changed on this device; the account keeps the old value.
-      const accountOnly =
-        patch.displayName !== undefined ||
-        patch.defaultBranch !== undefined ||
-        patch.avatar !== undefined ||
-        patch.analyticsDefaults !== undefined;
+      const accountKeys = ACCOUNT_KEYS.filter((key) => patch[key] !== undefined);
+      const accountOnly = accountKeys.length > 0;
+      // A newer save has started since this one. It owns the message and the fields now, so leave them alone.
+      if (ticket !== saving.current) return false;
       setMessage({
         group,
         tone: "error",
@@ -240,13 +241,10 @@ export function SettingsForm({
           : `Not saved to your account. ${text} The change still applies on this device.`,
       });
       if (accountOnly) {
-        setPrefs((p) => ({
-          ...p,
-          displayName: before.displayName,
-          defaultBranch: before.defaultBranch,
-          avatar: before.avatar,
-          analyticsDefaults: before.analyticsDefaults,
-        }));
+        // Put back only the account fields this request changed, to the value they had before it.
+        const restore: Partial<Preferences> = {};
+        for (const key of accountKeys) Object.assign(restore, { [key]: before[key] });
+        setPrefs((p) => ({ ...p, ...restore }));
       }
       return false;
     }

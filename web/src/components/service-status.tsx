@@ -74,20 +74,38 @@ export function ServiceCard({ projectId }: { projectId: string }) {
   const [loading, setLoading] = useState(true);
   const [restartMsg, setRestartMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const inFlight = useRef(false);
+  /** A check asked for while one is running. One follow-up is kept, and it is fresh if any request asked for fresh. */
+  const pending = useRef(false);
+  const pendingFresh = useRef(false);
 
   /** Ask the container. State changes only happen after the answer arrives. */
-  const check = useCallback(async (fresh = false) => {
-    if (inFlight.current) return;
+  const check = useCallback(async (fresh = false): Promise<void> => {
+    if (inFlight.current) {
+      // Not dropped: one follow-up check runs when the one in flight ends.
+      pending.current = true;
+      pendingFresh.current = pendingFresh.current || fresh;
+      return;
+    }
     inFlight.current = true;
+    let ask = fresh;
     try {
-      // The server reuses a reading under 30 seconds old; `fresh` always asks the container.
-      const res = await api<{ status: ServiceStatus }>(
-        `/api/projects/${projectId}/status${fresh ? "?fresh=1" : ""}`
-      );
-      setStatus(res.status);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not check the service");
+      // One more pass runs if a check was asked for while the last pass was in flight.
+      // Check now keeps its spinner until that pass has answered.
+      do {
+        pending.current = false;
+        pendingFresh.current = false;
+        try {
+          // The server reuses a reading under 30 seconds old; `fresh` always asks the container.
+          const res = await api<{ status: ServiceStatus }>(
+            `/api/projects/${projectId}/status${ask ? "?fresh=1" : ""}`
+          );
+          setStatus(res.status);
+          setError(null);
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Could not check the service");
+        }
+        ask = pendingFresh.current;
+      } while (pending.current);
     } finally {
       inFlight.current = false;
       setLoading(false);
