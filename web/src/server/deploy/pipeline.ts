@@ -388,6 +388,8 @@ export async function runDeployJob(
   let workDir: string | null = null;
   let session: NestSession | null = null;
   let previewUnitWritten = false;
+  // Set once the release folder exists, so a failure before the switch can remove the folder it built.
+  let releaseBuilt = false;
   let productionUnitWritten = false;
   let productionActivated = false;
   let productionUnitName: string | null = null;
@@ -521,6 +523,8 @@ export async function runDeployJob(
     await run(session, log, "Checking the service name", remote.guardUnitFree(deps.unitDir, unitInfo.unit), 120_000, signal);
 
     // Install and build in the new release folder, under a cap, while the running app keeps serving.
+    // From here a failure, or a cancel, can leave the folder behind, so the catch block removes it.
+    releaseBuilt = true;
     await runContainerBuild({
       session,
       log,
@@ -671,6 +675,16 @@ export async function runDeployJob(
     log.error(message);
     await log.flush().catch(() => {});
     const canceled = (await stateOf(deploymentId)) === "canceled";
+    // A built release that was never switched on is a folder nothing serves: remove it, or it fills the disk
+    // and blocks every later deploy's space check. A live release is never touched here.
+    if (releaseBuilt && session && !productionActivated && !previewUnitWritten) {
+      const home = (await getProbe(session, server).catch(() => null))?.home;
+      if (home) {
+        await session
+          .script(discardBuildScript({ home, slug: project.slug, releaseId: dep.releaseId }), { timeoutMs: 60_000 })
+          .catch(() => {});
+      }
+    }
     if (previewUnitWritten && session) {
       // A preview that did not come up must not stay behind as an enabled, restarting service.
       const home = (await getProbe(session, server).catch(() => null))?.home;
