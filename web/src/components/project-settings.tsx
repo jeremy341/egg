@@ -321,7 +321,7 @@ export function ProjectSettings({
           >
             <form
               onSubmit={addEnv}
-              className="grid gap-3 sm:grid-cols-[1fr_1.4fr_130px_auto] sm:items-end"
+              className="grid gap-3 sm:grid-cols-2 min-[1280px]:grid-cols-[1fr_1.4fr_130px_auto] sm:items-end"
             >
               <div>
                 <Label htmlFor="env-key">Name</Label>

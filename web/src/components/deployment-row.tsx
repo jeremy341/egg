@@ -32,7 +32,7 @@ function EnvPill({ deployment }: { deployment: DeploymentView }) {
 }
 
 /**
- * One deployment. A grid on md and up, a stacked card on phones.
+ * One deployment. A grid from 1400px up, a stacked card below that.
  * The whole row is one link (stretched over the commit text); the actions
  * menu sits above it.
  */
@@ -66,15 +66,15 @@ export function DeploymentRow({
     <li
       className={cn(
         // Phones: title on its own line, then status, environment and age, then the branch.
-        "density-row relative grid grid-cols-[auto_auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 px-4 py-3 md:gap-x-4 md:gap-y-3",
+        "density-row relative grid grid-cols-[auto_auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 px-4 py-3 min-[1400px]:gap-x-4 min-[1400px]:gap-y-3",
         selectable && "pl-12",
         selected && "bg-[var(--ds-gray-alpha-100)]",
         (!demo || live) &&
           "row-focus transition-colors duration-(--dur-fast) hover:bg-[var(--ds-gray-alpha-100)]",
         showProject
-          ? "md:grid-cols-[150px_minmax(0,1fr)_110px_120px_272px_88px_32px]"
-          : "md:grid-cols-[minmax(0,1fr)_110px_120px_272px_88px_32px]",
-        "md:items-center"
+          ? "min-[1400px]:grid-cols-[150px_minmax(0,1fr)_110px_120px_272px_88px_32px]"
+          : "min-[1400px]:grid-cols-[minmax(0,1fr)_110px_120px_272px_88px_32px]",
+        "min-[1400px]:items-center"
       )}
     >
       {selectable ? (
@@ -91,7 +91,7 @@ export function DeploymentRow({
       ) : null}
 
       {showProject ? (
-        <p className="relative z-10 hidden min-w-0 md:block">
+        <p className="relative z-10 hidden min-w-0 min-[1400px]:block">
           <Link
             href={`/projects/${deployment.projectSlug}`}
             className="truncate font-medium tracking-[-0.02em] text-foreground underline-offset-4 hover:underline focus-visible:underline"
@@ -102,9 +102,9 @@ export function DeploymentRow({
       ) : null}
 
       <div className="contents">
-        <p className="min-w-0 truncate max-md:col-span-3">
+        <p className="min-w-0 truncate max-[1399px]:col-span-3">
           {showProject ? (
-            <span className="mr-2 font-medium tracking-[-0.02em] md:hidden">
+            <span className="mr-2 font-medium tracking-[-0.02em] min-[1400px]:hidden">
               {deployment.projectName}
             </span>
           ) : null}
@@ -139,8 +139,8 @@ export function DeploymentRow({
           <span>
             <EnvPill deployment={deployment} />
           </span>
-          <p className="flex min-w-0 items-center gap-2 overflow-hidden font-mono text-[13px] text-muted-foreground max-md:order-1 max-md:col-span-3 md:gap-3">
-            <span className="flex shrink-0 items-center gap-1 max-md:hidden">
+          <p className="flex min-w-0 items-center gap-2 overflow-hidden font-mono text-[13px] text-muted-foreground max-[1399px]:order-1 max-[1399px]:col-span-3 min-[1400px]:gap-3">
+            <span className="flex shrink-0 items-center gap-1 max-[1399px]:hidden">
               <GitCommitIcon aria-hidden="true" className="size-4 shrink-0" />
               {deployment.sha ? (
                 <CommitLink repo={deployment.repo} sha={deployment.sha} link={!demo || live} />
@@ -148,9 +148,9 @@ export function DeploymentRow({
                 deployment.id.slice(0, 7)
               )}
             </span>
-            <span className="flex min-w-[12ch] items-center gap-1 max-md:flex-1 max-md:min-w-0">
+            <span className="flex min-w-[12ch] items-center gap-1 max-[1399px]:flex-1 max-[1399px]:min-w-0">
               <GitBranchIcon aria-hidden="true" className="size-4 shrink-0" />
-              <span className="min-w-[12ch] truncate max-md:min-w-0" title={deployment.branch}>
+              <span className="min-w-[12ch] truncate max-[1399px]:min-w-0" title={deployment.branch}>
                 {deployment.branch}
               </span>
             </span>
@@ -161,7 +161,7 @@ export function DeploymentRow({
             ) : null}
           </p>
         </div>
-        <p className="flex shrink-0 items-center justify-end gap-2 text-muted-foreground max-md:min-w-0 max-md:justify-self-end max-sm:col-start-3">
+        <p className="flex shrink-0 items-center justify-end gap-2 text-muted-foreground max-[1399px]:min-w-0 max-[1399px]:justify-self-end max-sm:col-start-3">
           <span className="tabular whitespace-nowrap">{deployment.age}</span>
           {live ? null : (
             <Avatar size="sm" className="max-sm:hidden">
@@ -173,7 +173,7 @@ export function DeploymentRow({
         </p>
       </div>
 
-      <div className="relative z-10 hidden justify-self-end md:block">
+      <div className="relative z-10 hidden justify-self-end min-[1400px]:block">
         {demo ? null : <DeploymentActions deployment={deployment} />}
       </div>
     </li>
