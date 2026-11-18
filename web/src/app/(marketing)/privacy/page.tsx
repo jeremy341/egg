@@ -26,9 +26,7 @@ export default function PrivacyPage() {
   return (
     <>
       <header className="board-col pt-[60px] lg:pt-[120px]">
-        <p className="mb-4 font-mono text-[0.8125rem] uppercase tracking-[0.12em] text-muted-foreground">
-          Data, plainly · Updated 12 November 2026
-        </p>
+        <p className="mb-4 text-[0.875rem] text-muted-foreground">Updated 12 November 2026</p>
         <PageTitle>Privacy and data use</PageTitle>
         <Lead>
           This page describes what this version of Egg does with information, based on the code in this repository. Egg
