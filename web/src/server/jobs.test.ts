@@ -1,5 +1,5 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { eq, inArray } from "drizzle-orm";
 import { upsertUser } from "@/server/auth/session";
 import { schema } from "@/server/db";
 import type { PipelineDeps } from "@/server/deploy/pipeline";
@@ -39,22 +39,36 @@ afterAll(async () => {
 });
 
 describe("queue", () => {
+  // Each test records the deployments it queued. afterEach finishes only those jobs, so a test
+  // never relies on rows an earlier test left behind, and never touches another test's rows.
+  let ownDeploymentIds: string[] = [];
+  async function queueDeploy(projectId: string, branchName?: string) {
+    const dep = await deployBranch(userId, projectId, branchName);
+    ownDeploymentIds.push(dep.id);
+    return dep;
+  }
+  afterEach(async () => {
+    const ids = ownDeploymentIds;
+    ownDeploymentIds = [];
+    if (ids.length > 0) {
+      await ctx.db.update(schema.jobs).set({ state: "done" }).where(inArray(schema.jobs.deploymentId, ids));
+    }
+  });
+
   it("claims jobs oldest first and never twice", async () => {
-    const first = await deployBranch(userId, a.id);
-    const second = await deployBranch(userId, b.id);
+    const first = await queueDeploy(a.id);
+    const second = await queueDeploy(b.id);
     const [x, y] = await Promise.all([claimNextJob("w1"), claimNextJob("w2")]);
-    expect(x && y).toBeTruthy();
+    expect(x).toBeTruthy();
+    expect(y).toBeTruthy();
     expect(x!.id).not.toBe(y!.id);
     expect([x!.deploymentId, y!.deploymentId].sort()).toEqual([first.id, second.id].sort());
     expect(await claimNextJob("w3")).toBeNull();
-
-    // finish them so later tests start clean
-    await ctx.db.update(schema.jobs).set({ state: "done" });
   });
 
   it("runs one job per project at a time", async () => {
-    const one = await deployBranch(userId, a.id);
-    const two = await deployBranch(userId, a.id);
+    const one = await queueDeploy(a.id);
+    const two = await queueDeploy(a.id);
     const claimed = await claimNextJob("w1");
     expect(claimed?.deploymentId).toBe(one.id);
     // The second Alpha job must wait while the first is running.
@@ -62,31 +76,28 @@ describe("queue", () => {
 
     await ctx.db.update(schema.jobs).set({ state: "done" }).where(eq(schema.jobs.id, claimed!.id));
     expect((await claimNextJob("w2"))?.deploymentId).toBe(two.id);
-    await ctx.db.update(schema.jobs).set({ state: "done" });
   });
 
   it("does not let concurrent workers claim separate jobs for one project", async () => {
-    const one = await deployBranch(userId, a.id);
-    const two = await deployBranch(userId, a.id);
+    const one = await queueDeploy(a.id);
+    const two = await queueDeploy(a.id);
     const claims = await Promise.all([claimNextJob("race-1"), claimNextJob("race-2")]);
     expect(claims.filter(Boolean)).toHaveLength(1);
     expect(claims.find(Boolean)?.deploymentId).toBe(one.id);
     expect(two.id).not.toBe(one.id);
-    await ctx.db.update(schema.jobs).set({ state: "done" });
   });
 
   it("skips a blocked queue prefix so an idle project's job can run", async () => {
-    for (let i = 0; i < 26; i++) await deployBranch(userId, a.id, `blocked-${i}`);
-    const idle = await deployBranch(userId, b.id, "idle-project");
+    for (let i = 0; i < 26; i++) await queueDeploy(a.id, `blocked-${i}`);
+    const idle = await queueDeploy(b.id, "idle-project");
     const first = await claimNextJob("prefix-blocker");
     expect(first).toBeTruthy();
     const next = await claimNextJob("idle-worker");
     expect(next?.deploymentId).toBe(idle.id);
-    await ctx.db.update(schema.jobs).set({ state: "done" });
   });
 
   it("does not run a canceled deployment", async () => {
-    const dep = await deployBranch(userId, b.id);
+    const dep = await queueDeploy(b.id);
     await cancelDeployment(userId, dep.id);
     expect(await claimNextJob("w1")).toBeNull();
     const row = await ctx.db.select().from(schema.deployments).where(eq(schema.deployments.id, dep.id)).get();

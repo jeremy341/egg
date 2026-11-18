@@ -1,7 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { eq } from "drizzle-orm";
+import type { ZodError } from "zod";
 import type { SessionUser } from "@/server/auth/session";
+import { zodToHttp } from "@/server/http";
 import { upsertUser } from "@/server/auth/session";
 import { blockingConflicts, checkProjectConflicts, detectConflicts, repoNameOf } from "@/server/adoption";
 import { schema } from "@/server/db";
@@ -250,7 +252,16 @@ describe("on a container", () => {
 
   it("rejects a bad slug before any SSH, and a server that is not yours with 404", async () => {
     const before = mock.commands.length;
-    await expect(checkProjectConflicts(userId, row.id, { slug: "Bad Slug", port: 3000 })).rejects.toBeTruthy();
+    // The parse failure is a ZodError; the route maps it with zodToHttp to a 400 "validation".
+    const refusal = await checkProjectConflicts(userId, row.id, { slug: "Bad Slug", port: 3000 }).then(
+      () => null,
+      (err: unknown) => zodToHttp(err as ZodError)
+    );
+    expect(refusal).toMatchObject({
+      status: 400,
+      code: "validation",
+      message: "slug: Use lowercase letters, digits and hyphens",
+    });
     await expect(checkProjectConflicts(otherId, row.id, { slug: "ok", port: 3000 })).rejects.toMatchObject({ status: 404 });
     expect(mock.commands.length).toBe(before);
   });
