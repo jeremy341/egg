@@ -38,6 +38,20 @@ export const DOCS_NAV: DocsGroup[] = [
           { id: "run-yourself-more", title: "The full guide" },
         ],
       },
+      {
+        id: "run-locally",
+        title: "Run Egg locally",
+        subsections: [
+          { id: "run-locally-prereqs", title: "Prerequisites" },
+          { id: "run-locally-install", title: "Install" },
+          { id: "run-locally-env", title: "The env file" },
+          { id: "run-locally-dev", title: "Start the dev server" },
+          { id: "run-locally-devlogin", title: "Development sign-in" },
+          { id: "run-locally-demo", title: "Demo data" },
+          { id: "run-locally-checks", title: "Tests and lint" },
+          { id: "run-locally-build", title: "The production build" },
+        ],
+      },
     ],
   },
   {

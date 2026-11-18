@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  CaretRightIcon,
   GitBranchIcon,
   GithubLogoIcon,
   HardDrivesIcon,
@@ -25,6 +26,7 @@ import { ProjectConflicts } from "@/components/project-conflicts";
 import type { Conflict } from "@/server/adoption";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import { NativeSelect } from "@/components/ui/native-select";
 import {
   LoadingRegion,
@@ -73,6 +75,35 @@ function Label({ htmlFor, children }: { htmlFor: string; children: React.ReactNo
     <label htmlFor={htmlFor} className="mb-1.5 block text-label text-muted-foreground">
       {children}
     </label>
+  );
+}
+
+/** A native disclosure for the rarely used settings. Its fields stay mounted, so a closed group keeps its values. */
+function Advanced({
+  label,
+  open,
+  onOpenChange,
+  className,
+  children,
+}: {
+  label: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <details
+      className={cn("disclosure", className)}
+      open={open}
+      onToggle={(e) => onOpenChange(e.currentTarget.open)}
+    >
+      <summary className="touch-target -mx-1 w-fit items-center gap-1.5 rounded-sm px-1 py-1.5 text-label font-medium max-sm:min-h-10">
+        <CaretRightIcon aria-hidden="true" className="disclosure-caret size-4" />
+        {label}
+      </summary>
+      <div className="mt-3">{children}</div>
+    </details>
   );
 }
 
@@ -167,6 +198,8 @@ export function Configure({
   const [outputDir, setOutputDir] = useState("");
   const [envValues, setEnvValues] = useState<Record<string, string>>({});
   const [adopted, setAdopted] = useState(false);
+  // Closed by default. Native <details> keeps the fields mounted, so values set here survive a close.
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   // Only a project linked through the GitHub app can build on GitHub: the app opens the pull request and receives
   // the release. A pasted public URL has no link, so it keeps building on the container and sends no choice.
   const canChooseBuild = source.installationId !== null;
@@ -197,6 +230,8 @@ export function Configure({
     setBuildCommand(detection.commands.build ?? "");
     setStartCommand(detection.commands.start ?? "");
     setOutputDir(detection.outputDir ?? "");
+    // A static site needs its output directory, which lives in Advanced.
+    if (detection.runtime === "static") setAdvancedOpen(true);
   }
 
   // The button that opened this step is gone; focus belongs to the new step.
@@ -328,7 +363,14 @@ export function Configure({
       </div>
       {detection ? (
         <>
-          <DetectedSummary detection={detection} onUse={applyDetected} onPickRoot={setRootDir} />
+          <DetectedSummary
+            detection={detection}
+            onUse={applyDetected}
+            onPickRoot={(dir) => {
+              setRootDir(dir);
+              setAdvancedOpen(true);
+            }}
+          />
           <DetectionWarnings warnings={detection.warnings} />
         </>
       ) : null}
@@ -362,49 +404,61 @@ export function Configure({
           ) : null}
         </div>
         <div>
-          <Label htmlFor="np-runtime">Application preset</Label>
-          <NativeSelect
-            id="np-runtime"
-            value={runtime}
-            onChange={(e) => setRuntime(e.target.value as typeof runtime)}
-          >
-            {RUNTIMES.map((r) => (
-              <option key={r.value} value={r.value}>
-                {r.label}
-              </option>
-            ))}
-          </NativeSelect>
-        </div>
-        <div>
           <Label htmlFor="np-branch">Production branch</Label>
           <Input id="np-branch" value={branch} onChange={(e) => setBranch(e.target.value)} className="font-mono" />
-        </div>
-        <div>
-          <Label htmlFor="np-root">Root directory</Label>
-          <Input id="np-root" value={rootDir} onChange={(e) => setRootDir(e.target.value)} className="font-mono" />
-        </div>
-        <div>
-          <Label htmlFor="np-port">Port your app listens on</Label>
-          <Input id="np-port" inputMode="numeric" value={port} onChange={(e) => setPort(e.target.value)} className="font-mono" />
-        </div>
-        <div className="sm:col-span-2">
-          <Label htmlFor="np-install">Install command (optional)</Label>
-          <Input id="np-install" value={installCommand} onChange={(e) => setInstallCommand(e.target.value)} placeholder="detected from your lockfile" className="font-mono" />
         </div>
         <div className="sm:col-span-2">
           <Label htmlFor="np-start">Start command (optional)</Label>
           <Input id="np-start" value={startCommand} onChange={(e) => setStartCommand(e.target.value)} placeholder={hint} className="font-mono" />
         </div>
-        <div className={runtime === "static" ? "" : "sm:col-span-2"}>
-          <Label htmlFor="np-build">Build command (optional)</Label>
-          <Input id="np-build" value={buildCommand} onChange={(e) => setBuildCommand(e.target.value)} placeholder="detected from package.json" className="font-mono" />
-        </div>
-        {runtime === "static" ? (
-          <div>
-            <Label htmlFor="np-out">Output directory</Label>
-            <Input id="np-out" value={outputDir} onChange={(e) => setOutputDir(e.target.value)} placeholder="dist" className="font-mono" />
+        <Advanced
+          className="sm:col-span-2"
+          label="Show advanced settings"
+          open={advancedOpen}
+          onOpenChange={setAdvancedOpen}
+        >
+          <p className="mb-3 text-label text-muted-foreground">
+            The defaults work for most projects. Change these only if yours is different.
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="np-runtime">Application preset</Label>
+              <NativeSelect
+                id="np-runtime"
+                value={runtime}
+                onChange={(e) => setRuntime(e.target.value as typeof runtime)}
+              >
+                {RUNTIMES.map((r) => (
+                  <option key={r.value} value={r.value}>
+                    {r.label}
+                  </option>
+                ))}
+              </NativeSelect>
+            </div>
+            <div>
+              <Label htmlFor="np-root">Root directory</Label>
+              <Input id="np-root" value={rootDir} onChange={(e) => setRootDir(e.target.value)} className="font-mono" />
+            </div>
+            <div>
+              <Label htmlFor="np-port">Port your app listens on</Label>
+              <Input id="np-port" inputMode="numeric" value={port} onChange={(e) => setPort(e.target.value)} className="font-mono" />
+            </div>
+            <div className="sm:col-span-2">
+              <Label htmlFor="np-install">Install command (optional)</Label>
+              <Input id="np-install" value={installCommand} onChange={(e) => setInstallCommand(e.target.value)} placeholder="detected from your lockfile" className="font-mono" />
+            </div>
+            <div className={runtime === "static" ? "" : "sm:col-span-2"}>
+              <Label htmlFor="np-build">Build command (optional)</Label>
+              <Input id="np-build" value={buildCommand} onChange={(e) => setBuildCommand(e.target.value)} placeholder="detected from package.json" className="font-mono" />
+            </div>
+            {runtime === "static" ? (
+              <div>
+                <Label htmlFor="np-out">Output directory</Label>
+                <Input id="np-out" value={outputDir} onChange={(e) => setOutputDir(e.target.value)} placeholder="dist" className="font-mono" />
+              </div>
+            ) : null}
           </div>
-        ) : null}
+        </Advanced>
       </div>
 
       {detection ? (
