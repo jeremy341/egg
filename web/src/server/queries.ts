@@ -247,7 +247,13 @@ export async function deploymentView(userId: string, deploymentId: string) {
     .where(eq(schema.domains.projectId, row.p.id));
   return {
     deployment: toDeploymentView(row.d, row.p, userId),
-    project: { id: row.p.id, slug: row.p.slug, name: row.p.name, port: row.p.port },
+    // Team members see the same display slug the lists use, so the page can compare it with the URL.
+    project: {
+      id: row.p.id,
+      slug: row.p.userId === userId ? row.p.slug : `~${row.p.id}`,
+      name: row.p.name,
+      port: row.p.port,
+    },
     domains: domains.map((x) => x.domain),
   };
 }

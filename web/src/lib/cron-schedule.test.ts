@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { describeSchedule, nextRun, parseSchedule, toOnCalendar } from "@/lib/cron-schedule";
+import { ScheduleError, describeSchedule, nextRun, parseSchedule, toOnCalendar } from "@/lib/cron-schedule";
 
 const calendar = (expr: string) => toOnCalendar(parseSchedule(expr));
 const words = (expr: string) => describeSchedule(parseSchedule(expr));
 const at = (iso: string) => new Date(iso);
 
 describe("parseSchedule", () => {
+  it("rejects an object key such as constructor with a schedule error, not a TypeError", () => {
+    expect(() => parseSchedule("constructor")).toThrow(ScheduleError);
+    expect(() => parseSchedule("toString")).toThrow(ScheduleError);
+  });
+
   it("reads steps, ranges, lists and plain numbers", () => {
     expect(parseSchedule("*/15 * * * *").minutes).toEqual([0, 15, 30, 45]);
     expect(parseSchedule("0 9-17 * * *").hours).toEqual([9, 10, 11, 12, 13, 14, 15, 16, 17]);

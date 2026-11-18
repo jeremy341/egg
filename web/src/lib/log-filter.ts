@@ -117,7 +117,8 @@ function explicitLevel(msg: string): LineLevel | null {
   const kv = KEY_LEVEL.exec(msg);
   if (kv) {
     const raw = kv[1].toLowerCase();
-    const level = LEVEL_WORDS[raw] ?? PINO_LEVELS[raw];
+    // Own keys only, so a line such as "level=constructor" cannot return a built-in property.
+    const level = Object.hasOwn(LEVEL_WORDS, raw) ? LEVEL_WORDS[raw] : Object.hasOwn(PINO_LEVELS, raw) ? PINO_LEVELS[raw] : undefined;
     if (level) candidates.push({ at: kv.index, level });
   }
 
