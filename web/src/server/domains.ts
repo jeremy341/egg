@@ -115,6 +115,11 @@ export async function addDomain(userId: string, raw: unknown) {
     : ownedParentOf(domain, mine)
       ? "parent"
       : "dns";
+  // A Nest name is accepted without DNS, so it must first be proven: a connection to this server shows the
+  // owner controls that Nest account. Without this, anyone could claim someone else's name before its owner does.
+  if (verifiedBy === "nest" && (server.status !== "connected" || !server.hostKeyFingerprint)) {
+    throw new HttpError(400, "Connect this server before adding its Nest name.", "validation");
+  }
 
   const id = newId();
   try {

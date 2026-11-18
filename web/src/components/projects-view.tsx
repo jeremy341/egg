@@ -31,7 +31,8 @@ export function ProjectsView({
   const [query, setQuery] = useState("");
   const [view, setView] = useState<View>("grid");
 
-  if (!hasServer) {
+  // A member invited to a project has projects but may have no server of their own, so only show this when there is nothing to list.
+  if (!hasServer && projects.length === 0) {
     return (
       <EmptyState
         icon={<HardDrivesIcon />}
@@ -83,8 +84,8 @@ export function ProjectsView({
             className="pl-9"
           />
         </div>
-        {/* Phones: the layout toggle and the one primary button share a row under the search box. */}
-        <div className="flex w-full items-center justify-between gap-2 sm:contents">
+        {/* Phones, and the narrow column beside the side panels (lg), put the layout toggle and the primary button on one row under the search box. */}
+        <div className="flex w-full items-center justify-between gap-2 sm:contents lg:flex xl:contents">
           <Segmented<View>
             label="Layout"
             value={view}

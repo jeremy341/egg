@@ -1,0 +1,26 @@
+/*
+ * The chicken canvas covers the window, over the page and under the header. It is decoration
+ * and takes no pointer events: the page listens (field/engine.ts) and sets data-chick-state on
+ * <html> so the pointer says when a chicken can be picked up.
+ */
+.chicken-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  /* The engine reads this for the keyboard characters. */
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+}
+html[data-chick-state="over"] {
+  cursor: grab;
+}
+html[data-chick-state="stop"] {
+  cursor: not-allowed;
+}
+html[data-chick-state="held"],
+html[data-chick-state="held"] * {
+  cursor: grabbing !important;
+  user-select: none;
+}

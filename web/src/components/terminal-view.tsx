@@ -186,16 +186,22 @@ function TerminalSession({
   }, [base, startSession]);
 
   const closeSession = useCallback(
-    async (sessionId: string) => {
+    async (sessionId: string): Promise<boolean> => {
       setBusy(true);
       setCloseError(null);
       try {
         await api(`${base}/${encodeURIComponent(sessionId)}`, { method: "DELETE" });
         setPhase({ kind: "ended", reason: "closed" });
+        return true;
       } catch (e) {
         const message = e instanceof Error ? e.message : "Could not close the terminal.";
-        if (/not found/i.test(message)) setPhase({ kind: "ended", reason: "gone" });
-        else setCloseError(message);
+        if (/not found/i.test(message)) {
+          setPhase({ kind: "ended", reason: "gone" });
+          // Already gone on the server, so nothing is left to resume.
+          return true;
+        }
+        setCloseError(message);
+        return false;
       } finally {
         setBusy(false);
       }
@@ -247,8 +253,8 @@ function TerminalSession({
         onResume={() => resume && startSession(resume)}
         onCloseOld={async () => {
           if (!resume) return;
-          await closeSession(resume.sessionId);
-          setPhase({ kind: "idle", resume: null });
+          // If the old session could not be closed it still exists, so keep Resume and the error message.
+          if (await closeSession(resume.sessionId)) setPhase({ kind: "idle", resume: null });
         }}
         error={closeError}
       />

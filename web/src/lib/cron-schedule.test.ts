@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { describeSchedule, nextRun, parseSchedule, toOnCalendar } from "@/lib/cron-schedule";
+import { ScheduleError, describeSchedule, nextRun, parseSchedule, toOnCalendar } from "@/lib/cron-schedule";
 
 const calendar = (expr: string) => toOnCalendar(parseSchedule(expr));
 const words = (expr: string) => describeSchedule(parseSchedule(expr));
 const at = (iso: string) => new Date(iso);
 
 describe("parseSchedule", () => {
+  it("rejects an object key such as constructor with a schedule error, not a TypeError", () => {
+    expect(() => parseSchedule("constructor")).toThrow(ScheduleError);
+    expect(() => parseSchedule("toString")).toThrow(ScheduleError);
+  });
+
   it("reads steps, ranges, lists and plain numbers", () => {
     expect(parseSchedule("*/15 * * * *").minutes).toEqual([0, 15, 30, 45]);
     expect(parseSchedule("0 9-17 * * *").hours).toEqual([9, 10, 11, 12, 13, 14, 15, 16, 17]);
@@ -56,6 +61,17 @@ describe("parseSchedule", () => {
     expect(() => parseSchedule("0,3 * * * *")).toThrow(/every 3 minutes/);
     expect(parseSchedule("*/5 * * * *").minutes).toHaveLength(12);
     expect(parseSchedule("0 0,1 * * *").hours).toEqual([0, 1]);
+  });
+
+  it("counts the gap across midnight", () => {
+    // 23:58 and 00:00 are two minutes apart.
+    expect(() => parseSchedule("0,58 23,0 * * *")).toThrow(ScheduleError);
+    expect(() => parseSchedule("0,58 23,0 * * *")).toThrow(/every 2 minutes/);
+  });
+
+  it("does not count midnight when the job runs on one weekday only", () => {
+    // Monday 23:58 is never followed by Tuesday 00:00 in the same run, so this is allowed.
+    expect(() => parseSchedule("0,58 23,0 * * 1")).not.toThrow();
   });
 
   it("rejects absurd input without hanging", () => {
