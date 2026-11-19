@@ -531,6 +531,59 @@ describe("removeOrphans", () => {
     const after = await getInventory(userId, row.id);
     expect(after.orphans.map((o) => o.id).sort()).toEqual(["egg-oldish.service", "mycheckout", "oldish"]);
   });
+
+  it("rechecks fresh projects before removing, so a unit or folder claimed during the scan is refused", async () => {
+    const race = await createServer(userId, "sam-race", { host: "127.0.0.1", port: 1 });
+    // Canned answers: the first command is the inventory read; any later one
+    // would be a removal script, which must never run once a project claimed
+    // what was scanned as an orphan.
+    let removed = 0;
+    const inventory = [
+      "home=/home/race",
+      "unit_dir=/etc/systemd/system",
+      "has_systemctl=1",
+      "ports_format=ss",
+      "END=1",
+      "UNIT\tegg-claimee.service\tloaded\tactive\trunning\t0\t/etc/systemd/system/egg-claimee.service\t\t/bin/true\t1",
+      "DIR\tclaimee\t10\t0\t1",
+    ].join("\n");
+    const raceMock = await startMockSsh({
+      authorizedKeys: [race.publicKey],
+      handler: async (_command, stdin) => {
+        // Scripts arrive on stdin (the command is just `bash -s`).
+        const body = stdin.toString();
+        if (body.includes("ports_format")) {
+          // The scan just finished on the container: a deployment claims both names now.
+          await createProject(userId, {
+            serverId: race.id,
+            name: "Claimee",
+            slug: "claimee",
+            repoUrl: "https://github.com/example/claimee",
+            runtime: "node",
+            port: 3111,
+          });
+          return { code: 0, stdout: inventory };
+        }
+        removed += 1;
+        return { code: 0, stdout: "" };
+      },
+    });
+    try {
+      await ctx.db
+        .update(schema.servers)
+        .set({ port: raceMock.port, hostKeyFingerprint: raceMock.hostKeyFingerprint })
+        .where(eq(schema.servers.id, race.id));
+
+      const results = await removeOrphans(userId, race.id, ["egg-claimee.service", "claimee"]);
+      expect(results.map((r) => [r.id, r.status])).toEqual([
+        ["egg-claimee.service", "refused"],
+        ["claimee", "refused"],
+      ]);
+      expect(removed).toBe(0); // only the inventory read reached the container
+    } finally {
+      await raceMock.stop();
+    }
+  });
 });
 
 describe("the routes", () => {

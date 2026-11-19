@@ -3,8 +3,15 @@
 // exists for running deployments on a different machine than the website.
 import { startWorker } from "../src/server/jobs";
 
+/** An empty or non-numeric value would otherwise silently disable the worker. */
+function concurrency(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === "") return 2;
+  const parsed = Number(raw);
+  return Number.isInteger(parsed) && parsed >= 1 ? parsed : 2;
+}
+
 const worker = startWorker({
-  concurrency: Number(process.env.WORKER_CONCURRENCY ?? 2),
+  concurrency: concurrency(process.env.WORKER_CONCURRENCY),
   onError: (err) => console.error("worker error", err),
 });
 console.log(`Worker ${worker.workerId} started`);

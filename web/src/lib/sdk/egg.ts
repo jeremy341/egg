@@ -87,9 +87,12 @@ export type Project = {
   repo: string | null;
   branch: string;
   runtime: string;
-  port: number;
+  port: number | null;
+  listenPort: number | null;
+  workloadKind: "web" | "worker";
+  deploymentMode: "native" | "dockerfile" | "compose";
   startCommand: string | null;
-  healthPath: string;
+  healthPath: string | null;
   autoDeploy: boolean;
   /** Where builds run: container (your Nest container, under a memory and CPU cap) or github (your GitHub Actions workflow). */
   buildLocation: BuildLocation;
@@ -112,7 +115,7 @@ export type Deployment = DeploymentSummary & {
 export type DeploymentDetail = Deployment & {
   startedAt: string | null;
   finishedAt: string | null;
-  port: number;
+  port: number | null;
 };
 
 export type LogLine = { id: number; at: string; level: "info" | "warn" | "error"; message: string };
@@ -211,14 +214,16 @@ export type Usage = {
 
 export type BuildLocation = "container" | "github";
 
-export type Runtime = "node" | "python" | "static" | "command";
+export type Runtime = "node" | "python" | "static" | "command" | "go" | "rust" | "ruby" | "php" | "java";
 
 export type CreateProjectInput = {
   serverId: string;
   name: string;
   repoUrl: string;
   runtime: Runtime;
-  port: number;
+  port?: number;
+  workloadKind?: "web" | "worker";
+  deploymentMode?: "native" | "dockerfile" | "compose";
   slug?: string;
   productionBranch?: string;
   rootDir?: string | null;
@@ -282,11 +287,11 @@ export type Inventory = {
     projectId: string;
     slug: string;
     name: string;
-    port: number;
+    port: number | null;
     serviceState: ServiceState | null;
     folderKb: number | null;
-    portStatus: "own" | "free" | "clash";
-    previews: { branch: string; port: number; state: ServiceState }[];
+    portStatus: "own" | "free" | "clash" | null;
+    previews: { branch: string; port: number | null; state: ServiceState }[];
   }[];
   leftovers: {
     kind: "service" | "preview" | "folder";

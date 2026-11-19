@@ -1,12 +1,22 @@
 import { createHmac } from "node:crypto";
 import { NextRequest } from "next/server";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { webhookBodyReads } from "@/server/body-limit";
 import { resetConfigForTests } from "@/server/config";
 import { closeDbForTests, getDb } from "@/server/db";
 import { POST } from "@/app/api/webhooks/github/route";
+import { HttpError } from "@/server/http";
 import { handleGithubEvent, isSafeBranch, isSafeSha } from "@/server/github/webhook";
+import { upsertUser } from "@/server/auth/session";
+import { createProject, type ProjectRow } from "@/server/projects";
+import { createServer } from "@/server/servers";
 import { useFreshDb } from "@/server/test/db";
+
+const { enqueueMock } = vi.hoisted(() => ({ enqueueMock: vi.fn() }));
+vi.mock("@/server/projects", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/server/projects")>();
+  return { ...actual, enqueueDeployment: enqueueMock };
+});
 
 const SECRET = "hook-secret";
 let ctx: Awaited<ReturnType<typeof useFreshDb>>;
@@ -210,5 +220,47 @@ describe("refs and hashes from a push", () => {
       repository: { full_name: "sam/demo" },
     });
     expect(r).toMatchObject({ handled: false, deployments: [] });
+  });
+});
+
+describe("webhook fan-out across projects", () => {
+  afterEach(() => enqueueMock.mockReset());
+
+  it("keeps deploying the remaining projects when one enqueue fails", async () => {
+    const user = await upsertUser({ id: "uweb", name: "Sam", email: null, slackId: null });
+    const serverId = (await createServer(user.id, "sam-r")).id;
+    const shared = { repoUrl: "https://github.com/sam/demo", repoFullName: "sam/demo", serverId, runtime: "node", startCommand: "node server.js" };
+    const broken = await createProject(user.id, { ...shared, name: "Broken", port: 4101 });
+    const good = await createProject(user.id, { ...shared, name: "Good", port: 4102 });
+    enqueueMock.mockImplementation(async (project: ProjectRow) => {
+      if (project.id === broken.id) throw new HttpError(503, "Maintenance is active. New deployments are paused.", "maintenance");
+      return { id: `dep-${project.id}` };
+    });
+
+    const r = await handleGithubEvent("push", {
+      ref: "refs/heads/feature",
+      after: "c".repeat(40),
+      repository: { full_name: "sam/demo" },
+    });
+    expect(r).toEqual({ handled: true, deployments: [`dep-${good.id}`] });
+  });
+
+  it("keeps deploying the remaining pull request previews when one enqueue fails", async () => {
+    const user = await upsertUser({ id: "uweb2", name: "Kim", email: null, slackId: null });
+    const serverId = (await createServer(user.id, "kim-r")).id;
+    const shared = { repoUrl: "https://github.com/kim/demo", repoFullName: "kim/demo", serverId, runtime: "node", startCommand: "node server.js", productionBranch: "trunk" };
+    const broken = await createProject(user.id, { ...shared, name: "Broken PR", port: 4201 });
+    const good = await createProject(user.id, { ...shared, name: "Good PR", port: 4202 });
+    enqueueMock.mockImplementation(async (project: ProjectRow) => {
+      if (project.id === broken.id) throw new HttpError(409, "No free preview ports on this server.", "limit");
+      return { id: `deppr-${project.id}` };
+    });
+
+    const r = await handleGithubEvent("pull_request", {
+      action: "synchronize",
+      repository: { full_name: "kim/demo" },
+      pull_request: { number: 7, head: { ref: "feature", sha: "d".repeat(40), repo: { full_name: "kim/demo" } } },
+    });
+    expect(r).toEqual({ handled: true, deployments: [`deppr-${good.id}`] });
   });
 });

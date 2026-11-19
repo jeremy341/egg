@@ -26,6 +26,14 @@ export type ProjectView = {
   repoUrl: string;
   branch: string;
   runtime: string;
+  workloadKind: "web" | "worker";
+  deploymentMode: "native" | "dockerfile" | "compose";
+  /** Docker-mode settings; null in native mode. */
+  dockerfilePath: string | null;
+  composeFilePath: string | null;
+  composeService: string | null;
+  containerPort: number | null;
+  listenPort: number | null;
   startCommand: string | null;
   port: number;
   healthPath: string;
@@ -160,6 +168,13 @@ async function loadProjectViews(userId: string): Promise<ProjectView[]> {
       repoUrl: p.repoUrl,
       branch: p.productionBranch,
       runtime: p.runtime,
+      workloadKind: p.workloadKind,
+      deploymentMode: p.deploymentMode,
+      dockerfilePath: p.dockerfilePath,
+      composeFilePath: p.composeFilePath,
+      composeService: p.composeService,
+      containerPort: p.containerPort,
+      listenPort: p.listenPort ?? (p.workloadKind === "worker" ? null : p.port),
       startCommand: p.startCommand,
       port: p.port,
       healthPath: p.healthPath,

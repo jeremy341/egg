@@ -94,7 +94,7 @@ export async function fetchServiceStatus(userId: string, projectId: string): Pro
   try {
     res = await withServerSession(server, (s) =>
       s.script(
-        serviceStatus({ unit: unitName(project.slug), port: project.port, path: project.healthPath }),
+        serviceStatus({ unit: unitName(project.slug), port: project.workloadKind === "worker" ? null : project.port, path: project.healthPath }),
         { timeoutMs: 20_000 }
       )
     );

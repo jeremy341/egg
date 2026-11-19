@@ -28,5 +28,5 @@ export const GET = handle<Ctx>(async (req, { params }) => {
       q: q.get("q")?.slice(0, 300) ?? undefined,
     },
   });
-  return ok({ deployments: rows, nextCursor });
+  return ok({ deployments: rows.map((row) => ({ ...row, port: row.port === 0 ? null : row.port })), nextCursor });
 });

@@ -32,7 +32,7 @@ const base: WorkflowInput = {
 
 const make = (over: Partial<WorkflowInput> = {}) => buildWorkflow({ ...base, ...over });
 
-const RUNTIMES = ["node", "static", "python", "command"] as const;
+const RUNTIMES = ["node", "static", "python", "command", "go", "rust", "ruby", "php", "java"] as const;
 
 /** The text of one job: from its key under `jobs:` to the next job or the end of the file. */
 function jobText(yml: string, job: "build-production" | "build-preview"): string {

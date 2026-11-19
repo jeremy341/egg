@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { open } from "@/server/crypto";
 import { schema } from "@/server/db";
@@ -17,6 +17,7 @@ import {
 import { upsertUser } from "@/server/auth/session";
 import { createProject, deployBranch } from "@/server/projects";
 import { serverViews } from "@/server/queries";
+import { terminals } from "@/server/terminal";
 import { startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
 import { useFreshDb } from "@/server/test/db";
 
@@ -142,6 +143,22 @@ describe("disconnecting a server", () => {
     await expect(connectToServer(row!)).rejects.toMatchObject({ status: 409 });
   });
 
+  it("refuses a connection test on a disconnected server and leaves its state alone", async () => {
+    const owner = await newUser();
+    const { server } = await serverWithProject(owner, "no-test", 3314);
+    await deleteServer(owner, server.id, { deleteProjects: false });
+
+    await expect(testServer(owner, server.id)).rejects.toMatchObject({ status: 409, code: "disconnected" });
+    await expect(
+      testServer(owner, server.id, { confirmHostKey: "SHA256:" + "C".repeat(43) })
+    ).rejects.toMatchObject({ status: 409, code: "disconnected" });
+    // The failing test must not overwrite the disconnect state or re-list the server.
+    const kept = await ctx.db.select().from(schema.servers).where(eq(schema.servers.id, server.id)).get();
+    expect(kept?.status).toBe("disconnected");
+    expect(kept?.lastError).toBeNull();
+    expect((await listServers(owner)).map((s) => s.id)).not.toContain(server.id);
+  });
+
   it("does not disconnect a server while an SSH operation is open", async () => {
     const owner = await newUser();
     const { server, project } = await serverWithProject(owner, "active-ssh", 3312);
@@ -155,6 +172,28 @@ describe("disconnecting a server", () => {
     await expect(deleteServer(owner, server.id, { deleteProjects: true })).rejects.toMatchObject({ status: 409 });
     expect(await ctx.db.select().from(schema.servers).where(eq(schema.servers.id, server.id)).get()).toBeTruthy();
     expect(await ctx.db.select().from(schema.projects).where(eq(schema.projects.id, project.id)).get()).toBeTruthy();
+  });
+
+  it("leaves the terminals open when the disconnect is refused for an SSH operation", async () => {
+    const owner = await newUser();
+    const { server } = await serverWithProject(owner, "refused-closer", 3316);
+    await ctx.db.insert(schema.cleanupOperations).values({
+      id: "refused-closer-operation",
+      userId: owner,
+      serverId: server.id,
+      openedAt: new Date(),
+    });
+
+    const close = vi.spyOn(terminals(), "closeAllForUser");
+    try {
+      await expect(deleteServer(owner, server.id, { deleteProjects: true })).rejects.toMatchObject({
+        status: 409,
+        code: "remote_operation_active",
+      });
+      expect(close).not.toHaveBeenCalled();
+    } finally {
+      close.mockRestore();
+    }
   });
 
   it("rechecks live server status before reserving a session from a stale snapshot", async () => {

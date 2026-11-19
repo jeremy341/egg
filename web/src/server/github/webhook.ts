@@ -177,25 +177,25 @@ export async function handleGithubEvent(
 
   const created: string[] = [];
   for (const project of projects) {
-    // Only trust events for installations the project's owner can use.
-    if (!(await installationTrusted(db, project, p.installation?.id))) continue;
-
-    // A push that is already queued or running for this commit is a retry.
-    const dup = await db
-      .select({ id: schema.deployments.id })
-      .from(schema.deployments)
-      .where(
-        and(
-          eq(schema.deployments.projectId, project.id),
-          eq(schema.deployments.branch, branch),
-          eq(schema.deployments.commitSha, p.after),
-          inArray(schema.deployments.state, ["queued", "building", "deploying"])
-        )
-      )
-      .get();
-    if (dup) continue;
-
     try {
+      // Only trust events for installations the project's owner can use.
+      if (!(await installationTrusted(db, project, p.installation?.id))) continue;
+
+      // A push that is already queued or running for this commit is a retry.
+      const dup = await db
+        .select({ id: schema.deployments.id })
+        .from(schema.deployments)
+        .where(
+          and(
+            eq(schema.deployments.projectId, project.id),
+            eq(schema.deployments.branch, branch),
+            eq(schema.deployments.commitSha, p.after),
+            inArray(schema.deployments.state, ["queued", "building", "deploying"])
+          )
+        )
+        .get();
+      if (dup) continue;
+
       const dep = await enqueueDeployment(project, {
         env: branch === project.productionBranch ? "production" : "preview",
         source: "webhook",
@@ -206,8 +206,10 @@ export async function handleGithubEvent(
       });
       created.push(dep.id);
     } catch (err) {
-      // The unique index caught a racing duplicate of the same commit.
-      if (!isUniqueViolation(err)) throw err;
+      // The unique index caught a racing duplicate of the same commit. Anything
+      // else is one project's failure; log it and keep the rest deploying.
+      if (isUniqueViolation(err)) continue;
+      console.warn("push deploy failed", project.id, err instanceof Error ? err.message : err);
     }
   }
   return { handled: true, deployments: created };
@@ -275,9 +277,9 @@ async function handlePullRequest(payload: unknown): Promise<WebhookResult> {
   const created: string[] = [];
   for (const project of trusted) {
     if (!project.autoDeploy || branch === project.productionBranch) continue;
-    const existing = await attachPullRequest(project.id, branch, sha, number);
-    if (existing) continue;
     try {
+      const existing = await attachPullRequest(project.id, branch, sha, number);
+      if (existing) continue;
       const dep = await enqueueDeployment(project, {
         env: "preview",
         source: "webhook",
@@ -287,7 +289,10 @@ async function handlePullRequest(payload: unknown): Promise<WebhookResult> {
       });
       created.push(dep.id);
     } catch (err) {
-      if (!isUniqueViolation(err)) throw err;
+      // The unique index caught a racing duplicate of the same commit. Anything
+      // else is one project's failure; log it and keep the rest deploying.
+      if (isUniqueViolation(err)) continue;
+      console.warn("pull request deploy failed", project.id, err instanceof Error ? err.message : err);
     }
   }
   return { handled: true, deployments: created };

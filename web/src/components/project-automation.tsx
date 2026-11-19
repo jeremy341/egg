@@ -292,7 +292,7 @@ export function StatusPageCard({ project }: { project: ProjectView }) {
     <Card
       id="status-page-heading"
       title="Public Status Page"
-      description="A page anyone with the link can open to see whether this app is answering. It shows the name, the current state and recent outages, and nothing else."
+      description={`A page anyone with the link can open to see ${project.workloadKind === "worker" ? "whether this worker is running" : "whether this app is answering"}. It shows the name, the current state and recent outages, and nothing else.`}
       docsHref="/docs/status-page"
       docsTopic="the public status page"
     >
@@ -377,6 +377,7 @@ const when = (iso: string) =>
   });
 
 export function AlertsCard({ project }: { project: ProjectView }) {
+  const worker = project.workloadKind === "worker";
   const [settings, setSettings] = useState<AlertSettings | null>(null);
   const [history, setHistory] = useState<AlertEvent[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -431,7 +432,7 @@ export function AlertsCard({ project }: { project: ProjectView }) {
     const disk = wholeNumber(form.disk, 1, 100, "The disk limit");
     const memory = wholeNumber(form.memory, 1, 100, "The memory limit");
     const cpu = wholeNumber(form.cpu, 1, 100, "The CPU limit");
-    const slow = form.slow.trim() === "" ? null : wholeNumber(form.slow, 50, 60000, "The response time limit");
+    const slow = worker || form.slow.trim() === "" ? null : wholeNumber(form.slow, 50, 60000, "The response time limit");
     const next: typeof errors = {};
     if (typeof disk === "string") next.disk = disk;
     if (typeof memory === "string") next.memory = memory;
@@ -632,14 +633,15 @@ export function AlertsCard({ project }: { project: ProjectView }) {
                     Checks run every few minutes. Default 2.
                   </p>
                 </div>
-                <div className="sm:col-span-2">
+                {!worker && <div className="sm:col-span-2">
                   {field(
                     "slow",
                     "Slow response limit (ms)",
                     "Leave empty for no limit. A slower answer counts as a failed check.",
                     { placeholder: "Off" }
                   )}
-                </div>
+                </div>}
+                {worker && <p className="self-center text-label text-muted-foreground sm:col-span-2">Checks watch the worker process. Workers have no HTTP endpoint or response-time threshold.</p>}
               </div>
             </fieldset>
 
@@ -656,7 +658,7 @@ export function AlertsCard({ project }: { project: ProjectView }) {
                         onChange={(e) => setChannels({ ...channels, [c.key]: e.target.checked })}
                       />
                       <span className="min-w-0">
-                        <span className="block">{c.label}</span>
+                        <span className="block">{worker && c.key === "down" ? "The worker stops running" : worker && c.key === "recovery" ? "The worker runs again" : c.label}</span>
                         <span className="block text-label text-muted-foreground">{c.hint}</span>
                       </span>
                     </label>
@@ -684,7 +686,7 @@ export function AlertsCard({ project }: { project: ProjectView }) {
                 {history.map((ev) => (
                   <li key={ev.id} className="px-3 py-2.5">
                     <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                      <span className="font-medium">{EVENT_LABEL[ev.type]}</span>
+                      <span className="font-medium">{worker && ev.type === "down" ? "Not running" : EVENT_LABEL[ev.type]}</span>
                       <span className="flex items-center gap-2 text-label text-muted-foreground">
                         {ev.muted ? <Badge variant="outline">Not sent, paused</Badge> : null}
                         {ev.type === "deploy" ? null : ev.resolvedAt ? (

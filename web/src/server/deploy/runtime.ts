@@ -4,10 +4,16 @@ import { shellQuote } from "@/server/ssh/connection";
 
 export type ProjectFiles = {
   /** Package manager implied by the lockfile in the project root. */
-  lockfile: "npm" | "pnpm" | "yarn" | null;
+  lockfile: "npm" | "pnpm" | "yarn" | "bun" | null;
   hasPackageJson: boolean;
   hasBuildScript: boolean;
   hasRequirements: boolean;
+  hasPyproject?: boolean;
+  hasGemfile?: boolean;
+  hasComposer?: boolean;
+  hasCargoLock?: boolean;
+  hasMaven?: boolean;
+  hasGradle?: boolean;
   /** The `engines.node` range in package.json, if there is one. */
   nodeEngine?: string | null;
 };
@@ -32,6 +38,17 @@ export type RuntimeSpec = {
   excludeNodeModules: boolean;
 };
 
+/** Choose the committed lockfile, respecting package.json when multiple managers are present. */
+export function selectLockfile(has: (name: string) => boolean, field: unknown): ProjectFiles["lockfile"] {
+  const candidates = [
+    ["bun", has("bun.lock") || has("bun.lockb")], ["pnpm", has("pnpm-lock.yaml")],
+    ["yarn", has("yarn.lock")], ["npm", has("package-lock.json")],
+  ] as const;
+  const chosen = typeof field === "string" ? field.split("@")[0] : null;
+  return candidates.find(([name, present]) => present && name === chosen)?.[0]
+    ?? candidates.find(([, present]) => present)?.[0] ?? null;
+}
+
 const INSTALL = {
   npm: { build: "npm ci", prod: "npm ci --omit=dev" },
   pnpm: {
@@ -42,9 +59,10 @@ const INSTALL = {
     build: "corepack enable && yarn install --frozen-lockfile",
     prod: "corepack enable && yarn install --production --frozen-lockfile",
   },
+  bun: { build: "bun install --frozen-lockfile", prod: "bun install --production --frozen-lockfile" },
 } as const;
 
-const RUN = { npm: "npm run build", pnpm: "pnpm build", yarn: "yarn build" } as const;
+const RUN = { npm: "npm run build", pnpm: "pnpm build", yarn: "yarn build", bun: "bun run build" } as const;
 
 export function resolveRuntime(input: RuntimeInput, files: ProjectFiles): RuntimeSpec {
   switch (input.runtime) {
@@ -75,8 +93,8 @@ export function resolveRuntime(input: RuntimeInput, files: ProjectFiles): Runtim
       return {
         buildInstall: input.installCommand,
         buildCommand: input.buildCommand,
-        remoteInstall: files.hasRequirements
-          ? "python3 -m venv .venv && .venv/bin/pip install --disable-pip-version-check -r requirements.txt"
+        remoteInstall: files.hasRequirements || files.hasPyproject
+          ? `python3 -m venv .venv && .venv/bin/pip install --disable-pip-version-check ${files.hasRequirements ? "-r requirements.txt" : "."}`
           : null,
         archiveRoot: ".",
         excludeNodeModules: false,
@@ -99,11 +117,16 @@ export function resolveRuntime(input: RuntimeInput, files: ProjectFiles): Runtim
         archiveRoot: input.outputDir?.trim() || ".",
         excludeNodeModules: true,
       };
+    case "go":
+    case "rust":
+    case "ruby":
+    case "php":
+    case "java":
     case "command":
       return {
         buildInstall: input.installCommand,
-        buildCommand: input.buildCommand,
-        remoteInstall: null,
+        buildCommand: input.buildCommand ?? (input.runtime === "go" ? "go build -o .egg-app ." : input.runtime === "rust" ? `cargo build --release${files.hasCargoLock ? " --locked" : ""}` : input.runtime === "java" && files.hasMaven ? "mvn -B package -DskipTests" : input.runtime === "java" && files.hasGradle ? "gradle build -x test" : null),
+        remoteInstall: input.runtime === "ruby" && files.hasGemfile ? "bundle config set --local path vendor/bundle && bundle install" : input.runtime === "php" && files.hasComposer ? "composer install --no-dev --no-interaction" : null,
         archiveRoot: ".",
         excludeNodeModules: false,
       };
@@ -130,6 +153,8 @@ export function resolveStartCommand(
       return "npm start";
     case "python":
       return "python3 app.py";
+    case "go":
+      return "./.egg-app";
     case "static": {
       if (!probe || probe.has.python3) {
         return `python3 -c ${shellQuote(STATIC_PYTHON_SCRIPT)} ${port}`;
@@ -142,6 +167,10 @@ export function resolveStartCommand(
         "Static sites need Python 3 or Node.js on your Nest container to be served."
       );
     }
+    case "rust":
+    case "ruby":
+    case "php":
+    case "java":
     case "command":
       throw new StartCommandError(
         "Set a start command for this project (for example ./my-binary)."

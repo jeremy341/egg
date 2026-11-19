@@ -185,6 +185,7 @@ export async function removeProjectFromServer(
           releaseId: p.releaseId,
           unit: unitName(project.slug, { releaseId: p.releaseId }),
           unitDir,
+          docker: project.deploymentMode !== "native",
         }),
         { timeoutMs: 60_000 }
       );
@@ -207,6 +208,7 @@ export async function removeProjectFromServer(
         unit: unitName(project.slug),
         unitDir,
         deleteData: options.deleteData ?? false,
+        docker: project.deploymentMode !== "native",
       }),
       { timeoutMs: 60_000 }
     );

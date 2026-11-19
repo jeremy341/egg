@@ -59,6 +59,10 @@ export function GithubBuildCard({ project }: { project: ProjectView }) {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
+  if (!project.repoUrl.startsWith("https://github.com/")) {
+    return <Card id="builds-heading" title="Where Builds Run" description="This project is installed and built on your Nest container under its configured memory and CPU limits."><p className="text-label text-muted-foreground">The GitHub Actions build integration is available for GitHub repositories. Set this project&apos;s install and build commands in Build and Run above.</p></Card>;
+  }
+
   async function save(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);

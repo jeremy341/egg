@@ -1,0 +1,1 @@
+CREATE INDEX `audit_log_action_at_idx` ON `audit_log` (`action`,`at`);
