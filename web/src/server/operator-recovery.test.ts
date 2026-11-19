@@ -70,6 +70,47 @@ describe("operator recovery", () => {
     expect((await ctx.db.select().from(schema.jobs).where(eq(schema.jobs.id, job.id)).get())!.state).toBe("failed");
     expect((await ctx.db.select().from(schema.servers).where(eq(schema.servers.id, server.id)).get())!.buildLockHolder).toBeNull();
   });
+  it("recovers a crash mid-activation: lock released, deployment deploying, then marked errored", async () => {
+    const { server, dep, job, stale } = await setup("recover-six");
+    await ctx.db.update(schema.deployments).set({ state: "deploying", activationStartedAt: new Date() }).where(eq(schema.deployments.id, dep.id));
+    await ctx.db.update(schema.servers).set({ buildLockHolder: null, buildLockAt: null }).where(eq(schema.servers.id, server.id));
+    await recoverBuild(admin, server.id, { confirm: true, holder: dep.id, lockAt: stale.toISOString(), workerStoppedConfirmed: true, workerId: job.lockedBy! }, async () => ({ script: async () => ({ code: 0, stdout: "", stderr: "" }), close() {} }) as never);
+    const freed = await ctx.db.select().from(schema.jobs).where(eq(schema.jobs.id, job.id)).get();
+    expect(freed!.state).toBe("failed");
+    const deployment = await ctx.db.select().from(schema.deployments).where(eq(schema.deployments.id, dep.id)).get();
+    expect(deployment!.state).toBe("error");
+    const serverRow = await ctx.db.select().from(schema.servers).where(eq(schema.servers.id, server.id)).get();
+    expect(serverRow!.buildLockHolder).toBeNull();
+    await release(server.id);
+  });
+  it("recovers after the user canceled the crashed deployment without flipping the canceled state", async () => {
+    const { server, dep, job, stale } = await setup("recover-seven");
+    await ctx.db.update(schema.deployments).set({ state: "canceled" }).where(eq(schema.deployments.id, dep.id));
+    await recoverBuild(admin, server.id, { confirm: true, holder: dep.id, lockAt: stale.toISOString(), workerStoppedConfirmed: true, workerId: job.lockedBy! }, async () => ({ script: async () => ({ code: 0, stdout: "", stderr: "" }), close() {} }) as never);
+    expect((await ctx.db.select().from(schema.jobs).where(eq(schema.jobs.id, job.id)).get())!.state).toBe("failed");
+    expect((await ctx.db.select().from(schema.deployments).where(eq(schema.deployments.id, dep.id)).get())!.state).toBe("canceled");
+    expect((await ctx.db.select().from(schema.servers).where(eq(schema.servers.id, server.id)).get())!.buildLockHolder).toBeNull();
+    await release(server.id);
+  });
+  it("recovers a crash between the claim and the first state write", async () => {
+    const { server, dep, job, stale } = await setup("recover-eight");
+    await ctx.db.update(schema.deployments).set({ state: "queued" }).where(eq(schema.deployments.id, dep.id));
+    await ctx.db.update(schema.servers).set({ buildLockHolder: null, buildLockAt: null }).where(eq(schema.servers.id, server.id));
+    await recoverBuild(admin, server.id, { confirm: true, holder: dep.id, lockAt: stale.toISOString(), workerStoppedConfirmed: true, workerId: job.lockedBy! }, async () => ({ script: async () => ({ code: 0, stdout: "", stderr: "" }), close() {} }) as never);
+    expect((await ctx.db.select().from(schema.jobs).where(eq(schema.jobs.id, job.id)).get())!.state).toBe("failed");
+    expect((await ctx.db.select().from(schema.deployments).where(eq(schema.deployments.id, dep.id)).get())!.state).toBe("error");
+    // The queue guard is free again: a fresh deploy of the same project can be claimed.
+    const project = await ctx.db.select().from(schema.projects).where(eq(schema.projects.serverId, server.id)).get();
+    await deployBranch(admin, project!.id);
+    expect(await claimNextJob("fresh-worker")).toBeTruthy();
+    await release(server.id);
+  });
+  // Sets free the per-user server cap so later setups can create one.
+  async function release(serverId: string) {
+    await ctx.db.delete(schema.projects).where(eq(schema.projects.serverId, serverId));
+    await ctx.db.delete(schema.servers).where(eq(schema.servers.id, serverId));
+  }
+
   it("requires an administrator and an explicit matching worker attestation", async () => {
     const { server, dep, job, stale } = await setup("recover-four");
     const connect = vi.fn();

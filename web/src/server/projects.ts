@@ -4,6 +4,7 @@ import { audit } from "@/server/audit";
 import { pickCloneSettings, type CloneSettings } from "@/server/clone-settings";
 import { newId, open, seal } from "@/server/crypto";
 import { getDb, schema, type Db } from "@/server/db";
+import { isUniqueViolation } from "@/server/db/errors";
 import { pageLimit, selectDeploymentPage, type DeploymentFilter } from "@/server/deployment-page";
 import { BUILD_LOCATIONS, RUNTIMES, WORKLOAD_KINDS, DEPLOYMENT_MODES } from "@/server/db/schema";
 import { assertCloneUrl, BuildError } from "@/server/deploy/build";
@@ -16,6 +17,7 @@ import { getServerForUser } from "@/server/servers";
 import { assertCleanupAllowsWork } from "@/server/cleanup-guards";
 import { maintenanceBlocksUser } from "@/server/maintenance";
 import { projectReadableBy } from "@/server/project-roles";
+import { forgetDeliveriesForDeployments } from "@/server/webhooks";
 import { providerClientForUser, publicProviderClient, repositoryNameFromUrl, validateProviderSource } from "@/server/providers/connections";
 import { genericGitEnvironment } from "@/server/providers/generic";
 
@@ -247,6 +249,16 @@ export async function createProject(userId: string, raw: unknown): Promise<Proje
       "validation"
     );
   }
+  // Preview and job services are named egg-<slug>-pv-<id8> and egg-<slug>-job-<id8>;
+  // a project with a matching suffix would own the same unit file stem as
+  // another project's live service, so the name is refused up front.
+  if (/-(?:pv|job)-[0-9a-f]{8}$/.test(slug)) {
+    throw new HttpError(
+      400,
+      'The project name cannot end with "-pv-" or "-job-" and eight characters, like "-pv-1a2b3c4d". Choose another name.',
+      "validation"
+    );
+  }
 
   const mine = await db
     .select({ slug: schema.projects.slug })
@@ -302,6 +314,14 @@ export async function createProject(userId: string, raw: unknown): Promise<Proje
       autoDeploy: input.sourceProvider !== "github" || input.adopted ? false : input.autoDeploy,
       createdAt: now,
       updatedAt: now,
+    }).catch((err: unknown) => {
+      // The own-slug pre-check above races a concurrent create; the unique
+      // index has the final word, and two simultaneous creates must both get
+      // a clean conflict, not a raw database error.
+      if (isUniqueViolation(err)) {
+        throw new HttpError(409, `You already have a project called "${slug}".`, "conflict");
+      }
+      throw err;
     });
   });
   await audit(userId, "project.create", id, { name: input.name });
@@ -760,7 +780,14 @@ export async function deleteProjectRecords(userId: string, projectId: string) {
         "conflict"
       );
     }
+    const deployments = await tx
+      .select({ id: schema.deployments.id })
+      .from(schema.deployments)
+      .where(eq(schema.deployments.projectId, project.id));
     await tx.delete(schema.projects).where(eq(schema.projects.id, project.id));
+    // The cascade removes the deployments; their delivery history survives by
+    // design, so the links that would now point at nothing are forgotten here.
+    await forgetDeliveriesForDeployments(tx, deployments.map((d) => d.id));
   });
   await audit(userId, "project.delete", null, { name: project.name });
 }

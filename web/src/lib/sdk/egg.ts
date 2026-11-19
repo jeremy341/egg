@@ -132,7 +132,7 @@ export type DeploymentLogPage = {
 export type Domain = {
   id: string;
   domain: string;
-  status: "pending" | "valid" | "invalid";
+  status: "pending" | "valid" | "invalid" | "unknown";
   port: number;
   projectId: string | null;
   projectName: string | null;
@@ -577,7 +577,7 @@ export class Egg {
   }
 
   /** Check the domain's DNS now. Needs `domains:write`. */
-  verifyDomain(domainId: string): Promise<{ status: "valid" | "invalid"; reason: string | null; app: DomainAppCheck }> {
+  verifyDomain(domainId: string): Promise<{ status: "valid" | "invalid" | "unknown"; reason: string | null; app: DomainAppCheck }> {
     return this.request("POST", `/domains/${seg(domainId)}/verify`);
   }
 

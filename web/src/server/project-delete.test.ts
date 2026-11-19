@@ -10,6 +10,7 @@ import { deleteProject } from "@/server/project-delete";
 import { claimNextJob } from "@/server/jobs";
 import { createProject, deployBranch, type ProjectRow } from "@/server/projects";
 import { connectToServer, createServer, getServerForUser, type ServerRow } from "@/server/servers";
+import { createWebhook } from "@/server/webhooks";
 import { NestSession } from "@/server/ssh/connection";
 import { containerReadyFacts, fakeBuilder, freePort, installFakeContainerBuild, installFakeSystemd, nodeApp } from "@/server/test/fake-nest";
 import { useFreshDb } from "@/server/test/db";
@@ -234,5 +235,47 @@ describe("deleting a project with a remote step on a mock Nest", () => {
     const db = await getDb();
     const left = await db.select().from(schema.cleanupJobs).where(and(eq(schema.cleanupJobs.projectId, idle.id)));
     expect(left).toEqual([]);
+  });
+
+  it("forgets the webhook delivery link to the deployments it deletes", async () => {
+    const p = await newProject("Delivery Forget");
+    const other = await newProject("Delivery Keep");
+    const db = await getDb();
+    for (const d of [
+      { id: "dep-forget", projectId: p.id, port: p.port, releaseId: "rel-forget" },
+      { id: "dep-keep", projectId: other.id, port: other.port, releaseId: "rel-keep" },
+    ]) {
+      await db.insert(schema.deployments).values({
+        ...d,
+        env: "production",
+        state: "ready",
+        source: "manual",
+        branch: "main",
+        createdAt: new Date(),
+      });
+    }
+    const { webhook } = await createWebhook(userId, { url: "https://hooks.example.com/in" });
+    const delivery = (id: string, deploymentId: string) => ({
+      id,
+      webhookId: webhook.id,
+      event: "deployment.succeeded",
+      deploymentId,
+      status: "success" as const,
+      attempts: 1,
+      createdAt: new Date(),
+    });
+    await db.insert(schema.webhookDeliveries).values([
+      delivery("dv-forget", "dep-forget"),
+      delivery("dv-keep", "dep-keep"),
+    ]);
+
+    await deleteProject(userId, p.id, { remote: true }, { removeRemote: vi.fn(async () => {}) });
+
+    expect(await projectRow(p.id)).toBeUndefined();
+    const rows = Object.fromEntries((await db.select().from(schema.webhookDeliveries)).map((d) => [d.id, d]));
+    expect(rows["dv-forget"].deploymentId).toBeNull();
+    expect(rows["dv-keep"].deploymentId).toBe("dep-keep");
+    await db.delete(schema.webhooks).where(eq(schema.webhooks.id, webhook.id));
+    await dropProject(other.id);
   });
 });

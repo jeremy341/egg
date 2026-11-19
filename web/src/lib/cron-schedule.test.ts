@@ -58,6 +58,14 @@ describe("parseSchedule", () => {
     expect(parseSchedule("0 0,1 * * *").hours).toEqual([0, 1]);
   });
 
+  it("refuses a run pattern that only gets close across midnight, but keeps a five-minute bridge", () => {
+    expect(() => parseSchedule("0,56 0,23 * * *")).toThrow(/every 4 minutes/);
+    expect(() => parseSchedule("0,58 0,23 * * *")).toThrow(/every 2 minutes/);
+    expect(parseSchedule("0,55 0,23 * * *").hours).toEqual([0, 23]);
+    // A job that does not run every day keeps being judged by its within-day gaps.
+    expect(parseSchedule("0,56 0,23 * * 1").weekdays).toEqual([1]);
+  });
+
   it("rejects absurd input without hanging", () => {
     expect(() => parseSchedule("0 0 * * * ".repeat(30))).toThrow(/too long/);
     expect(() => parseSchedule("1".repeat(500))).toThrow(/too long/);

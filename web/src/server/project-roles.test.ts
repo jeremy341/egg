@@ -113,4 +113,16 @@ describe("project invitations and roles", () => {
     await expect(deleteEnvVar("owner", "p", entry.id)).rejects.toMatchObject({ status: 409 });
     expect(await listEnvVars("owner", "p")).toHaveLength(1);
   });
+  it("reports an already-member accept without changing the role, and burns the invitation", async () => {
+    const fresh = await createProjectInvitation("owner", "p", { userId: "invitee", role: "developer" }, now);
+    expect(await acceptProjectInvitation("invitee", fresh.token, now)).toEqual({ projectId: "p", alreadyMember: false });
+    expect(await getProjectRole("invitee", "p")).toBe("developer");
+    const older = await createProjectInvitation("owner", "p", { userId: "invitee", role: "viewer" }, now);
+    expect(await acceptProjectInvitation("invitee", older.token, now)).toEqual({ projectId: "p", alreadyMember: true });
+    expect(await getProjectRole("invitee", "p")).toBe("developer");
+    const used = (await ctx.db.select().from(schema.projectInvitations).where(eq(schema.projectInvitations.id, older.invitation.id)).get())?.acceptedAt;
+    expect(used).not.toBeNull();
+    await removeProjectMember("owner", "p", "invitee");
+    expect(await getProjectRole("invitee", "p")).toBeNull();
+  });
 });

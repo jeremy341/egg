@@ -54,3 +54,24 @@ describe("create button", () => {
     expect(hasOwnCreateButton("/projects/demo")).toBe(false);
   });
 });
+
+describe("project nav by role", () => {
+  it("keeps every page for the owner and a developer, and drops the owner-only pages for a viewer", () => {
+    const owner = navFor("/projects/demo").items.map((i) => i.label);
+    expect(owner).toEqual(["Overview", "Deployments", "Analytics", "Files", "Terminal", "Team", "Settings"]);
+    expect(navFor("/projects/demo", "developer").items.map((i) => i.label)).toEqual(owner);
+    expect(navFor("/projects/demo", "viewer").items.map((i) => i.label)).toEqual([
+      "Overview",
+      "Deployments",
+      "Analytics",
+      "Team",
+    ]);
+  });
+
+  it("still titles and marks the pages a viewer can read", () => {
+    const ctx = navFor("/projects/demo/team", "viewer");
+    expect(ctx.title).toBe("Team");
+    expect(ctx.items.some((i) => i.href === "/projects/demo/team" && i.active("/projects/demo/team"))).toBe(true);
+    expect(navFor("/projects/demo/analytics", "viewer").backHref).toBe("/projects/demo");
+  });
+});

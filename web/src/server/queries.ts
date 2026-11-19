@@ -22,6 +22,8 @@ export type ProjectView = {
   id: string;
   slug: string;
   name: string;
+  /** The viewer's own role: the owner, or a developer or viewer member. */
+  role?: "owner" | "developer" | "viewer";
   repo: string | null;
   repoUrl: string;
   branch: string;
@@ -91,6 +93,8 @@ export type DeploymentView = {
   cleanedUp: boolean;
   error: string | null;
   createdAt: string;
+  /** False when the viewer of this list can only read (a viewer member). */
+  canAct?: boolean;
 };
 
 type DeploymentRow = typeof schema.deployments.$inferSelect;
@@ -98,13 +102,15 @@ type DeploymentRow = typeof schema.deployments.$inferSelect;
 function toDeploymentView(
   d: DeploymentRow,
   project: { id: string; userId: string; slug: string; name: string; repoFullName: string | null },
-  userId: string
+  userId: string,
+  canAct = true
 ): DeploymentView {
   return {
     id: d.id,
     projectId: project.id,
     projectSlug: project.userId === userId ? project.slug : `~${project.id}`,
     projectName: project.name,
+    canAct,
     repo: project.repoFullName,
     env: d.env,
     state: uiState(d.state),
@@ -158,12 +164,20 @@ async function loadProjectViews(userId: string): Promise<ProjectView[]> {
     domainsByProject.set(domain.projectId, list);
   }
 
+  const roles = new Map(
+    (await db
+      .select({ projectId: schema.projectMembers.projectId, role: schema.projectMembers.role })
+      .from(schema.projectMembers)
+      .where(eq(schema.projectMembers.userId, userId))).map((r) => [r.projectId, r.role])
+  );
+
   return projects.map(({ p, nest }) => {
     const d = latest.get(p.id);
     return {
       id: p.id,
       slug: p.userId === userId ? p.slug : `~${p.id}`,
       name: p.name,
+      role: (p.userId === userId ? "owner" : roles.get(p.id) ?? "viewer") as "owner" | "developer" | "viewer",
       repo: p.repoFullName,
       repoUrl: p.repoUrl,
       branch: p.productionBranch,
@@ -218,6 +232,34 @@ export async function projectBySlug(userId: string, slug: string) {
 
 export type DeploymentPage = { rows: DeploymentView[]; nextCursor: string | null };
 
+/** The viewer's own role on each project, for lists that span projects. */
+async function memberRoles(
+  userId: string,
+  projectIds: string[]
+): Promise<Map<string, "developer" | "viewer">> {
+  if (projectIds.length === 0) return new Map();
+  const db = await getDb();
+  const rows = await db
+    .select({ projectId: schema.projectMembers.projectId, role: schema.projectMembers.role })
+    .from(schema.projectMembers)
+    .where(
+      and(
+        eq(schema.projectMembers.userId, userId),
+        inArray(schema.projectMembers.projectId, projectIds)
+      )
+    );
+  return new Map(rows.map((r) => [r.projectId, r.role]));
+}
+
+/** True when this person may change the project: the owner or a developer member. */
+function canDevelop(
+  userId: string,
+  project: { id: string; userId: string },
+  roles: Map<string, "developer" | "viewer">
+) {
+  return project.userId === userId || roles.get(project.id) === "developer";
+}
+
 /**
  * One page of deployments, newest first. `cursor` is the `nextCursor` of the
  * previous page (an invalid one is a 400). The size is 25 unless asked, at most 100.
@@ -232,7 +274,8 @@ export async function deploymentPage(
     filter: options.filter,
     limit: pageLimit(options.limit),
   });
-  return { rows: rows.map(({ d, p }) => toDeploymentView(d, p, userId)), nextCursor };
+  const roles = await memberRoles(userId, [...new Set(rows.map(({ p }) => p.id))]);
+  return { rows: rows.map(({ d, p }) => toDeploymentView(d, p, userId, canDevelop(userId, p, roles))), nextCursor };
 }
 
 /** The newest deployments in one list, 100 unless `limit` says otherwise. */
@@ -244,7 +287,8 @@ export async function deploymentViews(
     projectId: options.projectId,
     limit: Math.max(1, Math.floor(options.limit ?? 100)),
   });
-  return rows.map(({ d, p }) => toDeploymentView(d, p, userId));
+  const roles = await memberRoles(userId, [...new Set(rows.map(({ p }) => p.id))]);
+  return rows.map(({ d, p }) => toDeploymentView(d, p, userId, canDevelop(userId, p, roles)));
 }
 
 export async function deploymentView(userId: string, deploymentId: string) {
@@ -261,7 +305,7 @@ export async function deploymentView(userId: string, deploymentId: string) {
     .from(schema.domains)
     .where(eq(schema.domains.projectId, row.p.id));
   return {
-    deployment: toDeploymentView(row.d, row.p, userId),
+    deployment: toDeploymentView(row.d, row.p, userId, canDevelop(userId, row.p, await memberRoles(userId, [row.p.id]))),
     project: { id: row.p.id, slug: row.p.slug, name: row.p.name, port: row.p.port },
     domains: domains.map((x) => x.domain),
   };

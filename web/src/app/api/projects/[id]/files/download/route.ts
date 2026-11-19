@@ -1,5 +1,6 @@
 import { authed, handle } from "@/server/http";
 import { downloadProjectFile } from "@/server/files";
+import { enforceRateLimit } from "@/server/rate-limit";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -16,6 +17,7 @@ function attachment(name: string) {
 export const GET = handle<Ctx>(async (req, { params }) => {
   const user = await authed();
   const { id } = await params;
+  enforceRateLimit("sshCall", user.id);
   const path = req.nextUrl.searchParams.get("path") ?? "";
   const file = await downloadProjectFile(user.id, id, path);
   return new Response(new Uint8Array(file.bytes), {

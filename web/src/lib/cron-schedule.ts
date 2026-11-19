@@ -145,7 +145,7 @@ export function parseSchedule(input: string): Schedule {
   return schedule;
 }
 
-/** Smallest time between two runs on a day the job runs; null when it runs once a day or less. */
+/** Smallest time between two runs on a day the job runs, over midnight for a job that runs every day; null when it runs once a day or less. */
 function smallestGapMinutes(s: Schedule): number | null {
   const times: number[] = [];
   for (const h of s.hours) for (const m of s.minutes) times.push(h * 60 + m);
@@ -153,6 +153,11 @@ function smallestGapMinutes(s: Schedule): number | null {
   times.sort((a, b) => a - b);
   let min = Infinity;
   for (let i = 1; i < times.length; i++) min = Math.min(min, times[i] - times[i - 1]);
+  // The last run of one day and the first of the next can be closer together than
+  // any two runs on a single day, so the gap over midnight counts too.
+  if (s.days.length === 0 && s.weekdays.length === 0) {
+    min = Math.min(min, times[0] + (1440 - times[times.length - 1]));
+  }
   return min;
 }
 

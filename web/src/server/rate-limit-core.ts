@@ -151,6 +151,11 @@ export const RATE_LIMITS = {
   terminalInput: { limit: 300, windowMs: 60_000, what: "terminal input" },
   fileWrite: { limit: 60, windowMs: 60_000, what: "file changes" },
   orphanRemoval: { limit: 10, windowMs: 60_000, what: "leftover removals" },
+  // Dashboard routes that open an SSH connection to the user's container, per signed-in user, per minute: a
+  // small shared bucket for the slow container reads (file reads, journal logs, usage, opening a terminal),
+  // and a tighter one for restarting the production service.
+  sshCall: { limit: 10, windowMs: 60_000, what: "slow calls to your container" },
+  serviceRestart: { limit: 6, windowMs: 60_000, what: "service restarts" },
   signIn: { limit: 20, windowMs: 60_000, what: "sign-in attempts" },
   badToken: { limit: 60, windowMs: 60_000, what: "unrecognised access tokens" },
   // GitHub builds: per project, per hour. Keyed by project id (the project the build credential belongs to).

@@ -10,6 +10,7 @@ import {
   createWebhook,
   deleteWebhook,
   dispatchDeploymentEvent,
+  forgetDeliveriesForDeployments,
   getWebhook,
   listDeliveries,
   listWebhooks,
@@ -383,6 +384,15 @@ describe("rotating the secret", () => {
     expect(verifyWebhookSignature(rotated.secret, sig, seen[0].body, t)).toBe(true);
     expect(verifyWebhookSignature(created.secret, sig, seen[0].body, t)).toBe(false);
   });
+
+  it("records the rotation in the audit log", async () => {
+    const created = await createWebhook(sam, { url: URL_OK });
+    const rotated = await rotateWebhookSecret(sam, created.webhook.id);
+    const rows = await ctx.db.select().from(schema.auditLog).where(eq(schema.auditLog.target, created.webhook.id));
+    expect(rows.map((r) => r.action)).toEqual(["webhook.create", "webhook.rotate"]);
+    // Nothing about the rotation carries the secret.
+    expect(JSON.stringify(rows)).not.toContain(rotated.secret);
+  });
 });
 
 describe("delivery history", () => {
@@ -417,5 +427,33 @@ describe("delivery history", () => {
     expect(await ctx.db.select().from(schema.webhookDeliveries)).toHaveLength(1);
     await deleteWebhook(sam, webhook.id);
     expect(await ctx.db.select().from(schema.webhookDeliveries)).toHaveLength(0);
+  });
+
+  it("forgets the deployment link when the deployments are deleted, and leaves others alone", async () => {
+    const { webhook } = await createWebhook(sam, { url: URL_OK });
+    const gone = await deployment("ready");
+    const kept = await deployment("ready");
+    const row = (id: string, deploymentId: string | null) => ({
+      id,
+      webhookId: webhook.id,
+      event: "deployment.succeeded",
+      deploymentId,
+      status: "success" as const,
+      attempts: 1,
+      createdAt: NOW,
+    });
+    await ctx.db.insert(schema.webhookDeliveries).values([
+      row("dv-gone", gone),
+      row("dv-kept", kept),
+      row("dv-none", null),
+    ]);
+    await forgetDeliveriesForDeployments(ctx.db, [gone]);
+    const left = Object.fromEntries((await ctx.db.select().from(schema.webhookDeliveries)).map((d) => [d.id, d]));
+    expect(left["dv-gone"].deploymentId).toBeNull();
+    expect(left["dv-kept"].deploymentId).toBe(kept);
+    expect(left["dv-none"].deploymentId).toBeNull();
+    // An empty list changes nothing.
+    await forgetDeliveriesForDeployments(ctx.db, []);
+    expect(await ctx.db.select().from(schema.webhookDeliveries)).toHaveLength(3);
   });
 });

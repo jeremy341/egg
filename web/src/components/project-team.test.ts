@@ -1,8 +1,8 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { AcceptInvite } from "@/components/accept-invite";
-import { ProjectTeam, type TeamInvitation, type TeamMember } from "@/components/project-team";
+import { acceptOutcome, AcceptInvite } from "@/components/accept-invite";
+import { applyRole, ProjectTeam, undoRole, type TeamInvitation, type TeamMember } from "@/components/project-team";
 import { MAX_OPEN_INVITES } from "@/lib/team";
 
 const DAY = 86_400_000;
@@ -114,5 +114,37 @@ describe("the accept page", () => {
     expect(html).toContain("Accept the invitation");
     expect(html).not.toContain("did not work");
     expect(html).not.toContain("token");
+  });
+
+  it("tells a new member from one who was already on the project", () => {
+    expect(acceptOutcome({ alreadyMember: false })).toEqual({ kind: "done", alreadyMember: false });
+    expect(acceptOutcome({ alreadyMember: true })).toEqual({ kind: "done", alreadyMember: true });
+  });
+
+  it("maps every server refusal to its own notice", () => {
+    const signIn = Object.assign(new Error("Sign in required"), { code: "unauthorized" });
+    expect(acceptOutcome(null, signIn)).toEqual({ kind: "signin" });
+    const refused = Object.assign(new Error("Invitation not found"), { code: "not_found" });
+    expect(acceptOutcome(null, refused)).toEqual({ kind: "refused" });
+  });
+
+  it("keeps a failure retryable: its text reaches the page", () => {
+    const failed = acceptOutcome(null, new Error("Request failed (500)"));
+    expect(failed).toEqual({ kind: "failed", text: "Request failed (500)" });
+  });
+});
+
+describe("the Team page's optimistic role change", () => {
+  it("undoes a failed change without touching anything else", () => {
+    const rows = [member(), member({ userId: "u2", role: "viewer" })];
+    const optimistic = applyRole(rows, "u2", "developer");
+    expect(optimistic).toEqual([rows[0], { ...rows[1], role: "developer" }]);
+    expect(undoRole(optimistic, "u2", "developer", "viewer")).toEqual(rows);
+  });
+
+  it("leaves a newer landed change alone when the old request fails", () => {
+    // First press: u2 goes developer to viewer. Then a second press makes them a developer again.
+    const ahead = [member(), member({ userId: "u2", role: "developer" })];
+    expect(undoRole(ahead, "u2", "viewer", "developer")).toEqual(ahead);
   });
 });

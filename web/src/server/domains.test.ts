@@ -188,6 +188,21 @@ describe("DNS check", () => {
     expect(otherResult.status).toBe("invalid");
   });
 
+  it("says unknown, not a verdict, when the lookup itself fails, and changes nothing", async () => {
+    const { domain } = await addDomain(userId, { serverId, domain: "flaky.example.com", port: 3000 });
+    const db = await getDb();
+    const stored = async () => (await db.select().from(schema.domains).where(eq(schema.domains.id, domain.id)).get())!;
+    const timedOut = await verifyDomain(userId, domain.id, resolver(dnsError("ETIMEOUT")));
+    expect(timedOut.status).toBe("unknown");
+    expect(timedOut.reason).toContain("could not be checked");
+    expect((await stored()).status).toBe("pending");
+    await verifyDomain(userId, domain.id, resolver(["sam-r.hackclub.app"]));
+    const lost = await verifyDomain(userId, domain.id, resolver(dnsError("ETIMEOUT")));
+    expect(lost.status).toBe("unknown");
+    expect(lost.reason).toContain("could not be checked");
+    expect((await stored()).status).toBe("valid");
+  });
+
   it("goes active on a pass, stays waiting on a miss, and flags a lost record without deleting it", async () => {
     const { domain } = await addDomain(userId, { serverId, domain: "life.example.com", port: 3000 });
     const db = await getDb();

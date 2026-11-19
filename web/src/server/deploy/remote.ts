@@ -108,15 +108,22 @@ export function prepareDirs(home: string, slug: string) {
 
 /**
  * Exit 30 when a service file with this name already exists and Egg
- * did not write it. Run before the unit is written, so a deploy never replaces
- * a service the user made.
+ * did not write it, or its marker names another Egg project. Run before the
+ * unit is written, so a deploy never replaces a service the user made and never
+ * takes a unit another Egg project already owns (a slug such as a-pv-12345678
+ * spells the preview unit name of the project a). Without `project` only the
+ * marker is checked, the shape callers outside one project use.
  */
-export function guardUnitFree(unitDir: string, unit: string) {
+export function guardUnitFree(unitDir: string, unit: string, project?: string) {
+  const own = project === undefined
+    ? ""
+    : `if egg_unit_marked "$f" && ! egg_unit_ours "$f" ${shellQuote(project)}; then echo "${unit} was created by Egg for another project, so it was left alone." >&2; exit ${NOT_OURS_EXIT}; fi\n`;
   return (
     HEAD +
     SH_MARKER_HELPERS +
     `f=${shellQuote(`${unitDir}/${unit}`)}\n` +
-    `if { [ -e "$f" ] || [ -L "$f" ]; } && ! egg_unit_marked "$f"; then echo "${unit} already exists and was not created by Egg, so it was left alone." >&2; exit ${NOT_OURS_EXIT}; fi\n`
+    `if { [ -e "$f" ] || [ -L "$f" ]; } && ! egg_unit_marked "$f"; then echo "${unit} already exists and was not created by Egg, so it was left alone." >&2; exit ${NOT_OURS_EXIT}; fi\n` +
+    own
   );
 }
 
@@ -373,7 +380,7 @@ export function removePreview(args: {
 }) {
   const container = dockerContainerName(args.slug, { releaseId: args.releaseId });
   return (
-    SH_MARKER_HELPERS + removeOwnUnit(args.unitDir, args.unit) +
+    SH_MARKER_HELPERS + removeOwnUnit(args.unitDir, args.unit, args.slug) +
     // The preview's container and image go with its folder; volumes are never touched here.
     // Docker is only touched when the project itself deploys through it.
     (args.docker
@@ -391,20 +398,31 @@ export function removePreview(args: {
 
 /**
  * Stop, disable and delete a service file, but only when it carries our
- * marker. A service with the same name that someone else wrote is left alone.
+ * marker. A service with the same name that someone else wrote is left alone,
+ * and a marked unit whose project= marker names another project is left alone
+ * too: unit names overlap (a-pv-12345678 is both a slug and a preview unit's
+ * suffix), so a colliding name must never let one project stop another's
+ * service. A unit Egg marked before the project= existed stays ours, as before.
  * Needs SH_MARKER_HELPERS earlier in the script.
  */
-export function removeOwnUnit(unitDir: string, unit: string) {
+export function removeOwnUnit(unitDir: string, unit: string, project?: string) {
   const file = shellQuote(`${unitDir}/${unit}`);
   const failure = 45;
+  const ours = project === undefined
+    ? `if egg_unit_marked ${file}; then\n`
+    : `if egg_unit_ours ${file} ${shellQuote(project)}; then\n`;
+  const foreign = project === undefined
+    ? `elif [ -e ${file} ] || [ -L ${file} ]; then echo ${shellQuote(`${unit} was not created by Egg, so it was left alone.`)} >&2; exit ${NOT_OURS_EXIT}; fi\n`
+    : `elif egg_unit_marked ${file}; then echo ${shellQuote(`${unit} was created by Egg for another project, so it was left alone.`)} >&2; exit ${NOT_OURS_EXIT}\n` +
+      `elif [ -e ${file} ] || [ -L ${file} ]; then echo ${shellQuote(`${unit} was not created by Egg, so it was left alone.`)} >&2; exit ${NOT_OURS_EXIT}; fi\n`;
   return (
-    `if egg_unit_marked ${file}; then\n` +
+    ours +
     `  systemctl stop ${shellQuote(unit)} >/dev/null 2>&1 || { echo ${shellQuote(`Could not stop ${unit}; it was left in place.`)} >&2; exit ${failure}; }\n` +
     `  if systemctl is-active --quiet ${shellQuote(unit)}; then echo ${shellQuote(`Could not stop ${unit}; it is still active and was left in place.`)} >&2; exit ${failure}; fi\n` +
     `  systemctl disable ${shellQuote(unit)} >/dev/null 2>&1 || { echo ${shellQuote(`Could not disable ${unit}; it was left in place.`)} >&2; exit ${failure}; }\n` +
     `  rm -f -- ${file} || { echo ${shellQuote(`Could not remove ${unit}; its file was left in place.`)} >&2; exit ${failure}; }\n` +
     `  systemctl daemon-reload >/dev/null 2>&1 || { echo ${shellQuote(`Could not reload systemd after removing ${unit}.`)} >&2; exit ${failure}; }\n` +
-    `elif [ -e ${file} ] || [ -L ${file} ]; then echo ${shellQuote(`${unit} was not created by Egg, so it was left alone.`)} >&2; exit ${NOT_OURS_EXIT}; fi\n`
+    foreign
   );
 }
 
@@ -426,7 +444,7 @@ export function removeProject(args: {
     : `rm -rf ${shellQuote(`${p}/releases`)} ${shellQuote(`${p}/incoming`)} ${shellQuote(`${p}/current`)} ${shellQuote(envDir(args.home, args.slug))} ${shellQuote(currentEnvLink(args.home, args.slug))} || exit 45\n${removeManagedDownloadCache(p)}`;
   return (
     SH_MARKER_HELPERS +
-    removeOwnUnit(args.unitDir, args.unit) +
+    removeOwnUnit(args.unitDir, args.unit, args.slug) +
     // Containers, images and networks this project's names own. Volumes stay.
     (args.docker ? dockerTeardownLines(args.slug) : ``) +
     `if egg_dir_managed ${shellQuote(p)}; then\n${remove}\nelif [ -e ${shellQuote(p)} ] || [ -L ${shellQuote(p)} ]; then echo ${shellQuote(`${p} was not created by Egg, so it was left alone.`)} >&2; exit ${NOT_OURS_EXIT}; fi\n`
@@ -441,7 +459,7 @@ export function cleanupOwnedProject(args: { home: string; slug: string; units: s
     `if [ -e "$d" ] || [ -L "$d" ]; then [ -d "$d" ] && [ ! -L "$d" ] && [ -f "$d/.egg-managed" ] && [ ! -L "$d/.egg-managed" ] || { echo 'Project folder ownership cannot be verified; nothing was deleted.' >&2; exit 44; }; fi\n` +
     args.units.map((unit) => {
       const file = shellQuote(`${args.unitDir}/${unit}`);
-      return `if [ -e ${file} ] || [ -L ${file} ]; then egg_unit_marked ${file} || { echo 'Service ownership cannot be verified; nothing was deleted.' >&2; exit 44; }; fi\n`;
+      return `if [ -e ${file} ] || [ -L ${file} ]; then egg_unit_ours ${file} ${shellQuote(args.slug)} || { echo 'Service ownership cannot be verified; nothing was deleted.' >&2; exit 44; }; fi\n`;
     }).join("") +
     args.units.map((unit) => {
       const file = shellQuote(`${args.unitDir}/${unit}`);

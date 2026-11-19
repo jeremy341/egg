@@ -758,6 +758,8 @@ The built-in static server (used for static sites, with Python 3 or Node.js) ans
 
 An expired lease is not proof that commands on the deploy target stopped. Egg therefore does not automatically free a stale running job. It remains the project's queue guard until an operator has confirmed the worker and its remote work have stopped.
 
+With the worker stopped and remote work confirmed, the administrator recovery API does this for you: `POST /api/admin/recovery/<serverId>` (inspect first with `GET /api/admin/recovery`) fences the stale holder, stops the recorded remote build scopes, fails the job, and marks a still-queued, building or deploying deployment as errored — a canceled one stays canceled. It works whatever crash window the worker died in, including during activation. The manual database updates below are the fallback for when the API itself cannot run.
+
 Stop every Egg worker first. For Compose, stop the app as well because it may run the worker when `RUN_WORKER=1`:
 
 ```bash

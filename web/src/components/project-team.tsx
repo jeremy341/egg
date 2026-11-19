@@ -46,6 +46,21 @@ export type TeamInvitation = {
 const LIST = "hairline-y overflow-hidden rounded-md shadow-border-small";
 const ROW = "flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3";
 
+/** A member's row with its role replaced. */
+export function applyRole(members: TeamMember[], userId: string, next: MemberRole): TeamMember[] {
+  return members.map((m) => (m.userId === userId ? { ...m, role: next } : m));
+}
+
+/** Undo a failed change only when the row still shows it; a newer committed change is left alone. */
+export function undoRole(
+  members: TeamMember[],
+  userId: string,
+  optimistic: MemberRole,
+  before: MemberRole
+): TeamMember[] {
+  return members.map((m) => (m.userId === userId && m.role === optimistic ? { ...m, role: before } : m));
+}
+
 /**
  * The owner's Team page: invite by email, change a role, remove someone, take back an invitation. Egg sends no email, so a
  * new invitation shows its link once, here: the server keeps only a hash of the token and cannot show it again.
@@ -105,13 +120,13 @@ export function ProjectTeam({
   }
 
   async function changeRole(member: TeamMember, next: MemberRole) {
-    const before = members;
-    setMembers((cur) => cur.map((m) => (m.userId === member.userId ? { ...m, role: next } : m)));
+    setMembers((cur) => applyRole(cur, member.userId, next));
     try {
       await api(`${base}/members/${encodeURIComponent(member.userId)}`, { method: "PATCH", body: { role: next } });
       toast.success(`Now a ${ROLE_LABEL[next].toLowerCase()}`, member.name ?? member.email ?? undefined);
     } catch (e) {
-      setMembers(before);
+      // Undo only this row, and only if no newer change has landed on it since.
+      setMembers((cur) => undoRole(cur, member.userId, next, member.role));
       toast.error("Could not change the role", errorText(e, "Try again."));
     }
   }

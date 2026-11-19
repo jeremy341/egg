@@ -11,7 +11,7 @@ Conventions used below:
 - Every browser write route checks that the `Origin` header matches the site (`server/http.ts:79-89`). A request with no `Origin` header passes. The hook, collector, API and MCP routes skip this check on purpose.
 - The three container permission switches are Terminal, File changes and Removing leftovers. All three are off for a new server (`server/db/schema.ts:85-87`).
 
-Shared rate limits (per signed-in user, per minute, in memory, reset on restart): terminal input 300, file changes 60, leftover removals 10 (`server/rate-limit.ts:65-69`). Per token: 120 reads, 30 changes, 10 for anything that opens an SSH session, 300 for terminal input (`server/api-v1-kit.ts:24-29`).
+Shared rate limits (per signed-in user, per minute, in memory, reset on restart): terminal input 300, file changes 60, leftover removals 10 (`server/rate-limit.ts:65-69`). Per token: 120 reads, 30 changes, 10 for anything that opens an SSH session (the deployment log and server usage reads included), 300 for terminal input (`server/api-v1-kit.ts:24-29`). Dashboard routes that open an SSH connection share a 6-a-minute service-restart bucket and a 10-a-minute slow-call bucket (file reads, lists and downloads, runtime logs, server usage, terminal opens), and one person holds at most 3 deployment streams at once (`server/rate-limit-core.ts`, `server/deployment-streams.ts`).
 
 ---
 

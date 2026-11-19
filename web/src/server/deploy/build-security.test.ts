@@ -1,5 +1,5 @@
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { devNull, tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
@@ -81,5 +81,37 @@ describe("gitEnvironment", () => {
       `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`
     );
     expect(env.GIT_CONFIG_COUNT).toBe("1");
+  });
+
+  it("keeps the server's own environment and secrets away from git", () => {
+    const names = ["EGG_TEST_SECRET", "HTTP_PROXY", "ALL_PROXY"];
+    for (const name of names) process.env[name] = "test-value";
+    try {
+      const env = gitEnvironment("token");
+      for (const name of names) expect(env[name], name).toBeUndefined();
+      expect(env.GIT_CONFIG_NOSYSTEM).toBe("1");
+      expect(env.GIT_CONFIG_GLOBAL).toBe(devNull);
+      expect(env.GIT_TERMINAL_PROMPT).toBe("0");
+      expect(env.GIT_ASKPASS).toBe("echo");
+    } finally {
+      for (const name of names) delete process.env[name];
+    }
+  });
+
+  it("keeps the path and locale git runs from, and no other Git, proxy or curl setting", () => {
+    const drop = { GIT_EGG_TEST_TRACE: "1", EGG_TEST_PROXY: "http://127.0.0.1:9", CURL_EGG_TEST_HOME: "x" };
+    for (const [name, value] of Object.entries(drop)) process.env[name] = value;
+    try {
+      const env = gitEnvironment("token");
+      for (const name of Object.keys(drop)) expect(env[name], name).toBeUndefined();
+      expect((env.PATH ?? env.Path) as string | undefined).toBe(process.env.PATH);
+      const allowed = Object.keys(env).filter(
+        (key) => key !== "GIT_CONFIG_NOSYSTEM" && key !== "GIT_CONFIG_GLOBAL" && key !== "GIT_CONFIG_COUNT" &&
+          key !== "GIT_CONFIG_KEY_0" && key !== "GIT_CONFIG_VALUE_0" && key !== "GIT_TERMINAL_PROMPT" && key !== "GIT_ASKPASS"
+      );
+      for (const key of allowed) expect(/^(?:PATH|PATHEXT|LANG|LC_[A-Z_]+|HOME|USERPROFILE|TMPDIR|TEMP|TMP|SYSTEMROOT|SYSTEMDRIVE|COMSPEC)$/i.test(key), key).toBe(true);
+    } finally {
+      for (const name of Object.keys(drop)) delete process.env[name];
+    }
   });
 });

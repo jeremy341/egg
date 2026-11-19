@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { HttpError } from "@/server/http";
+import { rateLimiter } from "@/server/rate-limit";
 import { TerminalManager } from "@/server/terminal";
 import type { ShellHandle } from "@/server/ssh/shell";
 
@@ -49,6 +50,8 @@ let shells: FakeShell[];
 
 beforeEach(() => {
   shells = [];
+  // Opening a terminal now spends from the slow SSH bucket, so each test starts with a fresh allowance.
+  rateLimiter().clear();
   const manager = new TerminalManager({
     getProject: async (userId, projectId) => {
       const owner = projectId === "p-alice" ? ALICE.id : BOB.id;

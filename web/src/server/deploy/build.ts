@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { createWriteStream, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statfsSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { lstat, readdir, statfs } from "node:fs/promises";
+import { devNull } from "node:os";
 import { Transform } from "node:stream";
 import { pipeline as pipelineStream } from "node:stream/promises";
 import { StringDecoder } from "node:string_decoder";
@@ -135,9 +136,26 @@ export function assertGitSha(sha: string): string {
   return sha.toLowerCase();
 }
 
-/** Configure Git authentication through its environment, keeping the token out of argv. */
+/** What a spawned git may inherit from the server: the executable path, the locale and the temp folder, and nothing else. */
+const GIT_ENV_KEEP = /^(?:PATH|PATHEXT|LANG|LC_[A-Z_]+|HOME|USERPROFILE|TMPDIR|TEMP|TMP|SYSTEMROOT|SYSTEMDRIVE|COMSPEC)$/i;
+/** No inherited Git, proxy or curl setting, the same protection the generic clone path applies. */
+const GIT_ENV_DROP = /^(?:git_|.*proxy$|curl_)/i;
+
+/**
+ * Configure Git authentication through its environment, keeping the token out
+ * of argv. The clone itself is of a repository somebody else chose, so git gets
+ * a minimal environment with the server's own configuration, credentials and
+ * secrets left out, just as `genericGitEnvironment` does for the generic path.
+ */
 export function gitEnvironment(token?: string | null): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_ASKPASS: "echo" };
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  for (const key of Object.keys(env)) {
+    if (!GIT_ENV_KEEP.test(key) || GIT_ENV_DROP.test(key)) delete env[key];
+  }
+  env.GIT_CONFIG_NOSYSTEM = "1";
+  env.GIT_CONFIG_GLOBAL = devNull;
+  env.GIT_TERMINAL_PROMPT = "0";
+  env.GIT_ASKPASS = "echo";
   if (token) {
     const basic = Buffer.from(`x-access-token:${token}`).toString("base64");
     env.GIT_CONFIG_COUNT = "1";

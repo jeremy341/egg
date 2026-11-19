@@ -9,6 +9,7 @@ import { terminals } from "@/server/terminal";
 import { NestSession, SshError } from "@/server/ssh/connection";
 import { generateServerKey } from "@/server/ssh/keys";
 import { assertNoAccountCleanup, assertNoServerCleanup } from "@/server/cleanup-guards";
+import { forgetDeliveriesForDeployments } from "@/server/webhooks";
 import { DEFAULT_CONTAINER_BUILD_MEMORY_MB } from "@/lib/build-memory";
 import {
   probeIssues,
@@ -218,11 +219,33 @@ export async function deleteServer(
   await assertDisconnectAllowed(db);
   // Root shells opened with this server's key must not outlive the key.
   await terminals().closeAllForUser(userId, "disabled", { serverId: server.id });
+  // Deleting the projects deletes their deployments with them, so the server
+  // gets the same work guard as a per-project delete: a queued, building or
+  // deploying deployment, or a job still running, blocks it.
+  const assertNoServerWork = async (tx: Db | Parameters<Parameters<Db["transaction"]>[0]>[0]) => {
+    const active = await tx.select({ id: schema.deployments.id }).from(schema.deployments)
+      .innerJoin(schema.projects, eq(schema.projects.id, schema.deployments.projectId))
+      .where(and(eq(schema.projects.serverId, server.id), inArray(schema.deployments.state, ["queued", "building", "deploying"]))).get();
+    if (active) throw new HttpError(409, "A deployment is queued or running on this server. Wait for it to finish or cancel it first.", "deployment_active");
+    const job = await tx.select({ id: schema.jobs.id }).from(schema.jobs)
+      .innerJoin(schema.deployments, eq(schema.deployments.id, schema.jobs.deploymentId))
+      .innerJoin(schema.projects, eq(schema.projects.id, schema.deployments.projectId))
+      .where(and(eq(schema.projects.serverId, server.id), eq(schema.jobs.state, "running"))).get();
+    if (job) throw new HttpError(409, "A deployment job is still running on this server. Check the project page before disconnecting.", "job_active");
+  };
   await db.transaction(async (tx) => {
     const projects = await assertDisconnectAllowed(tx);
+    if (deleteProjects && projects.length > 0) await assertNoServerWork(tx);
     if (deleteProjects || projects.length === 0) {
+      const deployments = await tx
+        .select({ id: schema.deployments.id })
+        .from(schema.deployments)
+        .innerJoin(schema.projects, eq(schema.projects.id, schema.deployments.projectId))
+        .where(eq(schema.projects.serverId, server.id));
       // Foreign keys remove the projects, deployments, logs, domains and samples with it.
       await tx.delete(schema.servers).where(and(eq(schema.servers.id, server.id), eq(schema.servers.userId, userId)));
+      // Delivery history survives the cascade, so links to the deleted deployments are forgotten.
+      await forgetDeliveriesForDeployments(tx, deployments.map((d) => d.id));
     } else {
       // The projects need the record to point at. Drop the key and the pinned host,
       // so nothing can connect until the account is connected again.
@@ -430,6 +453,9 @@ export async function testServer(
       session.close();
     }
   } catch (err) {
+    // A policy refusal (a cutover in progress, cleanup) is not a connection
+    // failure; recording it as one would flip the server to error state.
+    if (err instanceof HttpError) throw err;
     const error = err instanceof SshError ? err : null;
     const message = error?.message ?? "Could not connect to Nest.";
     await db

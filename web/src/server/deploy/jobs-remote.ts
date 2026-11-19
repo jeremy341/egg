@@ -36,6 +36,16 @@ export function jobUnits(slug: string, jobId: string) {
 /** A name that is safe to put in a unit's description. */
 export const JOB_NAME = /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,59}$/;
 
+/**
+ * A job of a container project runs inside its running container. The command
+ * is quoted for the unit's login shell, so nothing in it is expanded before
+ * `sh -lc` reads it inside the container: variables and command substitution
+ * are the container's own, not the container host's.
+ */
+export function dockerJobCommand(args: { slug: string; containerPort: number; command: string }) {
+  return `docker exec -e PORT=${Number(args.containerPort)} ${shellQuote(`egg-${args.slug}`)} sh -lc ${shellQuote(args.command)}`;
+}
+
 export function jobServiceFile(args: {
   slug: string;
   jobId: string;
@@ -92,7 +102,7 @@ export function installJob(args: {
   const { service, timer } = jobUnits(args.slug, args.jobId);
   const guard = (unit: string) => {
     const f = shellQuote(`${args.unitDir}/${unit}`);
-    return `if { [ -e ${f} ] || [ -L ${f} ]; } && ! egg_unit_marked ${f}; then echo ${shellQuote(`${unit} already exists and was not created by Egg, so it was left alone.`)} >&2; exit ${NOT_OURS_EXIT}; fi\n`;
+    return `if { [ -e ${f} ] || [ -L ${f} ]; } && ! egg_unit_ours ${f} ${shellQuote(args.slug)}; then if egg_unit_marked ${f}; then echo ${shellQuote(`${unit} was created by Egg for another project, so it was left alone.`)} >&2; else echo ${shellQuote(`${unit} already exists and was not created by Egg, so it was left alone.`)} >&2; fi; exit ${NOT_OURS_EXIT}; fi\n`;
   };
   const link = shellQuote(currentLink(args.home, args.slug));
   return (
@@ -120,15 +130,15 @@ export function removeJob(args: { slug: string; jobId: string; unitDir: string }
   return (
     SH_MARKER_HELPERS +
     // The timer first, so nothing starts the service again while it is being removed.
-    removeOwnUnit(args.unitDir, timer) +
-    removeOwnUnit(args.unitDir, service) +
+    removeOwnUnit(args.unitDir, timer, args.slug) +
+    removeOwnUnit(args.unitDir, service, args.slug) +
     `true\n`
   );
 }
 
 /** Stop and delete these units, but only ones that carry our marker. Pass timers before their services. */
-export function removeUnits(unitDir: string, units: string[]) {
-  return SH_MARKER_HELPERS + units.map((u) => removeOwnUnit(unitDir, u)).join("") + `true
+export function removeUnits(unitDir: string, units: string[], project?: string) {
+  return SH_MARKER_HELPERS + units.map((u) => removeOwnUnit(unitDir, u, project)).join("") + `true
 `;
 }
 
@@ -139,7 +149,7 @@ export function runJobNow(args: { slug: string; jobId: string; unitDir: string }
   return (
     HEAD +
     SH_MARKER_HELPERS +
-    `egg_unit_marked ${f} || { echo "That job is not installed on the container." >&2; exit ${NOT_INSTALLED_EXIT}; }\n` +
+    `egg_unit_ours ${f} ${shellQuote(args.slug)} || { echo "That job is not installed on the container." >&2; exit ${NOT_INSTALLED_EXIT}; }\n` +
     `systemctl start ${shellQuote(service)} --no-block\n` +
     `echo "Started ${service}"\n`
   );

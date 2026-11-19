@@ -1,7 +1,7 @@
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { z } from "zod";
 import { featuresForKey } from "@/server/analytics-config";
-import { BROWSER_ID, KEY_PREFIX, UNKNOWN_IP, isBot, recordPageview, retentionCode, visitorHash } from "@/server/analytics";
+import { BROWSER_ID, KEY_PREFIX, UNKNOWN_IP, isBot, overProjectWriteLimit, recordPageview, retentionCode, visitorHash } from "@/server/analytics";
 import { TRACK_NAME, VITALS, cleanEventName, cleanEventValue, cleanPath, cleanVital } from "@/server/analytics-fields";
 import { getDb, schema } from "@/server/db";
 import { getReadableProject } from "@/server/projects";
@@ -106,6 +106,11 @@ export async function recordHit(
   // Per-address limiting only applies to a real address: the shared unknown one
   // (UNKNOWN_IP) must not throttle the whole project as a single visitor.
   const hold = who.ip === UNKNOWN_IP ? null : `${projectId}|${who.ip}`;
+  const t = now.getTime();
+  // The per-project cap bounds the total whatever the addresses (it is the only
+  // rule with none of them trusted); the per-address one keeps a single visitor
+  // from using a project's whole minute.
+  const atCapacity = () => overProjectWriteLimit(projectId, t) || (hold ? overLimit(hold, t) : false);
   const e = parsed.data;
   const day = now.toISOString().slice(0, 10);
   const db = await getDb();
@@ -113,20 +118,20 @@ export async function recordHit(
   if (e.e === "click") {
     const label = cleanLabel(e.l);
     if (!features.clicks || !label) return false;
-    if (hold && overLimit(hold, now.getTime())) return false;
+    if (atCapacity()) return false;
     await db.insert(schema.analyticsEvents).values({ projectId, day, kind: "click", label });
     return true;
   }
   if (e.e === "time") {
     if (!features.time) return false;
-    if (hold && overLimit(hold, now.getTime())) return false;
+    if (atCapacity()) return false;
     await db.insert(schema.analyticsEvents).values({ projectId, day, kind: "time", bucket: e.b });
     return true;
   }
   if (e.e === "track") {
     const label = cleanEventName(e.n);
     if (!features.events || !label) return false;
-    if (hold && overLimit(hold, now.getTime())) return false;
+    if (atCapacity()) return false;
     // A value that breaks the plain-text rule is dropped; the event is still counted.
     await db.insert(schema.analyticsEvents).values({ projectId, day, kind: "track", label, value: cleanEventValue(e.v) });
     return true;
@@ -135,7 +140,7 @@ export async function recordHit(
     if (!features.vitals) return false;
     const m = Object.fromEntries(VITALS.map((k) => [k, cleanVital(k, e[k])])) as Record<(typeof VITALS)[number], number | null>;
     if (VITALS.every((k) => m[k] === null)) return false;
-    if (hold && overLimit(hold, now.getTime())) return false;
+    if (atCapacity()) return false;
     await db.insert(schema.analyticsVitals).values({ projectId, at: now, path: e.pt === 1 ? cleanPath(e.p) : "/", ...m });
     return true;
   }
@@ -147,14 +152,14 @@ export async function recordHit(
   if (e.e === "ping") {
     // A heartbeat only means something with the retention code to count, so it needs both switches.
     if (!features.live || !features.retention || !BROWSER_ID.test(e.i)) return false;
-    if (hold && overLimit(hold, now.getTime())) return false;
+    if (atCapacity()) return false;
     await db.insert(schema.analyticsLive).values({ projectId, at: now, vid: retentionCode({ projectId, browserId: e.i, at: now }) });
     return true;
   }
   // A goal counts only when it is one of the funnel's own named steps.
   const name = e.n.trim();
   if (!features.funnel || !features.steps.some((s) => s.kind === "track" && s.value === name)) return false;
-  if (hold && overLimit(hold, now.getTime())) return false;
+  if (atCapacity()) return false;
   await db.insert(schema.analyticsEvents).values({
     projectId,
     day,

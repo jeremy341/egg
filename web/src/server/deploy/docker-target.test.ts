@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { checkDockerCapabilities, deployDockerRelease, validateComposeSpec } from "./docker-target";
+import { checkDockerCapabilities, composeMainVolumes, deployDockerRelease, parseComposeMount, validateComposeSpec, validateResolvedCompose } from "./docker-target";
 
 const capabilities = { engine: true, compose: true, nesting: true, cgroupLimits: true, disk: true, portMapping: true };
 
@@ -35,4 +35,38 @@ it("does not discard a candidate when activation has an ambiguous outcome", asyn
 
 it("rejects unrecognized Compose features and interpolation", () => {
   expect(validateComposeSpec({ services: { web: { image: "${IMAGE}", network_mode: "host" } }, include: ["other.yml"] })).toHaveLength(3);
+});
+
+describe("Compose volume mounts", () => {
+  it("parses a declared volume at an absolute path, with an optional :ro", () => {
+    expect(parseComposeMount("data:/var/lib/app")).toEqual({ volume: "data", target: "/var/lib/app", readOnly: false });
+    expect(parseComposeMount("data:/var/lib/app:ro")).toEqual({ volume: "data", target: "/var/lib/app", readOnly: true });
+    expect(parseComposeMount("data:/var/lib/app/")).toEqual({ volume: "data", target: "/var/lib/app/", readOnly: false });
+  });
+  it("refuses every other shape", () => {
+    expect(parseComposeMount("data:/app:/junk")).toBeNull();
+    expect(parseComposeMount("data:/app:ro:rw")).toBeNull();
+    expect(parseComposeMount("./data:/app")).toBeNull();
+    expect(parseComposeMount("data:app")).toBeNull();
+    expect(parseComposeMount("data:/")).toBeNull();
+    expect(parseComposeMount("data:/../etc")).toBeNull();
+    expect(parseComposeMount("data:/app//deep")).toBeNull();
+    expect(parseComposeMount({ long: "syntax" })).toBeNull();
+    expect(parseComposeMount("data")).toBeNull();
+  });
+  it("validates an unrenderable mount instead of deploying it as something else", () => {
+    const input = (volumes: unknown[]) => ({ services: { web: { image: "img", volumes } }, volumes: { data: {} } });
+    expect(validateResolvedCompose(input(["data:/app:/junk"]), { service: "web", containerPort: null }).errors)
+      .toEqual([expect.stringMatching(/declared named volumes/)]);
+    expect(validateComposeSpec(input(["data:/app:/junk"]))).toEqual([expect.stringMatching(/volume mount/)]);
+  });
+  it("renders exactly what was validated", () => {
+    const resolved = { services: { web: { image: "img", volumes: ["data:/app:ro", "data:/storage"] } }, volumes: { data: {} } };
+    expect(validateResolvedCompose(resolved, { service: "web", containerPort: null }).errors).toEqual([]);
+    expect(composeMainVolumes(resolved, "web", "egg-demo")).toEqual(["egg-demo_data:/app:ro", "egg-demo_data:/storage"]);
+  });
+  it("never renders a mount the shared parse refused", () => {
+    expect(() => composeMainVolumes({ services: { web: { image: "img", volumes: ["data:/app:/junk"] } } }, "web", "egg-demo"))
+      .toThrow(/Invalid volume mount/);
+  });
 });

@@ -304,7 +304,14 @@ describe("the endpoint list", () => {
 
   it("puts every SSH-using endpoint in the small bucket and every change in the write bucket", () => {
     const byId = new Map(ENDPOINTS.map((e) => [e.id, e]));
-    for (const id of ["get_container_inventory", "get_deployment_logs", "get_resource_history", "get_project_resources"]) {
+    for (const id of [
+      "get_logs",
+      "get_container_inventory",
+      "get_deployment_logs",
+      "get_resource_history",
+      "get_project_resources",
+      "get_server_usage",
+    ]) {
       expect(byId.get(id)!.bucket, id).toBe("ssh");
     }
     for (const ep of ENDPOINTS.filter((e) => !e.readOnly && e.tag !== "Terminal" && e.tag !== "Files")) {

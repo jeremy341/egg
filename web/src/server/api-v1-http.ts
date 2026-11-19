@@ -67,10 +67,13 @@ export async function readCappedText(req: Request, maxBytes: number): Promise<st
   return new TextDecoder().decode(Buffer.concat(chunks));
 }
 
-/** The endpoint's body fields, from an optional JSON object body. Unknown fields are refused. */
-async function readBodyFields(ep: Endpoint, req: Request): Promise<Record<string, unknown>> {
+/**
+ * The endpoint's body fields, from an optional JSON object body. Unknown fields are
+ * refused, and so is any field on an endpoint that takes none. An empty or missing
+ * body is always fine.
+ */
+export async function readBodyFields(ep: Endpoint, req: Request): Promise<Record<string, unknown>> {
   const allowed = Object.keys(ep.body);
-  if (allowed.length === 0) return {};
   const text = (await readCappedText(req, ep.maxBodyBytes)).trim();
   if (text === "") return {};
   let parsed: unknown;
@@ -85,7 +88,9 @@ async function readBodyFields(ep: Endpoint, req: Request): Promise<Record<string
   const fields = parsed as Record<string, unknown>;
   const unknown = Object.keys(fields).find((k) => !allowed.includes(k));
   if (unknown !== undefined) {
-    throw new HttpError(400, `Unknown field "${unknown.slice(0, 60)}". Allowed: ${allowed.join(", ")}.`, "validation");
+    const note =
+      allowed.length === 0 ? "This endpoint takes no body fields." : `Allowed: ${allowed.join(", ")}.`;
+    throw new HttpError(400, `Unknown field "${unknown.slice(0, 60)}". ${note}`, "validation");
   }
   return fields;
 }

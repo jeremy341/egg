@@ -1,4 +1,4 @@
-import { and, eq, like, lt, or } from "drizzle-orm";
+import { and, eq, like, lt, or, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { audit } from "@/server/audit";
 import { isInstanceAdmin } from "@/server/admin-identity";
@@ -87,32 +87,50 @@ export async function recoverBuild(admin: string, serverId: string, raw: unknown
           // an earlier recovery attempt of this same deployment.
           or(eq(schema.jobs.lockedBy, input.workerId), like(schema.jobs.lockedBy, "recovery:%")))).get();
       const now = Date.now();
-      if (!row || (row.server.buildLockHolder !== holder && row.server.buildLockHolder !== fence)
-        || row.server.buildLockAt?.getTime() !== at.getTime()
-        || now - at.getTime() < LOCK_STALE_AFTER_MS || !row.job.lockedAt || now - row.job.lockedAt.getTime() < JOB_STALE_MS
-        || row.deployment.state !== "building" || row.deployment.activationStartedAt) {
-        throw new HttpError(409, "The guard or worker changed, is not stale, or has reached activation. Inspect it again.", "conflict");
+      if (!row || !row.job.lockedAt || now - row.job.lockedAt.getTime() < JOB_STALE_MS) {
+        throw new HttpError(409, "The guard or worker changed, or is not stale. Inspect it again.", "conflict");
+      }
+      // The build lock is held through the build; during activation it is
+      // already released. A null lock fences nothing, and when another build
+      // owns the lock it is not this deployment's to recover.
+      const currentHolder = row.server.buildLockHolder;
+      const lockHeld = currentHolder === holder || currentHolder === fence;
+      const lockTaken = currentHolder !== null && currentHolder !== undefined;
+      if (lockTaken && !lockHeld) {
+        throw new HttpError(409, "The build lock belongs to another build. Inspect it again.", "conflict");
+      }
+      if (lockHeld && (row.server.buildLockAt?.getTime() !== at.getTime()
+        || now - at.getTime() < LOCK_STALE_AFTER_MS)) {
+        throw new HttpError(409, "The guard changed, or is not stale. Inspect it again.", "conflict");
       }
       const job = await tx.update(schema.jobs).set({ lockedBy: fence, lockedAt: new Date() })
         .where(and(eq(schema.jobs.id, row.job.id), eq(schema.jobs.state, "running"), eq(schema.jobs.lockedBy, row.job.lockedBy ?? ""), eq(schema.jobs.lockedAt, row.job.lockedAt))).returning({ id: schema.jobs.id });
-      const lock = await tx.update(schema.servers).set({ buildLockHolder: fence, buildLockAt: new Date() })
-        .where(and(eq(schema.servers.id, serverId), eq(schema.servers.buildLockHolder, row.server.buildLockHolder), eq(schema.servers.buildLockAt, at)))
-        .returning({ id: schema.servers.id });
+      const lock = lockHeld && currentHolder
+        ? await tx.update(schema.servers).set({ buildLockHolder: fence, buildLockAt: new Date() })
+            .where(and(eq(schema.servers.id, serverId), eq(schema.servers.buildLockHolder, currentHolder), eq(schema.servers.buildLockAt, at)))
+            .returning({ id: schema.servers.id })
+        : [{ id: serverId }];
       if (job.length !== 1 || lock.length !== 1) throw new HttpError(409, "The guard changed; inspect it again.", "conflict");
-      return row;
+      return { row, lockHeld };
     });
     renewal = setInterval(() => { void renewBuildLock(serverId, fence).then(ok => { if (!ok) lost = true; }).catch(() => { lost = true; }); }, 20_000);
-    session = await connect(snapshot.server);
+    session = await connect(snapshot.row.server);
     const result = await session.script(STOP_SCOPES, { timeoutMs: 60_000 });
     if (result.code !== 0 || lost) throw new Error("Remote build scopes could not be confirmed stopped; the recovery guard remains in place.");
     await db.transaction(async tx => {
       const lock = await tx.update(schema.servers).set({ buildLockHolder: null, buildLockAt: null })
         .where(and(eq(schema.servers.id, serverId), eq(schema.servers.buildLockHolder, fence))).returning({ id: schema.servers.id });
       const job = await tx.update(schema.jobs).set({ state: "failed", error: "Recovered after the operator confirmed the worker stopped." })
-        .where(and(eq(schema.jobs.id, snapshot.job.id), eq(schema.jobs.state, "running"), eq(schema.jobs.lockedBy, fence))).returning({ id: schema.jobs.id });
-      if (lock.length !== 1 || job.length !== 1 || lost) throw new Error("Recovery guard changed; the guard remains in place.");
-      await tx.update(schema.deployments).set({ state: "error", error: "The operator recovered an interrupted build.", finishedAt: new Date() })
-        .where(and(eq(schema.deployments.id, holder), eq(schema.deployments.state, "building")));
+        .where(and(eq(schema.jobs.id, snapshot.row.job.id), eq(schema.jobs.state, "running"), eq(schema.jobs.lockedBy, fence))).returning({ id: schema.jobs.id });
+      if (job.length !== 1 || lost) throw new Error("Recovery guard changed; the guard remains in place.");
+      if (snapshot.lockHeld && lock.length !== 1) throw new Error("Recovery guard changed; the guard remains in place.");
+      // A deployment still in a live run state when recovery started is marked
+      // errored so the user can redeploy or roll back. Any other state — the
+      // user canceled it during the stale window, or it finished before the
+      // crash — stays untouched; only the queue guard is released.
+      await tx.update(schema.deployments).set({ state: "error", error: "The operator recovered an interrupted deployment.", finishedAt: new Date() })
+        .where(and(eq(schema.deployments.id, holder), eq(schema.deployments.state, snapshot.row.deployment.state),
+          inArray(schema.deployments.state, ["queued", "building", "deploying"])));
     });
     await audit(admin, "admin.recovery.complete", serverId, { holder, workerId: input.workerId });
   } catch (err) {

@@ -371,15 +371,26 @@ async function cleanup(
       .where(and(eq(schema.deployments.projectId, project.id), inArray(schema.deployments.state, ["building", "deploying"])))
   ).map((d) => d.releaseId);
 
-  await session
+  const pruned = await session
     .script(remote.pruneReleases(home, project.slug, [...keep], building, unitDir, project.deploymentMode !== "native"), {
       timeoutMs: 120_000,
       onLine: (l) => log.info(l),
     })
-    .catch(() => {});
-
+    .then((result) => result.stdout ?? "")
+    .catch(() => "");
+  // Only releases the prune script confirmed removing are marked cleaned up, so
+  // a failed prune (a blip, a stopped script mid-way) keeps them as rollback
+  // targets that the server still has on disk.
+  const removedIds = new Set(
+    pruned
+      .split("\n")
+      .map((l) => /^Removed old release ([0-9a-f]{8})/.exec(l.trim())?.[1])
+      .filter((id): id is string => Boolean(id))
+  );
   for (const d of all.filter((x) => x.env === "production" && !keep.has(x.releaseId))) {
-    await db.update(schema.deployments).set({ cleanedUp: true }).where(eq(schema.deployments.id, d.id));
+    if (removedIds.has(d.releaseId.slice(0, 8))) {
+      await db.update(schema.deployments).set({ cleanedUp: true }).where(eq(schema.deployments.id, d.id));
+    }
   }
 }
 
@@ -584,7 +595,7 @@ export async function runDeployJob(
     // Look at the container before anything is uploaded or created: one fix line, nothing changed.
     await checkContainerReady({ preflight, needs, home, slug: project.slug, log, signal });
     await run(session, log, "Preparing folders", remote.prepareDirs(home, project.slug), 120_000, signal);
-    await run(session, log, "Checking the service name", remote.guardUnitFree(deps.unitDir, unitInfo.unit), 120_000, signal);
+    await run(session, log, "Checking the service name", remote.guardUnitFree(deps.unitDir, unitInfo.unit, project.slug), 120_000, signal);
 
     // Install and build in the new release folder, under a cap, while the running app keeps serving.
     // Docker modes build the image (or prepare the Compose stack) in the same scope and watchdog.
@@ -843,7 +854,7 @@ export async function runDeployJob(
           // preview that never came up does not restart-loop forever. Best effort.
           const unit = unitName(project.slug, { releaseId: dep.releaseId });
           const stopped = await session
-            .script(SH_MARKER_HELPERS + remote.removeOwnUnit(deps.unitDir, unit), { timeoutMs: 60_000 })
+            .script(SH_MARKER_HELPERS + remote.removeOwnUnit(deps.unitDir, unit, project.slug), { timeoutMs: 60_000 })
             .then((result) => result.code === 0)
             .catch(() => false);
           if (!stopped) log.warn(`Could not remove or stop the preview service ${unit}; it may keep restarting on the server.`);

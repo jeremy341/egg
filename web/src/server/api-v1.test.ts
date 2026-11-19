@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { eq } from "drizzle-orm";
 import { createApiToken, revokeApiToken, SCOPES, type Scope } from "@/server/api-tokens";
 import { ENDPOINTS } from "@/server/api-v1";
+import { buildOpenApi } from "@/server/api-v1-openapi";
 import { upsertUser } from "@/server/auth/session";
 import { newId } from "@/server/crypto";
 import { schema } from "@/server/db";
@@ -484,5 +485,16 @@ describe("OpenAPI", () => {
     expect(refs.length).toBeGreaterThan(0);
     for (const r of refs) expect(doc.components.schemas, r).toHaveProperty(r);
     expect(text).not.toContain("$defs");
+  });
+
+  it("is built once per process, not per request, and the ETag answer still works", async () => {
+    expect(buildOpenApi()).toBe(buildOpenApi());
+    const first = openapi();
+    expect(first.status).toBe(200);
+    const etag = first.headers.get("etag");
+    expect(etag).toBeTruthy();
+    const again = openapi(new NextRequest("http://localhost:3000/api/v1/openapi.json", { headers: { "if-none-match": etag! } }));
+    expect(again.status).toBe(304);
+    expect(again.headers.get("etag")).toBe(etag);
   });
 });

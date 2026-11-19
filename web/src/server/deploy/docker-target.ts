@@ -55,6 +55,28 @@ const record = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 const name = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/;
 
+export type ComposeMount = { volume: string; target: string; readOnly: boolean };
+
+/**
+ * The one parse of a Compose volume entry, shared by validation and rendering,
+ * so a mount can never validate as one thing and deploy as another. Short
+ * syntax only: a volume by name at an absolute container path, with an
+ * optional :ro. Anything else — extra segments, syntactic binds, `.` parts —
+ * is invalid.
+ */
+export function parseComposeMount(mount: unknown): ComposeMount | null {
+  if (typeof mount !== "string") return null;
+  const parts = mount.split(":");
+  if (parts.length < 2 || parts.length > 3) return null;
+  const [volume, target, mode] = parts.length === 3 ? parts : [...parts, ""];
+  if (mode !== undefined && mode !== "" && mode !== "ro") return null;
+  if (!name.test(volume)) return null;
+  const clean = target.endsWith("/") ? target.slice(0, -1) : target;
+  if (!clean.startsWith("/")) return null;
+  if (clean.slice(1).split("/").some((part) => !/^[a-zA-Z0-9_.-]+$/.test(part) || part === "." || part === "..")) return null;
+  return { volume, target, readOnly: mode === "ro" };
+}
+
 /** Validate a deliberately narrow, already-parsed Compose subset before any deploy.
  * Callers must not execute the original YAML: use a canonical representation of
  * this validated subset and prohibit interpolation, includes and extensions.
@@ -82,8 +104,8 @@ export function validateComposeSpec(input: unknown): string[] {
     if (value.volumes !== undefined) {
       if (!Array.isArray(value.volumes)) errors.push(`Invalid volume list: ${service}`);
       else for (const mount of value.volumes) {
-        const match = typeof mount === "string" && /^([a-zA-Z0-9][a-zA-Z0-9_.-]*):(\/(?:[a-zA-Z0-9_.-]+\/?)+)(?::ro)?$/.exec(mount);
-        if (!match || !Object.hasOwn(volumes, match[1]) || match[2].split("/").some(part => part === "." || part === "..")) errors.push(`Invalid volume mount: ${service}`);
+        const parsed = parseComposeMount(mount);
+        if (!parsed || !Object.hasOwn(volumes, parsed.volume)) errors.push(`Invalid volume mount: ${service}`);
       }
     }
   }
@@ -145,9 +167,8 @@ export function validateResolvedCompose(
     }
     if (Array.isArray(value.volumes)) {
       for (const mount of value.volumes) {
-        const text = typeof mount === "string" ? mount.split(":")[0] : "";
-        const target = typeof mount === "string" ? mount.split(":")[1] : "";
-        if (/[\/\.]/.test(text) || !declared.has(text) || !target.startsWith("/") || target.split("/").some((p) => p === "." || p === "..")) {
+        const parsed = parseComposeMount(mount);
+        if (!parsed || /[\/\.]/.test(parsed.volume) || !declared.has(parsed.volume)) {
           errors.push(`Service ${service} mounts ${typeof mount === "string" ? mount : "a volume"} outside the declared named volumes`);
         }
       }
@@ -171,8 +192,10 @@ export function composeMainVolumes(input: unknown, mainService: string, project:
   return service.volumes
     .filter((v): v is string => typeof v === "string")
     .map((v) => {
-      const [name, target] = v.split(":");
-      const readOnly = v.split(":")[2] === "ro";
-      return `${project}_${name}:${target}${readOnly ? ":ro" : ""}`;
+      // The same parse the Compose subset was validated with, so what runs is
+      // exactly what was allowed. An unparseable mount never reaches docker.
+      const parsed = parseComposeMount(v);
+      if (!parsed) throw new Error(`Invalid volume mount: ${v}`);
+      return `${project}_${parsed.volume}:${parsed.target}${parsed.readOnly ? ":ro" : ""}`;
     });
 }
