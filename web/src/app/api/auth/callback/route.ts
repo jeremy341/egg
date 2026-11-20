@@ -15,11 +15,19 @@ import { audit } from "@/server/audit";
 import { config } from "@/server/config";
 import { safeEqual } from "@/server/crypto";
 
+// Clear the OAuth handshake cookie wherever it may be scoped. An old build scoped it to
+// /api/auth; leaving that one behind would pair it with the root-scoped cookie the routes
+// now set, and the planted-cookie check below would refuse every callback until it expired.
+function clearOauthCookies(res: NextResponse) {
+  res.cookies.delete({ name: OAUTH_COOKIE, path: "/" });
+  res.cookies.delete({ name: OAUTH_COOKIE, path: "/api/auth" });
+}
+
 function back(error: string, to = "/login") {
   const url = new URL(to, config().APP_URL);
   url.searchParams.set(to === "/login" ? "error" : "reauth", error);
   const res = NextResponse.redirect(url, 303);
-  res.cookies.delete({ name: OAUTH_COOKIE, path: "/" });
+  clearOauthCookies(res);
   return res;
 }
 
@@ -57,7 +65,7 @@ export async function GET(req: NextRequest) {
       await audit(user.id, "auth.reauth");
       const next = safeNextPath(saved.n);
       const res = NextResponse.redirect(new URL(next, config().APP_URL), 303);
-      res.cookies.delete({ name: OAUTH_COOKIE, path: "/" });
+      clearOauthCookies(res);
       return res;
     }
     const user = await upsertUser(profile);
@@ -69,7 +77,7 @@ export async function GET(req: NextRequest) {
     );
     const res = NextResponse.redirect(new URL("/projects", config().APP_URL), 303);
     res.cookies.set(SESSION_COOKIE, session.token, sessionCookieOptions(session.expiresAt));
-    res.cookies.delete({ name: OAUTH_COOKIE, path: "/" });
+    clearOauthCookies(res);
     return res;
   } catch (err) {
     console.error("Hack Club login failed", err);

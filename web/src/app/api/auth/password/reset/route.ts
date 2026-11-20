@@ -24,7 +24,7 @@ const input = z.object({
 /** The slow ceiling on recovery-key guesses for one account, separate from sign-in so guessing cannot block a reset. */
 const PASSWORD_ATTEMPTS = { limit: 60, windowMs: 60 * 60_000 };
 
-function enforcePasswordCeiling(digest: string) {
+function passwordCeiling(digest: string) {
   const result = rateLimiter().check(`password-reset-slow:${digest}`, PASSWORD_ATTEMPTS.limit, PASSWORD_ATTEMPTS.windowMs);
   if (result.allowed) return;
   const seconds = result.retryAfterSeconds;
@@ -54,13 +54,18 @@ export const POST = handle(async (req: NextRequest) => {
   // Keyed by address and email together, so guessing cannot lock the account's
   // owner out; the slow per-account ceiling caps guesses across addresses.
   enforceRateLimit("signIn", `password-email:${address}:${digest}`);
-  enforcePasswordCeiling(digest);
 
   const problem = localPasswordProblem(body.newPassword);
   if (problem) throw new HttpError(400, problem, "validation");
   if (body.newPassword !== body.confirmPassword) {
     throw new HttpError(400, "The passwords do not match.", "validation");
   }
+
+  // The slow ceiling counts key attempts, not requests: it exists to cap distributed
+  // brute force of the recovery key, and the earlier buckets already cap the raw
+  // traffic. Counting here also means a flood that never names the account cannot
+  // burn the owner's reset attempts before the owner gets to use one.
+  passwordCeiling(digest);
 
   const account = await authenticatePasswordAccount(email, { recoveryKey: body.recoveryKey });
   if (!account) throw new HttpError(403, PASSWORD_AUTH_ERROR, "forbidden");

@@ -2,7 +2,7 @@ import { and, eq, isNull, like, lt, or, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { audit } from "@/server/audit";
 import { isInstanceAdmin } from "@/server/admin-identity";
-import { getDb, schema } from "@/server/db";
+import { getDb, schema, withLockRetry } from "@/server/db";
 import { LOCK_STALE_AFTER_MS, renewBuildLock } from "@/server/deploy/build-lock";
 import { isValidSlug, unitName } from "@/server/deploy/layout";
 import * as remote from "@/server/deploy/remote";
@@ -37,14 +37,25 @@ done <<< "$listing"
 `;
 /** Activation commands run outside any build scope, so a deployment recovered mid-activation must
  * also have its unit, containers and Compose services stopped: the recovered deployment is
- * recorded as errored, and a remote half-activated unit would silently keep serving instead. */
-function recoveryStopScript(a: { slug: string; unit: string; container: string; composeProject: string }) {
+ * recorded as errored, and a remote half-activated unit would silently keep serving instead.
+ * A crash before activation began never touched the unit, containers or Compose stack — the
+ * previous release is still serving from them — so those lines are omitted. A preview deployment
+ * never gets the Compose teardown: aux services belong to the project's Compose project, which
+ * the production deployment owns, and tearing it down would take production's aux services. */
+function recoveryStopScript(a: {
+  slug: string; unit: string; container: string; composeProject: string;
+  activationBegun: boolean; production: boolean;
+}) {
   if (!isValidSlug(a.slug)) throw new HttpError(400, "The project name is not valid.", "validation");
   return (
     STOP_SCOPES +
-    `systemctl stop ${shellQuote(a.unit)} >/dev/null 2>&1 || true\n` +
-    `docker rm -f -- ${shellQuote(a.container)} ${shellQuote(`${a.container}-back`)} >/dev/null 2>&1 || true\n` +
-    `docker compose -p ${shellQuote(a.composeProject)} down --remove-orphans >/dev/null 2>&1 || true\n`
+    (a.activationBegun
+      ? `systemctl stop ${shellQuote(a.unit)} >/dev/null 2>&1 || true\n` +
+        `docker rm -f -- ${shellQuote(a.container)} ${shellQuote(`${a.container}-back`)} >/dev/null 2>&1 || true\n` +
+        (a.production
+          ? `docker compose -p ${shellQuote(a.composeProject)} down --remove-orphans >/dev/null 2>&1 || true\n`
+          : "")
+      : "")
   );
 }
 function adminOnly(userId: string) {
@@ -90,7 +101,10 @@ export async function recoverBuild(admin: string, serverId: string, raw: unknown
   let renewal: ReturnType<typeof setInterval> | undefined;
   let lost = false;
   try {
-    const snapshot = await db.transaction(async tx => {
+    // A second operator can be writing the same rows at the same moment; retry
+    // SQLite lock contention so the loser still gets the clean 409 from the
+    // guards instead of a raw database error.
+    const snapshot = await withLockRetry(() => db.transaction(async tx => {
       const row = await tx.select({ server: schema.servers, job: schema.jobs, deployment: schema.deployments, project: schema.projects })
         .from(schema.servers)
         .innerJoin(schema.projects, eq(schema.projects.serverId, schema.servers.id))
@@ -132,7 +146,7 @@ export async function recoverBuild(admin: string, serverId: string, raw: unknown
             .returning({ id: schema.servers.id });
       if (job.length !== 1 || lock.length !== 1) throw new HttpError(409, "The guard changed; inspect it again.", "conflict");
       return { row, lockHeld };
-    });
+    }));
     renewal = setInterval(() => {
       void (async () => {
         // The lock is always fenced now, so renewal always finds it; a false
@@ -156,9 +170,11 @@ export async function recoverBuild(admin: string, serverId: string, raw: unknown
       unit,
       container,
       composeProject: remote.dockerComposeProjectName(snapshot.row.project.slug),
+      activationBegun: snapshot.row.deployment.activationStartedAt !== null,
+      production: !preview,
     }), { timeoutMs: 60_000 });
     if (result.code !== 0 || lost) throw new Error("Remote build scopes could not be confirmed stopped; the recovery guard remains in place.");
-    await db.transaction(async tx => {
+    await withLockRetry(() => db.transaction(async tx => {
       const lock = await tx.update(schema.servers).set({ buildLockHolder: null, buildLockAt: null })
         .where(and(eq(schema.servers.id, serverId), eq(schema.servers.buildLockHolder, fence))).returning({ id: schema.servers.id });
       const job = await tx.update(schema.jobs).set({ state: "failed", error: "Recovered after the operator confirmed the worker stopped." })
@@ -172,7 +188,7 @@ export async function recoverBuild(admin: string, serverId: string, raw: unknown
       await tx.update(schema.deployments).set({ state: "error", error: "The operator recovered an interrupted deployment.", finishedAt: new Date() })
         .where(and(eq(schema.deployments.id, holder), eq(schema.deployments.state, snapshot.row.deployment.state),
           inArray(schema.deployments.state, ["queued", "building", "deploying"])));
-    });
+    }));
     await audit(admin, "admin.recovery.complete", serverId, { holder, workerId: input.workerId });
   } catch (err) {
     await audit(admin, "admin.recovery.failed", serverId, { holder, workerId: input.workerId });

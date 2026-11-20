@@ -916,6 +916,10 @@ export async function runRollbackJob(
   try {
     if ((await stateOf(deploymentId)) !== "queued") return;
     const dockerMode = project.deploymentMode !== "native";
+    // A failure below (docker, the app's journal lines, a restored unit) can echo the project's
+    // environment values into the stored log and the raw console error: register them with the
+    // logger, exactly like the deploy path does, so log.mask actually masks them.
+    log.setSecrets([...Object.values(await envForDeployment(project.id, dep.env))]);
     if (dep.triggeredBy && dep.triggeredBy !== project.userId && await getProjectRole(dep.triggeredBy, project.id) !== "developer") {
       throw new DeployError("The deployment actor no longer has permission to deploy this project.");
     }
@@ -1055,8 +1059,11 @@ export async function runRollbackJob(
     await log.flush().catch(() => {});
     const canceled = (await stateOf(deploymentId)) === "canceled";
     await setState(deploymentId, canceled ? "canceled" : "error", { error: log.mask(message).slice(0, 500), finishedAt: new Date() });
-    // The raw error can carry sealed env values, so the log only sees the masked form.
-    if (!(err instanceof DeployError)) console.error(`Rollback ${deploymentId} failed`, log.mask(message));
+    // The raw error can carry sealed env values, so the log only sees the masked form; the
+    // stack goes to the operator's console only, masked the same way.
+    if (!(err instanceof DeployError)) {
+      console.error(`Rollback ${deploymentId} failed`, log.mask(err instanceof Error ? (err.stack ?? message) : message));
+    }
   } finally {
     session?.close();
     await log.flush().catch(() => {});

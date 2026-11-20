@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { acceptOutcome, AcceptInvite } from "@/components/accept-invite";
-import { applyRole, onRoleChangeFailed, ProjectTeam, type TeamInvitation, type TeamMember } from "@/components/project-team";
+import { applyRole, onRoleChangeFailed, ProjectTeam, reconcileMembers, type TeamInvitation, type TeamMember } from "@/components/project-team";
 import { MAX_OPEN_INVITES } from "@/lib/team";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {} }) }));
@@ -149,5 +149,20 @@ describe("the Team page's optimistic role change", () => {
     onRoleChangeFailed(refresh);
     onRoleChangeFailed(refresh);
     expect(refresh).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps a newly committed role when a snapshot taken before it lands late", () => {
+    // u2 was changed to developer and the PATCH succeeded. A refresh dispatched
+    // by an earlier failure then delivers a snapshot from before that success.
+    const committed = new Map([["u2", "developer" as const]]);
+    const stale = [member(), member({ userId: "u2", role: "viewer" })];
+    expect(reconcileMembers(stale, committed).map((m) => [m.userId, m.role])).toEqual([["u1", "developer"], ["u2", "developer"]]);
+    // The server catches up on the next snapshot: the entry drops and the row applies as-is.
+    const fresh = [member(), member({ userId: "u2", role: "developer" })];
+    expect(reconcileMembers(fresh, committed).map((m) => [m.userId, m.role])).toEqual([["u1", "developer"], ["u2", "developer"]]);
+    expect(committed.has("u2")).toBe(false);
+    // A later snapshot without the committed role still applies for everyone else.
+    const newer = [member({ role: "viewer" }), member({ userId: "u2", role: "developer" })];
+    expect(reconcileMembers(newer, committed).map((m) => [m.userId, m.role])).toEqual([["u1", "viewer"], ["u2", "developer"]]);
   });
 });

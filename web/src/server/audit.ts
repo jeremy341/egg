@@ -55,6 +55,7 @@ export const LABELS: Record<string, string> = {
   "server.build_cpu": "Changed the build CPU limit for",
   "project.cleanup_request": "Scheduled project cleanup for",
   "account.cleanup_request": "Scheduled account cleanup",
+  "account.cleanup_cancel_failed": "Dropped a failed cleanup after acknowledging possibly-unremoved projects",
   "admin.maintenance": "Changed maintenance settings",
   "security_report.list": "Viewed the security report inbox",
   "security_report.read": "Read a security report",

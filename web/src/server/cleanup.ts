@@ -265,10 +265,41 @@ export async function retryCleanup(userId: string, cleanupId: string, confirmIdl
 /**
  * A drain can be canceled before the executor has started any remote step, and
  * a failed job can always be dropped: its remote step has stopped, and leaving
- * the row in place would block account deletion forever.
+ * the row in place would block account deletion forever. Dropping a failed job
+ * discards the only record of projects that may still have units on their
+ * server — and account deletion later takes the SSH key too — so the not-done
+ * projects are named once, an audit entry keeps the leader's lead until the
+ * account itself goes, and the caller must explicitly confirm going ahead.
  */
-export async function cancelCleanup(userId: string, cleanupId: string) {
+export async function cancelCleanup(
+  userId: string,
+  cleanupId: string,
+  input: { acknowledgeOrphans?: boolean } = {}
+) {
   const db = await getDb();
+  const job = await db.select().from(schema.cleanupJobs).where(and(
+    eq(schema.cleanupJobs.id, cleanupId), eq(schema.cleanupJobs.userId, userId)
+  )).get();
+  if (!job) throw new HttpError(409, "Cleanup has started and cannot be canceled safely.", "conflict");
+  const cancellable = (job.state === "draining" && job.attempts === 0) || job.state === "failed";
+  if (!cancellable) throw new HttpError(409, "Cleanup has started and cannot be canceled safely.", "conflict");
+  if (job.state === "failed") {
+    const items = await db.select().from(schema.cleanupItems).where(eq(schema.cleanupItems.cleanupJobId, job.id));
+    const orphans = items.filter((i) => i.state !== "done");
+    if (orphans.length > 0) {
+      const names = [...new Set(orphans.map((o) => o.projectName))];
+      await audit(userId, "account.cleanup_cancel_failed", null, {
+        orphans: JSON.stringify(orphans.map((o) => ({ project: o.projectName, slug: o.projectSlug, server: o.serverLabel, step: o.step, error: o.error }))),
+      });
+      if (input.acknowledgeOrphans !== true) {
+        throw new HttpError(
+          409,
+          `This cleanup failed and ${orphans.length} project step${orphans.length === 1 ? "" : "s"} may not be finished on the server: ${names.join(", ")}. Canceling deletes this record, and account deletion later removes the SSH key too, so check the server's ~/.egg folder by hand first. Confirm the acknowledgment to cancel anyway.`,
+          "confirm_orphans"
+        );
+      }
+    }
+  }
   const gone = await db.delete(schema.cleanupJobs).where(and(
     eq(schema.cleanupJobs.id, cleanupId), eq(schema.cleanupJobs.userId, userId),
     or(

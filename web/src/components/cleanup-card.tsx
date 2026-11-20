@@ -56,11 +56,21 @@ export function CleanupCard({ name, projectId }: { name: string; projectId?: str
     catch (err) { setError(err instanceof Error ? err.message : "Could not retry cleanup."); }
     finally { setBusy(false); }
   }
-  async function cancel() {
+  async function cancel(acknowledge = false) {
+    if (!status) return;
     setBusy(true); setError(null);
-    try { await api(`/api/cleanup/${status!.id}`, { method: "DELETE" }); setStatus(null); router.refresh(); }
-    catch (err) { setError(err instanceof Error ? err.message : "Could not cancel cleanup."); }
-    finally { setBusy(false); }
+    try {
+      await api(`/api/cleanup/${status.id}${acknowledge ? "?acknowledgeOrphans=true" : ""}`, { method: "DELETE" });
+      setStatus(null); router.refresh();
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      if (code === "confirm_orphans" && window.confirm(err instanceof Error ? err.message : "")) {
+        setBusy(false);
+        await cancel(true);
+        return;
+      }
+      setError(err instanceof Error ? err.message : "Could not cancel cleanup.");
+    } finally { setBusy(false); }
   }
   return <Card id={projectId ? "cleanup-project-heading" : "cleanup-account-heading"} title={projectId ? "Clean up this project" : "Clean up and delete account"} tone="danger" description="Pause new work, drain for five minutes, then remove verified Egg-managed services and deployed code. Account records are kept if a remote step fails.">
     <div className="space-y-4 text-sm">

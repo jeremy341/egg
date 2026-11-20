@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { UNIT_MARKER } from "@/server/deploy/layout";
-import { installJob, jobServiceFile, jobTimerFile, jobUnits } from "@/server/deploy/jobs-remote";
+import { installJob, jobServiceFile, jobTimerFile, jobUnits, removeJob, runJobNow } from "@/server/deploy/jobs-remote";
 import { parseSchedule } from "@/lib/cron-schedule";
 import { NestSession, shellQuote } from "@/server/ssh/connection";
 import { generateServerKey } from "@/server/ssh/keys";
@@ -78,5 +78,54 @@ describe("installJob job ownership", () => {
     expect(await contents(service)).toContain(`job=${FIRST}`);
     expect(await contents(service)).not.toContain("Description=old");
     expect(await contents(timer)).toContain(`job=${FIRST}`);
+  });
+
+  it("refuses a file whose own marker line is followed by trailing whitespace on reinstall", async () => {
+    mock.writeFile(`${unitDir}/${service}`, `${UNIT_MARKER} project=foo job=${FIRST} \n`);
+    mock.writeFile(`${unitDir}/${timer}`, marked(FIRST));
+    expect((await session.script(jobScript(FIRST))).code).toBe(0);
+  });
+
+  it("refuses to reinstall when a file carries two marker lines for different jobs", async () => {
+    mock.writeFile(`${unitDir}/${service}`, `${UNIT_MARKER} project=foo job=${FIRST}\n${UNIT_MARKER} project=foo job=${COLLIDING}\n`);
+    mock.writeFile(`${unitDir}/${timer}`, marked(FIRST));
+    const res = await session.script(jobScript(COLLIDING));
+    expect(res.code).toBe(30);
+  });
+});
+
+describe("remove and run job ownership", () => {
+  it("does not remove another job's units under a colliding short id", async () => {
+    mock.writeFile(`${unitDir}/${service}`, marked(FIRST));
+    mock.writeFile(`${unitDir}/${timer}`, marked(FIRST));
+    const res = await session.script(removeJob({ slug: "foo", jobId: COLLIDING, unitDir }));
+    expect(res.code).toBe(30);
+    expect(res.stderr).toContain("was created for another job");
+    expect(await contents(service)).toContain("Description=old");
+    expect(await contents(timer)).toContain("Description=old");
+  });
+
+  it("removes only its own units", async () => {
+    mock.writeFile(`${unitDir}/${service}`, marked(FIRST));
+    mock.writeFile(`${unitDir}/${timer}`, marked(FIRST));
+    const res = await session.script(removeJob({ slug: "foo", jobId: FIRST, unitDir }));
+    expect(res.code).toBe(0);
+    const gone = (u: string) => session.exec(`test -e ${shellQuote(`${unitDir}/${u}`)}`);
+    expect((await gone(service)).code).not.toBe(0);
+    expect((await gone(timer)).code).not.toBe(0);
+  });
+
+  it("does not start another job's service under a colliding short id", async () => {
+    mock.writeFile(`${unitDir}/${service}`, marked(FIRST));
+    const res = await session.script(runJobNow({ slug: "foo", jobId: COLLIDING, unitDir }));
+    expect(res.code).toBe(32);
+    expect(res.stdout).not.toContain("Started");
+  });
+
+  it("starts only its own service", async () => {
+    mock.writeFile(`${unitDir}/${service}`, marked(FIRST));
+    const res = await session.script(runJobNow({ slug: "foo", jobId: FIRST, unitDir }));
+    expect(res.code).toBe(0);
+    expect(res.stdout).toContain("Started");
   });
 });

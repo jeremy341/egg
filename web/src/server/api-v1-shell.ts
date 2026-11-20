@@ -308,6 +308,7 @@ export const SHELL_ENDPOINTS: Endpoint[] = [
     response: z.object({ session: sessionSchema, offset: z.number().int().describe("Start reading output from here (0).") }),
     errors: [400, 403, 404, 409, 502, 503],
     destructive: true,
+    untrusted: true,
     run: (p, i) => apiTerminalOpen(p, i.projectId, { cols: i.cols, rows: i.rows }),
   }),
   endpoint({
@@ -325,6 +326,7 @@ export const SHELL_ENDPOINTS: Endpoint[] = [
     response: z.object({ expiresAt: z.string() }),
     errors: [400, 403, 404, 413],
     destructive: true,
+    untrusted: true,
     run: (p, i) => apiTerminalSend(p, i.projectId, i.sessionId, i.data),
   }),
   endpoint({
@@ -347,6 +349,7 @@ export const SHELL_ENDPOINTS: Endpoint[] = [
       expiresAt: z.string().nullable(),
     }),
     errors: [400, 404],
+    untrusted: true,
     run: (p, i) => apiTerminalRead(p, i.projectId, i.sessionId, i.since),
   }),
   endpoint({
@@ -393,6 +396,7 @@ export const SHELL_ENDPOINTS: Endpoint[] = [
     query: { path: pathInput.default("") },
     response: z.object({ listing: listingSchema }),
     errors: [400, 403, 404, 409, 502],
+    untrusted: true,
     run: async (p, i) => ({ listing: await apiListFiles(p, i.projectId, i.path) }),
   }),
   endpoint({
@@ -408,6 +412,7 @@ export const SHELL_ENDPOINTS: Endpoint[] = [
     query: { path: pathInput },
     response: z.object({ file: contentSchema }),
     errors: [400, 403, 404, 409, 502],
+    untrusted: true,
     run: async (p, i) => ({ file: await apiReadFile(p, i.projectId, i.path) }),
   }),
   endpoint({
@@ -425,6 +430,7 @@ export const SHELL_ENDPOINTS: Endpoint[] = [
       file: z.object({ path: z.string(), name: z.string(), size: z.number().int(), contentBase64: z.string() }),
     }),
     errors: [400, 403, 404, 409, 413, 502],
+    untrusted: true,
     run: async (p, i) => ({ file: await apiDownloadFile(p, i.projectId, i.path) }),
   }),
   endpoint({
