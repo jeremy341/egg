@@ -70,6 +70,14 @@ describe("git arguments", () => {
     expect(() => assertCloneUrl("file:///etc")).toThrow(BuildError);
     expect(() => assertCloneUrl("https://evil.example/a/b.git")).toThrow(BuildError);
   });
+
+  it("refuses URLs whose authority the URL parser and git/curl read differently", () => {
+    // URL reads the backslash as a path separator and sees host github.com,
+    // while git/curl would connect to the metadata address after the @.
+    expect(() => assertCloneUrl("https://github.com\\@169.254.169.254:8443/a/b.git")).toThrow(BuildError);
+    expect(() => assertCloneUrl("https://user@github.com/a/b.git")).toThrow(BuildError);
+    expect(() => assertCloneUrl("https://github.com/a\\b.git")).toThrow(BuildError);
+  });
 });
 
 describe("gitEnvironment", () => {

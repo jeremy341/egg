@@ -65,16 +65,32 @@ export type ComposeMount = { volume: string; target: string; readOnly: boolean }
  * is invalid.
  */
 export function parseComposeMount(mount: unknown): ComposeMount | null {
-  if (typeof mount !== "string") return null;
-  const parts = mount.split(":");
-  if (parts.length < 2 || parts.length > 3) return null;
-  const [volume, target, mode] = parts.length === 3 ? parts : [...parts, ""];
-  if (mode !== undefined && mode !== "" && mode !== "ro") return null;
-  if (!name.test(volume)) return null;
-  const clean = target.endsWith("/") ? target.slice(0, -1) : target;
-  if (!clean.startsWith("/")) return null;
-  if (clean.slice(1).split("/").some((part) => !/^[a-zA-Z0-9_.-]+$/.test(part) || part === "." || part === "..")) return null;
-  return { volume, target, readOnly: mode === "ro" };
+  if (typeof mount === "string") {
+    const parts = mount.split(":");
+    if (parts.length < 2 || parts.length > 3) return null;
+    const [volume, target, mode] = parts.length === 3 ? parts : [...parts, ""];
+    if (mode !== undefined && mode !== "" && mode !== "ro") return null;
+    if (!name.test(volume)) return null;
+    const clean = target.endsWith("/") ? target.slice(0, -1) : target;
+    if (!clean.startsWith("/")) return null;
+    if (clean.slice(1).split("/").some((part) => !/^[a-zA-Z0-9_.-]+$/.test(part) || part === "." || part === "..")) return null;
+    return { volume, target, readOnly: mode === "ro" };
+  }
+  // `docker compose config` also emits the long syntax; accept only a named
+  // volume mount so a bind or tmpfs can never ride along hidden inside it.
+  if (record(mount)) {
+    if (mount.type !== "volume" || typeof mount.source !== "string" || !name.test(mount.source)) return null;
+    if (mount.bind !== undefined || mount.tmpfs !== undefined) return null;
+    if (mount.read_only !== undefined && typeof mount.read_only !== "boolean") return null;
+    const sub = mount.volume;
+    if (sub !== undefined && !record(sub)) return null;
+    if (record(sub)) for (const key of Object.keys(sub)) if (key !== "nocopy") return null;
+    const clean = typeof mount.target === "string" && mount.target.endsWith("/") ? mount.target.slice(0, -1) : typeof mount.target === "string" ? mount.target : "";
+    if (!clean.startsWith("/")) return null;
+    if (clean.slice(1).split("/").some((part) => !/^[a-zA-Z0-9_.-]+$/.test(part) || part === "." || part === "..")) return null;
+    return { volume: mount.source, target: typeof mount.target === "string" ? mount.target : "", readOnly: mount.read_only === true };
+  }
+  return null;
 }
 
 /** Validate a deliberately narrow, already-parsed Compose subset before any deploy.
@@ -127,7 +143,7 @@ const COMPOSE_SERVICE = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/;
  */
 export function validateResolvedCompose(
   input: unknown,
-  main: { service: string; containerPort: number | null }
+  main: { service: string; containerPort: number | null; project: string }
 ): { errors: string[]; aux: string[] } {
   const errors: string[] = [];
   if (!record(input) || !record(input.services) || Object.keys(input.services).length === 0) {
@@ -138,7 +154,17 @@ export function validateResolvedCompose(
   const declared = new Set(Object.keys(volumes));
   if (input.volumes !== undefined && !record(input.volumes)) errors.push("Invalid volumes");
   for (const [name, value] of Object.entries(volumes)) {
-    if (!COMPOSE_SERVICE.test(name) || !record(value) || value.external === true) errors.push(`Invalid volume: ${name}`);
+    if (!COMPOSE_SERVICE.test(name) || !record(value) || value.external === true) { errors.push(`Invalid volume: ${name}`); continue; }
+    // Config resolves a declared volume's physical name to `<project>_<key>`. A
+    // name pointing anywhere else would let an aux service mount another
+    // project's data volume, so a foreign name is refused outright.
+    if (typeof value.name === "string" && value.name !== `${main.project}_${name}`) {
+      errors.push(`Invalid volume: ${name}`);
+    }
+    for (const field of Object.keys(value)) {
+      if (field !== "name" && field !== "driver") errors.push(`Invalid volume: ${name}`);
+      if (field === "driver" && value.driver !== "local") errors.push(`Invalid volume: ${name}`);
+    }
   }
   const services = Object.keys(input.services).filter((s) => COMPOSE_SERVICE.test(s));
   if (!services.includes(main.service)) errors.push(`The service ${main.service} is not defined`);
@@ -147,7 +173,7 @@ export function validateResolvedCompose(
     if (!COMPOSE_SERVICE.test(service) || !record(value)) { errors.push(`Invalid service: ${service}`); continue; }
     if (value.build !== undefined && value.build !== null) errors.push(`Service ${service} builds an image. Compose services must use prebuilt images.`);
     if (typeof value.image !== "string" || value.image.length === 0) errors.push(`Service ${service} needs an image`);
-    for (const forbidden of ["privileged", "cap_add", "devices", "network_mode", "pid", "ipc", "userns_mode", "security_opt", "extends", "profiles"] as const) {
+    for (const forbidden of ["privileged", "cap_add", "devices", "network_mode", "pid", "ipc", "userns_mode", "security_opt", "extends", "profiles", "volumes_from"] as const) {
       if (value[forbidden] !== undefined && value[forbidden] !== null && value[forbidden] !== false) errors.push(`Service ${service} uses ${forbidden}, which Egg does not support`);
     }
     const restart = typeof value.restart === "string" ? value.restart : "";
@@ -190,12 +216,11 @@ export function composeMainVolumes(input: unknown, mainService: string, project:
   const service = (input.services as Record<string, unknown>)[mainService] as Record<string, unknown>;
   if (!Array.isArray(service.volumes)) return [];
   return service.volumes
-    .filter((v): v is string => typeof v === "string")
-    .map((v) => {
+    .map((mount) => {
       // The same parse the Compose subset was validated with, so what runs is
       // exactly what was allowed. An unparseable mount never reaches docker.
-      const parsed = parseComposeMount(v);
-      if (!parsed) throw new Error(`Invalid volume mount: ${v}`);
+      const parsed = parseComposeMount(mount);
+      if (!parsed) throw new Error("Invalid volume mount");
       return `${project}_${parsed.volume}:${parsed.target}${parsed.readOnly ? ":ro" : ""}`;
     });
 }

@@ -127,8 +127,19 @@ describe("password sign-in", () => {
     expect(cookie(res)).toBe("");
 
     rateLimiter().clear();
-    for (let i = 0; i < 20; i++) rateLimiter().check("signIn:password:unknown-client", 20, 60_000);
+    // With TRUST_PROXY off the address bucket is keyed by email, not one global key.
+    for (let i = 0; i < 20; i++) rateLimiter().check(`signIn:${sha256Hex(EMAIL)}`, 20, 60_000);
     expect((await form({ email: EMAIL, password: PASSWORD })).headers.get("location")).toContain("error=rate_limited");
+  });
+
+  it("does not let one email's unknown-client bucket block other emails", async () => {
+    await member();
+    for (let i = 0; i < 20; i++) rateLimiter().check(`signIn:${sha256Hex(EMAIL)}`, 20, 60_000);
+    expect((await form({ email: EMAIL, password: PASSWORD })).headers.get("location")).toContain("error=rate_limited");
+    // A different address-less email is still admitted (and gets the generic answer).
+    const other = await form({ email: "nobody@example.com", password: PASSWORD });
+    expect(other.headers.get("location")).toContain("error=password_invalid");
+    expect(other.headers.get("location")).not.toContain("rate_limited");
   });
 
   it("cannot lock the account out from another address", async () => {
@@ -250,12 +261,20 @@ describe("reset with the recovery key", () => {
     expect(await verifyLocalPassword(NEXT_PASSWORD, (await rows())[0].passwordHash)).toBe(true);
   });
 
-  it("caps reset guessing across addresses with the slow per-account ceiling", async () => {
+  it("caps reset guessing across addresses with its own slow ceiling", async () => {
     const { recoveryKey } = await member();
-    for (let i = 0; i < 60; i++) rateLimiter().check(`password-email-slow:${sha256Hex(EMAIL)}`, 60, 60 * 60_000);
+    for (let i = 0; i < 60; i++) rateLimiter().check(`password-reset-slow:${sha256Hex(EMAIL)}`, 60, 60 * 60_000);
     const res = await resetWith({ recoveryKey });
     expect(res.status).toBe(429);
     expect(res.headers.get("retry-after")).not.toBeNull();
     expect(await verifyLocalPassword(PASSWORD, (await rows())[0].passwordHash)).toBe(true);
+  });
+
+  it("does not let sign-in guessing lock the recovery key out", async () => {
+    const { recoveryKey } = await member();
+    for (let i = 0; i < 60; i++) rateLimiter().check(`password-email-slow:${sha256Hex(EMAIL)}`, 60, 60 * 60_000);
+    const res = await resetWith({ recoveryKey });
+    expect(res.status).toBe(200);
+    expect(await verifyLocalPassword(NEXT_PASSWORD, (await rows())[0].passwordHash)).toBe(true);
   });
 });

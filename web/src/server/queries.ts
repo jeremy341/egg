@@ -306,7 +306,12 @@ export async function deploymentView(userId: string, deploymentId: string) {
     .where(eq(schema.domains.projectId, row.p.id));
   return {
     deployment: toDeploymentView(row.d, row.p, userId, canDevelop(userId, row.p, await memberRoles(userId, [row.p.id]))),
-    project: { id: row.p.id, slug: row.p.slug, name: row.p.name, port: row.p.port },
+    project: {
+      id: row.p.id,
+      slug: row.p.userId === userId ? row.p.slug : `~${row.p.id}`,
+      name: row.p.name,
+      port: row.p.port,
+    },
     domains: domains.map((x) => x.domain),
   };
 }

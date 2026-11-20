@@ -21,11 +21,11 @@ const input = z.object({
   confirmPassword: z.string().max(256),
 });
 
-/** The shared, slow ceiling on password attempts for one account, whichever address they come from. */
+/** The slow ceiling on recovery-key guesses for one account, separate from sign-in so guessing cannot block a reset. */
 const PASSWORD_ATTEMPTS = { limit: 60, windowMs: 60 * 60_000 };
 
 function enforcePasswordCeiling(digest: string) {
-  const result = rateLimiter().check(`password-email-slow:${digest}`, PASSWORD_ATTEMPTS.limit, PASSWORD_ATTEMPTS.windowMs);
+  const result = rateLimiter().check(`password-reset-slow:${digest}`, PASSWORD_ATTEMPTS.limit, PASSWORD_ATTEMPTS.windowMs);
   if (result.allowed) return;
   const seconds = result.retryAfterSeconds;
   throw new HttpError(
@@ -45,11 +45,14 @@ function enforcePasswordCeiling(digest: string) {
 export const POST = handle(async (req: NextRequest) => {
   const body = await readJson(req, input);
   const email = normalizeEmail(body.email);
-  const address = clientIp(req.headers) ?? "password:unknown-client";
+  const ip = clientIp(req.headers);
+  const address = ip ?? "password:unknown-client";
   const digest = sha256Hex(email);
-  enforceRateLimit("signIn", address);
+  // Without a trusted proxy every request would share one address key, so key
+  // this bucket by email instead of letting one address block every account.
+  enforceRateLimit("signIn", ip ?? digest);
   // Keyed by address and email together, so guessing cannot lock the account's
-  // owner out; the slow per-account ceiling is the shared cap.
+  // owner out; the slow per-account ceiling caps guesses across addresses.
   enforceRateLimit("signIn", `password-email:${address}:${digest}`);
   enforcePasswordCeiling(digest);
 

@@ -454,11 +454,17 @@ describe("create, change and delete a project", () => {
       expect((await run(updateProjectRoute, req(`/projects/${projectId}`, { secret: t.secret, method: "PATCH", body: { buildLocation } }), { projectId })).status, buildLocation).toBe(400);
     }
 
+    // A queued deployment pins the project's current port, so the seeded
+    // deployment must be finished before the port itself can move.
+    await ctx.db.update(schema.deployments).set({ state: "ready", finishedAt: new Date() }).where(eq(schema.deployments.id, deploymentId));
+
     // Null puts a command back to its default, and a port can move.
     const cleared = await run(updateProjectRoute, req(`/projects/${projectId}`, { secret: t.secret, method: "PATCH", body: { startCommand: null, port: 3050, autoDeploy: true } }), { projectId });
     expect((await cleared.json()).project).toMatchObject({ startCommand: null, port: 3050, autoDeploy: true });
 
     await ctx.db.update(schema.projects).set({ autoDeploy: true, healthPath: "/", productionBranch: "main", rootDir: ".", port: 3000, listenPort: 3000 }).where(eq(schema.projects.id, projectId));
+    // The later detail tests still describe the fixture as a queued deployment.
+    await ctx.db.update(schema.deployments).set({ state: "queued", startedAt: null, finishedAt: null }).where(eq(schema.deployments.id, deploymentId));
   });
 
   it("does not take where builds run as a setting, and reports every project as built on the container", async () => {

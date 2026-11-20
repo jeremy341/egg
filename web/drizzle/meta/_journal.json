@@ -351,6 +351,20 @@
       "when": 1795070291358,
       "tag": "0049_dazzling_supernaut",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "6",
+      "when": 1795193900768,
+      "tag": "0050_server_slug_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "6",
+      "when": 1795196047661,
+      "tag": "0051_nest_account_once",
+      "breakpoints": true
     }
   ]
 }

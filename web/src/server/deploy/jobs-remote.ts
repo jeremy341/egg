@@ -16,6 +16,16 @@ import { NOT_OURS_EXIT, SH_ENV_HELPERS, journalTail, migrateEnvCall, removeOwnUn
 
 const HEAD = "set -euo pipefail\n";
 
+/**
+ * Unit names use the first eight hex characters of the job id, so two jobs can
+ * collide on a name. The full job id in the marker decides which job owns the
+ * file. A unit without a job marker is left alone, as before.
+ */
+const JOB_OWNERSHIP_HELPER =
+  `egg_job_unit_free() { local f="$1" slug="$2" id="$3"; ` +
+  `grep -qE "^${UNIT_MARKER} project="$slug" job=" -- "$f" 2>/dev/null || return 0; ` +
+  `grep -qE "^${UNIT_MARKER} project="$slug" job="$id"\\$" -- "$f" 2>/dev/null; }\n`;
+
 /** Exit code when the project has no release yet, so there is nothing to run a job in. */
 export const NO_RELEASE_EXIT = 31;
 /** Exit code when the job's service is not installed on the container. */
@@ -102,12 +112,16 @@ export function installJob(args: {
   const { service, timer } = jobUnits(args.slug, args.jobId);
   const guard = (unit: string) => {
     const f = shellQuote(`${args.unitDir}/${unit}`);
-    return `if { [ -e ${f} ] || [ -L ${f} ]; } && ! egg_unit_ours ${f} ${shellQuote(args.slug)}; then if egg_unit_marked ${f}; then echo ${shellQuote(`${unit} was created by Egg for another project, so it was left alone.`)} >&2; else echo ${shellQuote(`${unit} already exists and was not created by Egg, so it was left alone.`)} >&2; fi; exit ${NOT_OURS_EXIT}; fi\n`;
+    return (
+      `if { [ -e ${f} ] || [ -L ${f} ]; } && ! egg_unit_ours ${f} ${shellQuote(args.slug)}; then if egg_unit_marked ${f}; then echo ${shellQuote(`${unit} was created by Egg for another project, so it was left alone.`)} >&2; else echo ${shellQuote(`${unit} already exists and was not created by Egg, so it was left alone.`)} >&2; fi; exit ${NOT_OURS_EXIT}; fi\n` +
+      `if { [ -e ${f} ] || [ -L ${f} ]; } && ! egg_job_unit_free ${f} ${shellQuote(args.slug)} ${shellQuote(args.jobId)}; then echo ${shellQuote(`${unit} was created for another job, so it was left alone.`)} >&2; exit ${NOT_OURS_EXIT}; fi\n`
+    );
   };
   const link = shellQuote(currentLink(args.home, args.slug));
   return (
     HEAD +
     SH_MARKER_HELPERS +
+    JOB_OWNERSHIP_HELPER +
     SH_ENV_HELPERS +
     `[ -d ${link} ] || { echo "Deploy the project once before adding a job: there is nothing to run it in yet." >&2; exit ${NO_RELEASE_EXIT}; }\n` +
     // A project deployed before the variables files moved is brought to the new layout first, so the job sees them.

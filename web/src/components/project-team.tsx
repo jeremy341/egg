@@ -1,6 +1,7 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { api } from "@/components/api";
 import { CopyButton } from "@/components/developer-docs";
 import { LocalTime } from "@/components/local-time";
@@ -51,14 +52,13 @@ export function applyRole(members: TeamMember[], userId: string, next: MemberRol
   return members.map((m) => (m.userId === userId ? { ...m, role: next } : m));
 }
 
-/** Undo a failed change only when the row still shows it; a newer committed change is left alone. */
-export function undoRole(
-  members: TeamMember[],
-  userId: string,
-  optimistic: MemberRole,
-  before: MemberRole
-): TeamMember[] {
-  return members.map((m) => (m.userId === userId && m.role === optimistic ? { ...m, role: before } : m));
+/**
+ * A failed role change must fall back to server truth. Rebuilding the row locally
+ * is unsafe: two interleaved failures can each "undo" toward a different stale
+ * value. Re-rendering from the server discards all local guesses at once.
+ */
+export function onRoleChangeFailed(refresh: () => void): void {
+  refresh();
 }
 
 /**
@@ -80,6 +80,9 @@ export function ProjectTeam({
 }) {
   const [members, setMembers] = useState(firstMembers);
   const [invitations, setInvitations] = useState(firstInvitations);
+  // router.refresh() re-renders the server component without discarding local
+  // state, so adopt the fresh props it returns after a failed role change.
+  useEffect(() => setMembers(firstMembers), [firstMembers]);
   // Read once: "Expires in 6 days" is measured from the moment the page opened.
   const [now] = useState(() => Date.now());
   const [email, setEmail] = useState("");
@@ -88,6 +91,7 @@ export function ProjectTeam({
   const [error, setError] = useState<string | null>(null);
   const [link, setLink] = useState<{ email: string; url: string } | null>(null);
   const linkRef = useRef<HTMLInputElement>(null);
+  const router = useRouter();
   const emailId = useId();
   const roleId = useId();
   const noteId = useId();
@@ -125,8 +129,7 @@ export function ProjectTeam({
       await api(`${base}/members/${encodeURIComponent(member.userId)}`, { method: "PATCH", body: { role: next } });
       toast.success(`Now a ${ROLE_LABEL[next].toLowerCase()}`, member.name ?? member.email ?? undefined);
     } catch (e) {
-      // Undo only this row, and only if no newer change has landed on it since.
-      setMembers((cur) => undoRole(cur, member.userId, next, member.role));
+      onRoleChangeFailed(() => router.refresh());
       toast.error("Could not change the role", errorText(e, "Try again."));
     }
   }

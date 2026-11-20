@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { HttpError } from "@/server/http";
-import { rateLimiter } from "@/server/rate-limit";
+import { RATE_LIMITS, rateLimiter } from "@/server/rate-limit";
 import { TerminalManager } from "@/server/terminal";
 import type { ShellHandle } from "@/server/ssh/shell";
 
@@ -209,6 +209,22 @@ describe("terminal routes", () => {
     const bad = await resizeTerminal(req("/x", "POST", { cols: 5, rows: 40 }), ctx("p-alice", s.sessionId));
     expect(bad.status).toBe(400);
     expect(shells[0].sizes).toEqual([{ cols: 120, rows: 40 }]);
+  });
+
+  it("shares the terminalInput bucket between input and resize, and refuses over-limit resizes", async () => {
+    const s = await openAsAlice();
+    for (let i = 0; i < RATE_LIMITS.terminalInput.limit; i++) {
+      const res = await sendInput(req("/x", "POST", { data: "x" }), ctx("p-alice", s.sessionId));
+      expect(res.status).toBe(200);
+    }
+    const before = shells[0].sizes.length;
+    const blocked = await resizeTerminal(req("/x", "POST", { cols: 80, rows: 24 }), ctx("p-alice", s.sessionId));
+    expect(blocked.status).toBe(429);
+    expect(Number(blocked.headers.get("retry-after"))).toBeGreaterThanOrEqual(1);
+    expect(shells[0].sizes).toHaveLength(before);
+    // Another user has their own allowance: they get past the gate to the session lookup's 404.
+    auth.user = BOB;
+    expect((await resizeTerminal(req("/x", "POST", { cols: 80, rows: 24 }), ctx("p-alice", s.sessionId))).status).toBe(404);
   });
 
   it("opens only one terminal per project", async () => {

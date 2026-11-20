@@ -617,12 +617,16 @@ export function dockerComposeUpScript(a: { composeFile: string; project: string;
  * Egg validates. The original file is never executed, so interpolation and
  * include files cannot differ between validation and the deploy itself.
  */
-export function dockerComposeConfigScript(a: { composeFile: string; canonical: string; json: string }) {
+export function dockerComposeConfigScript(a: { composeFile: string; canonical: string; json: string; project: string }) {
+  if (!DOCKER_NAME.test(a.project)) throw new Error("The Compose project name is not valid.");
   return (
     `set -euo pipefail\n` +
     `command -v docker >/dev/null 2>&1 || { echo "Docker is not available on this container." >&2; exit 1; }\n` +
-    `docker compose -f ${shellQuote(a.composeFile)} config > ${shellQuote(a.canonical)} 2>/dev/null\n` +
-    `docker compose -f ${shellQuote(a.composeFile)} config --format json > ${shellQuote(a.json)} 2>/dev/null\n` +
+    // The explicit project name makes the resolved volume names Egg's own
+    // `egg-<slug>_<key>` ones; anything else in the resolved output is a
+    // hand-written name and must be refused by validation.
+    `docker compose -p ${shellQuote(a.project)} -f ${shellQuote(a.composeFile)} config > ${shellQuote(a.canonical)} 2>/dev/null\n` +
+    `docker compose -p ${shellQuote(a.project)} -f ${shellQuote(a.composeFile)} config --format json > ${shellQuote(a.json)} 2>/dev/null\n` +
     `chmod 600 ${shellQuote(a.canonical)} ${shellQuote(a.json)}\n`
   );
 }

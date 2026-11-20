@@ -106,7 +106,13 @@ export const servers = sqliteTable(
     lastCheckedAt: ts("last_checked_at"),
     createdAt: ts("created_at").notNull(),
   },
-  (t) => [uniqueIndex("servers_user_nest_idx").on(t.userId, t.nestUsername)]
+  (t) => [
+    uniqueIndex("servers_user_nest_idx").on(t.userId, t.nestUsername),
+    // One Nest account per instance: a server's whole namespace (systemd units,
+    // containers, ~/.egg folder, images) lives in that account's home, so two
+    // Egg accounts must never point at the same host login.
+    uniqueIndex("servers_nest_host_idx").on(t.host, t.nestUsername),
+  ]
 );
 
 export const githubInstallations = sqliteTable("github_installations", {
@@ -242,6 +248,9 @@ export const projects = sqliteTable(
   },
   (t) => [
     uniqueIndex("projects_user_slug_idx").on(t.userId, t.slug),
+    // Unit, container, folder, image and Compose-project names are slug-only on the
+    // server, so the slug must be unique per server across all users of that server.
+    uniqueIndex("projects_server_slug_idx").on(t.serverId, t.slug),
     uniqueIndex("projects_server_listen_port_idx").on(t.serverId, t.listenPort).where(sql`${t.listenPort} is not null`),
     uniqueIndex("projects_hook_idx").on(t.hookHash),
     uniqueIndex("projects_analytics_idx").on(t.analyticsKey),

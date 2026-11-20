@@ -105,6 +105,30 @@ describe("operator recovery", () => {
     expect(await claimNextJob("fresh-worker")).toBeTruthy();
     await release(server.id);
   });
+  it("fences the free lock during activation recovery and sweeps the deployment's own containers", async () => {
+    const { server, dep, job, stale } = await setup("recover-nine");
+    await ctx.db.update(schema.deployments).set({ state: "deploying", activationStartedAt: new Date() }).where(eq(schema.deployments.id, dep.id));
+    await ctx.db.update(schema.servers).set({ buildLockHolder: null, buildLockAt: null }).where(eq(schema.servers.id, server.id));
+    let holderDuringSweep: string | null | undefined;
+    let sweepScript = "";
+    await recoverBuild(admin, server.id, { confirm: true, holder: dep.id, lockAt: stale.toISOString(), workerStoppedConfirmed: true, workerId: job.lockedBy! }, async () => ({
+      script: async (text: string) => {
+        sweepScript = text;
+        holderDuringSweep = (await ctx.db.select().from(schema.servers).where(eq(schema.servers.id, server.id)).get())!.buildLockHolder;
+        return { code: 0, stdout: "", stderr: "" };
+      },
+      close() {},
+    } as never));
+    // The freed build lock is fenced for the sweep, so a concurrent build is
+    // refused instead of having its scope killed.
+    expect(holderDuringSweep ?? "").toMatch(/^recovery:/);
+    // And the sweep stops the deployment's own activation artifacts too.
+    expect(sweepScript).toContain("systemctl stop");
+    expect(sweepScript).toContain("docker rm -f");
+    expect(sweepScript).toContain("docker compose -p");
+    expect((await ctx.db.select().from(schema.servers).where(eq(schema.servers.id, server.id)).get())!.buildLockHolder).toBeNull();
+    await release(server.id);
+  });
   // Sets free the per-user server cap so later setups can create one.
   async function release(serverId: string) {
     await ctx.db.delete(schema.projects).where(eq(schema.projects.serverId, serverId));

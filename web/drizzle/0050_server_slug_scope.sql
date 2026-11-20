@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `projects_server_slug_idx` ON `projects` (`server_id`,`slug`);

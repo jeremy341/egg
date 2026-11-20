@@ -38,14 +38,15 @@ export const POST = handle(async (req: NextRequest) => {
   const form = new URLSearchParams(await readTextLimited(req, 2048));
   const email = normalizeEmail(form.get("email"));
   const password = form.get("password") ?? "";
-  const address = clientIp(req.headers) ?? "password:unknown-client";
+  const ip = clientIp(req.headers);
+  const address = ip ?? "password:unknown-client";
   const digest = sha256Hex(email);
   try {
-    // Route handlers do not expose the socket address, so without a trusted proxy
-    // the first bucket is shared. The second slows guessing against one account,
-    // but is keyed by address and email together so guessing cannot lock the
-    // account from another address; the slow ceiling is the shared cap.
-    enforceRateLimit("signIn", address);
+    // Without a trusted proxy every request would share one address key, so key
+    // the first bucket by email instead. The second slows guessing against one
+    // account, but is keyed by address and email together so guessing cannot
+    // lock the account from another address; the slow ceiling is the shared cap.
+    enforceRateLimit("signIn", ip ?? digest);
     enforceRateLimit("signIn", `password-email:${address}:${digest}`);
     enforcePasswordCeiling(digest);
   } catch (err) {

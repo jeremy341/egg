@@ -4,6 +4,7 @@ import { audit } from "@/server/audit";
 import { config } from "@/server/config";
 import { newId, open, seal } from "@/server/crypto";
 import { getDb, schema, type Db } from "@/server/db";
+import { isUniqueViolation } from "@/server/db/errors";
 import { HttpError, notFound } from "@/server/http";
 import { terminals } from "@/server/terminal";
 import { NestSession, SshError } from "@/server/ssh/connection";
@@ -96,6 +97,19 @@ export async function createServer(
   if (mine.some((s) => s.nestUsername.toLowerCase() === username.toLowerCase())) {
     throw new HttpError(409, `${username} is already connected.`, "conflict");
   }
+  // The whole server namespace (units, containers, ~/.egg) lives in the Nest
+  // account's home, so one Egg instance must not connect the same login twice
+  // — it would let two accounts overwrite each other's deployments. A unique
+  // index backs this; the check here gives the clearer message. The caller's
+  // own rows are fine: theirs to reattach.
+  const elsewhere = await db
+    .select({ id: schema.servers.id })
+    .from(schema.servers)
+    .where(and(sql`lower(${schema.servers.nestUsername}) = ${username.toLowerCase()}`, ne(schema.servers.userId, userId)))
+    .get();
+  if (elsewhere) {
+    throw new HttpError(409, `${username} is already connected to this Egg instance.`, "conflict");
+  }
 
   const key = generateServerKey(`egg:${username}`);
   const c = config();
@@ -144,6 +158,12 @@ export async function createServer(
     buildMemoryMb: DEFAULT_CONTAINER_BUILD_MEMORY_MB,
     status: "pending",
     createdAt: new Date(),
+  }).catch((err: unknown) => {
+    // The unique indexes above have the final word when two requests race.
+    if (isUniqueViolation(err)) {
+      throw new HttpError(409, `${username} is already connected to this Egg instance.`, "conflict");
+    }
+    throw err;
   });
   return getServerForUser(userId, id);
 }

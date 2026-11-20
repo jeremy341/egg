@@ -268,9 +268,18 @@ export function isSecretValue(value: string): boolean {
   if (SECRET_ASSIGNMENT.test(v)) return true;
   if (URL_USERINFO.test(v) || URL_SECRET_QUERY.test(v) || WEBHOOK_URL.test(v)) return true;
   if (/^[a-f0-9]{32,}$/i.test(v)) return true;
-  if (/\s/.test(v) || v.length < 24) return false;
-  // Random-looking: one unbroken run with upper case, lower case and digits, few separators.
-  if (/^[A-Za-z0-9+/_=-]+$/.test(v) && !v.startsWith("/") && !v.includes("//")) {
+  if (/\s/.test(v)) return false;
+  // A dashed UUID is a secret even though it mixes only lowercase and digits.
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)) return true;
+  // A bare token: one unbroken run drawn from at least two of lower/upper/digit
+  // (so all-lowercase words and short values stay visible).
+  if (/^[A-Za-z0-9_-]+$/.test(v) && !v.startsWith("/") && !v.includes("//")) {
+    const classes = [/[a-z]/, /[A-Z]/, /[0-9]/].filter((re) => re.test(v)).length;
+    const separators = (v.match(/[-_]/g) ?? []).length / v.length;
+    if (v.length >= 16 && classes >= 2 && separators < 0.1) return true;
+  }
+  // Longer mixed tokens may also use + / = as separators; require all three classes.
+  if (v.length >= 24 && /^[A-Za-z0-9+/_=-]+$/.test(v) && !v.startsWith("/") && !v.includes("//")) {
     const classes = [/[a-z]/, /[A-Z]/, /[0-9]/].every((re) => re.test(v));
     const separators = (v.match(/[-_]/g) ?? []).length / v.length;
     if (classes && separators < 0.1) return true;

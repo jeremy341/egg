@@ -56,17 +56,57 @@ describe("Compose volume mounts", () => {
   });
   it("validates an unrenderable mount instead of deploying it as something else", () => {
     const input = (volumes: unknown[]) => ({ services: { web: { image: "img", volumes } }, volumes: { data: {} } });
-    expect(validateResolvedCompose(input(["data:/app:/junk"]), { service: "web", containerPort: null }).errors)
+    expect(validateResolvedCompose(input(["data:/app:/junk"]), { service: "web", containerPort: null, project: "egg-demo" }).errors)
       .toEqual([expect.stringMatching(/declared named volumes/)]);
     expect(validateComposeSpec(input(["data:/app:/junk"]))).toEqual([expect.stringMatching(/volume mount/)]);
   });
   it("renders exactly what was validated", () => {
     const resolved = { services: { web: { image: "img", volumes: ["data:/app:ro", "data:/storage"] } }, volumes: { data: {} } };
-    expect(validateResolvedCompose(resolved, { service: "web", containerPort: null }).errors).toEqual([]);
+    expect(validateResolvedCompose(resolved, { service: "web", containerPort: null, project: "egg-demo" }).errors).toEqual([]);
     expect(composeMainVolumes(resolved, "web", "egg-demo")).toEqual(["egg-demo_data:/app:ro", "egg-demo_data:/storage"]);
   });
   it("never renders a mount the shared parse refused", () => {
     expect(() => composeMainVolumes({ services: { web: { image: "img", volumes: ["data:/app:/junk"] } } }, "web", "egg-demo"))
       .toThrow(/Invalid volume mount/);
+  });
+});
+
+describe("resolved Compose volumes", () => {
+  const opts = { service: "web", containerPort: null, project: "egg-demo" };
+  // Exactly what `docker compose -p egg-demo config --format json` emits for
+  // a plain declared volume and its mounts.
+  const resolved = (volumes: unknown, mounts: unknown[]) => ({
+    services: { web: { image: "img", volumes: mounts } },
+    volumes,
+  });
+
+  it("accepts the real long-syntax mounts and Egg-derived volume names", () => {
+    const input = resolved({ data: { name: "egg-demo_data" } }, [{ type: "volume", source: "data", target: "/app", volume: {} }]);
+    expect(validateResolvedCompose(input, opts).errors).toEqual([]);
+    expect(composeMainVolumes(input, "web", "egg-demo")).toEqual(["egg-demo_data:/app"]);
+  });
+
+  it("refuses a declared volume pointing at another project's data", () => {
+    expect(validateResolvedCompose(resolved({ data: { name: "egg-victim_data" } }, []), opts).errors)
+      .toEqual([expect.stringMatching(/Invalid volume/)]);
+  });
+
+  it("refuses hand-written volume fields like driver_opts and labels", () => {
+    expect(validateResolvedCompose(resolved({ data: { name: "egg-demo_data", driver_opts: { type: "none", device: "/", o: "bind" } } }, []), opts).errors)
+      .toEqual([expect.stringMatching(/Invalid volume/)]);
+    expect(validateResolvedCompose(resolved({ data: { name: "egg-demo_data", driver: "localfs" } }, []), opts).errors)
+      .toEqual([expect.stringMatching(/Invalid volume/)]);
+  });
+
+  it("still tolerates a volume whose resolved name was omitted", () => {
+    expect(validateResolvedCompose(resolved({ data: {} }, []), opts).errors).toEqual([]);
+  });
+
+  it("refuses volumes_from and bind-style long mounts", () => {
+    const withFrom = { services: { web: { image: "img", volumes_from: ["db"] }, db: { image: "img" } }, volumes: {} };
+    expect(validateResolvedCompose(withFrom, opts).errors).toEqual([expect.stringMatching(/volumes_from/)]);
+    const bind = resolved({ data: { name: "egg-demo_data" } }, [{ type: "bind", source: "/etc", target: "/etc" }]);
+    expect(validateResolvedCompose(bind, opts).errors)
+      .toEqual([expect.stringMatching(/declared named volumes/)]);
   });
 });

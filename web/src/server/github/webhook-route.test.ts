@@ -6,6 +6,7 @@ import { resetConfigForTests } from "@/server/config";
 import { closeDbForTests, getDb } from "@/server/db";
 import { POST } from "@/app/api/webhooks/github/route";
 import { HttpError } from "@/server/http";
+import { rateLimiter } from "@/server/rate-limit-core";
 import { handleGithubEvent, isSafeBranch, isSafeSha } from "@/server/github/webhook";
 import { upsertUser } from "@/server/auth/session";
 import { createProject, type ProjectRow } from "@/server/projects";
@@ -173,6 +174,25 @@ describe("GitHub webhook route", () => {
     const ok = await POST(signed('{"ping":"after-busy"}', { "x-github-delivery": "d-after-busy" }));
     expect(ok.status).toBe(200);
   });
+
+  it("caps body reads globally so bad signatures without a client address self-limit", async () => {
+    rateLimiter().clear();
+    const body = '{"ping":"x"}';
+    const badSig = () => new NextRequest("http://localhost/api/webhooks/github", {
+      method: "POST",
+      body,
+      headers: {
+        "x-hub-signature-256": "sha256=" + "1".repeat(64),
+        "x-github-event": "ping",
+        "content-length": String(Buffer.byteLength(body)),
+      },
+    });
+    for (let i = 0; i < 120; i++) expect((await POST(badSig())).status, String(i)).toBe(401);
+    const refused = await POST(badSig());
+    expect(refused.status).toBe(429);
+    expect(refused.headers.get("Retry-After")).toBeTruthy();
+    rateLimiter().clear();
+  });
 });
 
 // Requests whose body is still arriving: the stream is closed by the test, not by the request.
@@ -233,7 +253,7 @@ describe("webhook fan-out across projects", () => {
     const broken = await createProject(user.id, { ...shared, name: "Broken", port: 4101 });
     const good = await createProject(user.id, { ...shared, name: "Good", port: 4102 });
     enqueueMock.mockImplementation(async (project: ProjectRow) => {
-      if (project.id === broken.id) throw new HttpError(503, "Maintenance is active. New deployments are paused.", "maintenance");
+      if (project.id === broken.id) throw new HttpError(503, "No free preview ports on this server.", "limit");
       return { id: `dep-${project.id}` };
     });
 
@@ -262,5 +282,54 @@ describe("webhook fan-out across projects", () => {
       pull_request: { number: 7, head: { ref: "feature", sha: "d".repeat(40), repo: { full_name: "kim/demo" } } },
     });
     expect(r).toEqual({ handled: true, deployments: [`deppr-${good.id}`] });
+  });
+
+  it("fails the whole push event when maintenance starts mid-fan-out", async () => {
+    const user = await upsertUser({ id: "uweb-maint", name: "Mai", email: null, slackId: null });
+    const serverId = (await createServer(user.id, "mai-r")).id;
+    await createProject(user.id, {
+      repoUrl: "https://github.com/mai/demo", repoFullName: "mai/demo", serverId,
+      runtime: "node", startCommand: "node server.js", name: "Mai App", port: 4301, autoDeploy: true,
+    });
+    enqueueMock.mockImplementation(async () => { throw new HttpError(503, "paused", "maintenance"); });
+    await expect(handleGithubEvent("push", {
+      ref: "refs/heads/main", after: "e".repeat(40), repository: { full_name: "mai/demo" },
+    })).rejects.toMatchObject({ code: "maintenance" });
+  });
+
+  it("fails the whole pull request event when maintenance starts mid-fan-out", async () => {
+    const user = await upsertUser({ id: "uweb-maint-pr", name: "Noa", email: null, slackId: null });
+    const serverId = (await createServer(user.id, "noa-r")).id;
+    await createProject(user.id, {
+      repoUrl: "https://github.com/noa/demo", repoFullName: "noa/demo", serverId,
+      runtime: "node", startCommand: "node server.js", name: "Noa App", port: 4302, autoDeploy: true, productionBranch: "trunk",
+    });
+    enqueueMock.mockImplementation(async () => { throw new HttpError(503, "paused", "maintenance"); });
+    await expect(handleGithubEvent("pull_request", {
+      action: "synchronize",
+      repository: { full_name: "noa/demo" },
+      pull_request: { number: 8, head: { ref: "feature", sha: "f".repeat(40), repo: { full_name: "noa/demo" } } },
+    })).rejects.toMatchObject({ code: "maintenance" });
+  });
+
+  it("releases the replay digest so GitHub can redeliver after a mid-event maintenance 503", async () => {
+    const user = await upsertUser({ id: "uweb-maint-route", name: "Oli", email: null, slackId: null });
+    const serverId = (await createServer(user.id, "oli-r")).id;
+    await createProject(user.id, {
+      repoUrl: "https://github.com/oli/demo", repoFullName: "oli/demo", serverId,
+      runtime: "node", startCommand: "node server.js", name: "Oli App", port: 4303, autoDeploy: true,
+    });
+    const body = JSON.stringify({ ref: "refs/heads/main", after: "a".repeat(40), repository: { full_name: "oli/demo" } });
+    const signedPush = () => signed(body, { "x-github-event": "push" });
+
+    enqueueMock.mockImplementation(async () => { throw new HttpError(503, "paused", "maintenance"); });
+    const first = await POST(signedPush());
+    expect(first.status).toBe(503);
+    expect(first.headers.get("retry-after")).toBe("60");
+
+    enqueueMock.mockImplementation(async () => ({ id: "dep-redelivered" }));
+    const retry = await POST(signedPush());
+    expect(retry.status).toBe(200);
+    expect(await retry.json()).toMatchObject({ handled: true, deployments: ["dep-redelivered"] });
   });
 });

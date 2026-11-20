@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { requireProjectFeature } from "@/server/permission-guards";
 import { authed, handle, notFound, ok, readJson } from "@/server/http";
+import { enforceRateLimit } from "@/server/rate-limit";
 import { isSessionId, terminals } from "@/server/terminal";
 
 type Ctx = { params: Promise<{ id: string; sessionId: string }> };
@@ -15,6 +16,7 @@ export const POST = handle<Ctx>(async (req, { params }) => {
   // The terminal switch is read on every call, so turning it off stops input and output at once.
   await requireProjectFeature(user.id, id, "terminal");
   if (!isSessionId(sessionId)) throw notFound("Terminal session not found");
+  enforceRateLimit("terminalInput", user.id);
   const size = await readJson(req, resize);
   terminals().resize(user.id, id, sessionId, size);
   return ok({ ok: true });

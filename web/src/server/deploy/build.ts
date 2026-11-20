@@ -71,6 +71,13 @@ const ALLOWED_GIT_HOSTS = ["github.com"];
 
 /** Only clone https URLs from hosts we expect. Blocks file://, ssh and internal hosts. */
 export function assertCloneUrl(url: string) {
+  // git/curl and the WHATWG parser disagree about authority characters: a backslash
+  // can be a path separator to URL but part of the host to git, and an @ can turn
+  // what URL reads as a path into userinfo that changes where git connects. Refuse
+  // the raw text before parsing so the two can never disagree about the host.
+  if (url.includes("\\") || url.includes("@")) {
+    throw new BuildError("Only plain https repository URLs without @ or \\ are supported.");
+  }
   let u: URL;
   try {
     u = new URL(url);

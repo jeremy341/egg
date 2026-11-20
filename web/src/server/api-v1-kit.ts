@@ -31,7 +31,7 @@ export const API_LIMITS: Record<Bucket, { limit: number; windowMs: number }> = {
 /** Count one request for this token in this bucket, or throw 429 with Retry-After. */
 export function enforceApiRate(p: Principal, bucket: Bucket): void {
   const { limit, windowMs } = API_LIMITS[bucket];
-  const result = rateLimiter().check(`api:${bucket}:${p.tokenId}`, limit, windowMs);
+  const result = rateLimiter().check(`api:${bucket}:${p.userId}`, limit, windowMs);
   if (result.allowed) return;
   const seconds = result.retryAfterSeconds;
   throw new HttpError(

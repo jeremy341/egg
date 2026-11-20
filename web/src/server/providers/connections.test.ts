@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { upsertUser } from "@/server/auth/session";
 import { schema } from "@/server/db";
 import { useFreshDb } from "@/server/test/db";
-import { createConnection, deleteConnection, listConnections, providerClientForUser, validateProviderSource, publicProviderClient } from "./connections";
+import { createConnection, deleteConnection, listConnections, providerClientForUser, validateProviderSource, publicProviderClient, repositoryNameFromUrl } from "./connections";
 import type { ProviderTransport } from "./api";
 
 let ctx: Awaited<ReturnType<typeof useFreshDb>>;
@@ -39,6 +39,11 @@ describe("provider connections", () => {
   it("refuses a connection resolving to private network addresses before storing credentials", async () => {
     await expect(createConnection(owner, { provider: "forgejo", label: "bad", host: "https://git.example.com", accessToken: "secret-token" }, { resolve: async () => ["127.0.0.1"], transport })).rejects.toThrow();
     expect(await listConnections(owner)).toEqual([]);
+  });
+  it("answers a validation error, not a raw TypeError, for a malformed repository URL", () => {
+    expect(repositoryNameFromUrl("https://git.example.com/a/b.git")).toBe("a/b");
+    expect(() => repositoryNameFromUrl("not a url")).toThrow("Invalid repository URL.");
+    expect(() => repositoryNameFromUrl("not a url")).toThrowError(expect.objectContaining({ status: 400, code: "validation" }));
   });
 });
 

@@ -1,9 +1,11 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { acceptOutcome, AcceptInvite } from "@/components/accept-invite";
-import { applyRole, ProjectTeam, undoRole, type TeamInvitation, type TeamMember } from "@/components/project-team";
+import { applyRole, onRoleChangeFailed, ProjectTeam, type TeamInvitation, type TeamMember } from "@/components/project-team";
 import { MAX_OPEN_INVITES } from "@/lib/team";
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {} }) }));
 
 const DAY = 86_400_000;
 const iso = (offsetDays: number) => new Date(Date.now() + offsetDays * DAY).toISOString();
@@ -135,16 +137,17 @@ describe("the accept page", () => {
 });
 
 describe("the Team page's optimistic role change", () => {
-  it("undoes a failed change without touching anything else", () => {
+  it("applies the optimistic role immediately, without touching other rows", () => {
     const rows = [member(), member({ userId: "u2", role: "viewer" })];
     const optimistic = applyRole(rows, "u2", "developer");
     expect(optimistic).toEqual([rows[0], { ...rows[1], role: "developer" }]);
-    expect(undoRole(optimistic, "u2", "developer", "viewer")).toEqual(rows);
+    expect(rows[1].role).toBe("viewer");
   });
 
-  it("leaves a newer landed change alone when the old request fails", () => {
-    // First press: u2 goes developer to viewer. Then a second press makes them a developer again.
-    const ahead = [member(), member({ userId: "u2", role: "developer" })];
-    expect(undoRole(ahead, "u2", "viewer", "developer")).toEqual(ahead);
+  it("falls back to server truth on every failed change, including interleaved ones", () => {
+    const refresh = vi.fn();
+    onRoleChangeFailed(refresh);
+    onRoleChangeFailed(refresh);
+    expect(refresh).toHaveBeenCalledTimes(2);
   });
 });

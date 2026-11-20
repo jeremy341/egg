@@ -129,6 +129,40 @@ describe("domain records", () => {
     const other = (await upsertUser({ id: "u2", name: "Kim", email: null, slackId: null })).id;
     await expect(addDomain(other, { serverId, domain: "kim.example.com", port: 3000 })).rejects.toMatchObject({ status: 404 });
   });
+
+  it("reclaims a pending claim left by another user for over seven days", async () => {
+    const squatter = (await upsertUser({ id: "u-stale", name: "Stale", email: null, slackId: null })).id;
+    const squatterServer = (await createServer(squatter, "stale-r")).id;
+    const stale = await addDomain(squatter, { serverId: squatterServer, domain: "stale.example.com", port: 3000 });
+    expect(stale.domain.status).toBe("pending");
+    const db = await getDb();
+    await db.update(schema.domains)
+      .set({ createdAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000) })
+      .where(eq(schema.domains.id, stale.domain.id));
+
+    const mine = await addDomain(userId, { serverId, domain: "stale.example.com", port: 3000 });
+    expect(mine.domain).toMatchObject({ domain: "stale.example.com", userId, status: "pending" });
+    expect(await db.select().from(schema.domains).where(eq(schema.domains.domain, "stale.example.com"))).toHaveLength(1);
+    await removeDomain(userId, mine.domain.id);
+  });
+
+  it("keeps a recent pending claim by another user reserved", async () => {
+    const other = (await upsertUser({ id: "u-fresh", name: "Fresh", email: null, slackId: null })).id;
+    const otherServer = (await createServer(other, "fresh-r")).id;
+    const fresh = await addDomain(other, { serverId: otherServer, domain: "fresh.example.com", port: 3000 });
+    await expect(addDomain(userId, { serverId, domain: "fresh.example.com", port: 3000 })).rejects.toMatchObject({ status: 409 });
+    await removeDomain(other, fresh.domain.id);
+  });
+
+  it("keeps a verified domain by another user reserved", async () => {
+    const other = (await upsertUser({ id: "u-valid", name: "Valid", email: null, slackId: null })).id;
+    const otherServer = (await createServer(other, "valid-r")).id;
+    const valid = await addDomain(other, { serverId: otherServer, domain: "verified.example.net", port: 3000 });
+    const db = await getDb();
+    await db.update(schema.domains).set({ status: "valid" }).where(eq(schema.domains.id, valid.domain.id));
+    await expect(addDomain(userId, { serverId, domain: "verified.example.net", port: 3000 })).rejects.toMatchObject({ status: 409 });
+    await removeDomain(other, valid.domain.id);
+  });
 });
 
 function resolverFor(cname: string[] | Error, a: string[] | Error = [], txt: string[][] | Error = dnsError("ENODATA")): Resolver {

@@ -274,6 +274,17 @@ export async function createProject(userId: string, raw: unknown): Promise<Proje
   // port cannot both pass the check before either row exists.
   await db.transaction(async (tx) => {
     await assertCleanupAllowsWork(tx, userId);
+    // Derived names on the server (systemd unit, container, ~/.egg/<slug> folder, image,
+    // Compose project) are built from the slug alone, so two projects with the same slug
+    // on one server would silently kill each other's units. A slug is unique per server,
+    // not just per user.
+    const onServer = await tx
+      .select({ id: schema.projects.id })
+      .from(schema.projects)
+      .where(and(eq(schema.projects.serverId, input.serverId), eq(schema.projects.slug, slug)));
+    if (onServer.length > 0) {
+      throw new HttpError(409, `A project called "${slug}" already runs on this server. Slugs are unique per server, so choose another name.`, "conflict");
+    }
     if (selectedPort != null) await assertPortFree(
       tx,
       input.serverId,
@@ -315,11 +326,11 @@ export async function createProject(userId: string, raw: unknown): Promise<Proje
       createdAt: now,
       updatedAt: now,
     }).catch((err: unknown) => {
-      // The own-slug pre-check above races a concurrent create; the unique
-      // index has the final word, and two simultaneous creates must both get
-      // a clean conflict, not a raw database error.
+      // The slug and port pre-checks can still race a concurrent create; the
+      // unique indexes have the final word, and every collision must surface as
+      // a clean conflict naming the real loser, not a raw database error.
       if (isUniqueViolation(err)) {
-        throw new HttpError(409, `You already have a project called "${slug}".`, "conflict");
+        throw createProjectConflict(err, slug, `Port ${selectedPort} is already used by another project on this server.`);
       }
       throw err;
     });
@@ -329,6 +340,29 @@ export async function createProject(userId: string, raw: unknown): Promise<Proje
 }
 
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+
+/** Walks the error chain for the first unique-violation message, like isUniqueViolation. */
+function uniqueViolationMessage(err: unknown): string {
+  let e: unknown = err;
+  for (let i = 0; i < 4 && e; i++) {
+    const message = String((e as { message?: unknown }).message ?? "");
+    if (/UNIQUE constraint failed/i.test(message)) return message;
+    e = (e as { cause?: unknown }).cause;
+  }
+  return "";
+}
+
+/** Maps a unique-index violation from the project insert to the matching conflict message. */
+function createProjectConflict(err: unknown, slug: string, portMessage: string): HttpError {
+  const message = uniqueViolationMessage(err);
+  if (/projects_server_slug_idx|projects\.server_id, projects\.slug/.test(message)) {
+    return new HttpError(409, `A project called "${slug}" already runs on this server. Slugs are unique per server, so choose another name.`, "conflict");
+  }
+  if (/projects_server_listen_port_idx|listen_port/.test(message)) {
+    return new HttpError(409, portMessage, "conflict");
+  }
+  return new HttpError(409, `You already have a project called "${slug}".`, "conflict");
+}
 
 /** 409 when another project on this server already has the port. Call inside the write transaction. */
 async function assertPortFree(tx: Tx, serverId: string, port: number, message: string, exceptId?: string) {
@@ -375,13 +409,38 @@ export async function updateProject(userId: string, projectId: string, raw: unkn
   const newPort = selectedPort != null && selectedPort !== project.port ? selectedPort : null;
   await db.transaction(async (tx) => {
     await assertCleanupAllowsWork(tx, userId, projectId);
-    if (newPort !== null) {
-      await assertPortFree(tx, project.serverId, newPort, `Port ${newPort} is already used on this server.`, project.id);
+    if (newPort !== null || (portTouched && selectedPort === null && project.listenPort != null)) {
+      // A queued or running deployment pins the old port: changing it under the
+      // worker lets a second project claim the freed port and end up with the
+      // old release listening on it.
+      const active = await tx
+        .select({ id: schema.deployments.id })
+        .from(schema.deployments)
+        .where(and(
+          eq(schema.deployments.projectId, project.id),
+          inArray(schema.deployments.state, ["queued", "building", "deploying"]),
+        ))
+        .get();
+      if (active) {
+        throw new HttpError(409, "A deployment is still running for this project. Wait for it to finish before changing its port.", "conflict");
+      }
+      if (newPort !== null) {
+        await assertPortFree(tx, project.serverId, newPort, `Port ${newPort} is already used on this server.`, project.id);
+      }
     }
     await tx
       .update(schema.projects)
       .set({ ...clean, updatedAt: new Date() })
-      .where(eq(schema.projects.id, project.id));
+      .where(eq(schema.projects.id, project.id))
+      .catch((err: unknown) => {
+        // The pre-check races a concurrent update only in theory (one writer at a
+        // time in SQLite), but a unique violation must surface as a clean
+        // conflict, not a raw database error.
+        if (isUniqueViolation(err)) {
+          throw new HttpError(409, `Port ${newPort} is already used on this server.`, "conflict");
+        }
+        throw err;
+      });
     // Nest holds the real port mapping: a domain left on the old port must say so.
     if (newPort !== null) await moveDomainsToPort(tx, project.id, newPort);
   });
@@ -705,7 +764,7 @@ async function scopedDeployment(userId: string, deploymentId: string, role: "vie
   return { dep, project };
 }
 export const readableDeployment = (userId: string, deploymentId: string) => scopedDeployment(userId, deploymentId, "viewer");
-const developerDeployment = (userId: string, deploymentId: string) => scopedDeployment(userId, deploymentId, "developer");
+export const developerDeployment = (userId: string, deploymentId: string) => scopedDeployment(userId, deploymentId, "developer");
 
 export async function listDeployments(userId: string, projectId?: string, limit = 50) {
   return (await listDeploymentsPage(userId, { projectId, limit })).rows;

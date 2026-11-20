@@ -324,6 +324,9 @@ describe("secrets never show", () => {
       "https://discord.com/api/webhooks/123/abc",
       "https://hooks.slack.com/services/T0/B0/xyz",
       "password=hunter2",
+      "nho9f83nd0aks2lmzqx7wp5rtb4cy6ve",
+      "aB3xY7pQ2mN9kL4d",
+      "550e8400-e29b-41d4-a716-446655440000",
     ];
     for (const value of secrets) expect(isSecretValue(value), value).toBe(true);
     const meta = Object.fromEntries(secrets.map((s, i) => [`field${i}`, s]));
