@@ -123,7 +123,8 @@ describe("GET /api/activity/export", () => {
     expect(csv).not.toContain("ghp_");
     expect(csv).not.toContain(bareToken);
     expect(csv).not.toContain(mixedToken);
-    expect(csv).not.toContain(uuid);
+    // The entry's ids stay visible (the row is about them); only secrets drop.
+    expect(csv).toContain(uuid);
     expect(csv).not.toMatch(/apiKey|api key/i);
     expect(csv).not.toMatch(/(^|,)"=/m);
   });
