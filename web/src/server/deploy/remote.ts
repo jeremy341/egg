@@ -584,10 +584,17 @@ export function dockerCreateCommand(a: {
  */
 export function dockerActivationScript(a: { unit: string; container: string; candidate: string; create: string }) {
   if (!DOCKER_NAME.test(a.container) || !DOCKER_NAME.test(a.candidate)) throw new Error("The container name is not valid.");
+  // dockerCreateCommand() shell-quotes every argument, so the flag is emitted as '--name', not --name.
+  // Matching the unquoted form silently no-ops and stages the live container's name instead of the
+  // candidate, which makes every activation fail. Match the quoted pair and fail closed if absent.
+  const nameArg = `${shellQuote("--name")} ${shellQuote(a.container)}`;
+  const candidateArg = `${shellQuote("--name")} ${shellQuote(a.candidate)}`;
+  if (!a.create.includes(nameArg)) throw new Error("The create command does not stage a container name.");
+  const createCandidate = a.create.replace(nameArg, candidateArg);
   return (
     HEAD +
     `command -v docker >/dev/null 2>&1 || { echo "Docker is not available on this container." >&2; exit 1; }\n` +
-    `if ! ${a.create.replace(`--name ${shellQuote(a.container)}`, `--name ${shellQuote(a.candidate)}`)} >/dev/null 2>&1; then\n` +
+    `if ! ${createCandidate} >/dev/null 2>&1; then\n` +
     `  echo "The image of this release could not create its container." >&2; exit 1;\n` +
     `fi\n` +
     `docker rm -f -- ${shellQuote(a.container)} >/dev/null 2>&1 || true\n` +

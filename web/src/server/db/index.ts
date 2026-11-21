@@ -63,9 +63,21 @@ function open(): Holder {
 
 /** The database, with migrations applied. Await it before the first query. */
 export async function getDb(): Promise<Db> {
-  g.__eggDb ??= open();
-  await g.__eggDb.ready;
-  return g.__eggDb.db;
+  if (!g.__eggDb) g.__eggDb = open();
+  const holder = g.__eggDb;
+  try {
+    await holder.ready;
+  } catch (err) {
+    // A failed init stores a rejected `ready` on globalThis; without clearing it every
+    // later request re-awaits the same rejection until the process restarts. Drop the
+    // holder so the next request re-opens and re-runs migrations after the fault clears.
+    if (g.__eggDb === holder) {
+      g.__eggDb = undefined;
+      holder.client.close();
+    }
+    throw err;
+  }
+  return holder.db;
 }
 
 /**
