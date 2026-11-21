@@ -10,7 +10,7 @@ import { connectToServer, createServer, getServerForUser, type ServerRow } from 
 import { NestSession } from "@/server/ssh/connection";
 import { fakeBuilder, freePort, containerReadyFacts, installFakeContainerBuild, installFakeSystemd, nodeApp } from "@/server/test/fake-nest";
 import { useFreshDb } from "@/server/test/db";
-import { startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
+import { linuxTestHostAvailable, startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
 
 describe("parseServiceStatus", () => {
   const running = [
@@ -67,7 +67,7 @@ describe("parseServiceStatus", () => {
   });
 });
 
-describe("fetchServiceStatus on a mock Nest", () => {
+describe.skipIf(!linuxTestHostAvailable())("fetchServiceStatus on a mock Nest", () => {
   let ctx: Awaited<ReturnType<typeof useFreshDb>>;
   let mock: MockSsh;
   let userId: string;

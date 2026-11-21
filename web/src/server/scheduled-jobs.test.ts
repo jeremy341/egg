@@ -26,7 +26,7 @@ import { connectToServer, createServer, getServerForUser, type ServerRow } from 
 import { NestSession, shellQuote } from "@/server/ssh/connection";
 import { fakeBuilder, freePort, containerReadyFacts, installFakeContainerBuild, installFakeSystemd, nodeApp } from "@/server/test/fake-nest";
 import { useFreshDb } from "@/server/test/db";
-import { startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
+import { linuxTestHostAvailable, startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
 
 describe("parseJobStatuses", () => {
   const ids = ["a", "b", "c", "d"];
@@ -105,7 +105,7 @@ describe("job unit files", () => {
   });
 });
 
-describe("scheduled jobs on a mock Nest", () => {
+describe.skipIf(!linuxTestHostAvailable())("scheduled jobs on a mock Nest", () => {
   let ctx: Awaited<ReturnType<typeof useFreshDb>>;
   let mock: MockSsh;
   let userId: string;

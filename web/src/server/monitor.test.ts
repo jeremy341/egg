@@ -36,6 +36,7 @@ describe("server monitoring concurrency", () => {
     expect(failures).toEqual(["offline"]);
   });
 
+  // Four competing writes can each wait through SQLite's busy timeout before retrying.
   it("can reserve concurrent SSH checks without dropping servers on SQLite contention", async () => {
     const ctx = await useFreshDb();
     const spy = vi.spyOn(NestSession, "connect").mockImplementation(async () => {
@@ -64,7 +65,7 @@ describe("server monitoring concurrency", () => {
       spy.mockRestore();
       await ctx.cleanup();
     }
-  });
+  }, 60_000);
 });
 
 describe("isHealthy", () => {

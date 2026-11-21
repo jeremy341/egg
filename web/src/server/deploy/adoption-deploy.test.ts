@@ -10,7 +10,7 @@ import { connectToServer, createServer, getServerForUser, type ServerRow } from 
 import { NestSession } from "@/server/ssh/connection";
 import { fakeBuilder, freePort, containerReadyFacts, installFakeContainerBuild, installFakeSystemd, nodeApp } from "@/server/test/fake-nest";
 import { useFreshDb } from "@/server/test/db";
-import { startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
+import { linuxTestHostAvailable, startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
 
 /**
  * Adopting a container that already runs things: a first deploy must never
@@ -90,7 +90,7 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-describe("a unit that is not ours", () => {
+describe.skipIf(!linuxTestHostAvailable())("a unit that is not ours", () => {
   it("is never overwritten, and nothing else is created", async () => {
     const p = await makeProject("clash");
     mock.writeFile(`${home}/units/egg-clash.service`, "[Service]\nExecStart=/usr/bin/true\n");
@@ -102,7 +102,7 @@ describe("a unit that is not ours", () => {
   });
 });
 
-describe("a folder that is not ours", () => {
+describe.skipIf(!linuxTestHostAvailable())("a folder that is not ours", () => {
   it("keeps a user's git checkout at ~/.egg/<slug> untouched and refuses to deploy", async () => {
     const p = await makeProject("mycheckout");
     mock.writeFile(`${home}/.egg/mycheckout/.git/config`, '[remote "origin"]\n\turl = https://github.com/owner/demo\n');
@@ -134,7 +134,7 @@ describe("a folder that is not ours", () => {
   });
 });
 
-describe("a port that is already taken", () => {
+describe.skipIf(!linuxTestHostAvailable())("a port that is already taken", () => {
   it("refuses the deploy and leaves the other process running", async () => {
     const p = await makeProject("busyport");
     await sh(
@@ -148,7 +148,7 @@ describe("a port that is already taken", () => {
   });
 });
 
-describe("the same repo already running by hand", () => {
+describe.skipIf(!linuxTestHostAvailable())("the same repo already running by hand", () => {
   it("does not start a second copy next to a running systemd unit", async () => {
     const p = await makeProject("twice");
     const appDir = `${home}/app`;
@@ -167,7 +167,7 @@ describe("the same repo already running by hand", () => {
   });
 });
 
-describe("the user's own keys", () => {
+describe.skipIf(!linuxTestHostAvailable())("the user's own keys", () => {
   it("are byte for byte the same after a deploy", async () => {
     const p = await makeProject("clean");
     mock.writeFile(`${home}/.ssh/config`, "Host gh\n  IdentityFile ~/.ssh/deploy_key\n");

@@ -27,7 +27,7 @@ import {
   type FixtureFiles,
 } from "@/server/test/fake-nest";
 import { useFreshDb } from "@/server/test/db";
-import { startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
+import { linuxTestHostAvailable, startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
 
 let ctx: Awaited<ReturnType<typeof useFreshDb>>;
 let mock: MockSsh;
@@ -117,7 +117,7 @@ afterAll(async () => {
 // A deploy is roughly 15 SSH commands; tests that deploy several times in a row get a longer budget.
 const DEPLOY_LOOP_TIMEOUT = 90000;
 
-describe("deploy pipeline", () => {
+describe.skipIf(!linuxTestHostAvailable())("deploy pipeline", () => {
   let v1: typeof schema.deployments.$inferSelect;
   let v2: typeof schema.deployments.$inferSelect;
 
@@ -333,7 +333,7 @@ describe("deploy pipeline", () => {
   }, DEPLOY_LOOP_TIMEOUT);
 });
 
-describe("deploy state races", () => {
+describe.skipIf(!linuxTestHostAvailable())("deploy state races", () => {
   it.each([false, true])("does not revive a preview closed after its health check (removal fails: %s)", async (removalFails) => {
     files = nodeApp("closed-preview");
     const dep = await deployBranch(userId, project.id, "closed-pr");
@@ -396,7 +396,7 @@ describe("deploy state races", () => {
   });
 });
 
-describe("runtime variables stay out of the release folder", () => {
+describe.skipIf(!linuxTestHostAvailable())("runtime variables stay out of the release folder", () => {
   const home = () => mock.home.replace(/\\/g, "/");
   const proj = () => `${home()}/.egg/demo-app`;
 

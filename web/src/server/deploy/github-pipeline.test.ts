@@ -25,7 +25,7 @@ import {
   nodeApp,
 } from "@/server/test/fake-nest";
 import { useFreshDb } from "@/server/test/db";
-import { startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
+import { linuxTestHostAvailable, startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
 import { rawTarGz, sha256Of, type RawEntry } from "@/server/test/raw-tar";
 
 /**
@@ -167,7 +167,7 @@ describe("the wait", () => {
   });
 });
 
-describe("a project that builds on GitHub", () => {
+describe.skipIf(!linuxTestHostAvailable())("a project that builds on GitHub", () => {
   let app: ProjectRow;
 
   it("deploys a release that was uploaded before the worker looked, with no clone and no build", async () => {
