@@ -27,7 +27,7 @@ import {
   type FixtureFiles,
 } from "@/server/test/fake-nest";
 import { useFreshDb } from "@/server/test/db";
-import { startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
+import { linuxTestHostAvailable, startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
 
 let ctx: Awaited<ReturnType<typeof useFreshDb>>;
 let mock: MockSsh;
@@ -117,7 +117,7 @@ afterAll(async () => {
 // A deploy is roughly 15 SSH commands; tests that deploy several times in a row get a longer budget.
 const DEPLOY_LOOP_TIMEOUT = 90000;
 
-describe("deploy pipeline", () => {
+describe.skipIf(!linuxTestHostAvailable())("deploy pipeline", () => {
   let v1: typeof schema.deployments.$inferSelect;
   let v2: typeof schema.deployments.$inferSelect;
 
@@ -192,6 +192,22 @@ describe("deploy pipeline", () => {
     expect(done?.isCurrent).toBe(true);
     expect(await answer(project.port)).toBe("v1:hello-secret-value");
     expect(mock.commands.length).toBeGreaterThan(before);
+  });
+
+  it("masks the deployment's environment values in a failed rollback's stored error", async () => {
+    const rb = await rollback(userId, v2.id);
+    // The failure’s message embeds a production env value; the stored error must not carry it.
+    const broken: PipelineDeps = {
+      ...deps,
+      connect: async () => {
+        throw new Error("handshake failed: the banner contained hello-secret-value");
+      },
+    };
+    await runRollbackJob(rb.id, broken);
+    const done = await ctx.db.select().from(schema.deployments).where(eq(schema.deployments.id, rb.id)).get();
+    expect(done?.state).toBe("error");
+    expect(done?.error).not.toContain("hello-secret-value");
+    expect(done?.error).toContain("***");
   });
 
   it("does not switch a rollback canceled while reading the current unit", async () => {
@@ -317,7 +333,7 @@ describe("deploy pipeline", () => {
   }, DEPLOY_LOOP_TIMEOUT);
 });
 
-describe("deploy state races", () => {
+describe.skipIf(!linuxTestHostAvailable())("deploy state races", () => {
   it.each([false, true])("does not revive a preview closed after its health check (removal fails: %s)", async (removalFails) => {
     files = nodeApp("closed-preview");
     const dep = await deployBranch(userId, project.id, "closed-pr");
@@ -380,7 +396,7 @@ describe("deploy state races", () => {
   });
 });
 
-describe("runtime variables stay out of the release folder", () => {
+describe.skipIf(!linuxTestHostAvailable())("runtime variables stay out of the release folder", () => {
   const home = () => mock.home.replace(/\\/g, "/");
   const proj = () => `${home()}/.egg/demo-app`;
 

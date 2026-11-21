@@ -63,15 +63,25 @@ describe("parseSchedule", () => {
     expect(parseSchedule("0 0,1 * * *").hours).toEqual([0, 1]);
   });
 
-  it("counts the gap across midnight", () => {
-    // 23:58 and 00:00 are two minutes apart.
-    expect(() => parseSchedule("0,58 23,0 * * *")).toThrow(ScheduleError);
-    expect(() => parseSchedule("0,58 23,0 * * *")).toThrow(/every 2 minutes/);
+  it("refuses a run pattern that only gets close across midnight, but keeps a five-minute bridge", () => {
+    expect(() => parseSchedule("0,56 0,23 * * *")).toThrow(/every 4 minutes/);
+    expect(() => parseSchedule("0,58 0,23 * * *")).toThrow(/every 2 minutes/);
+    expect(parseSchedule("0,55 0,23 * * *").hours).toEqual([0, 23]);
+    // A job on a single weekday has no adjacent active days, so only within-day gaps matter.
+    expect(parseSchedule("0,56 0,23 * * 1").weekdays).toEqual([1]);
   });
 
-  it("does not count midnight when the job runs on one weekday only", () => {
-    // Monday 23:58 is never followed by Tuesday 00:00 in the same run, so this is allowed.
-    expect(() => parseSchedule("0,58 23,0 * * 1")).not.toThrow();
+  it("checks the midnight gap across active days, weekdays and month wraps", () => {
+    expect(() => parseSchedule("0,59 0,23 1,2 * *")).toThrow(/every 1 minute\b/);
+    expect(() => parseSchedule("0,58 0,23 1,2 * *")).toThrow(/every 2 minutes/);
+    expect(() => parseSchedule("0,59 0,23 * * 0,1")).toThrow(/every 1 minute\b/);
+    expect(() => parseSchedule("0,59 0,23 1,31 1,2 *")).toThrow(/every 1 minute\b/);
+    // A five-minute bridge and non-adjacent active days stay accepted.
+    expect(parseSchedule("0,55 0,23 1,2 * *").hours).toEqual([0, 23]);
+    expect(parseSchedule("0,59 0,23 1,15 * *").days).toEqual([1, 15]);
+    // April has no 31st, so those two listed days are never adjacent.
+    expect(parseSchedule("0,59 0,23 30,31 4 *").days).toEqual([30, 31]);
+    expect(parseSchedule("0 0 * * *").hours).toEqual([0]);
   });
 
   it("rejects absurd input without hanging", () => {

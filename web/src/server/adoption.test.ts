@@ -20,7 +20,7 @@ import {
 } from "@/server/ssh/adoption-probe";
 import { installFakeSystemd } from "@/server/test/fake-nest";
 import { useFreshDb } from "@/server/test/db";
-import { startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
+import { linuxTestHostAvailable, startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
 
 let signedIn: SessionUser | null = null;
 vi.mock("@/server/auth/current", () => ({ getCurrentUser: async () => signedIn }));
@@ -179,7 +179,7 @@ describe("the adoption probe script", () => {
   });
 });
 
-describe("on a container", () => {
+describe.skipIf(!linuxTestHostAvailable())("on a container", () => {
   let db: Awaited<ReturnType<typeof useFreshDb>>;
   let userId: string;
   let otherId: string;

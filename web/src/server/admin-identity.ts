@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { getDb, schema } from "@/server/db";
+import { getDb, schema, type Db } from "@/server/db";
 
 /**
  * The one account named in the environment. It is always an administrator and cannot be removed in the app,
@@ -12,13 +12,13 @@ export function instanceAdminId(): string | null {
 /**
  * True for the configured account and for any account an administrator has granted.
  * This is the only admin check. Use it everywhere, and never compare ids directly.
+ * Inside a write transaction, pass that transaction as `db`: a second connection would wait on the open write lock.
  */
-export async function isInstanceAdmin(userId: string | null | undefined): Promise<boolean> {
+export async function isInstanceAdmin(userId: string | null | undefined, db?: Pick<Db, "select">): Promise<boolean> {
   if (!userId) return false;
   const configured = instanceAdminId();
   if (configured && userId === configured) return true;
-  const db = await getDb();
-  const grant = await db
+  const grant = await (db ?? (await getDb()))
     .select({ userId: schema.instanceAdmins.userId })
     .from(schema.instanceAdmins)
     .where(eq(schema.instanceAdmins.userId, userId))

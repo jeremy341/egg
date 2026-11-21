@@ -10,7 +10,7 @@ const servers = [{ id: "s1", nestUsername: "sam", status: "connected" }];
 const render = (installationId: number | null) =>
   renderToStaticMarkup(
     createElement(Configure, {
-      source: { repoUrl: "https://github.com/sam/recipe-api", repoFullName: installationId ? "sam/recipe-api" : null, installationId, branch: "main" },
+      source: { repoUrl: "https://github.com/sam/recipe-api", repoFullName: installationId ? "sam/recipe-api" : null, installationId, branch: "main", sourceProvider: installationId ? "github" : "generic", providerConnectionId: null },
       servers,
       onBack: () => {},
     })

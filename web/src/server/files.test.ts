@@ -20,7 +20,7 @@ import { LIVE_RELEASE_MESSAGE } from "@/server/files-paths";
 import { HttpError } from "@/server/http";
 import { NestSession, shellQuote } from "@/server/ssh/connection";
 import { generateServerKey } from "@/server/ssh/keys";
-import { startMockSsh, wslEnabled, type MockSsh } from "@/server/test/mock-ssh";
+import { linuxTestHostAvailable, startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
 
 const ROOT = "/home/sam/.egg/app";
 
@@ -244,9 +244,7 @@ describe("decodeText", () => {
 // The scripts against a real shell. Skipped where no Linux userland exists
 // (Windows without WSL), because Git Bash cannot make real symlinks.
 
-const hasLinux = process.platform !== "win32" || wslEnabled();
-
-describe.skipIf(!hasLinux)("against a real shell", () => {
+describe.skipIf(!linuxTestHostAvailable())("against a real shell", () => {
   let mock: MockSsh;
   let session: NestSession;
   let root: string;

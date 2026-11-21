@@ -13,5 +13,11 @@ export const GET = handle<Ctx>(async (_req, { params }) => {
   const user = await authed();
   enforceRateLimit("sshSession", user.id);
   const { id } = await params;
-  return ok({ inventory: await getInventory(user.id, id) });
+  const inventory = await getInventory(user.id, id);
+  return ok({ inventory: { ...inventory, projects: inventory.projects.map((project) => ({
+    ...project,
+    port: project.port === 0 ? null : project.port,
+    portStatus: project.port === 0 ? null : project.portStatus,
+    previews: project.previews.map((preview) => ({ ...preview, port: preview.port === 0 ? null : preview.port })),
+  })) } });
 });

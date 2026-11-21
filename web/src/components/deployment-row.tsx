@@ -173,8 +173,8 @@ export function DeploymentRow({
         </p>
       </div>
 
-      <div className="relative z-10 hidden justify-self-end min-[1400px]:block">
-        {demo ? null : <DeploymentActions deployment={deployment} />}
+      <div className="relative z-10 hidden justify-self-end md:block">
+        {demo ? null : <DeploymentActions deployment={deployment} canAct={deployment.canAct ?? true} />}
       </div>
     </li>
   );

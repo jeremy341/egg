@@ -200,7 +200,7 @@ function ProjectRow({ p, conflict }: { p: ProjectEntry; conflict: PortConflict |
           ) : (
             <StatusIndicator tone="neutral" label="No service yet" />
           )}
-          <span className="tabular font-mono text-[13px]">Port {p.port}</span>
+          <span className="tabular font-mono text-[13px]">{p.port > 0 ? `Port ${p.port}` : "Background worker"}</span>
           {p.folderKb !== null ? (
             <span className="tabular text-label text-muted-foreground">{formatKb(p.folderKb)}</span>
           ) : null}

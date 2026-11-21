@@ -24,6 +24,9 @@ export class SshError extends Error {
 
 const DEFAULT_MAX_OUTPUT_BYTES = 128 * 1024 * 1024;
 
+/** How long a stopped command (TERM sent) may keep its channel open before it is force-closed. */
+const STOP_GRACE_MS = 30_000;
+
 export type ExecResult = { code: number; stdout: string; stderr: string };
 
 export type ExecOptions = {
@@ -180,6 +183,7 @@ export class NestSession {
         const droppingTail = { stdout: false, stderr: false };
         let settled = false;
         let timer: NodeJS.Timeout | undefined;
+        let grace: NodeJS.Timeout | undefined;
         let received = 0;
         let stopError: SshError | null = null;
         const requestStop = (error: SshError) => {
@@ -190,8 +194,17 @@ export class NestSession {
           opts.stdinStream?.destroy();
           // Keep the SSH channel open until the server reports command exit.
           // Closing it immediately could release the queue guard while a remote
-          // child is still modifying the project.
+          // child is still modifying the project. But a remote process that
+          // ignores TERM (or a grandchild holding the channel open) must not
+          // wedge the awaited promise forever: after a grace period the channel
+          // is force-closed and the caller learns the command could not be
+          // confirmed stopped.
           stream.signal?.("TERM");
+          grace = setTimeout(() => {
+            if (settled) return;
+            stream.close();
+            finish(255);
+          }, STOP_GRACE_MS);
         };
         const onAbort = () => {
           requestStop(new SshError("Command canceled", "exec"));
@@ -247,6 +260,7 @@ export class NestSession {
           if (settled) return;
           settled = true;
           if (timer) clearTimeout(timer);
+          if (grace) clearTimeout(grace);
           opts.signal?.removeEventListener("abort", onAbort);
           if (stopError) {
             reject(stopError);
@@ -292,7 +306,11 @@ export class NestSession {
           if (settled) return;
           settled = true;
           if (timer) clearTimeout(timer);
+          if (grace) clearTimeout(grace);
           opts.signal?.removeEventListener("abort", onAbort);
+          // The channel is gone, so the local read stream piped into it must be
+          // dropped too, or it holds its fd open until garbage collection.
+          opts.stdinStream?.destroy();
           reject(friendlyConnectError(e));
         });
 

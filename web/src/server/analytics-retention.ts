@@ -54,7 +54,9 @@ export function returnRate(
   let cohort = 0;
   let returned = 0;
   for (const times of byVisitor.values()) {
-    const first = Math.min(...times);
+    // A plain reduce, not Math.min(...times): a spread of the loaded timestamps
+    // can pass the argument limit and throw once a visitor has many visits.
+    const first = times.reduce((a, b) => Math.min(a, b), Infinity);
     if (first < from || first >= to) continue;
     cohort += 1;
     const firstDay = Math.floor(first / DAY_MS);

@@ -8,7 +8,7 @@ vi.mock("next/link", () => ({ default: ({ children, ...rest }: { children: unkno
 import { GithubBuildCard } from "@/components/github-build-card";
 
 const project = (buildLocation: "container" | "github") =>
-  ({ id: "p1", slug: "recipe-api", repo: "sam/recipe-api", branch: "main", buildLocation, autoDeploy: true, state: null }) as unknown as ProjectView;
+  ({ id: "p1", slug: "recipe-api", repo: "sam/recipe-api", repoUrl: "https://github.com/sam/recipe-api", branch: "main", buildLocation, autoDeploy: true, state: null }) as unknown as ProjectView;
 const html = (loc: "container" | "github") => renderToStaticMarkup(createElement(GithubBuildCard, { project: project(loc) })).replace(/<!-- -->/g, "");
 
 /** The value of every checked radio, whatever order the attributes come in. */

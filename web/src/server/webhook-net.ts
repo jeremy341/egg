@@ -25,6 +25,23 @@ export const SEND_TIMEOUT_MS = 5000;
 export const RESPONSE_CAP_BYTES = 4096;
 export const URL_MAX_LENGTH = 500;
 
+/** Internal marker so a resolution deadline is told apart from a DNS failure. */
+class DeadlineError extends Error {}
+
+/** Race work against a deadline, clearing the timer as soon as it settles. */
+function withDeadline<T>(work: Promise<T>, ms: number): Promise<T> {
+  // The lookup keeps running after the deadline. Give it a rejection handler so a
+  // late failure cannot surface as an unhandled rejection.
+  work.catch(() => {});
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new DeadlineError()), ms);
+    work.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (error) => { clearTimeout(timer); reject(error); }
+    );
+  });
+}
+
 export type SendErrorCode =
   | "dns_failed"
   | "blocked_address"
@@ -175,11 +192,18 @@ export const httpsTransport: Transport = (req) =>
     r.end(req.body);
   });
 
-export type SendDeps = { lookup?: Lookup; transport?: Transport };
+export type SendDeps = {
+  lookup?: Lookup;
+  transport?: Transport;
+  /** Total budget shared by the DNS lookup and the send. Defaults to SEND_TIMEOUT_MS. */
+  timeoutMs?: number;
+};
 
 /**
  * Resolve, check and post. Resolves on a 2xx answer; otherwise throws a
  * WebhookSendError whose `retryable` says whether another attempt makes sense.
+ * The lookup is bounded too, and the time it used comes off the send's budget,
+ * so a stalled DNS server cannot hold the whole exchange past the deadline.
  */
 export async function safePost(
   url: URL,
@@ -187,13 +211,24 @@ export async function safePost(
   body: string,
   deps: SendDeps = {}
 ): Promise<{ status: number }> {
-  const target = await resolveSafeAddress(url.hostname, deps.lookup ?? systemLookup);
+  const totalMs = deps.timeoutMs ?? SEND_TIMEOUT_MS;
+  const startedAt = Date.now();
+  let target: { address: string; family: 4 | 6 };
+  try {
+    target = await withDeadline(resolveSafeAddress(url.hostname, deps.lookup ?? systemLookup), totalMs);
+  } catch (err) {
+    if (err instanceof DeadlineError) {
+      throw new WebhookSendError("timeout", "The receiver did not answer within 5 seconds.", true);
+    }
+    throw err;
+  }
+  const remaining = Math.max(1, totalMs - (Date.now() - startedAt));
   const { status } = await (deps.transport ?? httpsTransport)({
     url,
     ...target,
     headers,
     body,
-    timeoutMs: SEND_TIMEOUT_MS,
+    timeoutMs: remaining,
     maxBytes: RESPONSE_CAP_BYTES,
   });
   if (status >= 200 && status < 300) return { status };

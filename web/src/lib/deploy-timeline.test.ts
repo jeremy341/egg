@@ -49,6 +49,57 @@ const beforeBuild = [
 ];
 const preMetrics = [metric("source", 1, 6), metric("upload", 9, 11), metric("lock_wait", 11, 11), metric("unpack", 11, 12)];
 
+describe("worker deployment progress", () => {
+  it("uses process readiness instead of a nonexistent HTTP port", () => {
+    const t = buildTimeline({ ...base, listenPort: null, state: "deploying", startedAt: at(1), activationStartedAt: at(10) }, [], [log(12, "Checking that the worker stays active")]);
+    const readiness = t.stages.find((s) => s.key === "health");
+    expect(readiness?.label).toBe("Process check");
+    expect(readiness?.status).toBe("current");
+    expect(readiness?.detail).toBe("Checking that the worker stays active");
+    expect(t.stages.some((s) => s.detail?.includes("port"))).toBe(false);
+  });
+
+  it("explains worker failure and restoration without web health instructions", () => {
+    const t = buildTimeline({ ...base, workloadKind: "worker", listenPort: null, port: 0, state: "error", startedAt: at(1), finishedAt: at(20), error: "The worker did not stay active. Check its logs and start command." }, [metric("health", 12, 18, "failed")], [log(12, "Checking that the worker stays active"), log(18, "Reverting to the previous release"), log(20, "The previous release is serving traffic again.")]);
+    expect(t.failure?.message).toBe("The worker did not stay active. Check its logs and start command, then deploy again.");
+    expect(t.failure?.note).toBe("The previous worker release is running again.");
+    expect(t.summary).toContain("Process check");
+    expect(t.summary).not.toMatch(/port 0|HTTP|0\.0\.0\.0/);
+  });
+
+  it("reports a successful worker as running", () => {
+    const t = buildTimeline({ ...base, listenPort: null, port: 0, state: "ready", startedAt: at(1), finishedAt: at(20) }, [metric("health", 12, 18)], [log(18, "Worker is active")]);
+    expect(t.summary).toBe("The worker is running.");
+    expect(t.stages.at(-1)?.label).toBe("Running");
+    expect(t.stages.find((s) => s.key === "health")?.detail).toBe("Worker is active");
+  });
+});
+
+describe("live notes", () => {
+  it("says what stays active for a ready worker", () => {
+    const t = buildTimeline(
+      { ...base, workloadKind: "worker", listenPort: null, port: 0, state: "ready", startedAt: at(1), finishedAt: at(20) },
+      [metric("health", 12, 18)],
+      [log(18, "Worker is active")]
+    );
+    expect(t.summary).toBe("The worker is running.");
+    expect(t.liveNote).not.toBeNull();
+    expect(t.liveNote).toContain("stays active");
+  });
+
+  it("has a live note for a ready web deployment too", () => {
+    const t = buildTimeline({ ...base, state: "ready", startedAt: at(1), finishedAt: at(70) });
+    expect(t.outcome).toBe("live");
+    expect(t.liveNote).not.toBeNull();
+  });
+
+  it("has no live note while a deployment is still running", () => {
+    const t = buildTimeline(base);
+    expect(t.outcome).toBe("running");
+    expect(t.liveNote).toBeNull();
+  });
+});
+
 describe("buildTimeline: a successful production deploy", () => {
   const dep: TimelineDeployment = { ...base, state: "ready", startedAt: at(1), activationStartedAt: at(62), finishedAt: at(70) };
   const metrics = [...preMetrics, metric("build", 12, 61), metric("activation", 62, 64), metric("health", 64, 69)];

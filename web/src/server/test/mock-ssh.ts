@@ -10,9 +10,8 @@ import { fingerprintOfPublicKey, generateEd25519Pair } from "@/server/ssh/keys";
  * A tiny in-process SSH server that behaves like a Nest container: public key
  * auth, exec channels, and a scratch HOME.
  *
- * Commands run on a real Linux userland. On Linux and macOS that is the host
- * itself. On Windows it is the first available WSL distro, because Git Bash
- * cannot create real symlinks and the release switch depends on them.
+ * Commands run on the host shell or in WSL on Windows. Tests that need
+ * GNU utilities or a Linux kernel use linuxTestHostAvailable.
  */
 
 export type MockSshOptions = {
@@ -55,6 +54,10 @@ export function wslEnabled(): boolean {
     wslChecked = r.status === 0;
   }
   return wslChecked;
+}
+
+export function linuxTestHostAvailable(): boolean {
+  return process.platform === "linux" || wslEnabled();
 }
 
 function linuxSpawn(args: string[]) {

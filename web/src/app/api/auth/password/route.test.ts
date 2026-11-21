@@ -3,7 +3,13 @@ import { NextRequest } from "next/server";
 import { resetConfigForTests } from "@/server/config";
 import { SESSION_COOKIE, createSession, isFreshAuth, upsertUser, userForSessionToken } from "@/server/auth/session";
 import { verifyLocalPassword } from "@/server/auth/local-password";
-import { PASSWORD_AUTH_ERROR, createPasswordCredential, generateRecoveryKey, normalizeRecoveryKey } from "@/server/auth/password-signin";
+import {
+  PASSWORD_AUTH_ERROR,
+  createPasswordCredential,
+  generateRecoveryKey,
+  normalizeRecoveryKey,
+  passwordCredential,
+} from "@/server/auth/password-signin";
 import { sha256Hex } from "@/server/crypto";
 import { useFreshDb } from "@/server/test/db";
 import { schema } from "@/server/db";
@@ -15,6 +21,16 @@ vi.mock("next/server", async (orig) => ({
   ...(await orig<typeof import("next/server")>()),
   connection: async () => undefined,
 }));
+
+// The real functions, with `passwordCredential` wrapped so a test can change what
+// the post-hoc re-read sees, to stand in for a change landing mid-sign-in.
+vi.mock("@/server/auth/password-signin", async (orig) => {
+  const actual = await orig<typeof import("@/server/auth/password-signin")>();
+  return {
+    ...actual,
+    passwordCredential: vi.fn(actual.passwordCredential),
+  };
+});
 
 let ctx: Awaited<ReturnType<typeof useFreshDb>>;
 beforeAll(async () => {
@@ -46,21 +62,21 @@ async function member(withPassword = true) {
   return { user, recoveryKey };
 }
 
-const form = (fields: Record<string, string>) =>
+const form = (fields: Record<string, string>, headers: Record<string, string> = {}) =>
   signIn(
     new NextRequest("http://localhost:3000/api/auth/password", {
       method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
+      headers: { "content-type": "application/x-www-form-urlencoded", ...headers },
       body: new URLSearchParams(fields).toString(),
     }),
     undefined
   );
 
-const resetWith = (fields: Record<string, string>) =>
+const resetWith = (fields: Record<string, string>, headers: Record<string, string> = {}) =>
   reset(
     new NextRequest("http://localhost:3000/api/auth/password/reset", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...headers },
       body: JSON.stringify({ email: EMAIL, newPassword: NEXT_PASSWORD, confirmPassword: NEXT_PASSWORD, ...fields }),
     }),
     undefined
@@ -103,7 +119,7 @@ describe("password sign-in", () => {
 
   it("is rate limited per address and per account", async () => {
     await member();
-    const bucket = `signIn:password-email:${sha256Hex(EMAIL)}`;
+    const bucket = `signIn:password-email:password:unknown-client:${sha256Hex(EMAIL)}`;
     for (let i = 0; i < 20; i++) rateLimiter().check(bucket, 20, 60_000);
     const res = await form({ email: EMAIL, password: PASSWORD });
     expect(res.headers.get("location")).toContain("error=rate_limited");
@@ -111,8 +127,65 @@ describe("password sign-in", () => {
     expect(cookie(res)).toBe("");
 
     rateLimiter().clear();
-    for (let i = 0; i < 20; i++) rateLimiter().check("signIn:password:unknown-client", 20, 60_000);
+    // With TRUST_PROXY off the address bucket is keyed by email, not one global key.
+    for (let i = 0; i < 20; i++) rateLimiter().check(`signIn:${sha256Hex(EMAIL)}`, 20, 60_000);
     expect((await form({ email: EMAIL, password: PASSWORD })).headers.get("location")).toContain("error=rate_limited");
+  });
+
+  it("does not let one email's unknown-client bucket block other emails", async () => {
+    await member();
+    for (let i = 0; i < 20; i++) rateLimiter().check(`signIn:${sha256Hex(EMAIL)}`, 20, 60_000);
+    expect((await form({ email: EMAIL, password: PASSWORD })).headers.get("location")).toContain("error=rate_limited");
+    // A different address-less email is still admitted (and gets the generic answer).
+    const other = await form({ email: "nobody@example.com", password: PASSWORD });
+    expect(other.headers.get("location")).toContain("error=password_invalid");
+    expect(other.headers.get("location")).not.toContain("rate_limited");
+  });
+
+  it("cannot lock the account out from another address", async () => {
+    const { user } = await member();
+    vi.stubEnv("TRUST_PROXY", "1");
+    // An address that has been guessing is refused for its own bucket…
+    for (let i = 0; i < 20; i++) rateLimiter().check(`signIn:password-email:203.0.113.7:${sha256Hex(EMAIL)}`, 20, 60_000);
+    const guessing = await form({ email: EMAIL, password: PASSWORD }, { "x-forwarded-for": "203.0.113.7" });
+    expect(guessing.headers.get("location")).toContain("error=rate_limited");
+    // …but the account's owner, from their own address, still signs in.
+    const res = await form({ email: EMAIL, password: PASSWORD }, { "x-forwarded-for": "198.51.100.9" });
+    expect(res.status).toBe(303);
+    const token = decodeURIComponent(cookie(res).split(";")[0].split("=").slice(1).join("="));
+    expect((await userForSessionToken(token))?.id).toBe(user.id);
+  });
+
+  it("caps guessing across addresses with a slow per-account ceiling", async () => {
+    await member();
+    for (let i = 0; i < 60; i++) rateLimiter().check(`password-email-slow:${sha256Hex(EMAIL)}`, 60, 60 * 60_000);
+    const res = await form({ email: EMAIL, password: PASSWORD }, { "x-forwarded-for": "203.0.113.53" });
+    expect(res.headers.get("location")).toContain("error=rate_limited");
+    expect(res.headers.get("retry-after")).not.toBeNull();
+    expect(cookie(res)).toBe("");
+  });
+
+  it("ends the cookie's session only once the sign-in is certain", async () => {
+    const { user } = await member();
+    const old = await createSession(user.id);
+    const res = await form({ email: EMAIL, password: PASSWORD }, { cookie: `${SESSION_COOKIE}=${old.token}` });
+    expect(res.status).toBe(303);
+    expect(await userForSessionToken(old.token)).toBeNull();
+    const token = decodeURIComponent(cookie(res).split(";")[0].split("=").slice(1).join("="));
+    expect((await userForSessionToken(token))?.id).toBe(user.id);
+  });
+
+  it("keeps the browser's session when the credential changes mid-sign-in", async () => {
+    const { user } = await member();
+    const current = await createSession(user.id);
+    // A reset or turn-off lands between the password check and the re-read.
+    vi.mocked(passwordCredential).mockResolvedValueOnce(undefined);
+    const res = await form({ email: EMAIL, password: PASSWORD }, { cookie: `${SESSION_COOKIE}=${current.token}` });
+    expect(res.headers.get("location")).toContain("error=password_invalid");
+    expect(cookie(res)).toBe("");
+    expect((await userForSessionToken(current.token))?.id).toBe(user.id);
+    // The failed sign-in leaves nothing behind: the browser keeps its one session.
+    expect(await ctx.db.select().from(schema.sessions)).toHaveLength(1);
   });
 });
 
@@ -171,10 +244,37 @@ describe("reset with the recovery key", () => {
 
   it("is rate limited", async () => {
     const { recoveryKey } = await member();
-    for (let i = 0; i < 20; i++) rateLimiter().check(`signIn:password-email:${sha256Hex(EMAIL)}`, 20, 60_000);
+    for (let i = 0; i < 20; i++) rateLimiter().check(`signIn:password-email:password:unknown-client:${sha256Hex(EMAIL)}`, 20, 60_000);
     const res = await resetWith({ recoveryKey });
     expect(res.status).toBe(429);
     expect(res.headers.get("retry-after")).not.toBeNull();
     expect(await verifyLocalPassword(PASSWORD, (await rows())[0].passwordHash)).toBe(true);
+  });
+
+  it("cannot lock the account's reset out from another address", async () => {
+    const { recoveryKey } = await member();
+    vi.stubEnv("TRUST_PROXY", "1");
+    for (let i = 0; i < 20; i++) rateLimiter().check(`signIn:password-email:203.0.113.7:${sha256Hex(EMAIL)}`, 20, 60_000);
+    expect((await resetWith({ recoveryKey: "wrong" }, { "x-forwarded-for": "203.0.113.7" })).status).toBe(429);
+    // The account's owner, from their own address, still resets with the key.
+    expect((await resetWith({ recoveryKey }, { "x-forwarded-for": "198.51.100.9" })).status).toBe(200);
+    expect(await verifyLocalPassword(NEXT_PASSWORD, (await rows())[0].passwordHash)).toBe(true);
+  });
+
+  it("caps reset guessing across addresses with its own slow ceiling", async () => {
+    const { recoveryKey } = await member();
+    for (let i = 0; i < 60; i++) rateLimiter().check(`password-reset-slow:${sha256Hex(EMAIL)}`, 60, 60 * 60_000);
+    const res = await resetWith({ recoveryKey });
+    expect(res.status).toBe(429);
+    expect(res.headers.get("retry-after")).not.toBeNull();
+    expect(await verifyLocalPassword(PASSWORD, (await rows())[0].passwordHash)).toBe(true);
+  });
+
+  it("does not let sign-in guessing lock the recovery key out", async () => {
+    const { recoveryKey } = await member();
+    for (let i = 0; i < 60; i++) rateLimiter().check(`password-email-slow:${sha256Hex(EMAIL)}`, 60, 60 * 60_000);
+    const res = await resetWith({ recoveryKey });
+    expect(res.status).toBe(200);
+    expect(await verifyLocalPassword(NEXT_PASSWORD, (await rows())[0].passwordHash)).toBe(true);
   });
 });

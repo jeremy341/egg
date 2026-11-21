@@ -94,6 +94,14 @@ export function isBot(ua: string): boolean {
   return BOT.test(ua);
 }
 
+/**
+ * The stand-in address for a visitor whose real address is not trusted
+ * (TRUST_PROXY off / nothing trustworthy behind the proxy). All such visitors
+ * share it, so per-address throttling skips it: otherwise the whole project's
+ * traffic would count as one visitor.
+ */
+export const UNKNOWN_IP = "0.0.0.0";
+
 export function visitorHash(args: { projectId: string; ip: string; ua: string; day: string }): string {
   return sha256Hex(`${config().APP_SECRET}|${args.day}|${args.projectId}|${args.ip}|${args.ua}`).slice(0, 16);
 }
@@ -138,6 +146,27 @@ function tooFast(key: string, now: number): boolean {
   return false;
 }
 
+/**
+ * At most this many reports a minute for one project, whatever addresses they
+ * come from. The per-address rules only help when the address is real: without
+ * TRUST_PROXY every visitor shares UNKNOWN_IP and they never apply, so a flood
+ * could otherwise fill the database unhindered. This cap bounds a project's
+ * writes in every case, with room left for a genuinely busy site.
+ */
+export const PROJECT_WRITE_LIMIT = 200;
+const PROJECT_WRITE_WINDOW_MS = 60_000;
+const projectWrites = new Map<string, { start: number; n: number }>();
+export function overProjectWriteLimit(projectId: string, nowMs: number): boolean {
+  const w = projectWrites.get(projectId);
+  if (!w || nowMs - w.start >= PROJECT_WRITE_WINDOW_MS) {
+    if (projectWrites.size > 5000) for (const [k, v] of projectWrites) if (nowMs - v.start >= PROJECT_WRITE_WINDOW_MS) projectWrites.delete(k);
+    projectWrites.set(projectId, { start: nowMs, n: 1 });
+    return false;
+  }
+  w.n += 1;
+  return w.n > PROJECT_WRITE_LIMIT;
+}
+
 export async function recordPageview(
   key: string,
   raw: unknown,
@@ -152,7 +181,12 @@ export async function recordPageview(
   if (!found) return false;
   const project = { id: found.projectId };
   const f = found.features;
-  if (tooFast(`${project.id}|${who.ip}`, now.getTime())) return false;
+  // The per-project cap bounds writes whatever the address, and keeps applying
+  // when every visitor shares the unknown one.
+  if (overProjectWriteLimit(project.id, now.getTime())) return false;
+  // Per-address throttling only applies to a real address: the shared unknown
+  // one must not throttle the whole project as a single visitor.
+  if (who.ip !== UNKNOWN_IP && tooFast(`${project.id}|${who.ip}`, now.getTime())) return false;
   const d = parsed.data;
   // Each extra is stored only while its switch is on.
   const utm = f.campaigns ? allowlistedUtm({ source: d.us, medium: d.um, campaign: d.uc }, f.utmAllowlist) : null;
@@ -217,7 +251,11 @@ export async function analyticsSummary(
 ): Promise<AnalyticsSummary> {
   const project = await getReadableProject(userId, projectId);
   const db = await getDb();
-  const since = new Date(now.getTime() - days * 86_400_000);
+  // Midnight of the daily series' first day (sinceDay-style), so the pages and
+  // referrers lists cover the same days as the chart and not a rolling window.
+  const since = new Date(
+    `${new Date(now.getTime() - (days - 1) * 86_400_000).toISOString().slice(0, 10)}T00:00:00Z`
+  );
   const where = and(eq(schema.pageviews.projectId, project.id), gte(schema.pageviews.at, since));
 
   const rows = await db

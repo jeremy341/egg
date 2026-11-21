@@ -46,6 +46,17 @@ const base = (over: Record<string, unknown>) => ({
 });
 
 describe("createProject and GitHub installations", () => {
+  it("connects one Nest account once per instance, so two accounts cannot share one home", async () => {
+    // Every derived name on a server (unit, container, ~/.egg folder, image,
+    // Compose project) is scoped only by the Nest account's home directory, so
+    // a second account must not be able to claim the same Nest user.
+    await createServer(sam, "shared-nest");
+    await expect(createServer(alex, "shared-nest")).rejects.toMatchObject({ status: 409 });
+    // The slug stays per-user as before: a slug used twice is only refused
+    // within one account.
+    await createProject(sam, base({ slug: "shared" }));
+    await expect(createProject(sam, base({ slug: "shared" }))).rejects.toMatchObject({ status: 409 });
+  });
   it("refuses an installation that belongs to someone else", async () => {
     const err: unknown = await createProject(sam, base({ slug: "stolen", installationId: 777 })).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(HttpError);

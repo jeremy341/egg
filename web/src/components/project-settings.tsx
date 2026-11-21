@@ -24,6 +24,8 @@ import { PixelAvatar } from "@/components/ui/pixel-avatar";
 import type { ProjectView } from "@/server/queries";
 import { cn } from "@/lib/utils";
 import { CleanupCard } from "@/components/cleanup-card";
+import { HostingOptions, StartCommandHelp, runtimeHint, type TargetCapabilities } from "@/components/hosting-options";
+import { ContainerDeploymentFields, containerConfigurationError, containerDeploymentBody, defaultContainerForm } from "@/components/container-deployment-fields";
 
 type EnvVar = { id: string; key: string; target: "all" | "production" | "preview" };
 
@@ -82,7 +84,8 @@ export function ProjectSettings({
 
   // ---- build and run settings
   const [form, setForm] = useState({
-    port: String(project.port),
+    port: project.listenPort === null ? "" : String(project.listenPort),
+    deploymentMode: project.deploymentMode,
     startCommand: project.startCommand ?? "",
     productionBranch: project.branch,
     healthPath: project.healthPath,
@@ -92,6 +95,22 @@ export function ProjectSettings({
   const [build, setBuild] = useState<BuildForm | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [capabilities, setCapabilities] = useState<TargetCapabilities | null>(null);
+  const [container, setContainer] = useState({
+    dockerfilePath: project.dockerfilePath ?? defaultContainerForm.dockerfilePath,
+    composeFilePath: project.composeFilePath ?? defaultContainerForm.composeFilePath,
+    composeService: project.composeService ?? defaultContainerForm.composeService,
+    containerPort: project.containerPort === null ? "" : String(project.containerPort ?? defaultContainerForm.containerPort),
+  });
+  const containerError = containerConfigurationError(form.deploymentMode, project.workloadKind, container);
+  const [capabilityError, setCapabilityError] = useState<string | null>(null);
+  const [capabilityAttempt, setCapabilityAttempt] = useState(0);
+  const githubPush = project.repoUrl.startsWith("https://github.com/") && project.repo !== null;
+  useEffect(() => {
+    let live = true;
+    api<TargetCapabilities>(`/api/servers/${project.serverId}/capabilities`).then((value) => { if (live) { setCapabilities(value); setCapabilityError(null); } }).catch((error) => { if (live) setCapabilityError(error instanceof Error ? error.message : "Could not load target capabilities."); });
+    return () => { live = false; };
+  }, [project.serverId, capabilityAttempt]);
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -101,11 +120,13 @@ export function ProjectSettings({
       await api(`/api/projects/${project.id}`, {
         method: "PATCH",
         body: {
-          port: Number(form.port),
+          listenPort: project.workloadKind === "worker" ? (form.port.trim() === "" ? null : Number(form.port)) : Number(form.port),
+          deploymentMode: form.deploymentMode,
+          ...containerDeploymentBody(form.deploymentMode, project.workloadKind, container),
           startCommand: form.startCommand.trim() || null,
           productionBranch: form.productionBranch.trim(),
-          healthPath: form.healthPath.trim() || "/",
-          autoDeploy: form.autoDeploy,
+          ...(project.workloadKind === "web" ? { healthPath: form.healthPath.trim() || "/" } : {}),
+          autoDeploy: githubPush && form.autoDeploy,
           ...(build ? buildBody(build) : {}),
         },
       });
@@ -237,13 +258,17 @@ export function ProjectSettings({
                     {saveMsg?.text ?? "Changes apply to the next deployment."}
                   </Swap>
                 </p>
-                <Button type="submit" form="run-form" loading={saving}>
+                <Button type="submit" form="run-form" loading={saving} disabled={!build || Boolean(containerError)}>
                   {saving ? "Saving…" : "Save"}
                 </Button>
               </>
             }
           >
             <form id="run-form" onSubmit={save} className="grid gap-4 sm:grid-cols-2">
+              <HostingOptions prefix="ps" workloadKind={project.workloadKind} workloadLocked deploymentMode={form.deploymentMode} capabilities={capabilities} onWorkloadChange={() => {}} onModeChange={(value) => setForm({ ...form, deploymentMode: value })} />
+              {capabilityError && <Alert role="alert" tone="error" className="sm:col-span-2" action={<Button type="button" variant="outline" size="sm" onClick={() => { setCapabilityError(null); setCapabilityAttempt((attempt) => attempt + 1); }}>Try again</Button>}>Could not load target capabilities: {capabilityError} Container modes remain unavailable until the check succeeds.</Alert>}
+              <ContainerDeploymentFields prefix="ps" mode={form.deploymentMode} workloadKind={project.workloadKind} value={container} onChange={setContainer} />
+              {containerError && <p role="alert" className="text-label text-destructive sm:col-span-2">{containerError}</p>}
               <div>
                 <Label htmlFor="ps-branch">Production branch</Label>
                 <Input
@@ -254,7 +279,7 @@ export function ProjectSettings({
                 />
               </div>
               <div>
-                <Label htmlFor="ps-port">Port</Label>
+                <Label htmlFor="ps-port">{project.workloadKind === "worker" ? "Listen port (optional)" : "Port"}</Label>
                 <Input
                   id="ps-port"
                   inputMode="numeric"
@@ -262,48 +287,54 @@ export function ProjectSettings({
                   onChange={(e) => setForm({ ...form, port: e.target.value })}
                   className="font-mono"
                 />
+                {project.workloadKind === "worker" && <p className="text-label text-muted-foreground">Fill this only if the bot must receive webhooks over HTTP. A domain can point at it once it is set. Leave it empty to keep the worker closed.</p>}
               </div>
               <div className="sm:col-span-2">
                 <Label htmlFor="ps-start">Start command</Label>
                 <Input
                   id="ps-start"
                   value={form.startCommand}
-                  placeholder={project.runtime === "node" ? "npm start" : "python3 app.py"}
+                  placeholder={runtimeHint(build?.runtime ?? project.runtime)}
                   onChange={(e) => setForm({ ...form, startCommand: e.target.value })}
                   className="font-mono"
+                  aria-describedby="ps-start-help"
                 />
+                <StartCommandHelp runtime={build?.runtime ?? project.runtime} id="ps-start-help" />
               </div>
-              <label className="touch-target inline-flex min-h-10 items-center gap-2 sm:col-span-2 sm:min-h-9">
+              <ProjectBuildFields
+                projectId={project.id}
+                workloadKind={project.workloadKind}
+                build={build}
+                onLoad={setBuild}
+                onChange={setBuild}
+                onCopy={(s) => {
+                  if (project.workloadKind === "worker" && s.runtime === "static") {
+                    setSaveMsg({ ok: false, text: "Static sites require a separate web project. These settings were not copied." });
+                    return;
+                  }
+                  setBuild(toBuildForm(s));
+                  setForm((f) => ({ ...f, startCommand: s.startCommand ?? "", healthPath: s.healthPath }));
+                }}
+              />
+              {project.workloadKind === "web" && <div>
+                <Label htmlFor="ps-health">Health check path</Label>
+                <Input
+                  id="ps-health"
+                  value={form.healthPath}
+                  onChange={(e) => setForm({ ...form, healthPath: e.target.value })}
+                  className="font-mono"
+                />
+              </div>}
+              <label className="touch-target inline-flex min-h-10 items-center gap-2 self-end sm:min-h-9">
                 <input
                   type="checkbox"
                   checked={form.autoDeploy}
+                  disabled={!githubPush}
                   onChange={(e) => setForm({ ...form, autoDeploy: e.target.checked })}
                 />
                 Deploy automatically on push
               </label>
-              <Advanced className="sm:col-span-2">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <ProjectBuildFields
-                    projectId={project.id}
-                    build={build}
-                    onLoad={setBuild}
-                    onChange={setBuild}
-                    onCopy={(s) => {
-                      setBuild(toBuildForm(s));
-                      setForm((f) => ({ ...f, startCommand: s.startCommand ?? "", healthPath: s.healthPath }));
-                    }}
-                  />
-                  <div>
-                    <Label htmlFor="ps-health">Health check path</Label>
-                    <Input
-                      id="ps-health"
-                      value={form.healthPath}
-                      onChange={(e) => setForm({ ...form, healthPath: e.target.value })}
-                      className="font-mono"
-                    />
-                  </div>
-                </div>
-              </Advanced>
+              {!githubPush && <p className="text-label text-muted-foreground sm:col-span-2">Use manual deployments or the Deploy Hook below. Automatic push deployment needs a verified provider webhook.</p>}
             </form>
           </Card>
 

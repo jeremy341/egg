@@ -4,6 +4,8 @@ import { authed, handle, HttpError, ok, zodToHttp } from "@/server/http";
 import { getProjectForUser } from "@/server/projects";
 import { readRepo, type RepoSource } from "@/server/repo-read";
 import { repoFromProject } from "@/server/root-detect";
+import { providerClientForUser, publicProviderClient, repositoryNameFromUrl, validateProviderSource } from "@/server/providers/connections";
+import { detectProviderRepository } from "@/server/providers/detect";
 
 const REPO = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 
@@ -35,6 +37,21 @@ export const GET = handle(async (req) => {
   const params = Object.fromEntries(
     [...req.nextUrl.searchParams.entries()].filter(([, v]) => v !== "")
   );
+  if (params.sourceProvider && params.sourceProvider !== "github") {
+    const providerQuery = z.object({
+      sourceProvider: z.enum(["gitlab", "forgejo", "codeberg"]),
+      providerConnectionId: z.string().min(1).max(64).optional(),
+      repo: z.string().min(3).max(200),
+      branch: z.string().min(1).max(200),
+      root: z.string().max(200).default("."),
+    }).safeParse(params);
+    if (!providerQuery.success) throw zodToHttp(providerQuery.error);
+    const p = providerQuery.data;
+    const client = p.providerConnectionId ? await providerClientForUser(user.id, p.providerConnectionId, p.sourceProvider) : publicProviderClient(p.sourceProvider, p.repo);
+    const repo = p.providerConnectionId ? p.repo : repositoryNameFromUrl(p.repo);
+    if (!p.providerConnectionId) await validateProviderSource(client, { repoFullName: repo, repoUrl: p.repo, productionBranch: p.branch }, true);
+    return ok(await detectProviderRepository(client, { ...p, repo }));
+  }
   const parsed = query.safeParse(params);
   if (!parsed.success) throw zodToHttp(parsed.error);
   const q = parsed.data;
@@ -42,6 +59,11 @@ export const GET = handle(async (req) => {
   let source: RepoSource;
   if ("projectId" in q) {
     const project = await getProjectForUser(user.id, q.projectId);
+    if (project.sourceProvider !== "github") {
+      if (project.sourceProvider === "generic" || !project.repoFullName) throw new HttpError(400, "This project cannot be inspected automatically.", "validation");
+      const client = project.providerConnectionId ? await providerClientForUser(user.id, project.providerConnectionId, project.sourceProvider) : publicProviderClient(project.sourceProvider, project.repoUrl);
+      return ok(await detectProviderRepository(client, { repo: project.repoFullName, branch: project.productionBranch, root: project.rootDir }));
+    }
     const repo = repoFromProject(project);
     if (!repo) throw new HttpError(400, "Only GitHub repositories can be inspected here.", "validation");
     source = {

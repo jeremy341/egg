@@ -8,6 +8,7 @@ import { HttpError } from "@/server/http";
 import { deleteProjectRecords, getProjectForUser, type ProjectRow } from "@/server/projects";
 import { removeProjectFromServer } from "@/server/runtime-info";
 import { getServerForUser } from "@/server/servers";
+import { forgetDeliveriesForDeployments } from "@/server/webhooks";
 
 /** Long enough for one remote removal. A crash leaves the row to expire into the cleanup recovery path. */
 const RESERVATION_LEASE_MS = 10 * 60_000;
@@ -173,7 +174,12 @@ async function finishDelete(userId: string, project: ProjectRow, reservation: Re
     await tx.update(schema.cleanupItems)
       .set({ state: "done", step: "remote_complete", error: null, updatedAt: now })
       .where(eq(schema.cleanupItems.cleanupJobId, reservation.jobId));
+    const deployments = await tx
+      .select({ id: schema.deployments.id })
+      .from(schema.deployments)
+      .where(eq(schema.deployments.projectId, project.id));
     await tx.delete(schema.projects).where(and(eq(schema.projects.id, project.id), eq(schema.projects.userId, userId)));
+    await forgetDeliveriesForDeployments(tx, deployments.map((d) => d.id));
   });
   await audit(userId, "project.delete", null, { name: project.name });
 }

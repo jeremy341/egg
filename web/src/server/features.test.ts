@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
+import { ZodError } from "zod";
 import { browserLabel, deleteAccount, listSessions, revokeOtherSessions, revokeSession } from "@/server/account";
 import {
   analyticsSummary,
@@ -123,14 +124,63 @@ describe("status page", () => {
     const status = await publicStatus(key);
     expect(status).not.toBeNull();
     expect(status?.name).toBe("App");
+    expect(status?.workloadKind).toBe("web");
     expect(status?.state).toBe("unknown");
     expect(status?.uptime).toBeNull();
     expect(Object.keys(status ?? {}).sort()).toEqual(
-      ["days", "incidents", "name", "since", "state", "uptime", "windowDays"].sort()
+      ["days", "incidents", "name", "since", "state", "uptime", "windowDays", "workloadKind"].sort()
     );
     // Each day in the strip is only a date, a state and a count of minutes.
     expect(status?.days.length).toBe(30);
     expect(Object.keys(status?.days[0] ?? {}).sort()).toEqual(["day", "downMinutes", "state"]);
+  });
+
+  it("identifies worker status pages so they do not imply HTTP health", async () => {
+    const worker = await createProject(userId, {
+      serverId,
+      repoUrl: "https://github.com/sam/worker.git",
+      runtime: "node",
+      workloadKind: "worker",
+      name: "Worker",
+      slug: "worker",
+    });
+    const { key } = await enableStatusPage(userId, worker.id);
+    expect(await publicStatus(key)).toMatchObject({ workloadKind: "worker", name: "Worker" });
+  });
+
+  it("pairs an up event whose down lies before the window it fetches", async () => {
+    const { key } = await enableStatusPage(userId, projectId);
+    const now = new Date("2026-11-05T12:00:00Z");
+    await ctx.db
+      .update(schema.projects)
+      .set({ monitorState: "up" })
+      .where(eq(schema.projects.id, projectId));
+    await ctx.db.insert(schema.auditLog).values([
+      { userId, action: "monitor.down", target: projectId, at: new Date("2026-09-20T00:00:00Z") },
+      { userId, action: "monitor.up", target: projectId, at: new Date("2026-11-01T00:00:00Z") },
+    ]);
+    const status = await publicStatus(key, now);
+    expect(status?.incidents).toEqual([
+      { from: new Date("2026-09-20T00:00:00Z"), to: new Date("2026-11-01T00:00:00Z") },
+    ]);
+    expect(status?.uptime).not.toBeNull();
+    expect(status?.uptime).toBeLessThan(100);
+  });
+
+  it("shows the days before the project existed as not yet checked", async () => {
+    const { key } = await enableStatusPage(userId, secondProjectId);
+    const now = new Date("2026-11-05T12:00:00Z");
+    await ctx.db
+      .update(schema.projects)
+      .set({ monitorState: "up", createdAt: new Date("2026-11-03T06:00:00Z") })
+      .where(eq(schema.projects.id, secondProjectId));
+    const status = await publicStatus(key, now);
+    expect(status?.days.find((d) => d.day === "2026-11-01")).toEqual({
+      day: "2026-11-01",
+      state: "none",
+      downMinutes: 0,
+    });
+    expect(status?.days.find((d) => d.day === "2026-11-04")?.state).toBe("up");
   });
 });
 
@@ -169,6 +219,10 @@ describe("domain editing", () => {
     await expect(updateDomain(otherId, domain.id, { port: 4000 })).rejects.toThrow();
     await expect(updateDomain(userId, domain.id, {})).rejects.toThrow();
     await expect(updateDomain(userId, domain.id, { projectId: "nope" })).rejects.toThrow();
+    // An empty project id is a bad request, not a failed foreign key.
+    await expect(
+      addDomain(userId, { serverId, domain: "empty.example.com", port: 3000, projectId: "" })
+    ).rejects.toBeInstanceOf(ZodError);
   });
 });
 

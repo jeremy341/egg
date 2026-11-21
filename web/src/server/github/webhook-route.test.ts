@@ -1,12 +1,23 @@
 import { createHmac } from "node:crypto";
 import { NextRequest } from "next/server";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { webhookBodyReads } from "@/server/body-limit";
 import { resetConfigForTests } from "@/server/config";
 import { closeDbForTests, getDb } from "@/server/db";
 import { POST } from "@/app/api/webhooks/github/route";
+import { HttpError } from "@/server/http";
+import { rateLimiter } from "@/server/rate-limit-core";
 import { handleGithubEvent, isSafeBranch, isSafeSha } from "@/server/github/webhook";
+import { upsertUser } from "@/server/auth/session";
+import { createProject, type ProjectRow } from "@/server/projects";
+import { createServer } from "@/server/servers";
 import { useFreshDb } from "@/server/test/db";
+
+const { enqueueMock } = vi.hoisted(() => ({ enqueueMock: vi.fn() }));
+vi.mock("@/server/projects", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/server/projects")>();
+  return { ...actual, enqueueDeployment: enqueueMock };
+});
 
 const SECRET = "hook-secret";
 let ctx: Awaited<ReturnType<typeof useFreshDb>>;
@@ -163,6 +174,35 @@ describe("GitHub webhook route", () => {
     const ok = await POST(signed('{"ping":"after-busy"}', { "x-github-delivery": "d-after-busy" }));
     expect(ok.status).toBe(200);
   });
+
+  it("never lets unverified signatures burn the global ceiling a real delivery needs", async () => {
+    rateLimiter().clear();
+    const body = '{"ping":"x"}';
+    const badSig = () => new NextRequest("http://localhost/api/webhooks/github", {
+      method: "POST",
+      body,
+      headers: {
+        "x-hub-signature-256": "sha256=" + "1".repeat(64),
+        "x-github-event": "ping",
+        "content-length": String(Buffer.byteLength(body)),
+      },
+    });
+    // A flood of well-formed but wrong signatures is refused per request and
+    // never counts toward the shared global budget.
+    for (let i = 0; i < 400; i++) expect((await POST(badSig())).status, String(i)).toBe(401);
+    // A correctly signed delivery still sails through after the flood.
+    const legit = await POST(signed(body));
+    expect(legit.status).toBe(200);
+    // The ceiling still exists, but only verified deliveries fill it.
+    for (let i = 0; i < 119; i++) {
+      const res = await POST(signed(JSON.stringify({ z: i })));
+      expect(res.status, `legit flood ${i}`).toBeLessThan(429);
+    }
+    const refused = await POST(signed(body));
+    expect(refused.status).toBe(429);
+    expect(refused.headers.get("Retry-After")).toBeTruthy();
+    rateLimiter().clear();
+  });
 });
 
 // Requests whose body is still arriving: the stream is closed by the test, not by the request.
@@ -210,5 +250,96 @@ describe("refs and hashes from a push", () => {
       repository: { full_name: "sam/demo" },
     });
     expect(r).toMatchObject({ handled: false, deployments: [] });
+  });
+});
+
+describe("webhook fan-out across projects", () => {
+  afterEach(() => enqueueMock.mockReset());
+
+  it("keeps deploying the remaining projects when one enqueue fails", async () => {
+    const user = await upsertUser({ id: "uweb", name: "Sam", email: null, slackId: null });
+    const serverId = (await createServer(user.id, "sam-r")).id;
+    const shared = { repoUrl: "https://github.com/sam/demo", repoFullName: "sam/demo", serverId, runtime: "node", startCommand: "node server.js" };
+    const broken = await createProject(user.id, { ...shared, name: "Broken", port: 4101 });
+    const good = await createProject(user.id, { ...shared, name: "Good", port: 4102 });
+    enqueueMock.mockImplementation(async (project: ProjectRow) => {
+      if (project.id === broken.id) throw new HttpError(503, "No free preview ports on this server.", "limit");
+      return { id: `dep-${project.id}` };
+    });
+
+    const r = await handleGithubEvent("push", {
+      ref: "refs/heads/feature",
+      after: "c".repeat(40),
+      repository: { full_name: "sam/demo" },
+    });
+    expect(r).toEqual({ handled: true, deployments: [`dep-${good.id}`] });
+  });
+
+  it("keeps deploying the remaining pull request previews when one enqueue fails", async () => {
+    const user = await upsertUser({ id: "uweb2", name: "Kim", email: null, slackId: null });
+    const serverId = (await createServer(user.id, "kim-r")).id;
+    const shared = { repoUrl: "https://github.com/kim/demo", repoFullName: "kim/demo", serverId, runtime: "node", startCommand: "node server.js", productionBranch: "trunk" };
+    const broken = await createProject(user.id, { ...shared, name: "Broken PR", port: 4201 });
+    const good = await createProject(user.id, { ...shared, name: "Good PR", port: 4202 });
+    enqueueMock.mockImplementation(async (project: ProjectRow) => {
+      if (project.id === broken.id) throw new HttpError(409, "No free preview ports on this server.", "limit");
+      return { id: `deppr-${project.id}` };
+    });
+
+    const r = await handleGithubEvent("pull_request", {
+      action: "synchronize",
+      repository: { full_name: "kim/demo" },
+      pull_request: { number: 7, head: { ref: "feature", sha: "d".repeat(40), repo: { full_name: "kim/demo" } } },
+    });
+    expect(r).toEqual({ handled: true, deployments: [`deppr-${good.id}`] });
+  });
+
+  it("fails the whole push event when maintenance starts mid-fan-out", async () => {
+    const user = await upsertUser({ id: "uweb-maint", name: "Mai", email: null, slackId: null });
+    const serverId = (await createServer(user.id, "mai-r")).id;
+    await createProject(user.id, {
+      repoUrl: "https://github.com/mai/demo", repoFullName: "mai/demo", serverId,
+      runtime: "node", startCommand: "node server.js", name: "Mai App", port: 4301, autoDeploy: true,
+    });
+    enqueueMock.mockImplementation(async () => { throw new HttpError(503, "paused", "maintenance"); });
+    await expect(handleGithubEvent("push", {
+      ref: "refs/heads/main", after: "e".repeat(40), repository: { full_name: "mai/demo" },
+    })).rejects.toMatchObject({ code: "maintenance" });
+  });
+
+  it("fails the whole pull request event when maintenance starts mid-fan-out", async () => {
+    const user = await upsertUser({ id: "uweb-maint-pr", name: "Noa", email: null, slackId: null });
+    const serverId = (await createServer(user.id, "noa-r")).id;
+    await createProject(user.id, {
+      repoUrl: "https://github.com/noa/demo", repoFullName: "noa/demo", serverId,
+      runtime: "node", startCommand: "node server.js", name: "Noa App", port: 4302, autoDeploy: true, productionBranch: "trunk",
+    });
+    enqueueMock.mockImplementation(async () => { throw new HttpError(503, "paused", "maintenance"); });
+    await expect(handleGithubEvent("pull_request", {
+      action: "synchronize",
+      repository: { full_name: "noa/demo" },
+      pull_request: { number: 8, head: { ref: "feature", sha: "f".repeat(40), repo: { full_name: "noa/demo" } } },
+    })).rejects.toMatchObject({ code: "maintenance" });
+  });
+
+  it("releases the replay digest so GitHub can redeliver after a mid-event maintenance 503", async () => {
+    const user = await upsertUser({ id: "uweb-maint-route", name: "Oli", email: null, slackId: null });
+    const serverId = (await createServer(user.id, "oli-r")).id;
+    await createProject(user.id, {
+      repoUrl: "https://github.com/oli/demo", repoFullName: "oli/demo", serverId,
+      runtime: "node", startCommand: "node server.js", name: "Oli App", port: 4303, autoDeploy: true,
+    });
+    const body = JSON.stringify({ ref: "refs/heads/main", after: "a".repeat(40), repository: { full_name: "oli/demo" } });
+    const signedPush = () => signed(body, { "x-github-event": "push" });
+
+    enqueueMock.mockImplementation(async () => { throw new HttpError(503, "paused", "maintenance"); });
+    const first = await POST(signedPush());
+    expect(first.status).toBe(503);
+    expect(first.headers.get("retry-after")).toBe("60");
+
+    enqueueMock.mockImplementation(async () => ({ id: "dep-redelivered" }));
+    const retry = await POST(signedPush());
+    expect(retry.status).toBe(200);
+    expect(await retry.json()).toMatchObject({ handled: true, deployments: ["dep-redelivered"] });
   });
 });

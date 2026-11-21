@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { NextRequest } from "next/server";
 import { resetConfigForTests } from "@/server/config";
 import { SESSION_COOKIE, createSession, isFreshAuth, upsertUser, userForSessionToken } from "@/server/auth/session";
+import { localCredential } from "@/server/auth/local-credential";
 import { rateLimiter } from "@/server/rate-limit";
 import { useFreshDb } from "@/server/test/db";
 import { schema } from "@/server/db";
@@ -14,6 +15,16 @@ vi.mock("next/server", async (orig) => ({
   connection: async () => undefined,
 }));
 
+// The real functions, with `localCredential` wrapped so a test can change what
+// the post-hoc re-read sees, to stand in for a change landing mid-sign-in.
+vi.mock("@/server/auth/local-credential", async (orig) => {
+  const actual = await orig<typeof import("@/server/auth/local-credential")>();
+  return {
+    ...actual,
+    localCredential: vi.fn(actual.localCredential),
+  };
+});
+
 let ctx: Awaited<ReturnType<typeof useFreshDb>>;
 beforeAll(async () => {
   ctx = await useFreshDb();
@@ -24,6 +35,7 @@ afterAll(async () => {
 beforeEach(async () => {
   rateLimiter().clear();
   await ctx.db.delete(schema.localAuthCredentials);
+  await ctx.db.delete(schema.sessions);
 });
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -150,6 +162,28 @@ describe("local sign-in", () => {
     expect(await userForSessionToken(oldToken)).toBeNull();
     const loggedIn = await post(undefined, {}, { flow: "login", password: "new and different owner password" });
     expect(loggedIn.status).toBe(303);
+  });
+
+  it("keeps the browser's session when the local password changes mid-sign-in", async () => {
+    env({ LOCAL_MODE: "1" });
+    await post(undefined, {}, {
+      flow: "setup",
+      recoveryKey: LOCAL_SECRET,
+      newPassword: PASSWORD,
+      confirmPassword: PASSWORD,
+    });
+    const initial = await post();
+    const existing = decodeURIComponent(cookie(initial).split(";")[0].split("=").slice(1).join("="));
+    expect((await userForSessionToken(existing))?.hackClubId).toBe("local:owner");
+    const row = await ctx.db.select().from(schema.localAuthCredentials).get();
+    // A concurrent reset lands between the password check and the re-read.
+    vi.mocked(localCredential)
+      .mockImplementationOnce(async () => row!)
+      .mockImplementationOnce(async () => ({ ...row!, passwordHash: "scrypt$32768$8$1$different$different$" }));
+    const res = await post(undefined, { cookie: `${SESSION_COOKIE}=${existing}` }, { flow: "login", password: PASSWORD });
+    expect(res.headers.get("location")).toContain("error=local_password");
+    expect(cookie(res)).toBe("");
+    expect((await userForSessionToken(existing))?.hackClubId).toBe("local:owner");
   });
 
   it("uses a shared rate-limit bucket when no trusted client IP is available", async () => {
