@@ -1076,7 +1076,7 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
       <P>
         Native is the default, but a project can deploy as a container when your server has passed the Docker
         check. The check runs when the settings open and when the connection is tested: it asks the Docker on
-        your container, not Egg's own, and it looks at what the daemon reports about cgroup limits, free disk
+        your container, not Egg&apos;s own, and it looks at what the daemon reports about cgroup limits, free disk
         at its storage root and the port proxy. When a part of that fails, the Dockerfile and Compose options
         stay greyed out with the reason, and nothing changes on the server.
       </P>
@@ -1092,9 +1092,9 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
           <B>Compose mode.</B> The Compose file is read by Docker itself, and only the resolved form Egg checked
           is ever run. Services must use prebuilt images, host ports must bind to{" "}
           <C>127.0.0.1</C> only, and the one service Egg monitors must not publish ports of its own; Egg maps
-          the project's listen port onto it. Every other service, such as a database, starts with{" "}
+          the project&apos;s listen port onto it. Every other service, such as a database, starts with{" "}
           <C>docker compose up -d</C> and keeps its named volumes across releases. Rollbacks restore the
-          previous release's code and configuration, never the data the stack wrote.
+          previous release&apos;s code and configuration, never the data the stack wrote.
         </li>
         <li>
           <B>What stays the same.</B> Environment variables reach the container at run time through the same

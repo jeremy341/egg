@@ -20,7 +20,7 @@ afterEach(() => {
 });
 
 describe("database migrations", () => {
-  it("backfills listener ports without losing existing project or deployment rows", async () => {
+  it.each([false, true])("backfills listener ports without losing existing rows (main migration applied: %s)", async (fromMain) => {
     const dir = mkdtempSync(path.join(tmpdir(), "egg-workload-migration-"));
     dirs.push(dir);
     const migrations = path.join(dir, "drizzle");
@@ -28,6 +28,12 @@ describe("database migrations", () => {
     const journalFile = path.join(migrations, "meta", "_journal.json");
     const journal = JSON.parse(readFileSync(journalFile, "utf8"));
     journal.entries = journal.entries.filter((entry: { idx: number }) => entry.idx < 44);
+    if (fromMain) {
+      // main shipped this migration on its own, after the four workload/provider timestamps.
+      journal.entries.push({ idx: 44, version: "6", when: 1795019743367, tag: "0048_instance_admins", breakpoints: true });
+      const adminsSql = readFileSync(path.join(migrations, "0053_instance_admins.sql"), "utf8");
+      writeFileSync(path.join(migrations, "0048_instance_admins.sql"), adminsSql.replace(" IF NOT EXISTS", ""));
+    }
     writeFileSync(journalFile, JSON.stringify(journal));
     const client = createClient({ url: `file:${path.join(dir, "test.db").replace(/\\/g, "/")}` });
     clients.push(client);
@@ -37,9 +43,22 @@ describe("database migrations", () => {
     await client.execute("INSERT INTO servers (id, user_id, nest_username, host, public_key, private_key_enc, key_fingerprint, created_at) VALUES ('s', 'u', 'user', 'host', 'pub', 'private', 'fingerprint', 1)");
     await client.execute("INSERT INTO projects (id, user_id, server_id, slug, name, repo_url, runtime, port, created_at, updated_at) VALUES ('p', 'u', 's', 'app', 'App', 'https://github.com/a/b', 'node', 3000, 1, 1)");
     await client.execute("INSERT INTO deployments (id, project_id, env, source, branch, port, release_id, created_at) VALUES ('d', 'p', 'production', 'manual', 'main', 3000, 'r', 1)");
+    if (fromMain) {
+      await client.execute("INSERT INTO instance_admins (user_id, granted_at) VALUES ('u', 1)");
+    }
     await migrateDatabase(client, path.join(process.cwd(), "drizzle"));
     expect((await client.execute("SELECT workload_kind, deployment_mode, listen_port FROM projects WHERE id='p'")).rows[0]).toMatchObject({ workload_kind: "web", deployment_mode: "native", listen_port: 3000 });
     expect((await client.execute("SELECT listen_port FROM deployments WHERE id='d'")).rows[0]?.listen_port).toBe(3000);
+    if (fromMain) {
+      await migrateDatabase(client, path.join(process.cwd(), "drizzle"));
+      expect((await client.execute("SELECT user_id FROM instance_admins")).rows).toEqual([{ user_id: "u" }]);
+      expect((await client.execute("SELECT source_provider, provider_connection_id, provider_webhook_secret_enc FROM projects")).rows[0]).toMatchObject({
+        source_provider: "github", provider_connection_id: null, provider_webhook_secret_enc: null,
+      });
+      for (const table of ["provider_connections", "provider_webhook_deliveries"]) {
+        expect((await client.execute({ sql: "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?", args: [table] })).rows).toHaveLength(1);
+      }
+    }
     expect((await client.execute("PRAGMA foreign_key_check")).rows).toEqual([]);
   });
   it("recovers when first migrations compete across separate connections", async () => {

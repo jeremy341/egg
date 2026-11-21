@@ -161,7 +161,7 @@ export function Configure({
   const [runtime, setRuntime] = useState<(typeof RUNTIMES)[number]["value"]>("node");
   const [workloadKind, setWorkloadKind] = useState<WorkloadKind>("web");
   /** Set when the person chooses the workload themselves, so a bot detection never overrides their choice. */
-  const workloadTouched = useRef(false);
+  const [workloadTouched, setWorkloadTouched] = useState(false);
   const [deploymentMode, setDeploymentMode] = useState<DeploymentMode>("native");
   const [container, setContainer] = useState(defaultContainerForm);
   const [capabilityState, setCapabilityState] = useState<{ serverId: string; capabilities: TargetCapabilities | null; error: string | null } | null>(null);
@@ -215,14 +215,15 @@ export function Configure({
    * it is applied while the person has not chosen a workload themselves, and
    * the picker stays editable afterwards.
    */
-  useEffect(() => {
-    const suggestion = detection?.suggestedWorkloadKind;
-    if (!suggestion || workloadTouched.current || workloadKind === suggestion) return;
-    if (runtime === "static") setRuntime("node");
-    setWorkloadKind(suggestion);
-    // The suggestion is worth one look, not one per render: it changes only when the detection does.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [detection?.suggestedWorkloadKind]);
+  const suggestion = detection?.suggestedWorkloadKind;
+  const [previousSuggestion, setPreviousSuggestion] = useState(suggestion);
+  if (suggestion !== previousSuggestion) {
+    setPreviousSuggestion(suggestion);
+    if (suggestion && !workloadTouched && workloadKind !== suggestion) {
+      if (runtime === "static") setRuntime("node");
+      setWorkloadKind(suggestion);
+    }
+  }
 
   /** Detected names from the repository plus the token names a detected bot framework reads. */
   const envRows = detection
@@ -418,7 +419,7 @@ export function Configure({
             </p>
           ) : null}
         </div>
-        <HostingOptions prefix="np" workloadKind={workloadKind} deploymentMode={deploymentMode} capabilities={capabilities} onWorkloadChange={(value) => { workloadTouched.current = true; setWorkloadKind(value); if (value === "worker" && runtime === "static") setRuntime("node"); }} onModeChange={setDeploymentMode} />
+        <HostingOptions prefix="np" workloadKind={workloadKind} deploymentMode={deploymentMode} capabilities={capabilities} onWorkloadChange={(value) => { setWorkloadTouched(true); setWorkloadKind(value); if (value === "worker" && runtime === "static") setRuntime("node"); }} onModeChange={setDeploymentMode} />
         {capabilityError && <p role="status" className="text-label text-muted-foreground sm:col-span-2">Could not check target capabilities: {capabilityError} Container deployment modes remain unavailable.</p>}
         <ContainerDeploymentFields prefix="np" mode={deploymentMode} workloadKind={workloadKind} value={container} onChange={setContainer} />
         {containerError && <p role="alert" className="text-label text-destructive sm:col-span-2">{containerError}</p>}

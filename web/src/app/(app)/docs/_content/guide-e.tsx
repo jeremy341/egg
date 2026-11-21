@@ -64,7 +64,7 @@ export const GUIDE_E: Record<string, () => ReactNode> = {
       </List>
       <H2 id="bots-discordjs-running" title="What Egg does with it" />
       <P>
-        systemd, the Linux service manager, starts the bot's process and restarts it with <C>Restart=always</C> if it
+        systemd, the Linux service manager, starts the bot&apos;s process and restarts it with <C>Restart=always</C> if it
         exits. There is no health path to answer, so Egg checks that the process stays active instead. The Service
         card on the project page shows the status, the uptime, the memory and a <B>Restarts</B> count, so a bot
         that keeps crashing is visible without opening the logs. Read the runtime output on the{" "}
@@ -93,7 +93,7 @@ export const GUIDE_E: Record<string, () => ReactNode> = {
     >
       <P>
         A discord.py bot is a Python process that stays connected to Discord; it does not listen on a port, so it
-        deploys as a <B>worker</B> workload. If you do not have a bot yet, the framework's own repository carries{" "}
+        deploys as a <B>worker</B> workload. If you do not have a bot yet, the framework&apos;s own repository carries{" "}
         <ExternalLink href="https://github.com/Rapptz/discord.py/tree/master/examples">runnable examples</ExternalLink>
         , from a first bot to slash commands; grow one of those into your own repository. A project with a{" "}
         <C>requirements.txt</C> and an entry point such as <C>main.py</C> deploys: the install step reads your{" "}
@@ -213,7 +213,7 @@ export const GUIDE_E: Record<string, () => ReactNode> = {
           <C>python-telegram-bot</C> is in your <C>requirements.txt</C>, the workload is already set to{" "}
           <C>Bot or background worker</C>. The picker stays editable if the guess is wrong. If you do not have a bot
           yet, follow the <ExternalLink href="https://telegraf.js.org/">Telegraf documentation</ExternalLink> to write
-          one, or start from the framework's own{" "}
+          one, or start from the framework&apos;s own{" "}
           <ExternalLink href="https://github.com/python-telegram-bot/python-telegram-bot/tree/master/examples">
             runnable python-telegram-bot examples
           </ExternalLink>
@@ -234,7 +234,7 @@ export const GUIDE_E: Record<string, () => ReactNode> = {
       </List>
       <H2 id="bots-telegram-running" title="What Egg does with it" />
       <P>
-        systemd, the Linux service manager, starts the bot's process and restarts it with <C>Restart=always</C> if it
+        systemd, the Linux service manager, starts the bot&apos;s process and restarts it with <C>Restart=always</C> if it
         exits. There is no health path to answer, so Egg checks that the process stays active instead. The Service
         card on the project page shows the status, the uptime, the memory and a <B>Restarts</B> count, so a bot that
         keeps crashing is visible without opening the logs. Read the runtime output on the{" "}
@@ -267,7 +267,7 @@ export const GUIDE_E: Record<string, () => ReactNode> = {
       <H2 id="bots-alive-lifecycle" title="Starts, restarts and crash loops" />
       <List>
         <li>
-          systemd starts the bot's process with <C>Restart=always</C>: if it exits, systemd restarts it within
+          systemd starts the bot&apos;s process with <C>Restart=always</C>: if it exits, systemd restarts it within
           seconds. Most crashes pass unnoticed this way, which is the point, and the first place it shows is the{" "}
           <B>Restarts</B> count on the Service card.
         </li>
@@ -324,7 +324,7 @@ export const GUIDE_E: Record<string, () => ReactNode> = {
       </Callout>
       <H2 id="bots-alive-timers" title="Nightly work belongs in scheduled jobs" />
       <P>
-        Do not keep a bot awake just to run tomorrow's task, and do not build its schedules on a sleep loop: a crash
+        Do not keep a bot awake just to run tomorrow&apos;s task, and do not build its schedules on a sleep loop: a crash
         resets the clock. Give the schedule to{" "}
         <InternalLink href={docsHref("jobs")}>Scheduled jobs</InternalLink> instead. A job is a systemd timer next to
         your bot that runs a command inside its current release, with its environment variables, on the times you
@@ -337,7 +337,7 @@ export const GUIDE_E: Record<string, () => ReactNode> = {
         night: down alerts say a worker “has stopped”, recovery says it is back up, and{" "}
         <InternalLink href={docsHref("monitoring")}>monitoring</InternalLink> explains the checks behind them, from
         failed checks in a row to resource limits. The Restarts count on the Service card and these alerts together
-        are the whole picture of a bot's health.
+        are the whole picture of a bot&apos;s health.
       </P>
       {related([
         ["bots-discordjs", "Deploy a Discord bot (discord.js)"],
