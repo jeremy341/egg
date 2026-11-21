@@ -11,6 +11,7 @@ import {
   checkOs,
   checkPnpm,
   checkPort,
+  checkProxy,
   checkSignIn,
   dataDirFromDatabaseUrl,
   formatResults,
@@ -235,9 +236,18 @@ describe("operating system and database", () => {
   });
 });
 
+describe("rate limits", () => {
+  it("warns when TRUST_PROXY is off, because limits then have no client address", () => {
+    expect(checkProxy({ env: {} }).ok).toBe(false);
+    expect(checkProxy({ env: { TRUST_PROXY: "1" } }).ok).toBe(true);
+  });
+});
+
 describe("sign-in", () => {
-  it("passes with LOCAL_MODE or Hack Club keys, and warns with neither", () => {
-    expect(checkSignIn({ env: { LOCAL_MODE: "1" }, dev: false }).ok).toBe(true);
+  it("passes with LOCAL_MODE and a secret or Hack Club keys, and warns with neither", () => {
+    expect(checkSignIn({ env: { LOCAL_MODE: "1" }, dev: false })).toMatchObject({ ok: false, severity: "blocker" });
+    expect(checkSignIn({ env: { LOCAL_MODE: "1" }, dev: false }).fix).toContain("LOCAL_MODE_SECRET");
+    expect(checkSignIn({ env: { LOCAL_MODE: "1", LOCAL_MODE_SECRET: "s".repeat(32), APP_URL: "http://localhost:3000" }, dev: false }).ok).toBe(true);
     expect(checkSignIn({ env: { HACKCLUB_CLIENT_ID: "a", HACKCLUB_CLIENT_SECRET: "b" }, dev: false }).ok).toBe(true);
     expect(checkSignIn({ env: { HACKCLUB_CLIENT_ID: "a" }, dev: false }).ok).toBe(false);
   });

@@ -19,12 +19,14 @@ import {
   EnvValueFields,
   useRepoDetection,
 } from "@/components/env-import";
+import { BuildLocationChoice } from "@/components/build-location-choice";
 import { ProjectConflicts } from "@/components/project-conflicts";
 import { HostingOptions, RUNTIME_OPTIONS, StartCommandHelp, runtimeHint, workloadForRuntime, type DeploymentMode, type TargetCapabilities, type WorkloadKind } from "@/components/hosting-options";
 import { ProviderConnections } from "@/components/provider-connections";
 import { SOURCE_PROVIDERS, providerLabel, repositoryUrl, type SourceProvider } from "@/components/repository-source";
 import { ContainerDeploymentFields, containerConfigurationError, containerDeploymentBody, defaultContainerForm } from "@/components/container-deployment-fields";
 import type { Conflict } from "@/server/adoption";
+import type { BuildLocation } from "@/server/db/schema";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
@@ -143,7 +145,7 @@ function useConflictCheck(args: {
   return loaded.result;
 }
 
-function Configure({
+export function Configure({
   source,
   servers,
   onBack,
@@ -165,6 +167,11 @@ function Configure({
   const [capabilityState, setCapabilityState] = useState<{ serverId: string; capabilities: TargetCapabilities | null; error: string | null } | null>(null);
   const [rootDir, setRootDir] = useState(".");
   const [branch, setBranch] = useState(source.branch);
+  // Only a project linked through the GitHub app on a native target can build on GitHub: the app opens the pull
+  // request and receives the release. A pasted public URL has no link, and container modes build on the server.
+  const canChooseBuild = source.installationId !== null && deploymentMode === "native";
+  const [buildLocation, setBuildLocation] = useState<BuildLocation>("github");
+  const buildsOnGithub = canChooseBuild && buildLocation === "github";
   const [port, setPort] = useState("3000");
   const [startCommand, setStartCommand] = useState("");
   const [buildCommand, setBuildCommand] = useState("");
@@ -238,14 +245,21 @@ function Configure({
     headingRef.current?.focus({ preventScroll: true });
   }, []);
 
-  const nameOk = /^[a-z0-9][a-z0-9-]{0,38}[a-z0-9]?$/.test(name);
+  // The same rule as the server isValidSlug: it must end with a letter or digit.
+  const nameOk = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/.test(name);
   const hint = runtimeHint(runtime);
   const modeReady = capabilities ? capabilities.deploymentModes[deploymentMode] === true : deploymentMode === "native";
   const runtimeReady = !capabilities || capabilities.runtimes.includes(runtime);
   const containerError = containerConfigurationError(deploymentMode, workloadKind, container);
 
   const portNumber = Number(port);
-  const portOk = port.trim() !== "" && Number.isInteger(portNumber) && portNumber >= 1 && portNumber <= 65535;
+  // The server's rule (server/projects.ts): 1024 to 65535, except the preview range 20000 to 29999.
+  const portOk =
+    port.trim() !== "" &&
+    Number.isInteger(portNumber) &&
+    portNumber >= 1024 &&
+    portNumber <= 65535 &&
+    (portNumber < 20000 || portNumber > 29999);
   const check = useConflictCheck({
     serverId,
     slug: name,
@@ -284,6 +298,7 @@ function Configure({
             autoDeploy: source.sourceProvider === "github" && source.installationId !== null && !adopted,
             // The server turns automatic deploys off for an adopted project.
             adopted,
+            ...(canChooseBuild ? { buildLocation } : {}),
           },
         });
         createdRef.current = created.project;
@@ -297,9 +312,17 @@ function Configure({
           await api(`/api/projects/${project.id}/env`, { body: { key: e.name, value, target: "all" } });
         } catch (err) {
           throw new Error(
-            `The project was created, but ${e.name} was not saved: ${err instanceof Error ? err.message : "error"}. Press Deploy to try again.`
+            `The project was created, but ${e.name} was not saved: ${err instanceof Error ? err.message : "error"}. ${
+              buildsOnGithub ? "Add it in the project settings." : "Press Deploy to try again."
+            }`
           );
         }
+      }
+      if (buildsOnGithub) {
+        // A GitHub Actions build waits for a release that only the workflow can send, and the workflow is not
+        // there yet. Go to the guided setup instead of starting a deployment that would wait for nothing.
+        router.push(`/projects/${project.slug}/settings#builds-heading`);
+        return;
       }
       const dep = await api<{ deployment: { id: string } }>(
         `/api/projects/${project.id}/deploy`,
@@ -423,7 +446,20 @@ function Configure({
         </div>
         <div>
           <Label htmlFor="np-port">{workloadKind === "worker" ? "Listen port (optional)" : "Port your app listens on"}</Label>
-          <Input id="np-port" inputMode="numeric" value={port} onChange={(e) => setPort(e.target.value)} className="font-mono" />
+          <Input
+            id="np-port"
+            inputMode="numeric"
+            value={port}
+            onChange={(e) => setPort(e.target.value)}
+            aria-invalid={port.trim() !== "" && !portOk}
+            aria-describedby={port.trim() !== "" && !portOk ? "np-port-error" : undefined}
+            className="font-mono"
+          />
+          {port.trim() !== "" && !portOk ? (
+            <p id="np-port-error" className="mt-1.5 text-label text-destructive">
+              Use a port from 1024 to 19999 or 30000 to 65535. Ports 20000 to 29999 are for previews.
+            </p>
+          ) : null}
           {workloadKind === "worker" && <p className="text-label text-muted-foreground">Only for bots that must receive webhooks over HTTP. Leave it empty for a closed background app.</p>}
         </div>
         <div className="sm:col-span-2">
@@ -517,12 +553,40 @@ function Configure({
         ) : null}
       </div>
 
-      <p className="mt-4 text-label text-muted-foreground">Environment variables can be added in the project settings.</p>
+      {workloadKind === "web" ? (
+        <p className="mt-4 text-label text-muted-foreground">
+          Your app must listen on the <code className="font-mono">PORT</code> environment variable on{" "}
+          <code className="font-mono">0.0.0.0</code>.{" "}
+          <Link href="/docs/projects#projects-guarantees" className="link font-medium">
+            Learn more
+          </Link>
+        </p>
+      ) : (
+        <p className="mt-4 text-label text-muted-foreground">Environment variables can be added in the project settings.</p>
+      )}
 
       {error ? (
         <Alert tone="error" role="alert" className="mt-4">
           {error}
         </Alert>
+      ) : null}
+
+      {canChooseBuild ? (
+        <div className="mt-5">
+          <BuildLocationChoice
+            name="np-build-location"
+            legend="How should Egg build it?"
+            showLegend
+            value={buildLocation}
+            onChange={setBuildLocation}
+            describedBy="np-build-note"
+          />
+          <p id="np-build-note" className="mt-1.5 text-label text-muted-foreground">
+            {buildsOnGithub
+              ? "Next you make the build credentials and add the workflow file. The first build runs after that."
+              : "Egg builds on your container and deploys when the build finishes."}
+          </p>
+        </div>
       ) : null}
 
       <Button
@@ -533,7 +597,7 @@ function Configure({
         disabled={!nameOk || !serverId || ((workloadKind === "web" || port.trim() !== "") && !portOk) || !modeReady || !runtimeReady || Boolean(containerError) || blocking.length > 0}
         aria-describedby={blocking.length > 0 ? "np-blocked" : undefined}
       >
-        {busy ? "Starting deployment…" : "Deploy"}
+        {buildsOnGithub ? (busy ? "Creating project…" : "Create and set up builds") : busy ? "Starting deployment…" : "Deploy"}
       </Button>
       <Button
         type="button"

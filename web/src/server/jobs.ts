@@ -54,6 +54,7 @@ export async function claimNextJob(workerId: string): Promise<Job | null> {
                 AND (maintenance.starts_at IS NULL OR maintenance.starts_at <= ${now.getTime()})
                 AND (maintenance.ends_at IS NULL OR maintenance.ends_at > ${now.getTime()})
                 AND maintenance_project.user_id <> ${process.env.SECURITY_REPORT_ADMIN_ID?.trim() || ""}
+                AND NOT EXISTS (SELECT 1 FROM instance_admins AS granted WHERE granted.user_id = maintenance_project.user_id)
             )
             AND NOT EXISTS (
               SELECT 1 FROM cleanup_jobs AS cleanup
@@ -234,10 +235,20 @@ export function startWorker(options: {
           // A claim made before stop owns a running queue row, so start and track it
           // even if stop was requested while the database claim was in progress.
           running++;
-          // processJob's rejection (a DB failure while recording a failed job) must
-          // never escape: an unhandled rejection would take down the worker process.
           const p = (options.workerOps?.processJob ?? processJob)(job, options.deps)
-            .catch((err) => options.onError?.(err))
+            .catch((err: unknown) => {
+              // processJob should not reject, but if it does (for example a failed status write
+              // before its own catch), it must not become an unhandled rejection that crashes the web process.
+              if (options.onError) {
+                try {
+                  options.onError(err);
+                } catch {
+                  console.error(`Job ${job.id} failed and the error reporter also failed.`, err);
+                }
+              } else {
+                console.error(`Job ${job.id} failed outside its normal error path.`, err);
+              }
+            })
             .finally(() => {
               running--;
               inFlight.delete(p);

@@ -8,6 +8,7 @@ type Ctx = { params: Promise<{ id: string }> };
 /** Restart the production service on the user's container. Each restart opens an SSH connection, so it is limited. */
 export const POST = handle<Ctx>(async (_req, { params }) => {
   const user = await authed();
+  enforceRateLimit("sshSession", user.id);
   const { id } = await params;
   enforceRateLimit("serviceRestart", user.id);
   await restartService(user.id, id);

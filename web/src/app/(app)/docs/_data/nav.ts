@@ -38,6 +38,20 @@ export const DOCS_NAV: DocsGroup[] = [
           { id: "run-yourself-more", title: "The full guide" },
         ],
       },
+      {
+        id: "run-locally",
+        title: "Run Egg locally",
+        subsections: [
+          { id: "run-locally-prereqs", title: "Prerequisites" },
+          { id: "run-locally-install", title: "Install" },
+          { id: "run-locally-env", title: "The env file" },
+          { id: "run-locally-dev", title: "Start the dev server" },
+          { id: "run-locally-devlogin", title: "Development sign-in" },
+          { id: "run-locally-demo", title: "Demo data" },
+          { id: "run-locally-checks", title: "Tests and lint" },
+          { id: "run-locally-build", title: "The production build" },
+        ],
+      },
     ],
   },
   {
@@ -59,6 +73,28 @@ export const DOCS_NAV: DocsGroup[] = [
           { id: "projects-runtimes", title: "Runtimes" },
           { id: "projects-guarantees", title: "What every app can rely on" },
           { id: "projects-docker", title: "Dockerfile and Compose modes" },
+        ],
+      },
+      {
+        id: "build-github-actions",
+        title: "Build with GitHub Actions",
+        subsections: [
+          { id: "build-actions-what", title: "What it is and why it is recommended" },
+          { id: "build-actions-steps", title: "Setting it up" },
+          { id: "build-actions-secrets", title: "The four secrets" },
+          { id: "build-actions-pr", title: "What the pull request does" },
+          { id: "build-actions-safety", title: "Forks, pull requests and production secrets" },
+          { id: "build-actions-limits", title: "Limits" },
+          { id: "build-actions-troubleshooting", title: "When Test connection fails" },
+        ],
+      },
+      {
+        id: "build-on-nest",
+        title: "Build on Nest",
+        subsections: [
+          { id: "build-nest-what", title: "What it is" },
+          { id: "build-nest-caps", title: "The memory and CPU cap" },
+          { id: "build-nest-when", title: "When to prefer it" },
         ],
       },
       {

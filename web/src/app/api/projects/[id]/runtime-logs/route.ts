@@ -1,7 +1,7 @@
 import { authed, handle, ok } from "@/server/http";
 import { parseLogLevel, parseLogRange } from "@/lib/log-filter";
-import { fetchRuntimeLogPage } from "@/server/runtime-info";
 import { enforceRateLimit } from "@/server/rate-limit";
+import { fetchRuntimeLogPage } from "@/server/runtime-info";
 
 type Ctx = { params: Promise<{ id: string }> };
 

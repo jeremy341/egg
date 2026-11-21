@@ -18,7 +18,7 @@ const body = z.object({
  */
 export const POST = handle<Ctx>(async (req, { params }) => {
   const user = await authed();
-  enforceRateLimit("sshCall", user.id);
+  enforceRateLimit("sshSession", user.id);
   const { id } = await params;
   const parsed = body.safeParse(await readJsonLimited(req, { fallback: {} }));
   if (!parsed.success) throw zodToHttp(parsed.error);

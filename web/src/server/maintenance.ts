@@ -36,7 +36,7 @@ export async function maintenanceState(now = new Date(), db?: Pick<Db, "select">
 }
 
 export async function maintenanceBlocksUser(userId: string | null | undefined, db?: Pick<Db, "select">): Promise<boolean> {
-  if (isInstanceAdmin(userId)) return false;
+  if (await isInstanceAdmin(userId, db)) return false;
   return (await maintenanceState(new Date(), db)).active;
 }
 
@@ -45,7 +45,7 @@ export function maintenanceError(): HttpError {
 }
 
 export async function saveMaintenance(userId: string, raw: unknown) {
-  if (!isInstanceAdmin(userId)) throw new HttpError(403, "Only the configured instance administrator can change maintenance settings.", "forbidden");
+  if (!(await isInstanceAdmin(userId))) throw new HttpError(403, "Only an instance administrator can change maintenance settings.", "forbidden");
   const parsed = input.parse(raw);
   const startsAt = parsed.startsAt ? new Date(parsed.startsAt) : null;
   const endsAt = parsed.endsAt ? new Date(parsed.endsAt) : null;

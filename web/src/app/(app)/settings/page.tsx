@@ -17,7 +17,7 @@ async function SettingsContent() {
       <div className="mb-6">
         <h1 className="truncate text-title-1">Settings</h1>
         <p className="mt-1 max-w-[64ch] text-muted-foreground">
-          How Egg looks and behaves for you. Your Hack Club details are on the{" "}
+          How Egg looks and behaves for you. Hack Club details are on the{" "}
           <Link href="/account" className="link">
             account page
           </Link>

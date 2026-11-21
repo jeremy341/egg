@@ -14,7 +14,7 @@ import { maintenanceState } from "@/server/maintenance";
 /** Loads the signed-in user, their servers and projects for the shell. */
 export async function AccountLoader({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
-  const [servers, projects, prefs, themes, maintenance, marks, tourFacts] = await Promise.all([
+  const [servers, projects, prefs, themes, maintenance, marks, tourFacts, isAdmin] = await Promise.all([
     serverViews(user.id),
     projectViews(user.id),
     getPreferences(user.id),
@@ -23,12 +23,13 @@ export async function AccountLoader({ children }: { children: React.ReactNode })
     // The guided tour: what has been marked, and the few facts it is worked out from.
     getMarks(user.id),
     onboardingFacts(user.id),
+    isInstanceAdmin(user.id),
   ]);
 
   return (
     <AccountProvider
       value={{
-        user: { name: user.name, shownName: shownName(prefs, user.name), avatar: prefs.avatar, isAdmin: isInstanceAdmin(user.id) },
+        user: { name: user.name, shownName: shownName(prefs, user.name), avatar: prefs.avatar, isAdmin },
         maintenance,
         servers: servers.map((s) => ({
           id: s.id,

@@ -906,6 +906,16 @@ export const instanceSettings = sqliteTable("instance_settings", {
 });
 
 /**
+ * Accounts that administer the instance, granted by an existing administrator. The account named in
+ * SECURITY_REPORT_ADMIN_ID is always an administrator and cannot be removed here.
+ */
+export const instanceAdmins = sqliteTable("instance_admins", {
+  userId: text("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  grantedBy: text("granted_by").references(() => users.id, { onDelete: "set null" }),
+  grantedAt: ts("granted_at").notNull(),
+});
+
+/**
  * One reachability check of Nest or of Egg itself, once a minute. Public figures
  * only: no user, project or visitor is stored. `latencyMs` is null when nothing
  * answered. Kept for 90 days.

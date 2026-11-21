@@ -410,6 +410,8 @@ export async function runDeployJob(
   let workDir: string | null = null;
   let session: NestSession | null = null;
   let previewUnitWritten = false;
+  // Set once the release folder exists, so a failure before the switch can remove the folder it built.
+  let releaseBuilt = false;
   let productionUnitWritten = false;
   let productionActivated = false;
   let activationBegun = false;
@@ -600,6 +602,8 @@ export async function runDeployJob(
 
     // Install and build in the new release folder, under a cap, while the running app keeps serving.
     // Docker modes build the image (or prepare the Compose stack) in the same scope and watchdog.
+    // From here a failure, or a cancel, can leave the folder behind, so the catch block removes it.
+    releaseBuilt = true;
     await runContainerBuild({
       session,
       log,
@@ -775,7 +779,11 @@ export async function runDeployJob(
       project.workloadKind === "worker" ? null : dep.port,
       project.healthPath,
       deps.healthTimeoutSeconds
-    ), recordStage, null, Boolean);
+    ), recordStage, null, Boolean).catch((err: unknown) => {
+      // A dropped SSH link during the check is treated like an unhealthy app, so the revert below still runs.
+      log.error(`The health check failed: ${err instanceof Error ? err.message : String(err)}`);
+      return false;
+    });
 
     if (!ok) {
       await logJournal(session, log, unitInfo.unit);
@@ -833,15 +841,14 @@ export async function runDeployJob(
     log.error(message);
     await log.flush().catch(() => {});
     const canceled = (await stateOf(deploymentId)) === "canceled";
-    if (canceled && !activationBegun && session) {
-      // A cancel between the build and the switch never touched the running
-      // release, but the release folder it built — including its sealed env
-      // file — would stay behind on the server. Discard it the same way a
-      // cancel during the build does.
-      const canceledHome = (await getProbe(session, server).catch(() => null))?.home;
-      if (canceledHome) {
+    // A built release that was never switched on is a folder nothing serves, and its sealed env file would stay
+    // behind with it: remove it, or it fills the disk and blocks every later deploy's space check. A live release
+    // is never touched here, and neither is one whose activation had already begun.
+    if (releaseBuilt && session && !activationBegun && !productionActivated && !previewUnitWritten) {
+      const home = (await getProbe(session, server).catch(() => null))?.home;
+      if (home) {
         await session
-          .script(discardBuildScript({ home: canceledHome, slug: project.slug, releaseId: dep.releaseId }), { timeoutMs: 60_000 })
+          .script(discardBuildScript({ home, slug: project.slug, releaseId: dep.releaseId }), { timeoutMs: 60_000 })
           .catch(() => {});
       }
     }

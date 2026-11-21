@@ -1,6 +1,6 @@
 import { authed, handle, ok } from "@/server/http";
-import { fetchUsage } from "@/server/runtime-info";
 import { enforceRateLimit } from "@/server/rate-limit";
+import { fetchUsage } from "@/server/runtime-info";
 
 type Ctx = { params: Promise<{ id: string }> };
 

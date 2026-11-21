@@ -68,7 +68,8 @@ const repoFilePath = z
     "Must be a relative path inside the repository"
   );
 
-const branch = z
+/** A git branch name. Every entry point uses this one rule, so a name that is refused in one place is refused everywhere. */
+export const branch = z
   .string()
   .trim()
   .min(1)

@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
 import { ProjectSettings } from "@/components/project-settings";
@@ -6,8 +7,8 @@ import { SettingsSkeleton } from "@/components/skeletons/settings";
 import { Alert } from "@/components/ui/alert";
 import { ROLE_LABEL, ROLE_NOTE } from "@/lib/team";
 import { requireUser } from "@/server/auth/current";
-import { listEnvVars } from "@/server/projects";
 import { getProjectRole } from "@/server/project-roles";
+import { listEnvVars } from "@/server/projects";
 import { projectViews } from "@/server/queries";
 
 type Props = { params: Promise<{ slug: string }> };

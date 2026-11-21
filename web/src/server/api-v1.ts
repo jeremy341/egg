@@ -261,6 +261,7 @@ const CORE_ENDPOINTS: Endpoint[] = [
     method: "GET",
     path: "/projects/{projectId}/logs",
     scope: "logs:read",
+    // Opens an SSH session to the container, so it shares the SSH bucket.
     bucket: "ssh",
     tag: "Logs",
     summary: "Read runtime logs",
@@ -292,6 +293,7 @@ const CORE_ENDPOINTS: Endpoint[] = [
     method: "GET",
     path: "/servers/{serverId}/usage",
     scope: "resources:read",
+    // Opens an SSH session to the container, so it shares the SSH bucket.
     bucket: "ssh",
     tag: "Resources",
     summary: "Read a server's CPU, memory and disk",

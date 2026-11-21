@@ -2373,6 +2373,11 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
       )}
       <H2 id="github-actions" title="Building on GitHub Actions" />
       <P>
+        The setup steps, limits and troubleshooting are on{" "}
+        <InternalLink href={docsHref("build-github-actions")}>Build with GitHub Actions</InternalLink>. This is the short
+        version.
+      </P>
+      <P>
         A project can build on GitHub and send Egg the finished release, instead of building on your container. The
         project settings make the workflow file for you, and the GitHub build card there shows the steps. The workflow
         reads four credentials. Egg shows each value once, when you make the build credentials.
@@ -3326,7 +3331,8 @@ export function isFromEgg(secret, header, body) {
           body: (
             <>
               Copy the link from <B>Status page URL</B>. It is <C>/status/KEY</C> on your Egg address. The key is 12 random URL-safe
-              characters, and the page asks search engines not to index it.
+              characters, and the page asks search engines not to index it. The page reflects the worker’s checks, which run
+              every few minutes.
             </>
           ),
         },

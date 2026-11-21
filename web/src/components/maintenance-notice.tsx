@@ -1,15 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { api } from "@/components/api";
 import type { MaintenanceState } from "@/server/maintenance";
 import { useAccount } from "@/components/account-context";
 import { Alert } from "@/components/ui/alert";
 
+const subscribeNone = () => () => {};
+
 export function MaintenanceNotice() {
   const { user, maintenance } = useAccount();
   const admin = !!user.isAdmin;
+  // The end time is shown in the reader's time zone, so it is only formatted after mount.
+  const mounted = useSyncExternalStore(subscribeNone, () => true, () => false);
   const [state, setState] = useState<MaintenanceState>(maintenance ?? { enabled: false, active: false, message: "", startsAt: null, endsAt: null, updatedAt: null });
   useEffect(() => {
     let live = true;
@@ -25,7 +29,7 @@ export function MaintenanceNotice() {
     <Alert tone="warning" role="status" title={<>Maintenance · {admin ? "administrator access remains available" : "Egg is temporarily read-only"}</>}>
     <p className="break-words">{state.message || "We are maintaining this Egg instance. You can continue viewing your projects."}</p>
     <p>GitHub events are paused. Failed deliveries need redelivery after the window; pushes can also be deployed manually.</p>
-    <p className="text-muted-foreground">{state.endsAt ? `Scheduled to end ${new Date(state.endsAt).toLocaleString()}. ` : ""}{admin ? <Link href="/admin" className="link underline">Manage this window</Link> : "New changes and deployments are paused. Canceling a deployment, signing out, and cleanup recovery remain available."}</p>
+    <p className="text-muted-foreground">{state.endsAt && mounted ? `Scheduled to end ${new Date(state.endsAt).toLocaleString()}. ` : ""}{admin ? <Link href="/admin" className="link underline">Manage this window</Link> : "New changes and deployments are paused. Canceling a deployment, signing out, and cleanup recovery remain available."}</p>
     </Alert>
   </aside>;
 }

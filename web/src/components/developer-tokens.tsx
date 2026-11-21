@@ -812,7 +812,7 @@ function TokenRow({
         />
       ) : (
         <>
-          <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2.5 text-label sm:grid-cols-4">
+          <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2.5 text-label min-[1280px]:grid-cols-4">
             <Meta label="Permissions">
               <button
                 type="button"

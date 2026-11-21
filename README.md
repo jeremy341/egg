@@ -24,7 +24,7 @@ Egg is made by a Hack Club member. It is not an official Hack Club product, and 
 - Sign in with Hack Club Auth, or with a local password when you run your own copy
 - Connect one or more Nest servers with a dedicated SSH key, added in the Nest dashboard
 - Import GitHub repositories; deploy on push, from a deploy hook, or by hand
-- Builds run on your own container under a memory and CPU cap. If you prefer, GitHub Actions can build and hand a finished release to Egg with a scoped build credential
+- Builds run in GitHub Actions by default (recommended): Egg opens a pull request that adds the workflow, and the finished release is sent to Egg with a scoped build credential. Or build on your own Nest container under a memory and CPU cap
 - Branch previews, health-checked deploys with automatic revert, and rollback to the last five releases
 - Pull-request previews: a same-repository pull request links to its preview, gets one updated comment, and is cleaned up when it closes (forks are never built)
 - Build and runtime logs (runtime logs are searchable), environment variables, custom domains, and a restart without redeploying

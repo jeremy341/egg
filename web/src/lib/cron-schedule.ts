@@ -109,7 +109,9 @@ export function parseSchedule(input: string): Schedule {
   const text = normaliseText(input);
   if (!text) throw new ScheduleError("Enter a schedule, for example */15 * * * * for every 15 minutes.");
   if (text.length > 100) throw new ScheduleError("That schedule is too long.");
-  const expanded = NICKNAMES[text.toLowerCase()] ?? text;
+  // Own keys only: "constructor" or "toString" must not reach the object's built-in properties.
+  const nicknameKey = text.toLowerCase();
+  const expanded = Object.hasOwn(NICKNAMES, nicknameKey) ? NICKNAMES[nicknameKey] : text;
   if (expanded.startsWith("@")) {
     throw new ScheduleError("Use @hourly, @daily, @weekly or @monthly, or write all five fields.");
   }
