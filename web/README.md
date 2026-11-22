@@ -63,13 +63,11 @@ Vercel's Geist docs name a component package (`@vercel/geistcn`), but it is not 
 | `/developer` | Access tokens, API and MCP examples |
 | `/admin` | Instance administration and maintenance (only the configured administrator) |
 | `/security/reports` | The administrator's private vulnerability inbox |
-| `/invite` | Accept an invitation to a project team |
 | `/docs` | In-app guides |
 | `/projects/[slug]` | Project overview: production deployment, service card, domains, container usage and active branches |
 | `/projects/[slug]/deployments` | Deployments for one project |
 | `/projects/[slug]/deployments/[id]` | Deployment detail with build logs and runtime logs |
 | `/projects/[slug]/settings` | Project settings: deploys, environment variables, build location, notifications, status page and cleanup |
-| `/projects/[slug]/team` | Team members and their roles |
 | `/projects/[slug]/analytics` | Traffic analytics, enabled switch by switch |
 | `/projects/[slug]/terminal` | A live shell on the deploy target (permission switch, owner only) |
 | `/projects/[slug]/files` | Browse and download files in a project's folder on the deploy target (permission switch, owner only) |

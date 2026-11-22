@@ -15,7 +15,6 @@ The name is not one setting. It is written out in the places below, and each one
 | Sidebar logo label | `web/src/components/sidebar.tsx` | `aria-label="Egg home"` |
 | Top bar logo label | `web/src/components/top-bar.tsx` | `aria-label="Egg home"` |
 | Setup flow logo label | `web/src/app/(flow)/layout.tsx` | `aria-label="Egg home"` |
-| Invite page logo label | `web/src/app/invite/page.tsx` | `aria-label="Egg, home"` |
 | "Page not found" page | `web/src/app/not-found.tsx` | `aria-label="Egg, home"` and the visible name |
 | Public header name | `web/src/app/(marketing)/layout.tsx` | `aria-label="Egg, home"` and the visible `Egg` link text |
 | Public footer name and status link | `web/src/app/(marketing)/layout.tsx` and `web/src/components/marketing/footer-switch.tsx` | `Egg` and the `Nest status` link label |

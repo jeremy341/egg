@@ -98,7 +98,7 @@ export async function fetchRuntimeLogPage(
 
 /** Restart the production service without building anything. */
 export async function restartService(userId: string, projectId: string) {
-  await requireProjectRole(userId, projectId, "developer");
+  await requireProjectRole(userId, projectId, "owner");
   const project = await getReadableProject(userId, projectId);
   const server = await getServerForUser(project.userId, project.serverId);
   const res = await withServerSession(server, (s) =>

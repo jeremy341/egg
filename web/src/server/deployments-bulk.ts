@@ -6,7 +6,7 @@ import { getDb, schema } from "@/server/db";
 import { serverDiscriminator, unitName } from "@/server/deploy/layout";
 import { removePreview } from "@/server/deploy/remote";
 import { HttpError } from "@/server/http";
-import { cancelDeployment, developerDeployment } from "@/server/projects";
+import { cancelDeployment, ownedDeployment } from "@/server/projects";
 import { getServerForUser, withServerSession } from "@/server/servers";
 import { probeSession } from "@/server/ssh/probe";
 
@@ -29,7 +29,7 @@ function candidate(dep: Row): BulkCandidate {
 
 /** Cancel one preview that is still running, using the same logic as the single-item route. */
 export async function cancelPreview(userId: string, deploymentId: string) {
-  const { dep } = await developerDeployment(userId, deploymentId);
+  const { dep } = await ownedDeployment(userId, deploymentId);
   if (!canBulkCancel(candidate(dep))) {
     throw new HttpError(409, "Only previews that are queued or running can be canceled in bulk.", "conflict");
   }
@@ -42,7 +42,7 @@ export async function cancelPreview(userId: string, deploymentId: string) {
  * automatically.
  */
 export async function deletePreview(userId: string, deploymentId: string) {
-  const { dep, project } = await developerDeployment(userId, deploymentId);
+  const { dep, project } = await ownedDeployment(userId, deploymentId);
   if (!canBulkDelete(candidate(dep))) {
     throw new HttpError(409, "Only old previews that are not live or removed can be deleted in bulk.", "conflict");
   }

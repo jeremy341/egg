@@ -100,10 +100,7 @@ export const GET = handle<Ctx>(async (req, { params }) => {
               .where(and(
                 eq(schema.deployments.id, id),
                 sql`exists (select 1 from ${schema.projects} p where p.id = ${schema.deployments.projectId}
-                  and (p.user_id = ${user.id} or exists (
-                    select 1 from ${schema.projectMembers} pm
-                    where pm.project_id = p.id and pm.user_id = ${user.id}
-                      and pm.role in ('viewer', 'developer'))))`
+                  and p.user_id = ${user.id})`
               ))
               .get();
             if (canceled) break;

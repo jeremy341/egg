@@ -167,21 +167,15 @@ export async function getReadableProject(userId: string, projectId: string): Pro
   return project;
 }
 
+/** Owner-only alias kept for the deploy actions that used to allow developer members. */
 async function getDevelopableProject(userId: string, projectId: string): Promise<ProjectRow> {
-  const db = await getDb();
-  const project = await db.select().from(schema.projects).where(and(eq(schema.projects.id, projectId), sql`(
-    ${schema.projects.userId} = ${userId} or exists (
-      select 1 from project_members pm where pm.project_id = ${schema.projects.id} and pm.user_id = ${userId} and pm.role = 'developer'
-    ))`)).get();
-  if (!project) throw notFound("Project not found");
-  return project;
+  return assertOwned(userId, projectId);
 }
 
 export async function listProjects(userId: string) {
   const db = await getDb();
-  // Shared projects show up on the dashboard and in v1 list_projects, so this
-  // surface must agree: list everything the person can read, not only what they
-  // own. projectReadableBy keeps the same semantics as those other views.
+  // Projects are single-owner. This surface, the dashboard and v1 list_projects
+  // all use the same owner predicate so their results agree.
   return db
     .select()
     .from(schema.projects)
@@ -608,10 +602,7 @@ export async function enqueueDeployment(
   const id = newId();
   const enqueue = () => db.transaction(async (tx) => {
     if (input.triggeredBy && input.triggeredBy !== project.userId) {
-      const member = await tx.select({ role: schema.projectMembers.role }).from(schema.projectMembers).where(and(
-        eq(schema.projectMembers.projectId, project.id), eq(schema.projectMembers.userId, input.triggeredBy)
-      )).get();
-      if (member?.role !== "developer") throw notFound("Project not found");
+      throw notFound("Project not found");
     }
     await assertCleanupAllowsWork(tx, project.userId, project.id);
     if (await maintenanceBlocksUser(project.userId, tx)) throw new HttpError(503, "Maintenance is active. New deployments are paused.", "maintenance");
@@ -678,7 +669,7 @@ function viaMeta(via: ActionVia): Record<string, string> {
 
 /** Build the same commit again. */
 export async function redeploy(userId: string, deploymentId: string, via: ActionVia = {}) {
-  const { project, dep } = await developerDeployment(userId, deploymentId);
+  const { project, dep } = await ownedDeployment(userId, deploymentId);
   await audit(userId, "deploy.redeploy", project.id, { branch: dep.branch, ...viaMeta(via) });
   return enqueueDeployment(project, {
     env: dep.env,
@@ -693,7 +684,7 @@ export async function redeploy(userId: string, deploymentId: string, via: Action
 
 /** Point production back at an earlier release that is still on the server. */
 export async function rollback(userId: string, deploymentId: string, via: ActionVia = {}) {
-  const { project, dep } = await developerDeployment(userId, deploymentId);
+  const { project, dep } = await ownedDeployment(userId, deploymentId);
   if (dep.env !== "production") {
     throw new HttpError(400, "Only production deployments can be rolled back to.", "validation");
   }
@@ -728,7 +719,7 @@ export async function rollback(userId: string, deploymentId: string, via: Action
 }
 
 export async function cancelDeployment(userId: string, deploymentId: string, via: ActionVia = {}) {
-  const { project, dep } = await developerDeployment(userId, deploymentId);
+  const { project, dep } = await ownedDeployment(userId, deploymentId);
   const db = await getDb();
   // This conditional write races atomically with the worker's activation CAS.
   // Exactly one side wins: a cancel before activation, or the activation lock.
@@ -765,15 +756,9 @@ export async function ownedDeployment(userId: string, deploymentId: string) {
   return { dep, project };
 }
 
-async function scopedDeployment(userId: string, deploymentId: string, role: "viewer" | "developer") {
-  const db = await getDb();
-  const dep = await db.select().from(schema.deployments).where(eq(schema.deployments.id, deploymentId)).get();
-  if (!dep) throw notFound("Deployment not found");
-  const project = role === "viewer" ? await getReadableProject(userId, dep.projectId) : await getDevelopableProject(userId, dep.projectId);
-  return { dep, project };
-}
-export const readableDeployment = (userId: string, deploymentId: string) => scopedDeployment(userId, deploymentId, "viewer");
-export const developerDeployment = (userId: string, deploymentId: string) => scopedDeployment(userId, deploymentId, "developer");
+/** Both read and action access are owner-only since team collaboration was removed. */
+export const readableDeployment = ownedDeployment;
+
 
 export async function listDeployments(userId: string, projectId?: string, limit = 50) {
   return (await listDeploymentsPage(userId, { projectId, limit })).rows;

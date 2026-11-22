@@ -30,7 +30,7 @@ beforeAll(async () => {
     port: 3400,
   })).id;
 
-  // A project owned by someone else that this user can only view.
+  // A project owned by someone else; it must stay invisible to this user.
   const otherServerId = (await createServer(otherId, "env-other-server")).id;
   sharedProjectId = (await createProject(otherId, {
     ...base,
@@ -38,12 +38,6 @@ beforeAll(async () => {
     name: "Env Shared",
     port: 3401,
   })).id;
-  await ctx.db.insert(schema.projectMembers).values({
-    projectId: sharedProjectId,
-    userId,
-    role: "viewer",
-    createdAt: new Date(),
-  });
 });
 
 afterAll(async () => {
@@ -114,9 +108,9 @@ describe("setEnvVar", () => {
 });
 
 describe("listProjects", () => {
-  it("includes projects the user can read, not only ones they own", async () => {
+  it("lists only projects the user owns", async () => {
     const ids = (await listProjects(userId)).map((p) => p.id);
     expect(ids).toContain(projectId);
-    expect(ids).toContain(sharedProjectId);
+    expect(ids).not.toContain(sharedProjectId);
   });
 });

@@ -83,7 +83,7 @@ describe("the Where Builds Run card", () => {
     expect(out).toContain("Selected branches and tags");
     expect(out).toContain("must not be repository secrets");
     expect(out).toMatch(/trusted operators of this project/);
-    expect(out).toContain("Project roles in Egg do not isolate Nest accounts");
+    expect(out).toContain("Each project has a single owner");
     expect(out).toContain("cannot see your GitHub secrets or environment settings");
   });
 

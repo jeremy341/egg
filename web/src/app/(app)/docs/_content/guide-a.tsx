@@ -2401,8 +2401,8 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
       <Callout tone="warning" title="Treat workflow editors as trusted operators">
         Test connection cannot see your GitHub secrets or environment settings, so check by hand that the production
         values are in the <C>egg-production</C> environment and not in the repository. Anyone who can edit workflows can run
-        code with the preview credentials and with whatever else the repository allows. Roles in Egg do not isolate Nest
-        accounts from that.
+        code with the preview credentials and with whatever else the repository allows. A project has a single owner, and
+        Egg does not isolate the Nest account from that.
       </Callout>
       <H2 id="github-reference" title="Limits, errors and an example" />
       {limits("github", [

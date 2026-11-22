@@ -271,7 +271,7 @@ export function isSecretValue(value: string): boolean {
   if (/^[a-f0-9]{32,}$/i.test(v)) return true;
   // The longest whitespace-free run decides, so a token pasted into a sentence
   // is caught and whitespace alone hides nothing. Dashed UUIDs are the app's
-  // own resource ids (jobs, plans, deployments, invitations); they are not
+  // own resource ids (jobs, plans, deployments); they are not
   // masked wholesale or every entry would lose the very id it is about — a
   // secret is caught by its key or by looking like a random token below.
   return v.split(/\s+/).some(isRandomToken);

@@ -1,22 +1,14 @@
 import { readJsonLimited } from "@/server/body-limit";
 import { authed, handle, ok } from "@/server/http";
 import { deleteProject } from "@/server/project-delete";
-import { getProjectForUser, getReadableProject, updateProject, projectResponse } from "@/server/projects";
-import { getProjectRole } from "@/server/project-roles";
+import { getProjectForUser, updateProject, projectResponse } from "@/server/projects";
 
 type Ctx = { params: Promise<{ id: string }> };
 
 export const GET = handle<Ctx>(async (_req, { params }) => {
   const user = await authed();
   const { id } = await params;
-  if ((await getProjectRole(user.id, id)) === "owner") return ok({ project: projectResponse(await getProjectForUser(user.id, id)) });
-  const p = await getReadableProject(user.id, id);
-  return ok({ project: { id: p.id, name: p.name, slug: p.slug, repoUrl: p.repoUrl, repoFullName: p.repoFullName,
-    productionBranch: p.productionBranch, rootDir: p.rootDir, runtime: p.runtime, installCommand: p.installCommand,
-    buildCommand: p.buildCommand, startCommand: p.startCommand, outputDir: p.outputDir, buildLocation: p.buildLocation,
-    port: p.workloadKind === "worker" ? null : p.port, listenPort: p.workloadKind === "worker" ? null : p.listenPort ?? p.port,
-    workloadKind: p.workloadKind, deploymentMode: p.deploymentMode, healthPath: p.workloadKind === "worker" ? null : p.healthPath, autoDeploy: p.autoDeploy, monitorState: p.monitorState,
-    createdAt: p.createdAt, updatedAt: p.updatedAt } });
+  return ok({ project: projectResponse(await getProjectForUser(user.id, id)) });
 });
 
 export const PATCH = handle<Ctx>(async (req, { params }) => {

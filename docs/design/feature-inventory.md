@@ -275,15 +275,9 @@ Common errors: "Could not save. Try again." (client fallback); 403 "Confirm with
 - **Errors:** "Could not remove the project from your container." (502). Records are kept so you can retry. Messages `<path> was not created by Egg, so it was left alone.` appear in the script output, not in the UI.
 - **Needs:** sign-in.
 
-### Project team (Team tab)
+### Project ownership (formerly a Team tab)
 
-Added after this inventory was first written; checked 2026-11-22.
-
-- **Where:** project tab "Team" (`components/project-team.tsx`); an invite is accepted at `/invite#token=...` (`components/accept-invite.tsx`). The token lives in the URL fragment so it never reaches a server log or `Referer` header.
-- **What it does:** the owner invites by email, changes a member's role, removes a member, or takes back an open invitation. Egg sends no email: the invitation link is shown once and only a SHA-256 of its token is stored, so it cannot be shown again.
-- **Roles (`lib/team.ts`, `server/project-roles.ts`):** Viewer reads the project, deployments, analytics and logs; Developer can also deploy, redeploy, cancel, roll back and restart; Owner alone changes settings and environment variables and uses files, the terminal and servers. Role labels are "Viewer", "Developer", "Owner".
-- **Limits:** invitations last 7 days (`INVITE_DAYS`); at most 20 open invitations per project (`MAX_OPEN_INVITES`). The browser and API apply the same role checks; MCP tools and webhook-triggered jobs use them too. A deployment queued by a member who loses deploy permission is refused before it starts (`server/deploy/pipeline.ts`, `getProjectRole` check).
-- **Needs:** sign-in; Owner for the Team controls. No container permission switch.
+Project-level collaboration (invitations, Viewer/Developer/Owner roles, a Team tab and an `/invite` page) was removed on 2026-11-22 to keep the product focused. Every project now has exactly one owner, who can perform all actions. `server/project-roles.ts` is retained only as the owner-only authorization boundary shared by the dashboard, API, MCP and worker. A deployment queued by a non-owner is rejected at queue time and again before the worker starts it.
 
 ---
 
@@ -907,7 +901,7 @@ See "Start with automatic deploys off and container conflict check" under Projec
 - **Projects page** (`app/(app)/projects/page.tsx`): the list of projects with search ("Try a project name, repository, or domain."), the "Needs attention" card, the "UsageCard" and "Recent deployments" (latest 5).
 - **Empty states:** "Connect your Nest container first" ; "Import your first repository" (`components/projects-view.tsx`).
 - **Server switcher and project switcher** in the sidebar (`components/server-switcher.tsx`, `components/project-switcher.tsx`).
-- **Navigation:** team level "Projects", "Deployments", "Logs", "Resources", "Domains", "Activity", "Container", "Developer", "Connect"; project level "Overview", "Deployments", "Analytics", "Files", "Terminal", "Team", "Settings" (`lib/nav.ts`; "Team" added with project roles on 2026-11-16). Scheduled Jobs live inside Settings, not in the sidebar. "Account" opens from the account menu.
+- **Navigation:** account level "Projects", "Deployments", "Logs", "Resources", "Domains", "Activity", "Container", "Developer", "Connect"; project level "Overview", "Deployments", "Analytics", "Files", "Terminal", "Settings" (`lib/nav.ts`). Scheduled Jobs live inside Settings, not in the sidebar. "Account" opens from the account menu.
 
 ---
 

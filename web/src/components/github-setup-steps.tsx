@@ -306,7 +306,7 @@ export function SecretsStep({
       )}
       <Alert tone="warning">
         The production values must not be repository secrets: a workflow edited on any branch could read them. People who
-        can edit workflows are trusted operators of this project. Project roles in Egg do not isolate Nest accounts.
+        can edit workflows are trusted operators of this project. Each project has a single owner.
       </Alert>
       <Button type="button" variant={acknowledged ? "outline" : "default"} onClick={onAcknowledge}>
         {acknowledged ? "Continue" : "I saved all four secrets"}

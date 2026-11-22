@@ -442,7 +442,6 @@ function revertOutcome(logs: LogView[]): "restored" | "failed" | "unknown" | nul
 export function explainCancel(error: string | null): string {
   const why = error?.trim() ?? "";
   if (/pull request closed/i.test(why)) return "Canceled because the pull request was closed.";
-  if (/project role revoked/i.test(why)) return "Canceled because the person who started it lost access to the project.";
   if (/canceled for cleanup/i.test(why)) return "Canceled while Egg cleaned up.";
   return "This deployment was canceled.";
 }

@@ -44,7 +44,7 @@ Confirmed from the codebase and the existing docs:
 - Adoption checks for a container that already runs apps, so a first deploy does not clash with them, plus an import API that can move an existing app onto Egg after a health check and an explicit confirmation.
 - Signed outbound webhooks with a one-time secret, delivery history and retry status, sent through an address guard that blocks private and redirected destinations (`web/src/components/webhooks-card.tsx`, `web/src/server/webhooks.ts`).
 - A private security-report inbox for senders and an administrator-only reader, with anonymous reporting and database-backed rate limits (`web/src/components/security-report-{form,inbox}.tsx`).
-- Project teams: invitations by email with a one-time link, and Viewer, Developer and Owner roles (`web/src/components/project-team.tsx`, `web/src/lib/team.ts`).
+- Projects are single-owner: one account connects the server and manages each project.
 - Scheduled jobs on the container as systemd timers, with run now, output, pause and resume.
 
 ## Constraints

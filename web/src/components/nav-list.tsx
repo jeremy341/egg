@@ -37,9 +37,7 @@ export function NavList({
 }) {
   const pathname = usePathname();
   const { projects, user } = useAccount();
-  const projectMatch = /^\/projects\/([^/]+)/.exec(pathname);
-  const projectRole = projects.find((p) => p.slug === projectMatch?.[1])?.role ?? "owner";
-  const ctx = navFor(pathname, projectRole);
+  const ctx = navFor(pathname);
   const projectName = ctx.project
     ? (projects.find((p) => p.slug === ctx.project?.slug)?.name ?? ctx.project.name)
     : null;

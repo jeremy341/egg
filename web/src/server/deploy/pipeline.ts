@@ -28,7 +28,6 @@ import { blockingConflicts, probeConflicts, repoNameOf } from "@/server/adoption
 import { npmCachePlan } from "@/server/deploy/download-cache";
 import { deploymentRecorder, measureStage } from "@/server/deploy/performance";
 import { DeploymentLogger } from "@/server/deploy/logger";
-import { getProjectRole } from "@/server/project-roles";
 import * as remote from "@/server/deploy/remote";
 import {
   ENV_KEY,
@@ -445,7 +444,7 @@ export async function runDeployJob(
     const dockerMode = project.deploymentMode !== "native";
     if (dockerMode && githubBuild) throw new DeployError("Container projects build their image on your server. GitHub build settings are for native projects.");
     if (dockerMode && project.deploymentMode === "compose" && dep.env === "preview") throw new DeployError("PR previews are not available for Compose projects yet. Deploy the branch to production instead.");
-    if (dep.triggeredBy && dep.triggeredBy !== project.userId && await getProjectRole(dep.triggeredBy, project.id) !== "developer") {
+    if (dep.triggeredBy && dep.triggeredBy !== project.userId) {
       throw new DeployError("The deployment actor no longer has permission to deploy this project.");
     }
     if (!(await setState(deploymentId, "building", { startedAt: new Date() }))) return;
@@ -965,7 +964,7 @@ export async function runRollbackJob(
     // environment values into the stored log and the raw console error: register them with the
     // logger, exactly like the deploy path does, so log.mask actually masks them.
     log.setSecrets([...Object.values(await envForDeployment(project.id, dep.env))]);
-    if (dep.triggeredBy && dep.triggeredBy !== project.userId && await getProjectRole(dep.triggeredBy, project.id) !== "developer") {
+    if (dep.triggeredBy && dep.triggeredBy !== project.userId) {
       throw new DeployError("The deployment actor no longer has permission to deploy this project.");
     }
     if (!(await setState(deploymentId, "deploying", { startedAt: new Date() }))) return;

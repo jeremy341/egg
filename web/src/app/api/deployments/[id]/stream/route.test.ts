@@ -108,13 +108,13 @@ describe("deployment stream authorization", () => {
     expect(body).toContain('"state":"ready"');
   });
 
-  it("scopes the state query through the project readability predicate", async () => {
+  it("scopes the state query to the project owner", async () => {
     await (await open()).text();
     const predicates = mocks.where.mock.calls.map((call) => call[0]);
     expect(predicates.length).toBeGreaterThan(0);
     const scoped = predicates.some((predicate) => {
       const text = sqlText(predicate);
-      return text.includes("exists") && text.includes("viewer") && text.includes("developer");
+      return text.includes("exists") && text.includes("user_id");
     });
     expect(scoped).toBe(true);
   });

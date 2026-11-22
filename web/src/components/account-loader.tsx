@@ -37,7 +37,7 @@ export async function AccountLoader({ children }: { children: React.ReactNode })
           host: s.host,
           status: s.status,
         })),
-        projects: projects.map((p) => ({ slug: p.slug, name: p.name, role: p.role ?? "owner" })),
+        projects: projects.map((p) => ({ slug: p.slug, name: p.name })),
       }}
     >
       {/* Marks the signed-in app: the colour theme chosen in Settings applies where this is on the page (globals.css). */}
