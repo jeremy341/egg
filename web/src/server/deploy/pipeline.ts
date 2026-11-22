@@ -108,7 +108,7 @@ export function mergeEnvForDeployment(
   const out: Record<string, string> = {};
   const specificity = new Map<string, number>();
   for (const row of rows) {
-    if (!ENV_KEY.test(row.key) || RESERVED_ENV.has(row.key)) continue;
+    if (!ENV_KEY.test(row.key) || RESERVED_ENV.has(row.key.toUpperCase())) continue;
     if (row.target !== "all" && row.target !== env) continue;
     const rank = row.target === env ? 1 : 0;
     if ((specificity.get(row.key) ?? -1) > rank) continue;
@@ -127,10 +127,21 @@ export async function envForDeployment(
     .select()
     .from(schema.envVars)
     .where(eq(schema.envVars.projectId, projectId));
-  return mergeEnvForDeployment(
-    rows.map((r) => ({ ...r, value: open(r.valueEnc, `env:${projectId}:${r.key}:${r.target}`) })),
-    env
-  );
+  // One undecryptable row (e.g. after an APP_SECRET rotation or a restore) must not
+  // break every env read and every deployment. Skip that key with a clear warning;
+  // the remaining variables still work and the operator can repair the bad row.
+  const decrypted = rows.flatMap((r) => {
+    try {
+      return [{ ...r, value: open(r.valueEnc, `env:${projectId}:${r.key}:${r.target}`) }];
+    } catch (err) {
+      console.warn(
+        `Skipping env var ${r.key} for project ${projectId}: it cannot be decrypted with the current APP_SECRET.`,
+        err instanceof Error ? err.message : err
+      );
+      return [];
+    }
+  });
+  return mergeEnvForDeployment(decrypted, env);
 }
 
 /**
