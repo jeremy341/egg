@@ -91,7 +91,15 @@ const schema = z
       });
     }
     if (!c.LOCAL_MODE || c.LOCAL_MODE_ALLOW_REMOTE) return;
-    if (isLoopbackHost(new URL(c.APP_URL).hostname)) return;
+    let hostname: string;
+    try {
+      hostname = new URL(c.APP_URL).hostname;
+    } catch {
+      // The .url() check on APP_URL already reports the invalid value; don't
+      // throw a raw TypeError out of the refinement and hide that message.
+      return;
+    }
+    if (isLoopbackHost(hostname)) return;
     ctx.addIssue({
       code: "custom",
       path: ["LOCAL_MODE"],

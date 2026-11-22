@@ -99,9 +99,13 @@ type Message = { title: string; detail: string; link: string };
 
 function payload(kind: Kind, m: Message) {
   const text = `${m.title}\n${m.detail}\n${m.link}`;
-  return kind === "discord"
-    ? { username: "Egg", content: text, allowed_mentions: { parse: [] } }
-    : { text };
+  if (kind === "discord") {
+    return { username: "Egg", content: text, allowed_mentions: { parse: [] } };
+  }
+  // Slack parses markup in `text`; commit messages, branches, project names and
+  // error strings are attacker-influenced and could otherwise ping a whole channel
+  // with <!channel> or forge links. Discord already disables mentions above.
+  return { text: text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") };
 }
 
 async function post(url: string, kind: Kind, m: Message, fetcher: Fetcher) {
