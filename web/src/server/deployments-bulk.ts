@@ -3,7 +3,7 @@ import { canBulkCancel, canBulkDelete, type BulkCandidate } from "@/lib/deployme
 import { audit } from "@/server/audit";
 import { config } from "@/server/config";
 import { getDb, schema } from "@/server/db";
-import { unitName } from "@/server/deploy/layout";
+import { serverDiscriminator, unitName } from "@/server/deploy/layout";
 import { removePreview } from "@/server/deploy/remote";
 import { HttpError } from "@/server/http";
 import { cancelDeployment, developerDeployment } from "@/server/projects";
@@ -61,9 +61,10 @@ export async function deletePreview(userId: string, deploymentId: string) {
         home: probe.home,
         slug: project.slug,
         releaseId: dep.releaseId,
-        unit: unitName(project.slug, { releaseId: dep.releaseId }),
+        unit: unitName(project.slug, { releaseId: dep.releaseId }, serverDiscriminator(server.id)),
         unitDir: config().UNIT_DIR,
         docker: project.deploymentMode !== "native",
+        scope: serverDiscriminator(server.id),
       }),
       { timeoutMs: 60_000 }
     );

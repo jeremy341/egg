@@ -158,6 +158,9 @@ export const RATE_LIMITS = {
   // small shared bucket for the slow container reads (file reads, journal logs, usage, opening a terminal),
   // and a tighter one for restarting the production service.
   sshCall: { limit: 10, windowMs: 60_000, what: "slow calls to your container" },
+  // A bulk deployment action opens one fresh SSH session per id (up to MAX_BULK=50). Charge this bucket once per
+  // id so a single request, or a burst of them, cannot open dozens of sessions inside a minute.
+  bulkSsh: { limit: 20, windowMs: 60_000, what: "bulk deployment operations" },
   serviceRestart: { limit: 6, windowMs: 60_000, what: "service restarts" },
   signIn: { limit: 20, windowMs: 60_000, what: "sign-in attempts" },
   badToken: { limit: 60, windowMs: 60_000, what: "unrecognised access tokens" },
@@ -166,6 +169,11 @@ export const RATE_LIMITS = {
   buildEnv: { limit: 30, windowMs: 60 * 60_000, what: "build variable reads" },
   // "Test connection" in settings: it makes GitHub requests, so it is per signed-in user, per minute.
   githubCheck: { limit: 10, windowMs: 60_000, what: "GitHub connection tests" },
+  // Repository detection in the new-project flow is triggered on every keystroke and reads the tree and files of a
+  // repo through the shared unauthenticated GitHub API (60 requests/hour/IP), so cap it tightly per signed-in user.
+  repoDetect: { limit: 10, windowMs: 60_000, what: "repository detection requests" },
+  // Sending a test notification posts to an external webhook, so keep it rare: per signed-in user, per minute.
+  notifyTest: { limit: 5, windowMs: 60_000, what: "notification tests" },
   // Opening the pull request that adds the build workflow makes GitHub write calls, so it is per signed-in user.
   workflowPublish: { limit: 6, windowMs: 60_000, what: "workflow pull requests" },
   // Granting or removing an administrator, per signed-in administrator. Rare by design, so a low ceiling.

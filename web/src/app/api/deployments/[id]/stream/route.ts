@@ -3,7 +3,7 @@ import { getDb, schema } from "@/server/db";
 import { deploymentLogs, readableDeployment } from "@/server/projects";
 import { SESSION_COOKIE, userForSessionToken } from "@/server/auth/session";
 import { takeDeploymentStream } from "@/server/deployment-streams";
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 type Ctx = { params: Promise<{ id: string }> };
 const FINISHED = new Set(["ready", "error", "canceled"]);
@@ -62,6 +62,14 @@ export const GET = handle<Ctx>(async (req, { params }) => {
         ));
         try {
           while (!canceled && !req.signal.aborted && Date.now() < deadline) {
+            // A long-lived stream must re-check access on *every* iteration, even
+            // when it is only emitting a line it buffered earlier or reading the
+            // terminal state. Revocation has to stop both.
+            try {
+              await readableDeployment(user.id, id);
+            } catch {
+              break;
+            }
             if (page.length && Date.now() - lastAuthorization < 5_000) {
               const line = page.shift()!;
               after = line.id;
@@ -71,8 +79,6 @@ export const GET = handle<Ctx>(async (req, { params }) => {
             // Never use React's request-cached identity for a long-lived connection.
             if ((await userForSessionToken(token))?.id !== user.id || canceled) break;
             if (page.length) {
-              await readableDeployment(user.id, id);
-              if (canceled) break;
               lastAuthorization = Date.now();
               continue;
             }
@@ -86,8 +92,20 @@ export const GET = handle<Ctx>(async (req, { params }) => {
               controller.close();
               return;
             }
+            // The state read must carry the same project-level readability
+            // predicate as readableDeployment above, not just the deployment id.
+            // A correlated subquery keeps the projection to a single row.
             const row = await db.select({ state: schema.deployments.state, error: schema.deployments.error })
-              .from(schema.deployments).where(eq(schema.deployments.id, id)).get();
+              .from(schema.deployments)
+              .where(and(
+                eq(schema.deployments.id, id),
+                sql`exists (select 1 from ${schema.projects} p where p.id = ${schema.deployments.projectId}
+                  and (p.user_id = ${user.id} or exists (
+                    select 1 from ${schema.projectMembers} pm
+                    where pm.project_id = p.id and pm.user_id = ${user.id}
+                      and pm.role in ('viewer', 'developer'))))`
+              ))
+              .get();
             if (canceled) break;
             if (!row) break;
             if (FINISHED.has(row.state)) {

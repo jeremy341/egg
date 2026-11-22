@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { resetDeploymentStreams } from "@/server/deployment-streams";
-const mocks = vi.hoisted(() => ({ logs: vi.fn(), auth: vi.fn(), owned: vi.fn(), state: vi.fn() }));
+import { MAX_DEPLOYMENT_STREAMS_TOTAL, resetDeploymentStreams } from "@/server/deployment-streams";
+const mocks = vi.hoisted(() => ({ logs: vi.fn(), auth: vi.fn(), owned: vi.fn(), state: vi.fn(), authed: vi.fn() }));
 vi.mock("@/server/http", () => ({
-  authed: async () => ({ id: "u" }),
+  authed: mocks.authed,
   handle: (fn: unknown) => fn,
   HttpError: class HttpError extends Error {
     constructor(
@@ -24,6 +24,7 @@ import { GET } from "@/app/api/deployments/[id]/stream/route";
 describe("deployment event stream", () => {
   beforeEach(() => {
     resetDeploymentStreams();
+    mocks.authed.mockReset().mockResolvedValue({ id: "u" });
     mocks.auth.mockReset().mockResolvedValue({ id: "u" });
     mocks.owned.mockReset().mockResolvedValue({});
     mocks.state.mockReset().mockResolvedValue({ state: "ready", error: null });
@@ -79,5 +80,30 @@ describe("deployment event stream", () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
     const next = await GET(new NextRequest("http://localhost/api/deployments/d/stream", { headers: { cookie: "egg_session=token" } }), { params: Promise.resolve({ id: "d" }) });
     expect(next.status).toBe(200);
+  });
+  it("holds an instance-wide ceiling across users, and frees a slot when a stream ends", async () => {
+    const statusOf = (p: Promise<Response>) => p.then((r) => r.status, (e) => (e as { status: number }).status);
+    // Each stream re-checks its session by token, so give every test user a matching cookie token.
+    mocks.auth.mockReset().mockImplementation(async (token: string) => ({ id: token }));
+    const open = (id: string) => {
+      mocks.authed.mockResolvedValueOnce({ id });
+      return GET(
+        new NextRequest("http://localhost/api/deployments/d/stream", { headers: { cookie: `egg_session=${id}` } }),
+        { params: Promise.resolve({ id: "d" }) }
+      );
+    };
+    const held: Response[] = [];
+    for (let i = 0; i < MAX_DEPLOYMENT_STREAMS_TOTAL; i++) {
+      const res = await open(`g${i}`);
+      expect(res.status).toBe(200);
+      held.push(res);
+    }
+    // A different user cannot take one more once the process-wide ceiling is reached.
+    expect(await statusOf(open("overflow"))).toBe(429);
+    // Cancelling a stream returns its slot to the shared pool.
+    await held[0].body!.cancel();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(await statusOf(open("after"))).toBe(200);
+    for (const res of held.slice(1)) await res.body!.cancel();
   });
 });

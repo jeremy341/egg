@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { InFlightLimit, JSON_BODY_LIMIT, readBytesLimited, readJsonLimited, readTextLimited, webhookBodyReads } from "@/server/body-limit";
+import { InFlightLimit, JSON_BODY_LIMIT, KeyedInFlight, readBytesLimited, readJsonLimited, readTextLimited, webhookBodyReads } from "@/server/body-limit";
 import { HttpError } from "@/server/http";
 
 const post = (body: BodyInit | null, headers: Record<string, string> = {}) =>
@@ -36,6 +36,12 @@ describe("readTextLimited", () => {
   it("accepts a body exactly at the limit", async () => {
     expect(await readTextLimited(post(stream(["a".repeat(50), "b".repeat(50)])), 100)).toHaveLength(100);
   });
+
+  it("forwards the idle timeout so a stalled text body is bounded", async () => {
+    const stalled = new ReadableStream<Uint8Array>({ start: () => {} });
+    const err: unknown = await readTextLimited(post(stalled), 100, { idleTimeoutMs: 20 }).catch((e: unknown) => e);
+    expect((err as HttpError).status).toBe(408);
+  });
 });
 
 describe("readJsonLimited", () => {
@@ -68,6 +74,12 @@ describe("readJsonLimited", () => {
   it("still answers 413 when a fallback is given", async () => {
     const big = "x".repeat(JSON_BODY_LIMIT + 1);
     expect(await status(readJsonLimited(post(big), { fallback: {} }))).toBe(413);
+  });
+
+  it("forwards idle and deadline timing so connection-holding JSON bodies are bounded", async () => {
+    const stalled = () => new ReadableStream<Uint8Array>({ start: () => {} });
+    expect(await status(readJsonLimited(post(stalled()), { idleTimeoutMs: 20 }))).toBe(408);
+    expect(await status(readJsonLimited(post(stalled()), { deadlineMs: 20 }))).toBe(408);
   });
 });
 
@@ -155,5 +167,43 @@ describe("InFlightLimit", () => {
 
   it("is the webhook pool of four", () => {
     expect(webhookBodyReads.max).toBe(4);
+  });
+
+  it("reset forgets held slots and invalidates old release handles", () => {
+    const limit = new InFlightLimit(1);
+    const release = limit.acquire();
+    expect(limit.inFlight).toBe(1);
+    limit.reset();
+    expect(limit.inFlight).toBe(0);
+    release?.();
+    expect(limit.inFlight).toBe(0);
+    expect(limit.acquire()).not.toBeNull();
+  });
+});
+
+describe("KeyedInFlight", () => {
+  it("caps each key on its own and releases only that key's slot", () => {
+    const gate = new KeyedInFlight(1);
+    const a = gate.acquire("a");
+    expect(a).not.toBeNull();
+    expect(gate.acquire("a")).toBeNull();
+    const b = gate.acquire("b");
+    expect(b).not.toBeNull();
+    expect(gate.inFlight("a")).toBe(1);
+    expect(gate.inFlight("b")).toBe(1);
+    a?.();
+    expect(gate.inFlight("a")).toBe(0);
+    expect(gate.inFlight("b")).toBe(1);
+    expect(gate.acquire("a")).not.toBeNull();
+    expect(gate.acquire("b")).toBeNull();
+  });
+
+  it("reset forgets every key", () => {
+    const gate = new KeyedInFlight(1);
+    const release = gate.acquire("a");
+    gate.reset();
+    expect(gate.size).toBe(0);
+    release?.();
+    expect(gate.acquire("a")).not.toBeNull();
   });
 });

@@ -11,6 +11,8 @@ type Ctx = { params: Promise<{ id: string }> };
  */
 export const GET = handle<Ctx>(async (_req, { params }) => {
   const user = await authed();
+  // The inventory probe runs a long script over SSH, so it shares the slow-call bucket with the other container reads.
+  enforceRateLimit("sshCall", user.id);
   enforceRateLimit("sshSession", user.id);
   const { id } = await params;
   const inventory = await getInventory(user.id, id);

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { config } from "@/server/config";
-import { isValidSlug, unitName } from "@/server/deploy/layout";
+import { isValidSlug, serverDiscriminator, unitName } from "@/server/deploy/layout";
 import { HttpError } from "@/server/http";
 import { getServerForUser, withServerSession } from "@/server/servers";
 import { SshError, type NestSession } from "@/server/ssh/connection";
@@ -147,7 +147,10 @@ export function detectConflicts(raw: AdoptionRaw, ctx: ConflictContext): Detecte
       managedByEgg: false,
     });
   } else if (holders.length > 0) {
-    const haveNames = raw.ports.some((p) => p.pid !== null);
+    // ss can fail to attribute a pid to the listener on our own port even when it can name
+    // listeners on unrelated ports. Scope the fallback to this port's holders only, so a
+    // named listener elsewhere does not turn our own Egg holder into a foreign conflict.
+    const haveNames = holders.some((p) => p.pid !== null);
     const ownUp = raw.unitFile?.active === "active";
     const foreign = holders.filter((h) => !(isOwn(h.pid, h.cgroups) || (!haveNames && ownUp)));
     if (foreign.length > 0) {
@@ -302,7 +305,7 @@ export async function checkProjectConflicts(
       probeConflicts(s, {
         unitDir: config().UNIT_DIR,
         slug: input.slug,
-        unit: unitName(input.slug),
+        unit: unitName(input.slug, undefined, serverDiscriminator(server.id)),
         port: input.port,
         repo: input.repoFullName ?? null,
       })

@@ -33,15 +33,19 @@ Inferred (labelled): the primary button on the homepage leads to the feature ove
 Confirmed from the codebase and the existing docs:
 
 - Deploy on push to the production branch, and previews for other branches on their own ports.
-- Build output and runtime logs, with level filters and a download.
+- Build output (streamed and searchable, but no download) and runtime logs with level filters, a time range and a download.
 - Rollback to a previous release, and redeploy, cancel and remove old previews in bulk.
 - Domains with DNS and app checks, and environment variables (values are write-only).
-- Runtimes: Node.js, Python, and static sites. Other runtimes are shown as not supported yet.
+- Runtimes: Node.js, Bun, Python, Go, Rust, Ruby, PHP, Java, Static site and Custom command (`web/src/components/hosting-options.tsx`). Workloads are Web or worker. Deployment mode is native (systemd) by default; Dockerfile and Docker Compose modes are offered only when the container's capability probe enables them and are unverified on a real container.
 - Alerts for down, memory, CPU and disk, and deploy results, sent to Discord or Slack.
 - A public status page per project, and page-view analytics that is opt-in.
 - Access tokens with scopes, and an API and MCP endpoint for scripts and AI agents.
 - Container permissions: the terminal and file changes are off until a person turns them on with a recent Hack Club sign-in.
-- Adoption checks for a container that already runs apps, so a first deploy does not clash with them.
+- Adoption checks for a container that already runs apps, so a first deploy does not clash with them, plus an import API that can move an existing app onto Egg after a health check and an explicit confirmation.
+- Signed outbound webhooks with a one-time secret, delivery history and retry status, sent through an address guard that blocks private and redirected destinations (`web/src/components/webhooks-card.tsx`, `web/src/server/webhooks.ts`).
+- A private security-report inbox for senders and an administrator-only reader, with anonymous reporting and database-backed rate limits (`web/src/components/security-report-{form,inbox}.tsx`).
+- Project teams: invitations by email with a one-time link, and Viewer, Developer and Owner roles (`web/src/components/project-team.tsx`, `web/src/lib/team.ts`).
+- Scheduled jobs on the container as systemd timers, with run now, output, pause and resume.
 
 ## Constraints
 
@@ -79,6 +83,6 @@ Confirmed by the owner:
 - The public site must not look or sound AI-made: no generic card grids, gradient glows, filler headings, or stock marketing phrases.
 
 - The pixel display font (Pixelify) stays on headings across the public site, not only in the hero.
-- The product is an add-on for Nest. The public copy says it connects to a Nest container, and does not sound like part of Nest. The new product name is pending the owner choosing it.
+- The product is an add-on for Nest, named Egg. The public copy says it connects to a Nest container, and does not sound like part of Nest. The earlier note that the name was pending was stale.
 
 - The product is named Egg. The GitHub repository is renamed to egg (old links redirect). Renaming code identifiers that are already on people's containers (the nd- systemd unit prefix, the ~/.nest-deploy folder, NEST_DEPLOY env names, and the ownership markers) needs a migration first, so those stay until a migration is written.

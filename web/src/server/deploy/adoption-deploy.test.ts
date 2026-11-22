@@ -4,6 +4,7 @@ import { open } from "@/server/crypto";
 import { upsertUser } from "@/server/auth/session";
 import { schema } from "@/server/db";
 import { runDeployJob, type PipelineDeps } from "@/server/deploy/pipeline";
+import { serverDiscriminator, unitName } from "@/server/deploy/layout";
 import { createProject, deployBranch, deploymentLogs, type ProjectRow } from "@/server/projects";
 import { removeProjectFromServer } from "@/server/runtime-info";
 import { connectToServer, createServer, getServerForUser, type ServerRow } from "@/server/servers";
@@ -22,8 +23,10 @@ let ctx: Awaited<ReturnType<typeof useFreshDb>>;
 let mock: MockSsh;
 let userId: string;
 let server: ServerRow;
+let scope = "";
 let deps: PipelineDeps;
 let home: string;
+const scopedUnit = (slug: string) => unitName(slug, undefined, scope);
 
 async function sh(command: string) {
   const s = await NestSession.connect({
@@ -70,6 +73,7 @@ beforeAll(async () => {
   installFakeContainerBuild(mock);
   await ctx.db.update(schema.servers).set({ port: mock.port, hostKeyFingerprint: mock.hostKeyFingerprint }).where(eq(schema.servers.id, server.id));
   server = await getServerForUser(userId, server.id);
+  scope = serverDiscriminator(server.id);
   home = mock.home.replace(/\\/g, "/");
   deps = {
     preflight: () => async () => containerReadyFacts,
@@ -93,11 +97,11 @@ afterAll(async () => {
 describe.skipIf(!linuxTestHostAvailable())("a unit that is not ours", () => {
   it("is never overwritten, and nothing else is created", async () => {
     const p = await makeProject("clash");
-    mock.writeFile(`${home}/units/egg-clash.service`, "[Service]\nExecStart=/usr/bin/true\n");
+    mock.writeFile(`${home}/units/${scopedUnit("clash")}`, "[Service]\nExecStart=/usr/bin/true\n");
     const { row } = await deploy(p);
     expect(row.state).toBe("error");
-    expect(row.error).toContain("egg-clash.service");
-    expect(await sh(`cat ${home}/units/egg-clash.service`)).toBe("[Service]\nExecStart=/usr/bin/true");
+    expect(row.error).toContain(scopedUnit("clash"));
+    expect(await sh(`cat ${home}/units/${scopedUnit("clash")}`)).toBe("[Service]\nExecStart=/usr/bin/true");
     expect(await sh(`[ -e ${home}/.egg/clash ] && echo made || echo none`)).toBe("none");
   });
 });
@@ -125,12 +129,12 @@ describe.skipIf(!linuxTestHostAvailable())("a folder that is not ours", () => {
   it("is not removed with the project, even when asked to delete data", async () => {
     const p = await makeProject("keepme");
     mock.writeFile(`${home}/.egg/keepme/notes.txt`, "precious");
-    mock.writeFile(`${home}/units/egg-keepme.service`, "[Service]\nExecStart=/usr/bin/true\n");
+    mock.writeFile(`${home}/units/${scopedUnit("keepme")}`, "[Service]\nExecStart=/usr/bin/true\n");
     await expect(removeProjectFromServer(userId, p.id, { deleteData: true, unitDir: `${home}/units` })).rejects.toThrow(
       "Could not remove the project from your container."
     );
     expect(await sh(`cat ${home}/.egg/keepme/notes.txt`)).toBe("precious");
-    expect(await sh(`cat ${home}/units/egg-keepme.service`)).toContain("ExecStart=/usr/bin/true");
+    expect(await sh(`cat ${home}/units/${scopedUnit("keepme")}`)).toContain("ExecStart=/usr/bin/true");
   });
 });
 
@@ -144,7 +148,7 @@ describe.skipIf(!linuxTestHostAvailable())("a port that is already taken", () =>
     expect(row.state).toBe("error");
     expect(row.error).toContain(String(p.port));
     expect(await sh(`curl -s --max-time 3 http://127.0.0.1:${p.port}/`)).toBe("theirs");
-    expect(await sh(`[ -e ${home}/units/egg-busyport.service ] && echo made || echo none`)).toBe("none");
+    expect(await sh(`[ -e ${home}/units/${scopedUnit("busyport")} ] && echo made || echo none`)).toBe("none");
   });
 });
 
@@ -163,7 +167,7 @@ describe.skipIf(!linuxTestHostAvailable())("the same repo already running by han
     await sh("systemctl stop myapp.service");
     expect(row.state).toBe("error");
     expect(row.error).toContain("myapp.service");
-    expect(await sh(`[ -e ${home}/units/egg-twice.service ] && echo made || echo none`)).toBe("none");
+    expect(await sh(`[ -e ${home}/units/${scopedUnit("twice")} ] && echo made || echo none`)).toBe("none");
   });
 });
 
@@ -186,7 +190,7 @@ describe.skipIf(!linuxTestHostAvailable())("the user's own keys", () => {
     mock.writeFile(`${home}/old-clone/.git/config`, '[remote "origin"]\n\turl = https://github.com/owner/demo\n');
     const { row, logs } = await deploy(p);
     expect(row.state, logs).toBe("ready");
-    expect(await sh(`cat ${home}/units/egg-alongside.service`)).toContain("# egg:managed");
+    expect(await sh(`cat ${home}/units/${scopedUnit("alongside")}`)).toContain("# egg:managed");
     expect(await sh(`ls -A ${home}/.egg/alongside`)).toContain(".egg-managed");
     expect(await sh(`ls ${home}/old-clone/.git`)).toBe("config");
     // A second deploy of our own project is not mistaken for a conflict.

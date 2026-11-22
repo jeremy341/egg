@@ -5,7 +5,7 @@ publish information starts off, and the person turns it on on purpose. People
 already run apps on their container, so a default must never stop, restart,
 overwrite or delete something Egg did not create.
 
-Date of this review: 2026-11-05. Code references are to `web/src`.
+Date of this review: 2026-11-05, revised 2026-11-22. Code references are to `web/src`. Two items that were open when this was written (the terminal input/resize guard and automatic deploys off for adopted projects) are now built; they are marked in place.
 
 ## 1. The matrix
 
@@ -23,8 +23,9 @@ Exposure: anyone signed in to the Egg account while it is on. Works on a
 container with other apps: yes, and that is exactly the risk. Turning it on needs
 a Hack Club sign-in from the last 5 minutes (`reauth_required`), and the page asks
 for the server name. Turning it off closes the owner's open terminals on that
-server. Enforcement: the open route and every API v1 terminal call read the stored
-value per request. The browser input and resize routes do not (see Gaps).
+server. Enforcement: the open route, every API v1 terminal call, and (since
+2026-11-22) the browser input and resize routes all call `requireProjectFeature`
+and read the stored value per request. The old gap in section 5 is closed.
 
 **File changes.** Can: create, edit, rename, delete and upload inside a project's
 `shared/` folder only. `current/` and every release folder stay read only, after
@@ -97,8 +98,11 @@ on the container.
 2. **Terminal and file changes: stay OFF.** Confirmed. New rows get false, the
    guards read the stored value, normalising anything unreadable gives false.
 3. **Auto deploy on an adopted project: OFF until the first deploy is confirmed.**
-   Not built here: it needs the adoption flow (another change set) to create the
-   project with `autoDeploy: false`. `createProjectInput` still defaults to true.
+   **Built since this review (checked 2026-11-22):** the New project checkbox
+   "Start with automatic deploys off" sets `adopted: true`, and
+   `server/projects.ts:329` forces `autoDeploy: false` for an adopted project.
+   `createProjectInput` still defaults `autoDeploy` to true for ordinary
+   projects; a person turns it on in Settings, Build and Run.
 4. **Analytics, extras, status page, notifications, deploy hook: OFF, separate.**
    Already true in the schema. Verified by test.
 5. **Tokens: no terminal or file scope unless ticked.** Verified by test.
@@ -147,15 +151,13 @@ this plan updates a row.
 
 ## 5. Gaps and open decisions
 
-- **Gap (not fixed, outside this scope):** the browser terminal input and resize
-  routes (`api/projects/[id]/terminal/[sessionId]/input`, `.../resize`) do not call
-  `requireProjectFeature`. They rely on the permissions route closing the session.
-  API v1 re-checks per call. `permissions-routes.test.ts` has an `it.fails` test
-  that shows a 200 where 403 is expected. Fix: one `requireProjectFeature(user.id,
-  id, "terminal")` line in each route, then change `it.fails` to `it`.
+- **Gap fixed since this review (2026-11-22):** the browser terminal input and
+  resize routes (`api/projects/[id]/terminal/[sessionId]/input`, `.../resize`)
+  now call `requireProjectFeature(user.id, id, "terminal")`. The `it.fails`
+  permission test that showed 200 where 403 was expected has been replaced with a
+  passing test. This item is kept for history only.
 - Should turning leftover removal on also need the fresh sign-in and the typed
   server name? Not done: removal is limited to our own names and markers.
 - Should `deployments:write` plus `projects:write` be gated by a switch? The
   brief says token scopes already cover deploys, so no.
-- The marker work and the adoption flow are in the working tree from other
-  changes and were not reviewed here beyond reading them.
+- The marker work and the adoption flow were in the working tree from other changes when this was written. Both are now in the code: `server/deploy/layout.ts` writes `# egg:managed` and `.egg-managed`, and the adoption flow (`server/adoption-import.ts`, New project checkbox) creates projects with automatic deploys off (checked 2026-11-22).

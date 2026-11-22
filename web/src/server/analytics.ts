@@ -1,5 +1,5 @@
 import { createHmac } from "node:crypto";
-import { and, desc, eq, gte, lt, sql, type AnyColumn } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, lt, sql, type AnyColumn } from "drizzle-orm";
 import { z } from "zod";
 import { featuresForKey, getAnalyticsDefaults } from "@/server/analytics-config";
 import { cleanPath, cleanReferrer, allowlistedUtm } from "@/server/analytics-fields";
@@ -44,13 +44,28 @@ export function snippet(key: string): string {
 
 export async function enableAnalytics(userId: string, projectId: string) {
   const project = await getProjectForUser(userId, projectId);
-  if (project.analyticsKey) return { key: project.analyticsKey, snippet: snippet(project.analyticsKey) };
-  const key = KEY_PREFIX + randomToken(12);
   const db = await getDb();
-  await db
+  const candidate = KEY_PREFIX + randomToken(12);
+  // Conditional write: only the first caller can set the key. Everyone else
+  // gets the key that was actually persisted, so no one is handed a snippet
+  // whose key lost the race and will never collect anything.
+  const changed = await db
     .update(schema.projects)
-    .set({ analyticsKey: key, updatedAt: new Date() })
-    .where(eq(schema.projects.id, project.id));
+    .set({ analyticsKey: candidate, updatedAt: new Date() })
+    .where(and(eq(schema.projects.id, project.id), isNull(schema.projects.analyticsKey)))
+    .returning({ analyticsKey: schema.projects.analyticsKey });
+  if (changed.length === 0) {
+    // Already enabled (by an earlier request or a concurrent one). Return the
+    // stored key, and do not re-run the first-enable side effects or audit.
+    const current = await db
+      .select({ analyticsKey: schema.projects.analyticsKey })
+      .from(schema.projects)
+      .where(eq(schema.projects.id, project.id))
+      .get();
+    const key = current!.analyticsKey!;
+    return { key, snippet: snippet(key) };
+  }
+  const key = changed[0].analyticsKey!;
   // A project that has never had settings starts from the person's account defaults
   // (all off unless they chose otherwise). One that already has settings keeps them.
   const defaults = await getAnalyticsDefaults(userId);

@@ -28,11 +28,11 @@ export const REPORT_STATUSES = ["new", "reviewing", "resolved"] as const;
  *   submissions then get only REPORT_HEADROOM_HOURLY_LIMIT per hour, so a flood
  *   cannot take the final slots in minutes. The same share also triggers the
  *   operator warning.
- * - REPORT_SOURCE_SHARE: one network source may use this share of the remaining
+ * - REPORT_SOURCE_SHARE: one reporter may use this share of the remaining
  *   capacity per rolling day (never less than one report). Sources are
- *   identified by a keyed digest of the address; no raw address is stored. When
- *   no trusted address is known, no per-source check applies and only the
- *   global limits do.
+ *   identified by a keyed digest of an address or of the reporter's anonymous
+ *   cookie token; neither raw value is stored. The route supplies the stable
+ *   reporter identity even when no address is trusted.
  */
 export const REPORT_HOURLY_LIMIT = 12;
 export const REPORT_DAILY_LIMIT = 60;
@@ -326,6 +326,31 @@ export async function createSecurityReport(
 }
 
 /**
+ * Webhook deliveries have a 30-day retention policy, but their own pruner only
+ * runs after a dispatch finds matching targets - an idle webhook never prunes.
+ * instrumentation.ts calls pruneReportSources() from its scheduled maintenance
+ * pass, so piggyback there (this module owns that scheduled path). Gate it to at
+ * most once an hour and never let a delivery-cleanup failure break the report
+ * source cleanup that the privacy notice depends on.
+ */
+const DELIVERY_PRUNE_INTERVAL_MS = 3_600_000;
+let lastDeliveryPruneAt = 0;
+
+export async function pruneWebhookDeliveries(now = new Date()): Promise<boolean> {
+  const at = Date.now();
+  if (at - lastDeliveryPruneAt < DELIVERY_PRUNE_INTERVAL_MS) return false;
+  lastDeliveryPruneAt = at;
+  const { pruneDeliveries } = await import("@/server/webhooks");
+  await pruneDeliveries(now);
+  return true;
+}
+
+/** Test hook: allow the hourly gate to be exercised again in the next case. */
+export function resetDeliveryPruneForTests(): void {
+  lastDeliveryPruneAt = 0;
+}
+
+/**
  * Delete source digests older than a day. A submission does this too, but the
  * privacy notice promises one day, so it must not depend on another report arriving.
  */
@@ -334,6 +359,11 @@ export async function pruneReportSources(now = new Date()): Promise<void> {
   await db
     .delete(schema.auditLog)
     .where(and(eq(schema.auditLog.action, SOURCE_ACTION), lt(schema.auditLog.at, new Date(now.getTime() - DAY_MS))));
+  try {
+    await pruneWebhookDeliveries(now);
+  } catch (err) {
+    console.warn("webhook delivery retention failed", err instanceof Error ? err.message : err);
+  }
 }
 
 /**

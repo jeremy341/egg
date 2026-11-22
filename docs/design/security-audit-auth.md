@@ -20,14 +20,16 @@ Built since the audit:
 - **Body cap for signed-in JSON routes.** `src/server/body-limit.ts` `readJsonLimited` caps at 256 KB (`JSON_BODY_LIMIT`) and answers 413. `readJson` in `src/server/http.ts` uses it, and so do the routes that read the body themselves (`src/app/api/servers/[id]/route.ts`, `.../servers/[id]/test/route.ts`, `.../projects/[id]/terminal/route.ts`). File uploads keep their own limit (`UPLOAD_LIMIT`, 50 MB). Closes the old "Not fixed" item on `readJson`.
 - **`TRUST_PROXY`.** `src/server/config.ts` `trustProxyEnabled`, `src/server/rate-limit.ts` `pickClientIp` and `clientIp`, and `.env.example` (`TRUST_PROXY=0`). Off by default: `X-Forwarded-For` and `X-Real-IP` are ignored, so a client can no longer pick its own address. On, the right-most `X-Forwarded-For` entry is used. Side effect: with it off there is no address, so the sign-in and bad-token limits do not apply.
 - **Rate-limited sign-in message.** `src/lib/login-errors.ts` has `rate_limited`; `src/server/auth/throttle.ts` redirects with that code. Closes the old "Not fixed" item on the login page.
+- **Analytics collector body cap (added after this audit).** `src/app/api/collect/[key]/route.ts` uses `readTextLimited(req, 5000)` before parsing and answers 413 with its CORS headers, so a chunked or oversized body is never buffered. Closes the old "Still open" item 2.
+- **Development sign-in body cap (added after this audit).** `src/app/api/auth/dev/route.ts` parses the form through `readTextLimited(req, 1024)`. The route still returns 404 in production. Closes the old "Still open" item 4.
 - **Analytics privacy** (new public surface, `src/app/api/collect/[key]/route.ts`): no cookie; referrer host only (`analytics-fields.ts` `cleanReferrer`); campaign values cut to 80 (`UTM_MAX`); no address column in `pageviews` (`src/server/db/schema.ts`); Do Not Track and Global Privacy Control respected by the script (`analytics-script.ts`) and by the collector (`analytics-events.ts` `optedOut`); the returning-visitor id lives in local storage, only while retention is on, and Egg stores an HMAC of it with a key that changes every 90 days (`analytics.ts` `retentionCode`).
 
 ## Still open
 
 1. **CSP nonce.** `script-src` still has `'unsafe-inline'`. A nonce breaks the app under `cacheComponents: true`: pages are prerendered, so their start-up scripts exist before any request and cannot carry a per-request nonce. Two ways to fix it: turn `cacheComponents` off, or use Next's experimental SRI mode. Not chosen yet. `next.config.ts` explains it.
-2. **Public analytics beacon has no body cap.** `src/app/api/collect/[key]/route.ts` calls `req.text()` and only then keeps the first 5,000 characters. Use `readTextLimited` from `src/server/body-limit.ts`.
-3. **Limits are per process, and address limits need `TRUST_PROXY`.** `src/server/rate-limit.ts` and the collector's in-memory windows (`analytics.ts`, `analytics-events.ts`). With `TRUST_PROXY` off, `src/app/api/collect/[key]/route.ts` treats every visitor as `0.0.0.0`, so the collector's one-page-view-a-second limit applies to a project as a whole.
-4. **`api/auth/dev` reads a form body with no cap.** `src/app/api/auth/dev/route.ts`. It returns 404 in production, so this is a development-only gap.
+2. **Limits are per process, and address limits need `TRUST_PROXY`.** `src/server/rate-limit.ts` and the collector's in-memory windows (`analytics.ts`, `analytics-events.ts`). With `TRUST_PROXY` off, `src/app/api/collect/[key]/route.ts` treats every visitor as `0.0.0.0`, so the collector's one-page-view-a-second limit applies to a project as a whole. This is a deployment choice (see `docs/selfhost/README.md`), not an unfixed code defect.
+
+The two former items here, the analytics beacon body cap and the development sign-in body cap, were fixed after this audit; see "Built since the audit" above.
 
 Date: 2026-11-06. Scope: `web/src/proxy.ts`, `server/auth/**`, `api-tokens.ts`, `api-v1*.ts`, `mcp.ts`, `http.ts`, `rate-limit.ts`, `crypto.ts`, `app/api/auth|tokens`, `next.config.ts`. Each fix has a test written first (or alongside, for route glue).
 
@@ -55,9 +57,11 @@ Date: 2026-11-06. Scope: `web/src/proxy.ts`, `server/auth/**`, `api-tokens.ts`, 
 - CSRF: every cookie-backed write uses `handle()`. `skipOriginCheck` is only on bearer or token-keyed routes (v1, mcp, hooks, collect, webhooks).
 - Errors: 500s are generic; the callback maps all failures to fixed codes; MCP logs only the error name. No bearer value, session token or secret is logged.
 
-## Not fixed
+## Old "Not fixed" list, now resolved
 
-- CSP keeps `'unsafe-inline'` for scripts because Next.js inlines hydration scripts. A per-request nonce in `proxy.ts` is the stronger fix.
-- `readJson` (cookie routes) has no body cap beyond the 50 MB proxy limit; callers are signed in. File upload routes need the large limit.
-- Address-based limits are per process and trust the proxy's `X-Forwarded-For`. Without a proxy header nothing is limited.
-- The login page has no message for `error=rate_limited` (UI is out of scope); it shows the generic sign-in error.
+Kept for history. Each item was closed after this audit was written (checked 2026-11-22):
+
+- **CSP keeps `'unsafe-inline'` for scripts:** still open, see "Still open" 1 above. `proxy.ts` nonce is not in place.
+- **`readJson` (cookie routes) has no body cap:** **fixed** by `src/server/body-limit.ts` (`readJsonLimited`, 256 KB) used by `src/server/http.ts`. File upload routes keep their own 50 MB limit on purpose.
+- **Address-based limits are per process and trust `X-Forwarded-For`:** still open, see "Still open" 2 above. With no proxy header the sign-in and bad-token limits do not apply.
+- **The login page has no message for `error=rate_limited`:** **fixed**. `src/lib/login-errors.ts` defines `rate_limited` and the sign-in page shows its message.

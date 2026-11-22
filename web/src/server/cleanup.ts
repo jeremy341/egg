@@ -4,7 +4,7 @@ import { audit } from "@/server/audit";
 import { config } from "@/server/config";
 import { newId } from "@/server/crypto";
 import { getDb, schema } from "@/server/db";
-import { DEFAULT_UNIT_DIR, unitName } from "@/server/deploy/layout";
+import { DEFAULT_UNIT_DIR, serverDiscriminator, unitName } from "@/server/deploy/layout";
 import { cleanupOwnedProject } from "@/server/deploy/remote";
 import { jobUnitNames } from "@/server/scheduled-jobs";
 import { HttpError, notFound } from "@/server/http";
@@ -390,13 +390,15 @@ async function cleanItem(userId: string, itemId: string, deps: CleanupDeps, now:
       and(eq(schema.deployments.projectId, project.id), eq(schema.deployments.env, "preview"), eq(schema.deployments.cleanedUp, false))
     );
     const warnings: string[] = [];
+    const scope = serverDiscriminator(server.id);
     const res = await session.script(cleanupOwnedProject({
       home: probe.home,
       slug: project.slug,
+      scope,
       units: [
-        unitName(project.slug),
-        ...previews.map((p) => unitName(project.slug, { releaseId: p.releaseId })),
-        ...(await jobUnitNames(project.id, project.slug)),
+        unitName(project.slug, undefined, scope),
+        ...previews.map((p) => unitName(project.slug, { releaseId: p.releaseId }, scope)),
+        ...(await jobUnitNames(project.id, project.slug, scope)),
       ],
       unitDir: deps.unitDir,
       docker: project.deploymentMode !== "native",

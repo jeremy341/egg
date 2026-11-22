@@ -4,6 +4,8 @@ import { createProject, listProjects, projectResponse } from "@/server/projects"
 
 export const GET = handle(async () => {
   const user = await authed();
+  // listProjects is scoped by projectReadableBy, so a shared project shows up
+  // here just as it does on the dashboard (projectViews) and in v1 list_projects.
   return ok({ projects: (await listProjects(user.id)).map(projectResponse) });
 });
 

@@ -58,7 +58,7 @@ describe("Compose volume mounts", () => {
     const input = (volumes: unknown[]) => ({ services: { web: { image: "img", volumes } }, volumes: { data: {} } });
     expect(validateResolvedCompose(input(["data:/app:/junk"]), { service: "web", containerPort: null, project: "egg-demo" }).errors)
       .toEqual([expect.stringMatching(/declared named volumes/)]);
-    expect(validateComposeSpec(input(["data:/app:/junk"]))).toEqual([expect.stringMatching(/volume mount/)]);
+    expect(validateComposeSpec(input(["data:/app:/junk"]))).toEqual([expect.stringMatching(/named volumes/)]);
   });
   it("renders exactly what was validated", () => {
     const resolved = { services: { web: { image: "img", volumes: ["data:/app:ro", "data:/storage"] } }, volumes: { data: {} } };

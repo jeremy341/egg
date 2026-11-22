@@ -84,6 +84,7 @@ export async function readBytesLimited(req: Pick<Request, "headers" | "body">, m
  */
 export class InFlightLimit {
   private active = 0;
+  private epoch = 0;
 
   constructor(readonly max: number) {}
 
@@ -91,9 +92,10 @@ export class InFlightLimit {
   acquire(): (() => void) | null {
     if (this.active >= this.max) return null;
     this.active++;
+    const epoch = this.epoch;
     let held = true;
     return () => {
-      if (!held) return;
+      if (!held || epoch !== this.epoch) return;
       held = false;
       this.active--;
     };
@@ -102,14 +104,68 @@ export class InFlightLimit {
   get inFlight(): number {
     return this.active;
   }
+
+  /** Forget all held slots (tests only). Old release handles become no-ops. */
+  reset(): void {
+    this.active = 0;
+    this.epoch++;
+  }
 }
 
 /** Unauthenticated webhook body reads in progress at once. Each can hold up to its route's cap. */
 export const webhookBodyReads = new InFlightLimit(4);
 
-/** The same, as UTF-8 text. */
-export async function readTextLimited(req: Request, maxBytes: number): Promise<string> {
-  return (await readBytesLimited(req, maxBytes)).toString("utf8");
+/**
+ * The same idea, keyed: at most `perKey` slots may be held at once for any one
+ * key. Used by the webhook's pre-read gate so a single client address cannot
+ * fill the shared unverified budget. Keys are derived from trusted addresses
+ * (or a claim), never from raw user input stored anywhere.
+ */
+export class KeyedInFlight {
+  private readonly active = new Map<string, number>();
+  private epoch = 0;
+
+  constructor(readonly perKey: number) {}
+
+  /** A release function when this key has room, or null when it is at its cap. */
+  acquire(key: string): (() => void) | null {
+    const n = this.active.get(key) ?? 0;
+    if (n >= this.perKey) return null;
+    this.active.set(key, n + 1);
+    const epoch = this.epoch;
+    let held = true;
+    return () => {
+      if (!held || epoch !== this.epoch) return;
+      held = false;
+      const left = (this.active.get(key) ?? 1) - 1;
+      if (left <= 0) this.active.delete(key);
+      else this.active.set(key, left);
+    };
+  }
+
+  /** Forget all held keys (tests only). Old release handles become no-ops. */
+  reset(): void {
+    this.active.clear();
+    this.epoch++;
+  }
+
+  /** How many keys currently hold a slot (for observability/tests). */
+  get size(): number {
+    return this.active.size;
+  }
+
+  /** Slots currently held by one key. */
+  inFlight(key: string): number {
+    return this.active.get(key) ?? 0;
+  }
+}
+
+/** Timing knobs shared by the body-reading helpers; undefined keeps the old, unbounded behaviour. */
+export type ReadTiming = Pick<ReadBytesOptions, "idleTimeoutMs" | "deadlineMs">;
+
+/** The same, as UTF-8 text. Timing options are forwarded to the byte reader. */
+export async function readTextLimited(req: Request, maxBytes: number, opts: ReadTiming = {}): Promise<string> {
+  return (await readBytesLimited(req, maxBytes, opts)).toString("utf8");
 }
 
 /** Default cap for JSON bodies on signed-in routes. File uploads keep their own, larger limits. */
@@ -122,9 +178,12 @@ export const JSON_BODY_LIMIT = 256 * 1024;
  */
 export async function readJsonLimited(
   req: Request,
-  opts: { maxBytes?: number; fallback?: unknown } = {}
+  opts: { maxBytes?: number; fallback?: unknown } & ReadTiming = {}
 ): Promise<unknown> {
-  const text = await readTextLimited(req, opts.maxBytes ?? JSON_BODY_LIMIT);
+  const text = await readTextLimited(req, opts.maxBytes ?? JSON_BODY_LIMIT, {
+    idleTimeoutMs: opts.idleTimeoutMs,
+    deadlineMs: opts.deadlineMs,
+  });
   try {
     return JSON.parse(text);
   } catch {

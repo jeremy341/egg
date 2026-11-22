@@ -179,10 +179,13 @@ async function getDevelopableProject(userId: string, projectId: string): Promise
 
 export async function listProjects(userId: string) {
   const db = await getDb();
+  // Shared projects show up on the dashboard and in v1 list_projects, so this
+  // surface must agree: list everything the person can read, not only what they
+  // own. projectReadableBy keeps the same semantics as those other views.
   return db
     .select()
     .from(schema.projects)
-    .where(eq(schema.projects.userId, userId))
+    .where(projectReadableBy(userId))
     .orderBy(desc(schema.projects.createdAt));
 }
 
@@ -467,8 +470,13 @@ export async function setEnvVar(userId: string, projectId: string, raw: unknown)
   const project = await assertOwned(userId, projectId);
   const db = await getDb();
 
-  await db.transaction(async (tx) => {
+  await withLockRetry(() => db.transaction(async (tx) => {
     await assertCleanupAllowsWork(tx, userId, project.id);
+    const valueEnc = seal(input.value, `env:${project.id}:${input.key}:${input.target}`);
+    // Only a genuinely new variable consumes the 100-variable budget. The
+    // existence check, the count and the write all live in the same write
+    // transaction (BEGIN IMMEDIATE), so two concurrent different keys cannot
+    // both see a free slot and push the project past the cap.
     const existing = await tx
       .select({ id: schema.envVars.id })
       .from(schema.envVars)
@@ -480,10 +488,7 @@ export async function setEnvVar(userId: string, projectId: string, raw: unknown)
         )
       )
       .get();
-    const valueEnc = seal(input.value, `env:${project.id}:${input.key}:${input.target}`);
-    if (existing) {
-      await tx.update(schema.envVars).set({ valueEnc }).where(eq(schema.envVars.id, existing.id));
-    } else {
+    if (!existing) {
       const count = await tx
         .select({ n: sql<number>`count(*)` })
         .from(schema.envVars)
@@ -492,16 +497,21 @@ export async function setEnvVar(userId: string, projectId: string, raw: unknown)
       if ((count?.n ?? 0) >= 100) {
         throw new HttpError(400, "A project can have up to 100 variables.", "limit");
       }
-      await tx.insert(schema.envVars).values({
-        id: newId(),
-        projectId: project.id,
-        key: input.key,
-        valueEnc,
-        target: input.target,
-        createdAt: new Date(),
-      });
     }
-  });
+    // One upsert: concurrent same-key writes collapse to a single row (last
+    // write wins) instead of one succeeding and the other failing on the index.
+    await tx.insert(schema.envVars).values({
+      id: newId(),
+      projectId: project.id,
+      key: input.key,
+      valueEnc,
+      target: input.target,
+      createdAt: new Date(),
+    }).onConflictDoUpdate({
+      target: [schema.envVars.projectId, schema.envVars.key, schema.envVars.target],
+      set: { valueEnc },
+    });
+  }));
   await audit(userId, "env.set", project.id, { name: input.key, target: input.target });
 }
 
@@ -587,6 +597,13 @@ export async function enqueueDeployment(
   input: NewDeployment,
   jobType: "deploy" | "rollback" = "deploy"
 ): Promise<DeploymentRow> {
+  // Compose previews cannot share the production Compose project: aux services,
+  // networks and named volumes are keyed by project name, so a preview would
+  // overwrite the live stack. Refuse when the deployment is queued, not after
+  // the build has run. Production and rollbacks are unaffected.
+  if (jobType === "deploy" && input.env === "preview" && project.deploymentMode === "compose") {
+    throw new HttpError(400, "Pull request previews are not available for Compose projects. Deploy the branch to production instead.", "validation");
+  }
   const db = await getDb();
   const id = newId();
   const enqueue = () => db.transaction(async (tx) => {

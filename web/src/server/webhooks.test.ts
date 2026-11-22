@@ -7,6 +7,7 @@ import { useFreshDb } from "@/server/test/db";
 import type { Lookup, SendRequest, Transport } from "@/server/webhook-net";
 import { signWebhook, verifyWebhookSignature } from "@/server/webhook-sign";
 import {
+  createPruneScheduler,
   createWebhook,
   deleteWebhook,
   dispatchDeploymentEvent,
@@ -458,5 +459,63 @@ describe("delivery history", () => {
     // An empty list changes nothing.
     await forgetDeliveriesForDeployments(ctx.db, []);
     expect(await ctx.db.select().from(schema.webhookDeliveries)).toHaveLength(3);
+  });
+});
+
+describe("delivery response timestamps", () => {
+  it("returns the exact timestamps that were stored, even as the clock advances", async () => {
+    const { webhook } = await createWebhook(sam, { url: URL_OK });
+    const t0 = new Date("2026-04-01T00:00:00.000Z");
+    const times = [t0, new Date(t0.getTime() + 1000), new Date(t0.getTime() + 2000), new Date(t0.getTime() + 3000)];
+    let i = 0;
+    const now = () => times[Math.min(i++, times.length - 1)];
+
+    const result = await sendTestWebhook(sam, webhook.id, { lookup: PUBLIC, transport: recorder().transport, sleep, now });
+    const stored = await ctx.db
+      .select()
+      .from(schema.webhookDeliveries)
+      .where(eq(schema.webhookDeliveries.id, result.id))
+      .get();
+
+    expect(result.createdAt).toBe(stored!.createdAt.toISOString());
+    expect(result.finishedAt).toBe(stored!.finishedAt!.toISOString());
+    expect(result.createdAt).not.toBe(result.finishedAt);
+  });
+});
+
+describe("prune scheduling", () => {
+  const at = new Date("2030-01-01T00:00:00.000Z");
+
+  it("does not advance the timestamp after a failed prune", async () => {
+    const prune = vi.fn(async () => {
+      throw new Error("db down");
+    });
+    const run = createPruneScheduler(prune);
+    await expect(run(at)).rejects.toThrow("db down");
+    await expect(run(at)).rejects.toThrow("db down");
+    expect(prune).toHaveBeenCalledTimes(2);
+  });
+
+  it("coalesces concurrent prunes and skips the rest of the hour", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const prune = vi.fn(async () => {
+      await gate;
+    });
+    const run = createPruneScheduler(prune);
+
+    const first = run(at);
+    const second = run(new Date(at.getTime() + 1000));
+    expect(prune).toHaveBeenCalledTimes(1);
+    expect(second).toBe(first);
+    release();
+    await Promise.all([first, second]);
+
+    await run(new Date(at.getTime() + 60_000));
+    expect(prune).toHaveBeenCalledTimes(1);
+    await run(new Date(at.getTime() + 3_600_001));
+    expect(prune).toHaveBeenCalledTimes(2);
   });
 });

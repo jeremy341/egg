@@ -1,10 +1,15 @@
 import { createHmac } from "node:crypto";
 import { NextRequest } from "next/server";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { webhookBodyReads } from "@/server/body-limit";
 import { resetConfigForTests } from "@/server/config";
 import { closeDbForTests, getDb } from "@/server/db";
-import { POST } from "@/app/api/webhooks/github/route";
+import {
+  POST,
+  resetWebhookAdmissionForTests,
+  webhookPreReads,
+  webhookPreReadsBySource,
+} from "@/app/api/webhooks/github/route";
 import { HttpError } from "@/server/http";
 import { rateLimiter } from "@/server/rate-limit-core";
 import { handleGithubEvent, isSafeBranch, isSafeSha } from "@/server/github/webhook";
@@ -43,6 +48,12 @@ function signed(body: string, headers: Record<string, string> = {}) {
 }
 
 describe("GitHub webhook route", () => {
+  beforeEach(() => resetWebhookAdmissionForTests());
+  afterEach(() => {
+    delete process.env.TRUST_PROXY;
+    resetWebhookAdmissionForTests();
+  });
+
   it("answers a signed ping", async () => {
     const res = await POST(signed('{"ping":"initial"}', { "x-github-delivery": "d-1" }));
     expect(res.status).toBe(200);
@@ -153,26 +164,82 @@ describe("GitHub webhook route", () => {
     expect((await pending).status).toBe(401);
   });
 
-  it("answers 503 with Retry-After when four bodies are already being read, and frees the slots afterwards", async () => {
+  it("caps unverified starts at three so one body-read slot stays reserved, and frees them afterwards", async () => {
     const body = '{"ping":"busy"}';
     const sinks: Sink[] = [];
-    const reads = [1, 2, 3, 4].map(() => POST(stalled(signedHeaders(body, {}), sinks)));
-    expect(webhookBodyReads.inFlight).toBe(4);
+    const reads = [1, 2, 3].map(() => POST(stalled(signedHeaders(body, {}), sinks)));
+    expect(webhookPreReads.inFlight).toBe(3);
+    expect(webhookBodyReads.inFlight).toBe(3);
 
     const busy = await POST(stalled(signedHeaders(body, {}), []));
     expect(busy.status).toBe(503);
     expect(busy.headers.get("Retry-After")).toBe("5");
+    expect(webhookBodyReads.inFlight).toBe(3);
 
-    // Wrong bodies fail after they arrive. Each failure must return its slot.
+    // Wrong bodies fail after they arrive. Each failure must return its slots.
     for (const sink of sinks) {
       sink.enqueue(enc.encode('{"ping":"tampered"}'));
       sink.close();
     }
     for (const res of await Promise.all(reads)) expect(res.status).toBe(401);
     expect(webhookBodyReads.inFlight).toBe(0);
+    expect(webhookPreReads.inFlight).toBe(0);
 
     const ok = await POST(signed('{"ping":"after-busy"}', { "x-github-delivery": "d-after-busy" }));
     expect(ok.status).toBe(200);
+  });
+
+  it("caps unverified starts per address so one source cannot fill the global budget", async () => {
+    process.env.TRUST_PROXY = "1";
+    const body = '{"ping":"per-source"}';
+    const sinks: Sink[] = [];
+    const first = POST(stalled(signedHeaders(body, { "x-forwarded-for": "10.0.0.1, 198.51.100.10" }), sinks));
+    expect(webhookPreReadsBySource.inFlight("198.51.100.10")).toBe(1);
+
+    // Same trusted source (right-most XFF entry), second concurrent start: 503
+    // even though the global counter still has room.
+    const second = await POST(stalled(signedHeaders(body, { "x-forwarded-for": "10.0.0.2, 198.51.100.10" }), []));
+    expect(second.status).toBe(503);
+    expect(webhookBodyReads.inFlight).toBe(1);
+
+    // A different address still gets a slot.
+    const other = POST(stalled(signedHeaders(body, { "x-forwarded-for": "10.0.0.3, 198.51.100.11" }), sinks));
+    expect(webhookBodyReads.inFlight).toBe(2);
+
+    for (const sink of sinks) {
+      sink.enqueue(enc.encode(body));
+      sink.close();
+    }
+    for (const res of await Promise.all([first, other])) expect(res.status).toBe(200);
+  });
+
+  it("lets a verified source use the reserved slot during a trickle flood", async () => {
+    process.env.TRUST_PROXY = "1";
+    const body = '{"ping":"known"}';
+    // A first verified delivery from this address makes it a known source.
+    const first = await POST(signed(body, { "x-forwarded-for": "10.0.0.1, 203.0.113.5", "x-github-delivery": "d-known" }));
+    expect(first.status).toBe(200);
+
+    // Three different unverified sources fill the global pre-read budget.
+    const sinks: Sink[] = [];
+    const floods = ["203.0.113.10", "203.0.113.11", "203.0.113.12"].map((addr) =>
+      POST(stalled(signedHeaders(body, { "x-forwarded-for": `9.9.9.9, ${addr}` }), sinks))
+    );
+    expect(webhookPreReads.inFlight).toBe(3);
+    expect(webhookBodyReads.inFlight).toBe(3);
+
+    // Another unverified source is turned away, but the known one still gets in
+    // through the reserved body-read slot and is never banned.
+    const extra = await POST(stalled(signedHeaders(body, { "x-forwarded-for": "9.9.9.9, 203.0.113.13" }), []));
+    expect(extra.status).toBe(503);
+    const known = await POST(signed('{"ping":"known-retry"}', { "x-forwarded-for": "10.0.0.1, 203.0.113.5", "x-github-delivery": "d-known-retry" }));
+    expect(known.status).toBe(200);
+
+    for (const sink of sinks) {
+      sink.enqueue(enc.encode(body));
+      sink.close();
+    }
+    for (const res of await Promise.all(floods)) expect(res.status).toBeLessThan(500);
   });
 
   it("never lets unverified signatures burn the global ceiling a real delivery needs", async () => {

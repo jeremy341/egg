@@ -8,6 +8,7 @@ import {
   countOrphanedJobs,
   recoverStaleJobs,
   startWorker,
+  type Job,
 } from "@/server/jobs";
 import { cancelDeployment, createProject, deployBranch, type ProjectRow } from "@/server/projects";
 import { connectToServer, createServer, getServerForUser } from "@/server/servers";
@@ -146,6 +147,9 @@ describe("queue", () => {
     expect(await recoverStaleJobs()).toBe(1);
     const row = await ctx.db.select().from(schema.deployments).where(eq(schema.deployments.id, dep.id)).get();
     expect(row?.state).toBe("queued");
+    // The fix must not simply count every running row: a healthy lease is not stale.
+    await ctx.db.update(schema.jobs).set({ lockedAt: new Date() }).where(eq(schema.jobs.id, job!.id));
+    expect(await recoverStaleJobs()).toBe(0);
   });
 });
 
@@ -216,4 +220,57 @@ describe.skipIf(!linuxTestHostAvailable())("worker", () => {
     // The deploy runs through the mock WSL and SSH stack, whose speed depends on machine load.
     // This test gets its own ceiling because the suite default (20s) is shorter than the wait below.
   }, WORKER_TEST_TIMEOUT_MS);
+});
+
+describe("worker shutdown support", () => {
+  it("reports unfinished job ids and aborts in-flight jobs before a forced exit", async () => {
+    const job = { id: "shutdown-job", deploymentId: "shutdown-dep", lockedBy: "shutdown-worker" } as Job;
+    let claimed = false;
+    let markProcessing!: (id: string) => void;
+    const processing = new Promise<string>((resolve) => {
+      markProcessing = resolve;
+    });
+    let releaseProcess!: () => void;
+    const processGate = new Promise<void>((resolve) => {
+      releaseProcess = resolve;
+    });
+    let markAborted!: () => void;
+    const aborted = new Promise<void>((resolve) => {
+      markAborted = resolve;
+    });
+
+    const worker = startWorker({
+      workerId: "shutdown-test",
+      pollMs: 60_000,
+      monitorMs: 0,
+      statusMs: 0,
+      workerOps: {
+        claimNextJob: async () => {
+          if (claimed) return null;
+          claimed = true;
+          return job;
+        },
+        processJob: async (claimedJob, _deps, signal) => {
+          markProcessing(claimedJob.id);
+          if (signal?.aborted) markAborted();
+          else signal?.addEventListener("abort", () => markAborted(), { once: true });
+          await processGate;
+        },
+      },
+    });
+
+    try {
+      expect(await processing).toBe(job.id);
+      expect(worker.unfinishedJobIds()).toEqual([job.id]);
+      expect(worker.workerId).toBe("shutdown-test");
+      // The deadline path in worker/index.ts uses these two operations to log the
+      // stranded jobs and stop their lease watchers before process.exit.
+      worker.abort();
+      await aborted;
+    } finally {
+      releaseProcess();
+      await worker.stop();
+    }
+    expect(worker.unfinishedJobIds()).toEqual([]);
+  });
 });
