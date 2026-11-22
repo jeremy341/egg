@@ -264,10 +264,10 @@ type EnvVar = { id: string; key: string; target: "all" | "production" | "preview
  */
 export function EnvImportButton({
   projectId,
-  existing,
   onImported,
 }: {
   projectId: string;
+  /** Kept for callers; the import re-reads the authoritative list itself. */
   existing: string[];
   onImported: (env: EnvVar[]) => void;
 }) {
@@ -294,10 +294,10 @@ export function EnvImportButton({
         });
         return;
       }
-      // Re-read immediately before importing: `existing` is a snapshot from when the
-      // settings page rendered. Another tab or a token may have created a variable
-      // since then, and POST /env is an upsert — importing a stale "missing" name
-      // would overwrite its saved value with an empty string.
+      // Re-read immediately before importing: the prop from the settings page is a
+      // snapshot. Another tab or a token may have created a variable since then,
+      // and POST /env is an upsert — importing a stale "missing" name would
+      // overwrite its saved value with an empty string.
       const fresh = await api<{ env: EnvVar[] }>(`/api/projects/${projectId}/env`);
       const have = new Set(fresh.env.map((e) => e.key));
       const missing = read.detection.env.map((e) => e.name).filter((n) => !have.has(n));

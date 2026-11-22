@@ -702,7 +702,7 @@ The built-in static server (used for static sites, with Python 3 or Node.js) ans
 | --- | --- | --- |
 | "Invalid environment configuration:" followed by `APP_SECRET: Invalid input: expected string, received undefined` | `APP_SECRET` is not set. | Run `pnpm run setup`, or set a secret of 32 or more characters. |
 | `APP_SECRET: APP_SECRET must be at least 32 characters` | The secret is empty or too short. | Use a longer one. |
-| `LOCAL_MODE: Invalid option: expected one of "0"\|"1"\|"true"\|"false"` | The value is empty, upper case (`TRUE`), or a word like `yes`. This applies to every on or off setting. | Use `0`, `1`, `true` or `false`. |
+| `LOCAL_MODE: Expected 0, 1, true or false` | The value is a word like `yes` or a number like `2`. Case and surrounding whitespace are ignored, so `TRUE` and ` 1 ` are accepted. This applies to every on or off setting. | Use `0`, `1`, `true` or `false`. |
 | `LOCAL_MODE_SECRET: LOCAL_MODE requires a private LOCAL_MODE_SECRET.` | `LOCAL_MODE=1` with no recovery key. | Add a random `LOCAL_MODE_SECRET` of at least 32 characters. `pnpm run setup` will not touch an existing file. |
 | `LOCAL_MODE_SECRET: LOCAL_MODE_SECRET must be at least 32 characters` | The key is too short. | Use a longer one. |
 | `LOCAL_MODE: LOCAL_MODE signs anyone in as the owner, so APP_URL must be localhost or 127.0.0.1.` | `LOCAL_MODE=1` but `APP_URL` is not a local address. | Set `APP_URL=http://localhost:3000`, or read the override above. |
