@@ -1,7 +1,7 @@
 import { connection, NextResponse, type NextRequest } from "next/server";
 import { createAuthRequest } from "@/server/auth/hackclub";
 import { throttleSignIn } from "@/server/auth/throttle";
-import { OAUTH_COOKIE } from "@/server/auth/session";
+import { oauthCookieOptions, oauthStateCookieName } from "@/server/auth/oauth-cookie";
 import { config, hackClubConfigured } from "@/server/config";
 
 export async function GET(req: NextRequest) {
@@ -18,15 +18,9 @@ export async function GET(req: NextRequest) {
   const auth = createAuthRequest();
   const res = NextResponse.redirect(auth.url, 303);
   res.cookies.set(
-    OAUTH_COOKIE,
+    oauthStateCookieName(),
     JSON.stringify({ s: auth.state, v: auth.codeVerifier }),
-    {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-      path: "/",
-      maxAge: 600,
-    }
+    oauthCookieOptions()
   );
   return res;
 }

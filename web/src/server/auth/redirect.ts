@@ -23,6 +23,8 @@ const oauthCookie = z.object({
   v: z.string().min(1),
   p: z.literal("reauth").optional(),
   n: z.string().optional(),
+  /** Hash of the session token that started a reauth; required for reauth by the callback. */
+  r: z.string().optional(),
 });
 export type OauthCookie = z.infer<typeof oauthCookie>;
 

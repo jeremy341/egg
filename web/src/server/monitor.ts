@@ -2,7 +2,7 @@ import { and, desc, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 import { audit } from "@/server/audit";
 import { prunePageviews } from "@/server/analytics";
 import { getDb, schema } from "@/server/db";
-import { unitName } from "@/server/deploy/layout";
+import { serverDiscriminator, unitName } from "@/server/deploy/layout";
 import { serviceStatus } from "@/server/deploy/remote";
 import { openAlert, pruneAlertEvents, resolveAlert } from "@/server/notify";
 import { withServerSession } from "@/server/servers";
@@ -237,7 +237,7 @@ async function checkServer(server: typeof schema.servers.$inferSelect, now: Date
     for (let i = 0; i < projects.length; i += 8) batches.push(projects.slice(i, i + 8));
     await monitorServers(batches, async (batch) => {
       const script = batch.map((p, i) => `printf '\\nEGG_STATUS_${i}\\n'\n` +
-        serviceStatus({ unit: unitName(p.slug), port: p.workloadKind === "worker" ? null : p.port, path: p.healthPath })).join("\n");
+        serviceStatus({ unit: unitName(p.slug, undefined, serverDiscriminator(server.id)), port: p.workloadKind === "worker" ? null : p.port, path: p.healthPath })).join("\n");
       const r = await s.script(script, { timeoutMs: 20_000 * batch.length, maxOutputBytes: 64 * 1024 * batch.length });
       if (r.code !== 0) return;
       const parts = r.stdout.split(/\nEGG_STATUS_(\d+)\n/);

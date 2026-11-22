@@ -8,6 +8,13 @@ import { HttpError } from "@/server/http";
  */
 export const MAX_DEPLOYMENT_STREAMS_PER_USER = 3;
 
+/**
+ * Instance-wide ceiling on deployment log streams held at once, across every signed-in user. The per-user cap above
+ * stops one account from parking the process; this one stops many accounts together from doing the same. Each stream
+ * polls the database and lives for up to fifteen minutes, so the process-wide number has to be bounded too.
+ */
+export const MAX_DEPLOYMENT_STREAMS_TOTAL = 24;
+
 const KEY = Symbol.for("egg.deployment-streams");
 
 function counts(): Map<string, number> {
@@ -20,7 +27,18 @@ function counts(): Map<string, number> {
  * slot; calling it again does nothing. A stream that is never freed is dropped by the route's expiry timer.
  */
 export function takeDeploymentStream(userId: string): () => void {
-  const mine = counts().get(userId) ?? 0;
+  const all = counts();
+  let total = 0;
+  for (const n of all.values()) total += n;
+  if (total >= MAX_DEPLOYMENT_STREAMS_TOTAL) {
+    throw new HttpError(
+      429,
+      "Too many deployment log streams are open. Wait for one to finish and try again.",
+      "rate_limited",
+      { "Retry-After": "30" }
+    );
+  }
+  const mine = all.get(userId) ?? 0;
   if (mine >= MAX_DEPLOYMENT_STREAMS_PER_USER) {
     throw new HttpError(
       429,

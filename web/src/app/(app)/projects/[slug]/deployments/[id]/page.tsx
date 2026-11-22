@@ -17,7 +17,6 @@ import { Button } from "@/components/ui/button";
 import { requireUser } from "@/server/auth/current";
 import { deploymentTimeline } from "@/server/deployment-timeline";
 import { deploymentLogs } from "@/server/projects";
-import { getProjectRole } from "@/server/project-roles";
 import { deploymentView } from "@/server/queries";
 
 type Props = { params: Promise<{ slug: string; id: string }> };
@@ -47,8 +46,6 @@ async function Content({ params }: Props) {
   }
   const { deployment: d, project, domains } = data;
   if (project.slug !== slug) notFound();
-  // A viewer can read the deployment but the server refuses every action, so the actions stay hidden.
-  const canAct = (await getProjectRole(user.id, project.id)) !== "viewer";
 
   const logs = (await deploymentLogs(user.id, id)).map((l) => ({
     id: l.id,
@@ -94,7 +91,7 @@ async function Content({ params }: Props) {
                 <span className="sr-only">(opens in a new tab)</span>
               </Button>
             ) : null}
-            <DeploymentActions deployment={d} canAct={canAct} />
+            <DeploymentActions deployment={d} />
           </>
         }
       />

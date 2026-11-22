@@ -1,6 +1,6 @@
 # Customising Egg
 
-Everything here is a change to a file in `web/`. Line numbers are correct for the commit this guide was written against; if a line has moved, search for the quoted text. Restart Egg (`pnpm egg start`), or run `pnpm build` again, after a change.
+Everything here is a change to a file in `web/`. Find the places by the file, variable or quoted text below rather than by line number: lines move as the code changes. Restart Egg (`pnpm egg start`), or run `pnpm build` again, after a change.
 
 Back to the [self-hosting guide](README.md).
 
@@ -8,18 +8,17 @@ Back to the [self-hosting guide](README.md).
 
 The name is not one setting. It is written out in the places below, and each one currently says "Egg".
 
-| What you see | File and line | Text to change |
+| What you see | File | Text to change |
 | --- | --- | --- |
-| Browser tab title and its template | `web/src/app/layout.tsx:21` and `:22` | `"Egg"` and `"%s \| Egg"` |
-| Sign-in page heading and sentence | `web/src/app/(auth)/login/page.tsx:94` and `:137` | `Log in to Egg` and `It doesn't give Egg access to your server` |
-| Sign-in page logo label | `web/src/app/(auth)/login/page.tsx:84` | `aria-label="Egg, home"` |
-| Sidebar logo label | `web/src/components/sidebar.tsx:61` | `aria-label="Egg home"` |
-| Top bar logo label | `web/src/components/top-bar.tsx:56` | `aria-label="Egg home"` |
-| Setup flow logo label | `web/src/app/(flow)/layout.tsx:31` | `aria-label="Egg home"` |
-| "Page not found" page | `web/src/app/not-found.tsx:20` and `:22` | label and the visible name |
-| Public header name | `web/src/app/(marketing)/layout.tsx:48` and `:50` | `Egg` |
-| Public footer name | `web/src/app/(marketing)/layout.tsx:82` and `web/src/components/marketing/footer-switch.tsx:22` | `Egg` |
-| Mark's accessible title | `web/src/components/egg-mark.tsx:35` | `<title>Egg</title>` |
+| Browser tab title and its template | `web/src/app/layout.tsx` | the `metadata.title` default `"Egg"` and template `"%s \| Egg"` |
+| Sign-in page heading, sentence and logo label | `web/src/app/(auth)/login/page.tsx` | `Log in to Egg`, `It doesn't give Egg access to your server` and `aria-label="Egg, home"` |
+| Sidebar logo label | `web/src/components/sidebar.tsx` | `aria-label="Egg home"` |
+| Top bar logo label | `web/src/components/top-bar.tsx` | `aria-label="Egg home"` |
+| Setup flow logo label | `web/src/app/(flow)/layout.tsx` | `aria-label="Egg home"` |
+| "Page not found" page | `web/src/app/not-found.tsx` | `aria-label="Egg, home"` and the visible name |
+| Public header name | `web/src/app/(marketing)/layout.tsx` | `aria-label="Egg, home"` and the visible `Egg` link text |
+| Public footer name and status link | `web/src/app/(marketing)/layout.tsx` and `web/src/components/marketing/footer-switch.tsx` | `Egg` and the `Nest status` link label |
+| Mark's accessible title | `web/src/components/egg-mark.tsx` | `<title>Egg</title>` |
 
 Most of the app's sentences, such as "Egg builds it and runs it on your Nest server", also contain the name. To find all of them, run this from the repo root:
 
@@ -33,37 +32,30 @@ The marketing pages and the docs pages have their own copy and are separate from
 
 ## Colours
 
-Colours are CSS variables in `web/src/app/globals.css`. Light mode is the `:root` block, which starts at line 157. Dark mode is the `.dark` block, which starts at line 302. A colour you change in one needs changing in the other, or the two modes will disagree.
+Colours are CSS variables in `web/src/app/globals.css`. The `:root` block is Egg Light and the `.dark` block is Egg Dark, the two defaults. Every other built-in theme is a `[data-theme-preset="<id>"]` block in the same file (dark themes also carry the `.dark` class). Change a variable in every theme block where it appears, or the themes will disagree.
 
-### The accent colour
+There is no separate accent-colour chooser any more. On the Settings page each person picks a **light theme** and a **dark theme**, or turns on **Match my device** to use both. The list comes from `PRESETS` in `web/src/lib/preferences.ts`; `egg-light` and `egg-dark` are the defaults and the boot script sets no `data-theme-preset` attribute for them. Old accent cookie values are still recognised and mapped through `LEGACY_ACCENT_PRESET`, but they are never written again.
 
-The accent is used for focus rings, links, selection and the current-production pill.
+People can also build their own colour theme in the Settings theme editor. A custom theme starts from eight colours: Page background, Card surface, Border, Text, Muted text, Primary, Link and Danger. The remaining tokens (grey steps, tints, focus ring, hover, status colours and text on buttons) are derived from those eight, with a contrast check. Custom themes are saved per account (up to 20, `CUSTOM_THEME_LIMIT`), can be exported and imported as JSON (VS Code theme files can also be imported), and are selected as `custom:<id>`. The token list lives in `web/src/lib/custom-theme.ts`; add new tokens at the end of `THEME_TOKENS`, never in the middle, because the cookie and the `--ct-<n>` variables use their position.
 
-Each person can already pick Neutral, Blue, Green or Violet for themselves on the Settings page, with no code change. Blue, Green and Violet are the `[data-accent]` blocks that follow the dark block in the same file, and Neutral is the default values below. Change the variables below to change the colour everyone starts with.
+### What everyone starts with
 
-| Variable | Light line | Dark line | Used for |
-| --- | --- | --- | --- |
-| `--brand` | 270 | 361 | The accent itself. Currently `var(--ds-blue-700)`. |
-| `--brand-foreground` | 271 | 362 | Text on top of the accent. Currently `#ffffff`. |
-| `--brand-soft` | 272 | 363 | A pale background tint. Currently `var(--ds-blue-100)`. |
-| `--brand-text` | 273 | 364 | Accent-coloured text. Currently `var(--ds-blue-900)`. |
+To change the default colours for people who have not picked a theme, edit the variables by name in the `:root` and `.dark` blocks of `globals.css`:
 
-The quickest change is to give `--brand` a value of your own, for example `--brand: hsl(142 70% 38);`, and adjust `--brand-soft` and `--brand-text` to match. The blue scale they point to is defined at lines 204 to 206 (light) and 323 to 325 (dark), if you would rather change the scale.
+| Variable | Used for |
+| --- | --- |
+| `--brand` | The accent: focus rings, links, selection and the current-production pill |
+| `--brand-foreground` | Text on top of the accent |
+| `--brand-soft` | A pale background tint |
+| `--brand-text` | Accent-coloured text |
+| `--background`, `--foreground` | Page background and main text |
+| `--primary`, `--primary-foreground` | Primary buttons and their text |
+| `--destructive`, `--success` | Delete/error and success states |
+| `--status-ready` | The "Ready" dot |
 
-Check that `--brand-text` is still readable on `--brand-soft`, and that white text is readable on `--brand`.
+The values may point at a `--ds-*` scale in the same file. Change a scale to move a whole family of greys or reds at once, or replace the `var(...)` with a colour of your own to change one use. Check that `--brand-text` is readable on `--brand-soft`, and that `--brand-foreground` is readable on `--brand`.
 
-### Other colours
-
-| Variable | Light line | What it colours |
-| --- | --- | --- |
-| `--background` | 239 | Page background |
-| `--foreground` | 241 | Main text |
-| `--primary` | 246 | Primary buttons |
-| `--destructive` | 256 | Delete and error actions |
-| `--success` | 262 | Success states |
-| `--status-ready` | 265 | The "Ready" dot |
-
-Most of these point at a `--ds-*` scale in the same file. Change the scale to move a whole family of greys or reds at once, or replace the `var(...)` with a colour of your own to change one use.
+To add, rename or remove a built-in theme, change both sides: its `[data-theme-preset="<id>"]` block in `globals.css` and its `PRESETS` entry in `web/src/lib/preferences.ts` (id, label, scheme and swatch). Keep the id and the selector in step, and keep one light and one dark default available for "Match my device".
 
 ## The build memory and CPU limits
 
@@ -86,8 +78,8 @@ Egg uses three ports, and each one has to be changed in two places so they agree
 | Port | Default | Change it | Then also set |
 | --- | --- | --- | --- |
 | The website | 3000 | Set `APP_URL=http://localhost:4000` in `web/.env.local`. `pnpm egg start` and the start-on-login service listen on that port. Or `PORT=4000 pnpm start`, or `pnpm dev --port 4000` | `APP_URL` must match whichever you use |
-| The stand-in server (`pnpm fake-nest`) | 2222 | `FAKE_NEST_PORT=2223 pnpm fake-nest` (read at `web/scripts/fake-nest.ts:30`) | `NEST_PORT=2223` in `web/.env.local` |
-| The SSH port Egg connects to | 22 | `NEST_PORT` in `web/.env.local` (defined in `web/src/server/config.ts`) | Only change it with `fake-nest` |
+| The stand-in server (`pnpm fake-nest`) | 2222 | `FAKE_NEST_PORT=2223 pnpm fake-nest` (the `FAKE_NEST_PORT` variable in `web/scripts/fake-nest.ts`) | `NEST_PORT=2223` in `web/.env.local` |
+| The SSH port Egg connects to | 22 | `NEST_PORT` in `web/.env.local` (the `NEST_PORT` field in `web/src/server/config.ts`) | Only change it with `fake-nest` |
 
 On Windows PowerShell, set a variable for one command with `$env:PORT = "4000"; pnpm start`. If you used `pnpm run service:install`, run it again after a port change so the service file has the new port.
 

@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { audit } from "@/server/audit";
 import { getDb, schema } from "@/server/db";
-import { DEFAULT_UNIT_DIR, unitName } from "@/server/deploy/layout";
+import { DEFAULT_UNIT_DIR, serverDiscriminator, unitName } from "@/server/deploy/layout";
 import { config } from "@/server/config";
 import { removePreview, removeProject, runtimeLogs, startUnit } from "@/server/deploy/remote";
 import { journalSince, type LogLevel, type LogRange } from "@/lib/log-filter";
@@ -77,7 +77,7 @@ export async function fetchRuntimeLogPage(
   let res;
   try {
     res = await withServerSession(server, (s) =>
-      s.script(runtimeLogs(unitName(project.slug), asked, since, cursor ? cursor.at + 1 : undefined), {
+      s.script(runtimeLogs(unitName(project.slug, undefined, serverDiscriminator(server.id)), asked, since, cursor ? cursor.at + 1 : undefined), {
         timeoutMs: 30_000,
       })
     );
@@ -98,11 +98,11 @@ export async function fetchRuntimeLogPage(
 
 /** Restart the production service without building anything. */
 export async function restartService(userId: string, projectId: string) {
-  await requireProjectRole(userId, projectId, "developer");
+  await requireProjectRole(userId, projectId, "owner");
   const project = await getReadableProject(userId, projectId);
   const server = await getServerForUser(project.userId, project.serverId);
   const res = await withServerSession(server, (s) =>
-    s.script(startUnit(unitName(project.slug)), { timeoutMs: 30_000 })
+    s.script(startUnit(unitName(project.slug, undefined, serverDiscriminator(server.id))), { timeoutMs: 30_000 })
   );
   if (res.code !== 0) {
     throw new HttpError(502, "Could not restart the service. It may not be deployed yet.", "upstream");
@@ -160,6 +160,7 @@ export async function removeProjectFromServer(
 ) {
   const project = await getProjectForUser(userId, projectId);
   const server = await getServerForUser(userId, project.serverId);
+  const scope = serverDiscriminator(server.id);
   // Same source as the deploy pipeline, so a removal looks where the unit was installed.
   const unitDir = options.unitDir ?? (config().UNIT_DIR || DEFAULT_UNIT_DIR);
   const db = await getDb();
@@ -183,9 +184,10 @@ export async function removeProjectFromServer(
           home: probe.home,
           slug: project.slug,
           releaseId: p.releaseId,
-          unit: unitName(project.slug, { releaseId: p.releaseId }),
+          unit: unitName(project.slug, { releaseId: p.releaseId }, scope),
           unitDir,
           docker: project.deploymentMode !== "native",
+          scope,
         }),
         { timeoutMs: 60_000 }
       );
@@ -194,9 +196,9 @@ export async function removeProjectFromServer(
       }
     }
     // Timers first, so none of them starts a job in a release that is about to be deleted.
-    const jobUnits = await jobUnitNames(project.id, project.slug);
+    const jobUnits = await jobUnitNames(project.id, project.slug, scope);
     if (jobUnits.length > 0) {
-      const result = await s.script(removeUnits(unitDir, jobUnits, project.slug), { timeoutMs: 60_000 });
+      const result = await s.script(removeUnits(unitDir, jobUnits, project.slug, scope), { timeoutMs: 60_000 });
       if (result.code !== 0) {
         throw new HttpError(502, "Could not remove scheduled jobs from your container.", "upstream");
       }
@@ -205,10 +207,11 @@ export async function removeProjectFromServer(
       removeProject({
         home: probe.home,
         slug: project.slug,
-        unit: unitName(project.slug),
+        unit: unitName(project.slug, undefined, scope),
         unitDir,
         deleteData: options.deleteData ?? false,
         docker: project.deploymentMode !== "native",
+        scope,
       }),
       { timeoutMs: 60_000 }
     );

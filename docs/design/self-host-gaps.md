@@ -12,9 +12,9 @@ Without Hack Club, a production instance has exactly one account, the local owne
 
 - The only code that creates a user is `upsertUser` (`server/auth/session.ts:17`), called from the Hack Club callback (`app/api/auth/callback/route.ts:57`), the development sign-in (`app/api/auth/dev/route.ts:35`, disabled in production), and the local sign-in with the fixed id `local:owner` (`app/api/auth/local/route.ts:18`, `:72`, `:85`).
 - There is no other provider. `server/auth/hackclub.ts:4` hard-codes `https://auth.hackclub.com`.
-- Project members and invitations exist as API routes (`app/api/projects/[id]/members`, `app/api/project-invitations/accept`) but an invitee still needs an account, so on an instance without Hack Club they cannot sign in. No dashboard screen exists for them either.
+- Projects are single-owner. Project collaboration (members, invitations and roles) was removed on 2026-11-22, so there are no member/invitation routes any more.
 
-Effect: a family, class or team cannot share one instance unless every member has a Hack Club account. Workaround: one Egg per person, or Hack Club Auth.
+Effect: a family, class or team cannot share one instance unless every member has a Hack Club account, and Egg has no project-level sharing. Workaround: one Egg per person, or Hack Club Auth.
 
 ### 2. Email and password sign-in cannot be turned on without Hack Club (medium)
 
@@ -85,6 +85,6 @@ Related to 3: with Hack Club absent and local mode off, Terminal and File change
 ## Suggested order
 
 1. Items 2 and 3 first: they are small and remove the only confusing dead ends for a local owner.
-2. Item 1, with a plain "create a user" path for an instance owner, which also makes the invitation API useful.
+2. Item 1, with a plain "create a user" path for an instance owner so more than one person can sign in.
 3. Item 6: a documented, tested path for the GitHub App, and a way to run without a webhook secret on localhost.
 4. Items 4 and 5 together, as a "plain Linux server" target: a host field, a key-install message that is not Nest's, and an address step that writes a proxy snippet.

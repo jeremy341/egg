@@ -257,7 +257,7 @@ export function buildSteps(spec: {
  * A `df` or `du` that is missing, fails or prints something unreadable is a warning (once), and
  * that check is skipped: the build is never stopped for what the watchdog could not read.
  */
-export function diskWatchdogStartScript(a: { scope: string; cacheRoot?: string }): string {
+export function diskWatchdogStartScript(a: { scope: string; cacheRoot?: string; docker?: boolean }): string {
   if (!/^egg-build-[0-9a-f]{8}$/.test(a.scope)) throw new ContainerBuildError("The build scope name is not valid.");
   const unit = shellQuote(`${a.scope}.scope`);
   const floor = BUILD_DISK_FLOOR_MB;
@@ -265,6 +265,12 @@ export function diskWatchdogStartScript(a: { scope: string; cacheRoot?: string }
   return [
     `egg_wd_marker="$dir/${DISK_STOP_MARKER}"`,
     `egg_wd_area="\${dir%/*}"`,
+    // Docker keeps images and build cache outside the release area. A build that
+    // fills that daemon storage can still strand the container, so watch it too.
+    `egg_wd_docker_root=""`,
+    ...(a.docker ? [
+      `if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then egg_wd_docker_root=$(docker info -f '{{.DockerRootDir}}' 2>/dev/null || true); fi`,
+    ] : []),
     `egg_wd_parent=$$`,
     `egg_wd_stop() {`,
     `  local n=0 cg p sent`,
@@ -300,6 +306,11 @@ export function diskWatchdogStartScript(a: { scope: string; cacheRoot?: string }
     `      *)`,
     `        if [ "$free" -lt ${floor} ]; then egg_wd_trip floor "free=\${free}MB limit=${floor}MB"; exit ${EXIT_DISK_FLOOR}; fi;;`,
     `    esac`,
+    `    if [ -n "$egg_wd_docker_root" ] && [ -d "$egg_wd_docker_root" ]; then`,
+    `      dfree=""`,
+    `      if command -v df >/dev/null 2>&1; then dfree=$(df -Pm "$egg_wd_docker_root" 2>/dev/null | awk 'NR==2 {print $4}'); fi`,
+    `      if [[ "$dfree" =~ ^[0-9]+$ ]] && [ "$dfree" -lt ${floor} ]; then egg_wd_trip docker "free=\${dfree}MB limit=${floor}MB"; exit ${EXIT_DISK_FLOOR}; fi`,
+    `    fi`,
     `    if [ $((tick % ${DISK_SIZE_EVERY_TICKS})) -eq 0 ]; then`,
     `      used=""`,
     `      if command -v du >/dev/null 2>&1; then used=$(du -sm "$dir" 2>/dev/null | awk 'NR==1 {print $1}'); fi`,
@@ -350,6 +361,7 @@ export function diskWatchdogEndScript(): string {
     `  floor) code=${EXIT_DISK_FLOOR};;`,
     `  budget) code=${EXIT_DISK_BUDGET};;`,
     `  cache) code=${EXIT_DISK_BUDGET};;`,
+    `  docker) code=${EXIT_DISK_FLOOR};;`,
     `  *) disk=""`,
     `     case "$egg_wd_status" in`,
     `       ${EXIT_DISK_FLOOR}) disk=floor; code=${EXIT_DISK_FLOOR};;`,
@@ -433,7 +445,7 @@ export function cappedBuildScript(a: {
     `dir=${shellQuote(dir)}\nenvfile=${shellQuote(envFile)}\n` +
     `inner=${shellQuote(inner)}\n` +
     // The disk watchdog runs beside the build, outside its scope, and ends with it.
-    diskWatchdogStartScript({ scope, cacheRoot }) +
+    diskWatchdogStartScript({ scope, cacheRoot, docker: a.docker }) +
     // Also remove the variables file when this script ends however it ends (a hangup, a TERM).
     `trap 'kill "$egg_wd_pid" 2>/dev/null; rm -f "$envfile"' EXIT\n` +
     `${run}\ncode=$?\n` +
@@ -696,6 +708,17 @@ export async function runContainerBuild(a: ContainerBuildInput): Promise<{ memor
   const buildWork = dockerMode || steps.length > 0;
   const memoryCapMb = buildWork ? containerMemoryCapMb(a.memoryMb, a.containerMemoryMb, dockerMode || Boolean(a.built.spec.buildCommand)) : 0;
   const cpuPercent = cpuQuotaPercent(a.cpuCores);
+  if (dockerMode) {
+    // The systemd scope below caps the build process tree, but the Docker
+    // daemon does the actual image build and its buildkit workers live outside
+    // that scope. Give `docker build` its own limits so one project cannot eat
+    // the container's memory or CPU while the app keeps serving.
+    const memoryArg = `--memory=${memoryCapMb}m`;
+    const cpusArg = `--cpus=${Math.max(0.1, Number((cpuPercent / 100).toFixed(2)))}`;
+    steps = steps.map((s) => s.command.startsWith("docker build ")
+      ? { ...s, command: s.command.replace(/^docker build /, `docker build ${memoryArg} ${cpusArg} `) }
+      : s);
+  }
 
   /** True once a cleanup has been tried. The cleanup returns true only when the build's scope is confirmed stopped. */
   let discarded = false;

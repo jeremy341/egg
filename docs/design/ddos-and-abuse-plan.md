@@ -4,6 +4,8 @@ Status: plan written on 2026-11-14 from a read of `web/src/server/rate-limit.ts`
 
 **Update, 2026-11-16 (checked against the code): Layer 3 is built, and part of Layer 4.** Layers 1 and 2 are not.
 
+**Revision, 2026-11-22:** Layer 3 is unchanged. Layer 4 counters exist in `web/src/server/backend-metrics.ts`, but no alert and no admin screen showing the 429/request-volume spike was found, so the "unverified" note below still stands. A CI workflow now exists (`.github/workflows/ci.yml`) and validates `deploy/Caddyfile` with Caddy 2; the older claim in `docs/design/security-audit-deps.md` that no CI workflow existed was wrong and has been corrected there. Layers 1 and 2 remain owner decisions.
+
 - Every request the proxy sees is limited per client address (`ingress`, 600 a minute), the public JSON routes `/api/stats`, `/api/public/*` and `/api/status/*` have a stricter limit on top (`ingressJson`, 60 a minute), and a request whose address is unknown shares one high ceiling (`ingressGlobal`). See `RATE_LIMITS` in `web/src/server/rate-limit-core.ts` and `web/src/proxy.ts`.
 - The four routes the proxy matcher skips apply their own address limit: build upload, file write and the security-report intake call `enforceIngress`, and the GitHub webhook calls `admitRequest` with its own `ingressWebhook` bucket (600 a minute). So gap 1 is closed.
 - An address that gets 300 refusals in 5 minutes is banned for 15 minutes (`INGRESS_BAN`). Gap 6 is closed.

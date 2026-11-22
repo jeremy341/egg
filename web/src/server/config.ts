@@ -1,11 +1,21 @@
+import { isIP } from "node:net";
 import { z } from "zod";
 
 /**
  * Environment configuration. Read lazily so `next build` works without
  * secrets; the first request (or the worker start) validates everything.
+ * Normalize case and whitespace here so every boolean uses one parser: the
+ * rate-limit path reads TRUST_PROXY straight from the environment with the
+ * same trimming, and a value like "TRUE" must not be accepted there and
+ * rejected here (which used to 500 every request on startup).
  */
 const bool = z
-  .enum(["0", "1", "true", "false"])
+  .string()
+  .trim()
+  .toLowerCase()
+  .refine((v) => v === "0" || v === "1" || v === "true" || v === "false", {
+    message: "Expected 0, 1, true or false",
+  })
   .default("0")
   .transform((v) => v === "1" || v === "true");
 
@@ -20,10 +30,15 @@ export function trustProxyEnabled(env: Record<string, string | undefined> = proc
   return v === "1" || v === "true";
 }
 
-/** True for localhost, any 127.x.x.x address and ::1. Anything else is a remote address. */
+/** True for localhost, any real 127.x.x.x address and ::1. Anything else is a remote address. */
 export function isLoopbackHost(host: string): boolean {
   const h = host.trim().toLowerCase().replace(/^\[|\]$/g, "");
-  return h === "localhost" || h === "::1" || /^127(\.\d{1,3}){3}$/.test(h);
+  if (h === "localhost" || h === "::1") return true;
+  if (isIP(h) !== 4 || !h.startsWith("127.")) return false;
+  return h.split(".").every((part) => {
+    const n = Number(part);
+    return part.length > 0 && n >= 0 && n <= 255 && String(n) === part;
+  });
 }
 
 const schema = z
@@ -76,7 +91,15 @@ const schema = z
       });
     }
     if (!c.LOCAL_MODE || c.LOCAL_MODE_ALLOW_REMOTE) return;
-    if (isLoopbackHost(new URL(c.APP_URL).hostname)) return;
+    let hostname: string;
+    try {
+      hostname = new URL(c.APP_URL).hostname;
+    } catch {
+      // The .url() check on APP_URL already reports the invalid value; don't
+      // throw a raw TypeError out of the refinement and hide that message.
+      return;
+    }
+    if (isLoopbackHost(hostname)) return;
     ctx.addIssue({
       code: "custom",
       path: ["LOCAL_MODE"],

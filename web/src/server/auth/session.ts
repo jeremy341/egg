@@ -3,8 +3,9 @@ import { getDb, schema } from "@/server/db";
 import { newId, randomToken, sha256Hex } from "@/server/crypto";
 
 export const SESSION_COOKIE = "egg_session";
-export const OAUTH_COOKIE = "egg_oauth";
 export const SESSION_DAYS = 30;
+// OAuth state cookie names live in `@/server/auth/oauth-cookie`: they depend on
+// whether APP_URL is HTTPS (__Host- prefix) and this module must not own them.
 
 export type SessionUser = {
   id: string;
@@ -146,14 +147,27 @@ export async function markFreshAuth(token: string, now = new Date()): Promise<vo
     .where(eq(schema.sessions.id, sha256Hex(token)));
 }
 
-/** True when this session confirmed with Hack Club within the window. */
-export async function isFreshAuth(token: string | undefined, now = Date.now()): Promise<boolean> {
+/**
+ * True when this session confirmed with Hack Club within the window.
+ * Pass `userId` at every authorization call site so a fresh session belonging
+ * to another account can never satisfy someone else's step-up check.
+ */
+export async function isFreshAuth(
+  token: string | undefined,
+  now = Date.now(),
+  userId?: string
+): Promise<boolean> {
   if (!token) return false;
   const db = await getDb();
   const row = await db
     .select({ freshAuthAt: schema.sessions.freshAuthAt })
     .from(schema.sessions)
-    .where(eq(schema.sessions.id, sha256Hex(token)))
+    .where(
+      and(
+        eq(schema.sessions.id, sha256Hex(token)),
+        ...(userId ? [eq(schema.sessions.userId, userId)] : [])
+      )
+    )
     .get();
   return !!row?.freshAuthAt && now - row.freshAuthAt.getTime() <= REAUTH_WINDOW_MS;
 }

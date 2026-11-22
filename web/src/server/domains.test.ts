@@ -8,8 +8,10 @@ import {
   cnameTarget,
   dashboardInstructions,
   normalizeDomain,
+  PENDING_CLAIM_MAX_AGE_MS,
   removeDomain,
   txtValue,
+  updateDomain,
   verifyDomain,
   type Resolver,
 } from "@/server/domains";
@@ -159,22 +161,73 @@ describe("domain records", () => {
     await removeDomain(userId, mine.domain.id);
   });
 
-  it("does not reclaim an old pending claim its owner still actively updates", async () => {
+  it("reclaims an old pending claim even when its owner keeps re-pointing or checking it", async () => {
     const other = (await upsertUser({ id: "u-active", name: "Active", email: null, slackId: null })).id;
     const otherServer = (await createServer(other, "active-r")).id;
     const added = await addDomain(other, { serverId: otherServer, domain: "old-but-ours.example.com", port: 3000 });
     const db = await getDb();
-    // Added eight days ago, but the owner still points it at a project today:
-    // the reclaim window runs from the owner's last action, not the add date.
+    // Added outside the reclaim window, but the owner still presses Check and re-points it
+    // today. Only `createdAt` counts, so neither action can keep the claim alive.
     await db.update(schema.domains)
-      .set({ createdAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000) })
+      .set({
+        createdAt: new Date(Date.now() - PENDING_CLAIM_MAX_AGE_MS - 60_000),
+        updatedAt: new Date(),
+        lastCheckedAt: new Date(),
+      })
       .where(eq(schema.domains.id, added.domain.id));
-    await db.update(schema.domains)
-      .set({ projectId: null, port: 3001, status: "pending", lastCheckedAt: null, updatedAt: new Date() })
-      .where(eq(schema.domains.id, added.domain.id));
+    await updateDomain(other, added.domain.id, { port: 3001 });
 
-    await expect(addDomain(userId, { serverId, domain: "old-but-ours.example.com", port: 3000 })).rejects.toMatchObject({ status: 409 });
-    await removeDomain(other, added.domain.id);
+    const mine = await addDomain(userId, { serverId, domain: "old-but-ours.example.com", port: 3002 });
+    expect(mine.domain).toMatchObject({ domain: "old-but-ours.example.com", userId, status: "pending", port: 3002 });
+    expect(await db.select().from(schema.domains).where(eq(schema.domains.domain, "old-but-ours.example.com"))).toHaveLength(1);
+    await removeDomain(userId, mine.domain.id);
+  });
+
+  it("lets the owner reclaim their own stale pending row", async () => {
+    const db = await getDb();
+    const stale = await addDomain(userId, { serverId, domain: "my-stale.example.net", port: 3000 });
+    await db.update(schema.domains)
+      .set({ createdAt: new Date(Date.now() - PENDING_CLAIM_MAX_AGE_MS - 60_000), updatedAt: new Date() })
+      .where(eq(schema.domains.id, stale.domain.id));
+
+    const fresh = await addDomain(userId, { serverId, domain: "my-stale.example.net", port: 4000 });
+    expect(fresh.domain.id).not.toBe(stale.domain.id);
+    expect(fresh.domain.port).toBe(4000);
+    expect(fresh.domain.status).toBe("pending");
+    expect(await db.select().from(schema.domains).where(eq(schema.domains.domain, "my-stale.example.net"))).toHaveLength(1);
+    await removeDomain(userId, fresh.domain.id);
+  });
+
+  it("keeps a fresh pending claim by the same user reserved", async () => {
+    const fresh = await addDomain(userId, { serverId, domain: "my-fresh.example.net", port: 3000 });
+    await expect(addDomain(userId, { serverId, domain: "my-fresh.example.net", port: 3001 })).rejects.toMatchObject({ status: 409 });
+    await removeDomain(userId, fresh.domain.id);
+  });
+
+  it("refuses arbitrary subdomains of Hack Club's other suffixes, but allows a verified one", async () => {
+    await expect(addDomain(userId, { serverId, domain: "club.hackclub.com", port: 3000 })).rejects.toMatchObject({
+      status: 400,
+      message: "That name is reserved. Choose another domain.",
+    });
+    await expect(addDomain(userId, { serverId, domain: "club.hackclub.dev", port: 3000 })).rejects.toMatchObject({ status: 400 });
+
+    const db = await getDb();
+    // A verified row under the protected suffix can only exist if it was proved by DNS;
+    // insert one directly to stand in for a domain this user legitimately owns.
+    await db.insert(schema.domains).values({
+      id: "owned-protected-suffix",
+      userId,
+      serverId,
+      domain: "owned-club.hackclub.com",
+      port: 3000,
+      status: "valid",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    const sub = await addDomain(userId, { serverId, domain: "app.owned-club.hackclub.com", port: 3001 });
+    expect(sub.domain.domain).toBe("app.owned-club.hackclub.com");
+    await removeDomain(userId, sub.domain.id);
+    await removeDomain(userId, "owned-protected-suffix");
   });
 
   it("keeps a recent pending claim by another user reserved", async () => {
@@ -296,6 +349,48 @@ describe("DNS check", () => {
     const r = await verifyDomain(userId, domain.id, resolver(dnsError("ENODATA"), ["203.0.113.7"]));
     expect(r.status).toBe("valid");
   });
+
+  it("keeps the answer and the stored status in agreement for a Nest name DNS cannot see", async () => {
+    const { domain } = await addDomain(userId, { serverId, domain: "unresolved.sam-r.hackclub.app", port: 3000 });
+    const db = await getDb();
+    const read = async () => (await db.select().from(schema.domains).where(eq(schema.domains.id, domain.id)).get())!;
+    const before = (await read()).updatedAt;
+    const r = await verifyDomain(userId, domain.id, resolver(dnsError("ENODATA")));
+    expect(r.status).toBe("valid");
+    expect((await read()).status).toBe("valid");
+    expect((await read()).updatedAt).toEqual(before);
+    expect(r.reason).toContain("Nest dashboard");
+  });
+
+  it("never calls a Nest name invalid, even after a port change left it pending", async () => {
+    const { domain } = await addDomain(userId, { serverId, domain: "pending-nest.sam-r.hackclub.app", port: 3000 });
+    const db = await getDb();
+    await db.update(schema.domains).set({ status: "pending" }).where(eq(schema.domains.id, domain.id));
+    const r = await verifyDomain(userId, domain.id, resolver(dnsError("ENODATA")));
+    expect(r.status).toBe("unknown");
+    expect((await db.select().from(schema.domains).where(eq(schema.domains.id, domain.id)).get())!.status).toBe("pending");
+  });
+
+  it("only refreshes the stale-claim clock when verification actually succeeds", async () => {
+    const { domain } = await addDomain(userId, { serverId, domain: "clock.example.com", port: 3000 });
+    const db = await getDb();
+    const read = async () => (await db.select().from(schema.domains).where(eq(schema.domains.id, domain.id)).get())!;
+    const before = (await read()).updatedAt;
+
+    const missing = await verifyDomain(userId, domain.id, resolver(dnsError("ENODATA")));
+    expect(missing.status).toBe("invalid");
+    const afterMissing = await read();
+    expect(afterMissing.status).toBe("pending");
+    expect(afterMissing.updatedAt).toEqual(before);
+    expect(afterMissing.lastCheckedAt).not.toBeNull();
+
+    const unknown = await verifyDomain(userId, domain.id, resolver(dnsError("ETIMEOUT")));
+    expect(unknown.status).toBe("unknown");
+    expect((await read()).updatedAt).toEqual(before);
+
+    await verifyDomain(userId, domain.id, resolver(["sam-r.hackclub.app"]));
+    expect((await read()).updatedAt.getTime()).toBeGreaterThanOrEqual(before.getTime());
+  });
 });
 
 describe("active domain re-check", () => {
@@ -339,5 +434,17 @@ describe("active domain re-check", () => {
       resolverFor(dnsError("ENODATA"))
     );
     expect([...warned].sort()).toEqual(["c", "p"]);
+  });
+
+  it("never warns about a Nest name, even after a missing DNS result was cached", async () => {
+    clearDnsCache();
+    const { domain } = await addDomain(userId, { serverId, domain: "warnless.sam-r.hackclub.app", port: 3000 });
+    await verifyDomain(userId, domain.id, resolverFor(dnsError("ENODATA")));
+    const warned = await activeDomainWarnings(
+      [row(domain.id, domain.domain, "valid")],
+      resolverFor(dnsError("ENODATA"))
+    );
+    expect(warned.size).toBe(0);
+    await removeDomain(userId, domain.id);
   });
 });

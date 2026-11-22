@@ -77,6 +77,9 @@ describe("enforceRateLimit", () => {
     expect(RATE_LIMITS.fileWrite.limit).toBe(60);
     expect(RATE_LIMITS.orphanRemoval.limit).toBe(10);
     expect(RATE_LIMITS.sshCall).toMatchObject({ limit: 10, windowMs: 60_000 });
+    expect(RATE_LIMITS.repoDetect).toMatchObject({ limit: 10, windowMs: 60_000 });
+    expect(RATE_LIMITS.notifyTest).toMatchObject({ limit: 5, windowMs: 60_000 });
+    expect(RATE_LIMITS.bulkSsh).toMatchObject({ limit: 20, windowMs: 60_000 });
     expect(RATE_LIMITS.serviceRestart).toMatchObject({ limit: 6, windowMs: 60_000 });
     expect(RATE_LIMITS.buildUpload).toMatchObject({ limit: 20, windowMs: 60 * 60_000 });
     expect(RATE_LIMITS.buildEnv).toMatchObject({ limit: 30, windowMs: 60 * 60_000 });
@@ -113,6 +116,21 @@ describe("enforceRateLimit", () => {
     expect(() => enforceRateLimit("sshCall", "u1")).toThrow(HttpError);
     expect(() => enforceRateLimit("sshCall", "u2")).not.toThrow();
     expect(() => enforceRateLimit("serviceRestart", "u1")).not.toThrow();
+    rateLimiter().clear();
+  });
+
+  it("caps repository detection and notification tests per user in their own buckets", () => {
+    rateLimiter().clear();
+    for (let i = 0; i < RATE_LIMITS.repoDetect.limit; i++) enforceRateLimit("repoDetect", "u1");
+    expect(() => enforceRateLimit("repoDetect", "u1")).toThrow(HttpError);
+    expect(() => enforceRateLimit("repoDetect", "u2")).not.toThrow();
+    for (let i = 0; i < RATE_LIMITS.notifyTest.limit; i++) enforceRateLimit("notifyTest", "u1");
+    expect(() => enforceRateLimit("notifyTest", "u1")).toThrow(HttpError);
+    expect(() => enforceRateLimit("notifyTest", "u2")).not.toThrow();
+    // The per-item bulk bucket is shared by both bulk routes through the same user key.
+    for (let i = 0; i < RATE_LIMITS.bulkSsh.limit; i++) enforceRateLimit("bulkSsh", "u1");
+    expect(() => enforceRateLimit("bulkSsh", "u1")).toThrow(HttpError);
+    expect(() => enforceRateLimit("bulkSsh", "u2")).not.toThrow();
     rateLimiter().clear();
   });
 

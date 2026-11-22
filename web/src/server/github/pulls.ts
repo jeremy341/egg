@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { config } from "@/server/config";
 import { getDb, schema } from "@/server/db";
-import { unitName } from "@/server/deploy/layout";
+import { serverDiscriminator, unitName } from "@/server/deploy/layout";
 import { removePreview } from "@/server/deploy/remote";
 import { GithubError, headers, installationToken } from "@/server/github/app";
 import { withServerSession } from "@/server/servers";
@@ -177,9 +177,10 @@ async function removeCanceledPreviews(projectId: string, prNumber: number): Prom
               home: probe.home,
               slug: project.slug,
               releaseId: d.releaseId,
-              unit: unitName(project.slug, { releaseId: d.releaseId }),
+              unit: unitName(project.slug, { releaseId: d.releaseId }, serverDiscriminator(server.id)),
               unitDir: config().UNIT_DIR,
               docker: project.deploymentMode !== "native",
+              scope: serverDiscriminator(server.id),
             }),
             { timeoutMs: 60_000 }
           )

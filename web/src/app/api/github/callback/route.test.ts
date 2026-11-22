@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { NextRequest } from "next/server";
 import { resetConfigForTests } from "@/server/config";
 import { createOAuthStateBinding } from "@/server/auth/oauth-state";
+import { githubStateCookieName } from "@/server/auth/oauth-cookie";
 
 const APP = "https://deploy.example.com";
 const USER = { id: "usr_1", name: "Sam", email: null, hackClubId: "ident!sam" };
@@ -53,13 +54,13 @@ const req = (path: string, cookie?: string) =>
   new NextRequest(`${APP}${path}`, { headers: cookie ? { cookie } : {} });
 const setCookie = (res: Response, name: string) => res.headers.getSetCookie().find((c) => c.startsWith(`${name}=`)) ?? "";
 const valueOf = (cookie: string) => decodeURIComponent(cookie.split(";")[0].split("=").slice(1).join("="));
-const stateCookie = (value: string) => `egg_gh_state=${encodeURIComponent(value)}`;
+const stateCookie = (value: string) => `${githubStateCookieName()}=${encodeURIComponent(value)}`;
 const bound = (userId: string, state = STATE) => createOAuthStateBinding(userId, state);
 
 describe("GitHub linking state", () => {
   it("sets a user-bound state cookie at the root path", async () => {
     const res = await connect();
-    const cookie = setCookie(res, "egg_gh_state");
+    const cookie = setCookie(res, githubStateCookieName());
     expect(cookie).toMatch(/Path=\/(?:;|$)/i);
     expect(valueOf(cookie)).toBe(bound(USER.id));
   });
@@ -86,7 +87,40 @@ describe("GitHub linking state", () => {
     const cookie = `${stateCookie(bound(USER.id))}; ${stateCookie(bound(USER.id, "attacker-state"))}`;
     const res = await callback(req(`/api/github/callback?code=c&state=attacker-state`, cookie));
     expect(res.headers.get("location")).toBe(`${APP}/new?github=invalid_state`);
-    expect(setCookie(res, "egg_gh_state")).toMatch(/Max-Age=0|Expires=/i);
+    expect(setCookie(res, githubStateCookieName())).toMatch(/Max-Age=0|Expires=/i);
+    expect(saveInstallations).not.toHaveBeenCalled();
+  });
+});
+
+describe("GitHub state cookie scope", () => {
+  it("sets a __Host- cookie with Secure and no Domain over HTTPS", async () => {
+    const res = await connect();
+    const cookie = setCookie(res, "__Host-egg_gh_state");
+    expect(cookie).toMatch(/^__Host-egg_gh_state=/);
+    expect(cookie).toMatch(/Secure/i);
+    expect(cookie).toMatch(/Path=\/(?:;|$)/i);
+    expect(cookie).not.toMatch(/Domain=/i);
+    expect(valueOf(cookie)).toBe(bound(USER.id));
+  });
+
+  it("keeps the plain name on local HTTP", async () => {
+    const previous = process.env.APP_URL;
+    process.env.APP_URL = "http://localhost:3000";
+    resetConfigForTests();
+    try {
+      const res = await connect();
+      expect(setCookie(res, "egg_gh_state")).toMatch(/^egg_gh_state=/);
+      expect(setCookie(res, "__Host-egg_gh_state")).toBe("");
+    } finally {
+      process.env.APP_URL = previous;
+      resetConfigForTests();
+    }
+  });
+
+  it("ignores a plain-named cookie planted by a sibling over HTTPS", async () => {
+    const planted = `egg_gh_state=${encodeURIComponent(bound(USER.id))}`;
+    const res = await callback(req(`/api/github/callback?code=c&state=${STATE}`, planted));
+    expect(res.headers.get("location")).toBe(`${APP}/new?github=invalid_state`);
     expect(saveInstallations).not.toHaveBeenCalled();
   });
 });

@@ -2,18 +2,18 @@
 
 ## Status after the May–November round
 
-Checked on 2026-11-08. Paths are under `web/`.
+Checked on 2026-11-08, revised 2026-11-22. Paths are under `web/`. The original sections are kept as they were written; the status table below records what has since been fixed or removed.
 
 | Section | Status | Where |
 |---|---|---|
-| 1. Production dependencies | Open, low risk | `corepack pnpm audit --prod --audit-level high` exits 0 (no high or critical). `pnpm audit --prod` still lists 1 moderate (minimatch) and 1 low (deepmerge), both through `shadcn`, which is still in `dependencies` in `package.json`. The optional fix (move `shadcn` to `devDependencies`, or add overrides) has not been done |
-| 1a. Repeatable audit command | Fixed | `package.json` script `audit:prod` = `pnpm audit --prod --audit-level high`. **There is no CI workflow yet** (no `.github/workflows`), so nothing runs it automatically; it is run by hand |
-| 2. Security headers | Fixed, with one gap | `next.config.ts` `headers()` sends CSP, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` and (in production) HSTS on every route, pinned by `src/app/(marketing)/security/security-facts.test.ts`. The CSP still has `'unsafe-inline'` for scripts; a nonce breaks the app under `cacheComponents`, and the two fixes (turn `cacheComponents` off, or Next's experimental SRI mode) have not been chosen |
+| 1. Production dependencies | **Fixed 2026-11-22** | `shadcn` is no longer in `web/package.json` (`dependencies` or `devDependencies`), so the minimatch and deepmerge advisories that came through it no longer apply. `audit:prod` is still run in CI; the old "optional fix" was effectively resolved by removing the package. |
+| 1a. Repeatable audit command | **Fixed, CI present** | `package.json` script `audit:prod` = `pnpm audit --prod --audit-level high`, and `.github/workflows/ci.yml` (added 2026-11-15) runs it on push to `main` and on pull requests. The old "There is no CI workflow yet" claim is historical. CI also runs typecheck, lint, tests and a Caddyfile validation step. |
+| 2. Security headers | Fixed, with one gap | `next.config.ts` `headers()` sends CSP, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` and (in production) HSTS on every route, pinned by `src/app/(marketing)/security/security-facts.test.ts`. The CSP still has `'unsafe-inline'` for scripts; a nonce breaks the app under `cacheComponents`, and the two fixes (turn `cacheComponents` off, or Next's experimental SRI mode) have not been chosen. **Still open.** |
 | 3. Committed secrets | No change | `git ls-files` shows only `web/.env.example` |
-| 4. `--user` on Windows | Open, low | `src/server/deploy/build.ts` still sets `--user` only when `process.platform !== "win32"` |
-| 4. Build network access | Open, by design | No `--network` restriction; package installs need it |
+| 4. `--user` on Windows | **Removed with the build runner** | The central Docker build runner that read `process.platform` and set `--user` no longer exists (checked 2026-11-22). Builds run on the user's container under a cap or in GitHub Actions, so this finding is historical. |
+| 4. Build network access | Open, by design | The capped build on the user's container needs network access for package installs; no egress filtering is applied inside that scope. |
 
-Still open: the two `shadcn` advisories (section 1), `--user` on Windows, the CSP nonce, no CI workflow for `audit:prod`.
+Still open on 2026-11-22: the CSP nonce (section 2), the build's network access, and the two `shadcn` findings only as history (the package is gone). `--user` on Windows and the missing CI workflow are closed as described above.
 
 Date: 2026-11-06. Scope: `web/`.
 
@@ -31,6 +31,8 @@ Lockfile: `web/pnpm-lock.yaml` (no bun lockfile exists). Command: `pnpm audit --
 Grep of `src`, `worker`, `scripts` and the root configs finds no import of either package. `shadcn` is only used as `@import "shadcn/tailwind.css"` in `src/app/globals.css`.
 
 **Fix (optional):** `shadcn` is a runtime dependency but is only a CSS and CLI helper. Move it to `devDependencies`, or add pnpm overrides `"deepmerge": ">=4.3.2"` and `"minimatch": ">=11.0.1"`.
+
+**Update 2026-11-22:** none of that is needed now. `shadcn` is not listed in `web/package.json` at all, so neither advisory reaches a production dependency. This section is kept for history.
 
 ## 2. Security headers
 
@@ -74,9 +76,10 @@ Notes:
 
 ## 4. Docker and deploy scripts
 
-No Dockerfile or compose file is tracked. `examples/github-actions/deploy-on-release.yml` uses `permissions: {}` and a secret hook, which is fine.
+A `compose.yaml` is now tracked at the repository root (it starts the web app and the worker; no build happens on that server). The old "No Dockerfile or compose file is tracked" line was true when this section was written. `examples/github-actions/deploy-on-release.yml` uses `permissions: {}` and a secret hook, which is fine.
 
-Build container (`src/server/deploy/build.ts`) args: `--cap-drop ALL`, `no-new-privileges`, and memory, CPU and pids limits. It publishes no ports.
+The old build container (`src/server/deploy/build.ts`) args `--cap-drop ALL`, `no-new-privileges`, memory, CPU and pids limits are historical: the central Docker build runner was removed (2026-11-22). No build image is started on Egg's host now.
 
-- **Low:** `--user` is only set on non-Windows hosts. On Windows the build runs as the image's default user, which is usually root. Fix: pass an explicit non-root `--user 1000:1000` on every platform.
-- **Low:** the build container has no `--network` restriction, so untrusted repo build scripts have outbound access. This is probably needed for package installs, so it is a deliberate trade-off.
+- **Low, historical:** `--user` was only set on non-Windows hosts. That code is gone, so the finding no longer applies.
+- **Low, still true in a different place:** the install and build on the user's container have network access, so untrusted repo build scripts can reach the internet. This is needed for package installs, so it is a deliberate trade-off (`docs/design/security-audit-exec.md`, "Still open" 4).
+- Dockerfile and Compose deployment modes are now validated for dangerous Compose fields (`privileged`, `cap_add`, `devices`, `network_mode`, external networks, host binds) in `src/server/deploy/docker-target.ts`; see the tests in `docker-target.test.ts`.

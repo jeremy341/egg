@@ -44,12 +44,10 @@ Work through this list in order on the Nest machine. Write down anything that do
 - [ ] Roll back to the previous release from the Deployments tab. The app serves the old version again.
 - [ ] Redeploy one commit. It rebuilds that commit.
 
-## 6. Team access
+## 6. Project ownership
 
-- [ ] Invite a second account by email as viewer. Accept the invite on that account.
-- [ ] The viewer sees the project and its deployments, without a 404 on the deployment detail page.
-- [ ] The viewer opens Settings and sees the owner-only note, not an error page.
-- [ ] Change the role to developer. The developer can deploy but not change settings.
+- [ ] A second account cannot see or open the first account's project: the project list omits it and the project/deployment pages return not found.
+- [ ] The owner can deploy, change settings and environment variables, and use Files and Terminal.
 
 ## 7. Deploy hook and notifications
 

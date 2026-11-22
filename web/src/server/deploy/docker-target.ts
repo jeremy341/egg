@@ -54,6 +54,8 @@ export async function deployDockerRelease(target: DockerTarget, release: DockerR
 const record = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 const name = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/;
+/** An image reference Docker itself resolved: repository, optional registry port and tag/digest. */
+const IMAGE_REF = /^[a-zA-Z0-9][a-zA-Z0-9._/-]*(?::[0-9]+)?(?::[a-zA-Z0-9_][a-zA-Z0-9_.-]*)?(?:@sha256:[a-f0-9]{64})?$/;
 
 export type ComposeMount = { volume: string; target: string; readOnly: boolean };
 
@@ -93,38 +95,53 @@ export function parseComposeMount(mount: unknown): ComposeMount | null {
   return null;
 }
 
-/** Validate a deliberately narrow, already-parsed Compose subset before any deploy.
- * Callers must not execute the original YAML: use a canonical representation of
- * this validated subset and prohibit interpolation, includes and extensions.
+/**
+ * The single field policy for Compose services. Only these keys are allowed at
+ * all, and the dangerous ones are called out explicitly so an operator reading
+ * an error knows why a deployment was refused. This replaces the old source-form
+ * deny-list, which happily accepted container_name, depends_on, extra_hosts and
+ * the rest and could let a user-defined Compose file escape Egg's isolation.
+ */
+const ALLOWED_SERVICE_FIELDS = new Set([
+  "image", "ports", "volumes", "environment", "networks", "restart",
+  "command", "entrypoint", "user", "working_dir", "extra_hosts", "dns", "dns_search",
+  "healthcheck", "labels", "logging", "deploy", "init", "stop_grace_period",
+  "stdin_open", "tty", "platform", "pull_policy", "read_only", "expose",
+]);
+const FORBIDDEN_SERVICE_FIELDS = new Set([
+  "container_name", "depends_on", "links", "external_links", "binds", "tmpfs",
+  "privileged", "cap_add", "devices", "device_cgroup_rules", "network_mode",
+  "pid", "ipc", "userns_mode", "security_opt", "extends", "profiles",
+  "volumes_from", "mac_address", "sysctls", "ulimits", "shm_size",
+  "cgroup", "cgroup_parent", "runtime", "group_add",
+]);
+
+function serviceFieldErrors(service: string, value: Record<string, unknown>): string[] {
+  const errors: string[] = [];
+  for (const key of Object.keys(value)) {
+    if (FORBIDDEN_SERVICE_FIELDS.has(key)) errors.push(`Service ${service} uses ${key}, which Egg does not support`);
+    else if (!ALLOWED_SERVICE_FIELDS.has(key)) errors.push(`Unsupported ${service} field: ${key}`);
+  }
+  return errors;
+}
+
+/**
+ * Compatibility adapter for callers still holding a source-form Compose file.
+ * It never decides anything on its own: the same validator that guards the
+ * resolved form Docker executes guards this one too.
  */
 export function validateComposeSpec(input: unknown): string[] {
-  const errors: string[] = [];
   if (!record(input) || !record(input.services) || Object.keys(input.services).length === 0) return ["Compose requires services"];
-  for (const key of Object.keys(input)) if (!["services", "volumes"].includes(key)) errors.push(`Unsupported Compose field: ${key}`);
-  const volumes = input.volumes === undefined ? {} : input.volumes;
-  if (!record(volumes)) return [...errors, "Invalid volumes"];
-  for (const [key, value] of Object.entries(volumes)) {
-    if (!name.test(key) || !record(value) || Object.keys(value).length) errors.push(`Invalid volume: ${key}`);
+  const services: Record<string, unknown> = {};
+  for (const [service, raw] of Object.entries(input.services)) {
+    services[service] = { image: "egg-placeholder:latest", ...(record(raw) ? raw : {}) };
   }
-  for (const [service, value] of Object.entries(input.services)) {
-    if (!name.test(service) || !record(value)) { errors.push(`Invalid service: ${service}`); continue; }
-    for (const key of Object.keys(value)) if (!["image", "ports", "volumes"].includes(key)) errors.push(`Unsupported ${service} field: ${key}`);
-    if (value.image !== undefined && (typeof value.image !== "string" || !/^[a-zA-Z0-9][a-zA-Z0-9._/:@-]*$/.test(value.image))) errors.push(`Invalid image: ${service}`);
-    if (value.ports !== undefined) {
-      if (!Array.isArray(value.ports)) errors.push(`Invalid port list: ${service}`);
-      else for (const port of value.ports) {
-        const match = typeof port === "string" && /^127\.0\.0\.1:(\d{1,5}):(\d{1,5})$/.exec(port);
-        if (!match || [match[1], match[2]].some(n => Number(n) < 1 || Number(n) > 65535)) errors.push(`Invalid port: ${service}`);
-      }
-    }
-    if (value.volumes !== undefined) {
-      if (!Array.isArray(value.volumes)) errors.push(`Invalid volume list: ${service}`);
-      else for (const mount of value.volumes) {
-        const parsed = parseComposeMount(mount);
-        if (!parsed || !Object.hasOwn(volumes, parsed.volume)) errors.push(`Invalid volume mount: ${service}`);
-      }
-    }
-  }
+  const { errors } = validateResolvedCompose(
+    { services, volumes: input.volumes ?? {} },
+    { service: Object.keys(services)[0] ?? "", containerPort: null, project: "egg-placeholder" },
+    { sourceForm: true }
+  );
+  for (const key of Object.keys(input)) if (!["services", "volumes", "name"].includes(key)) errors.push(`Unsupported Compose field: ${key}`);
   return errors;
 }
 
@@ -143,7 +160,8 @@ const COMPOSE_SERVICE = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/;
  */
 export function validateResolvedCompose(
   input: unknown,
-  main: { service: string; containerPort: number | null; project: string }
+  main: { service: string; containerPort: number | null; project: string },
+  opts: { sourceForm?: boolean } = {}
 ): { errors: string[]; aux: string[] } {
   const errors: string[] = [];
   if (!record(input) || !record(input.services) || Object.keys(input.services).length === 0) {
@@ -156,8 +174,9 @@ export function validateResolvedCompose(
   const networkRecord = record(input.networks) ? (input.networks as Record<string, unknown>) : {};
   if (input.networks !== undefined && !record(input.networks)) errors.push("Invalid networks");
   const declaredNetworks = new Set(Object.keys(networkRecord));
+  const isExternal = (v: unknown) => v !== undefined && v !== null && v !== false;
   for (const [name, value] of Object.entries(networkRecord)) {
-    if (!COMPOSE_SERVICE.test(name) || !record(value) || value.external === true) { errors.push(`Invalid network: ${name}`); continue; }
+    if (!COMPOSE_SERVICE.test(name) || !record(value) || isExternal(value.external)) { errors.push(`Invalid network: ${name}`); continue; }
     // Like volumes: an external or renamed network would carry this deployment
     // outside the project's own Compose namespace, so it is refused outright.
     if (typeof value.name === "string" && value.name !== `${main.project}_${name}`) {
@@ -169,7 +188,7 @@ export function validateResolvedCompose(
     }
   }
   for (const [name, value] of Object.entries(volumes)) {
-    if (!COMPOSE_SERVICE.test(name) || !record(value) || value.external === true) { errors.push(`Invalid volume: ${name}`); continue; }
+    if (!COMPOSE_SERVICE.test(name) || !record(value) || isExternal(value.external)) { errors.push(`Invalid volume: ${name}`); continue; }
     // Config resolves a declared volume's physical name to `<project>_<key>`. A
     // name pointing anywhere else would let an aux service mount another
     // project's data volume, so a foreign name is refused outright.
@@ -187,10 +206,8 @@ export function validateResolvedCompose(
   for (const [service, value] of Object.entries(input.services)) {
     if (!COMPOSE_SERVICE.test(service) || !record(value)) { errors.push(`Invalid service: ${service}`); continue; }
     if (value.build !== undefined && value.build !== null) errors.push(`Service ${service} builds an image. Compose services must use prebuilt images.`);
-    if (typeof value.image !== "string" || value.image.length === 0) errors.push(`Service ${service} needs an image`);
-    for (const forbidden of ["privileged", "cap_add", "devices", "network_mode", "pid", "ipc", "userns_mode", "security_opt", "extends", "profiles", "volumes_from"] as const) {
-      if (value[forbidden] !== undefined && value[forbidden] !== null && value[forbidden] !== false) errors.push(`Service ${service} uses ${forbidden}, which Egg does not support`);
-    }
+    if (typeof value.image !== "string" || value.image.length === 0 || !IMAGE_REF.test(value.image)) errors.push(`Invalid image: ${service}`);
+    errors.push(...serviceFieldErrors(service, value));
     const restart = typeof value.restart === "string" ? value.restart : "";
     if (service === main.service && restart && restart !== "no") errors.push(`Service ${service} sets its own restart policy; Egg manages the main service`);
     if (service !== main.service) aux.push(service);
@@ -199,7 +216,7 @@ export function validateResolvedCompose(
       if (!Array.isArray(ports)) errors.push(`Invalid port list: ${service}`);
       else for (const entry of ports) {
         const target = typeof entry === "string" ? entry : record(entry) ? `${entry.host_ip ?? ""}:${entry.published}:${entry.target}` : "";
-        if (service === main.service) {
+        if (service === main.service && !opts.sourceForm) {
           if (ports.length > 0) errors.push(`Service ${service} must not publish ports; Egg maps the project's listen port to it`);
         } else if (!/^127\.0\.0\.1:(\d{1,5}):(\d{1,5})$/.test(target) || [target.split(":")[1], target.split(":")[2]].some((n) => Number(n) < 1 || Number(n) > 65535)) {
           errors.push(`Service ${service} must bind its host ports to 127.0.0.1 only`);
@@ -232,6 +249,32 @@ export function validateResolvedCompose(
     if (value.environment !== undefined && value.environment !== null && !record(value.environment)) errors.push(`Invalid environment: ${service}`);
   }
   return { errors, aux };
+}
+
+/**
+ * The image Docker resolved for the main service. The same validated subset is
+ * used for the image and for the mounts, so an image that passed validation is
+ * the one that gets tagged and run.
+ */
+export function composeMainImage(input: unknown, mainService: string): string | null {
+  if (!record(input) || !record(input.services)) return null;
+  const service = (input.services as Record<string, unknown>)[mainService];
+  if (!record(service) || typeof service.image !== "string" || !IMAGE_REF.test(service.image)) return null;
+  return service.image;
+}
+
+/**
+ * Compose resolves the user's YAML itself, so no YAML parser runs on the control
+ * plane. Still refuse parser-level escape hatches in the canonical output Egg
+ * is about to execute: custom tags (`!include`, `!!python/...`), anchors/aliases
+ * and merge keys. None appear in a plain `docker compose config` result, and
+ * each of them could change what a later tool sees without changing the JSON
+ * Egg validated.
+ */
+export function unsafeComposeYaml(canonical: string): string | null {
+  if (/(^|:\s+|-\s+)!{1,2}[a-zA-Z]/.test(canonical)) return "YAML tags are not allowed in a Compose file";
+  if (/(^|:\s+|-\s+)[&*][a-zA-Z0-9_-]+|^\s*<<\s*:/m.test(canonical)) return "YAML anchors, aliases and merge keys are not allowed in a Compose file";
+  return null;
 }
 
 /**
