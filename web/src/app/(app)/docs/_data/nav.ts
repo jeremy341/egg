@@ -66,6 +66,17 @@ export const DOCS_NAV: DocsGroup[] = [
         ],
       },
       {
+        id: "keys",
+        title: "Keys",
+        subsections: [
+          { id: "keys-kinds", title: "The three kinds" },
+          { id: "keys-deploy", title: "GitHub deploy keys" },
+          { id: "keys-git", title: "Git keys" },
+          { id: "keys-personal", title: "Personal keys" },
+          { id: "keys-manage", title: "Adding, replacing and revoking" },
+        ],
+      },
+      {
         id: "projects",
         title: "Projects and runtimes",
         subsections: [
