@@ -19,8 +19,11 @@ export function AnalyticsTabs({ value, children }: { value: AnalyticsTab; childr
   const [pending, startTransition] = useTransition();
   const [shown, setShown] = useOptimistic(value);
 
-  function select(next: string) {
+  function select(next: string, { event }: Tabs.Root.ChangeEventDetails) {
     const tab = parseTab(next);
+    if (event.type.startsWith("key") || (event instanceof MouseEvent && event.detail === 0)) {
+      document.getElementById(`analytics-tab-${tab}`)?.scrollIntoView({ inline: "nearest", block: "nearest" });
+    }
     startTransition(() => {
       setShown(tab);
       router.replace(tab === "overview" ? pathname : `${pathname}?tab=${tab}`, { scroll: false });
@@ -30,7 +33,7 @@ export function AnalyticsTabs({ value, children }: { value: AnalyticsTab; childr
   return (
     <Tabs.Root value={shown} onValueChange={select} className="space-y-6">
       {/* The bar scrolls sideways on a narrow screen instead of widening the page. */}
-      <div className="overflow-x-auto overflow-y-hidden overscroll-x-contain border-b [scrollbar-width:none]">
+      <div className="overflow-x-auto overflow-y-hidden overscroll-x-contain border-b [scrollbar-color:var(--ds-gray-500)_transparent] [scrollbar-width:thin]">
         <Tabs.List aria-label="Analytics views" className="flex w-max min-w-full gap-1">
           {ANALYTICS_TABS.map((t) => (
             <Tabs.Tab
