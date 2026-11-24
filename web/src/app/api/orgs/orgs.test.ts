@@ -12,7 +12,12 @@ vi.mock("@/server/auth/current", () => ({
   requireUser: vi.fn(),
 }));
 
-import { GET as listOrgs, POST as createOrg } from "@/app/api/orgs/route";
+import { GET as listOrgsRoute, POST as createOrgRoute } from "@/app/api/orgs/route";
+
+// These handlers take no route params, so only the request is passed.
+type OneArg = (req: NextRequest) => Promise<Response>;
+const listOrgs = listOrgsRoute as unknown as OneArg;
+const createOrg = createOrgRoute as unknown as OneArg;
 import { GET as getOrg, PATCH as renameOrg } from "@/app/api/orgs/[id]/route";
 import { GET as listMembers } from "@/app/api/orgs/[id]/members/route";
 import { PATCH as setRole, DELETE as removeMember } from "@/app/api/orgs/[id]/members/[userId]/route";

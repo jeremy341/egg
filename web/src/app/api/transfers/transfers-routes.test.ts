@@ -12,7 +12,10 @@ vi.mock("@/server/auth/current", () => ({
 }));
 
 import { POST as requestTransferRoute } from "@/app/api/projects/[id]/transfer/route";
-import { GET as listTransfers } from "@/app/api/transfers/route";
+import { GET as listTransfersRoute } from "@/app/api/transfers/route";
+
+// No route params, so only the request is passed.
+const listTransfers = listTransfersRoute as unknown as (req: NextRequest) => Promise<Response>;
 import { POST as acceptRoute } from "@/app/api/transfers/[id]/accept/route";
 import { POST as declineRoute } from "@/app/api/transfers/[id]/decline/route";
 import { POST as cancelRoute } from "@/app/api/transfers/[id]/cancel/route";
