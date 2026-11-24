@@ -23,6 +23,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { PixelAvatar } from "@/components/ui/pixel-avatar";
 import type { UiState } from "@/lib/status";
 import { requireUser } from "@/server/auth/current";
+import { currentProblems } from "@/server/current-problems";
 import { deploymentViews, projectMetrics, projectViews, serverViews } from "@/server/queries";
 
 type Props = { params: Promise<{ slug: string }> };
@@ -73,10 +74,11 @@ async function ProjectContent({ params }: Props) {
   const project = (await projectViews(user.id)).find((p) => p.slug === slug);
   if (!project) notFound();
 
-  const [history, servers, metrics] = await Promise.all([
+  const [history, servers, metrics, problems] = await Promise.all([
     deploymentViews(user.id, { projectId: project.id }),
     serverViews(user.id),
     projectMetrics(user.id, project.id),
+    currentProblems(user.id, project.id),
   ]);
   const server = servers.find((s) => s.id === project.serverId);
 
@@ -160,6 +162,26 @@ async function ProjectContent({ params }: Props) {
           </>
         }
       />
+      {problems.length > 0 ? (
+        <section
+          aria-labelledby="problems-heading"
+          className="overflow-hidden rounded-lg bg-card shadow-border-small"
+        >
+          <div className="border-b px-4 py-3">
+            <h2 id="problems-heading" className="text-title-3">
+              Current problems
+            </h2>
+          </div>
+          <ul className="divide-y">
+            {problems.map((p) => (
+              <li key={p.kind} className="px-4 py-3 text-[13px]">
+                <p className="font-medium">{p.title}</p>
+                <p className="text-muted-foreground">{p.detail}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {latest?.state === "error" ? (
         <Alert tone="error" role="status">
