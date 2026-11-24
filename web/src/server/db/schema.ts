@@ -19,6 +19,15 @@ export const users = sqliteTable("users", {
   emailVerified: integer("email_verified", { mode: "boolean" }).notNull().default(false),
   slackId: text("slack_id"),
   createdAt: ts("created_at").notNull(),
+  /**
+   * Set by an administrator's ban. A suspended account keeps working until graceEndsAt, then its writes are
+   * refused (see server/account-standing.ts). Reads always work. Changed only through the admin ban actions.
+   */
+  status: text("status", { enum: ["active", "suspended"] }).notNull().default("active"),
+  suspendedAt: ts("suspended_at"),
+  graceEndsAt: ts("grace_ends_at"),
+  /** The administrator's reason, kept for the audit trail and the admin page. */
+  suspensionReason: text("suspension_reason"),
 });
 
 /**
