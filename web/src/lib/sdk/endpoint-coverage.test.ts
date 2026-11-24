@@ -24,6 +24,8 @@ const PARAMS: Record<string, string> = {
   channelId: "HOOK",
   ruleId: "RULE",
   deliveryId: "DEL",
+  serviceId: "SVC",
+  orgId: "ORG",
   fingerprint: "FP",
   jobId: "JOB",
 };
@@ -151,7 +153,37 @@ const CLIENT_CALLS: Record<string, Call$> = {
   list_notification_rules: (n) => n.listNotificationRules(),
   create_notification_rule: (n) => n.createNotificationRule("HOOK", {}),
   test_notification_channel: (n) => n.testNotificationChannel("HOOK"),
-};
+  create_deployment: (n) => n.createDeployment({}),
+  delete_deployment: (n) => n.deleteDeployment("D"),
+  rename_deployment: (n) => n.renameDeployment("D", { name: "App" }),
+  retry_deployment_apply: (n) => n.retryDeploymentApply("D"),
+  update_deployment_build_config: (n) => n.updateDeploymentBuildConfig("D", {}),
+  update_deployment_health_check: (n) => n.updateDeploymentHealthCheck("D", {}),
+  update_deployment_image: (n) => n.updateDeploymentImage("D", {}),
+  update_deployment_pull_policy: (n) => n.updateDeploymentPullPolicy("D", {}),
+  update_deployment_resources: (n) => n.updateDeploymentResources("D", {}),
+  update_deployment_strategy: (n) => n.updateDeploymentStrategy("D", {}),
+  update_deployment_volumes: (n) => n.updateDeploymentVolumes("D", {}),
+  list_services: (n) => n.listServices(),
+  create_service: (n) => n.createService({}),
+  delete_service: (n) => n.deleteService("SVC"),
+  set_service_exposure: (n) => n.setServiceExposure("SVC", {}),
+  set_service_port_public: (n) => n.setServicePortPublic("SVC", {}),
+  get_compose_stack: (n) => n.getComposeStack("P"),
+  list_compose_stacks: (n) => n.listComposeStacks(),
+  list_compose_releases: (n) => n.listComposeReleases("P"),
+  redeploy_compose_stack: (n) => n.redeployComposeStack("P"),
+  list_organizations: (n) => n.listOrganizations(),
+  get_organization: (n) => n.getOrganization("ORG"),
+  get_image_history: (n) => n.getImageHistory("P"),
+  list_build_runs: (n) => n.listBuildRuns("P"),
+  get_deploy_verdict: (n) => n.getDeployVerdict("D"),
+  get_deployment_http_metrics: (n) => n.getDeploymentHttpMetrics("D"),
+  get_request_stats: (n) => n.getRequestStats("P"),
+  get_anomalies: (n) => n.getAnomalies("P"),
+  get_attack_signals: (n) => n.getAttackSignals("P"),
+  get_resource_recommendation: (n) => n.getResourceRecommendation("P"),
+  get_observability_link: (n) => n.getObservabilityLink("P"),};
 
 function expectedPath(template: string): string {
   return template.replace(/\{([^}]+)\}/g, (_, name: string) => {
@@ -210,4 +242,5 @@ describe("request bodies and queries of the newer calls", () => {
     ]);
   });
 });
+
 

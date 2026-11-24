@@ -12,7 +12,7 @@ import { ENDPOINTS } from "@/server/api-v1";
  */
 type Status = "present" | "partial" | "missing" | "not_applicable";
 type Row = { name: string; source: string; status: Status; ours: string | null; reason?: string };
-type Manifest = { baseline_present: number; baseline_partial: number; tools: Row[]; ours_only: string[] };
+type Manifest = { baseline_present: number; baseline_partial: number; baseline_missing: number; baseline_not_applicable: number; tools: Row[]; ours_only: string[] };
 
 const manifest = JSON.parse(readFileSync(path.join(__dirname, "orchard-parity.json"), "utf8")) as Manifest;
 const ids = new Set(ENDPOINTS.map((e) => e.id));
@@ -37,8 +37,8 @@ describe("Orchard MCP parity manifest", () => {
     }
   });
 
-  it("gives cluster-only features a reason", () => {
-    for (const t of manifest.tools.filter((x) => x.status === "not_applicable")) {
+  it("gives every non-present classification a reason", () => {
+    for (const t of manifest.tools.filter((x) => x.status !== "present")) {
       expect(t.reason?.trim(), t.name).toBeTruthy();
     }
   });
@@ -50,7 +50,8 @@ describe("Orchard MCP parity manifest", () => {
         .map((t) => t.ours as string),
     );
     const expected = [...ids].filter((id) => !mapped.has(id)).sort();
-    expect([...new Set(manifest.ours_only)].sort()).toEqual(expected);
+    expect(new Set(manifest.ours_only).size).toBe(manifest.ours_only.length);
+    expect([...manifest.ours_only].sort()).toEqual(expected);
   });
 
   it("keeps recorded baselines equal to the current statuses", () => {
@@ -58,5 +59,9 @@ describe("Orchard MCP parity manifest", () => {
     const partial = manifest.tools.filter((t) => t.status === "partial").length;
     expect(present).toBe(manifest.baseline_present);
     expect(partial).toBe(manifest.baseline_partial);
+    const missing = manifest.tools.filter((t) => t.status === "missing").length;
+    const notApplicable = manifest.tools.filter((t) => t.status === "not_applicable").length;
+    expect(missing).toBe(manifest.baseline_missing);
+    expect(notApplicable).toBe(manifest.baseline_not_applicable);
   });
 });

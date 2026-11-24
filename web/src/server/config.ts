@@ -96,6 +96,20 @@ const schema = z
           "LOCAL_MODE requires a private LOCAL_MODE_SECRET. Existing installs must add a random secret of at least 32 characters to .env.local; the setup command will not overwrite that file.",
       });
     }
+    // LOCAL_MODE signs people in without an external account. If Hack Club credentials
+    // are also present, the OAuth login and reauth routes become reachable again, so a
+    // self-hosted install could silently drift into Hack Club sign-in. Refuse the mix.
+    // Empty strings are how an install disables an OAuth app; treat those as absent.
+    if (c.LOCAL_MODE && (c.HACKCLUB_CLIENT_ID || c.HACKCLUB_CLIENT_SECRET)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["LOCAL_MODE"],
+        message:
+          "LOCAL_MODE cannot be combined with Hack Club credentials. " +
+          "Unset HACKCLUB_CLIENT_ID and HACKCLUB_CLIENT_SECRET, or turn LOCAL_MODE off, " +
+          "so local sign-in cannot drift into OAuth.",
+      });
+    }
     if (!c.LOCAL_MODE || c.LOCAL_MODE_ALLOW_REMOTE) return;
     let hostname: string;
     try {

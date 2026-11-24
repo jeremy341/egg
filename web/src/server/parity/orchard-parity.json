@@ -1,5 +1,5 @@
 {
-  "baseline_present": 42,
+  "baseline_present": 74,
   "baseline_partial": 11,
   "tools": [
     {
@@ -12,96 +12,105 @@
       "name": "add_shared_env_vars",
       "source": "apps/server/src/mcp/tools/environments.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "analyze_deployment_resources",
       "source": "apps/server/src/mcp/tools/query.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "call_api",
       "source": "apps/server/src/mcp/compact/compact-server.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "cancel_build",
       "source": "apps/server/src/mcp/tools/deployments.ts",
       "status": "partial",
-      "ours": "cancel_deployment"
+      "ours": "cancel_deployment",
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "cancel_database_operation",
       "source": "apps/server/src/mcp/tools/database-recovery.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "cancel_job_run",
       "source": "apps/server/src/mcp/tools/jobs.ts",
-      "status": "missing",
-      "ours": null
+      "status": "present",
+      "ours": "cancel_job_run"
     },
     {
       "name": "clear_database_backup_schedule",
       "source": "apps/server/src/mcp/tools/resources.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "create_checkpoint",
       "source": "apps/server/src/mcp/tools/database-recovery.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "create_database",
       "source": "apps/server/src/mcp/tools/resources.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "create_database_backup",
       "source": "apps/server/src/mcp/tools/resources.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "create_database_user",
       "source": "apps/server/src/mcp/tools/database-recovery.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "create_deploy_webhook_token",
       "source": "apps/server/src/mcp/tools/deployments.ts",
       "status": "partial",
-      "ours": "rotate_deploy_hook"
+      "ours": "rotate_deploy_hook",
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "create_deployment",
       "source": "apps/server/src/mcp/tools/deployments.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "create_environment",
       "source": "apps/server/src/mcp/tools/environments.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "create_ingress",
       "source": "apps/server/src/mcp/tools/configuration.ts",
       "status": "partial",
-      "ours": "add_domain"
+      "ours": "add_domain",
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "create_job",
@@ -132,46 +141,49 @@
       "source": "grafts/greenhouse/mcp/src/tools.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Greenhouse sandbox sessions require Orchard\u2019s cluster; this API targets the user\u2019s Nest server."
+      "reason": "Greenhouse sandbox sessions require Orchard’s cluster; this API targets the user’s Nest server."
     },
     {
       "name": "create_sandbox_session_pr",
       "source": "grafts/greenhouse/mcp/src/tools.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Greenhouse sandbox sessions require Orchard\u2019s cluster; this API targets the user\u2019s Nest server."
+      "reason": "Greenhouse sandbox sessions require Orchard’s cluster; this API targets the user’s Nest server."
     },
     {
       "name": "create_service",
       "source": "apps/server/src/mcp/tools/configuration.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "delete_database",
       "source": "apps/server/src/mcp/tools/dangerous.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "delete_database_user",
       "source": "apps/server/src/mcp/tools/database-recovery.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "delete_deploy_webhook_token",
       "source": "apps/server/src/mcp/tools/dangerous.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "delete_deployment",
       "source": "apps/server/src/mcp/tools/dangerous.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "delete_env_vars",
@@ -183,13 +195,15 @@
       "name": "delete_environment",
       "source": "apps/server/src/mcp/tools/dangerous.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "delete_ingress",
       "source": "apps/server/src/mcp/tools/dangerous.ts",
       "status": "partial",
-      "ours": "remove_domain"
+      "ours": "remove_domain",
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "delete_job",
@@ -200,14 +214,14 @@
     {
       "name": "delete_notification_channel",
       "source": "apps/server/src/mcp/tools/dangerous.ts",
-      "status": "missing",
-      "ours": null
+      "status": "present",
+      "ours": "delete_notification_channel"
     },
     {
       "name": "delete_notification_rule",
       "source": "apps/server/src/mcp/tools/notifications.ts",
-      "status": "missing",
-      "ours": null
+      "status": "present",
+      "ours": "delete_notification_rule"
     },
     {
       "name": "delete_project",
@@ -218,20 +232,22 @@
     {
       "name": "delete_registry_credential",
       "source": "apps/server/src/mcp/tools/configuration.ts",
-      "status": "missing",
-      "ours": null
+      "status": "present",
+      "ours": "delete_registry_credential"
     },
     {
       "name": "delete_service",
       "source": "apps/server/src/mcp/tools/dangerous.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "delete_shared_env_vars",
       "source": "apps/server/src/mcp/tools/environments.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "delete_template_instance",
@@ -244,13 +260,15 @@
       "name": "deploy_from_github",
       "source": "apps/server/src/mcp/tools/deployments.ts",
       "status": "partial",
-      "ours": "deploy_branch"
+      "ours": "deploy_branch",
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "deploy_from_github_url",
       "source": "apps/server/src/mcp/tools/deployments.ts",
       "status": "partial",
-      "ours": "deploy_branch"
+      "ours": "deploy_branch",
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "deploy_template",
@@ -263,20 +281,21 @@
       "name": "describe_operation",
       "source": "apps/server/src/mcp/compact/compact-server.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "detect_repo_config",
       "source": "apps/server/src/mcp/tools/query.ts",
-      "status": "missing",
-      "ours": null
+      "status": "present",
+      "ours": "detect_repo_config"
     },
     {
       "name": "diagnose_database",
       "source": "apps/server/src/mcp/tools/database-recovery.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "diagnose_deployment",
@@ -287,35 +306,35 @@
     {
       "name": "disable_auto_deploy",
       "source": "apps/server/src/mcp/tools/deployments.ts",
-      "status": "missing",
-      "ours": null
+      "status": "present",
+      "ours": "disable_auto_deploy"
     },
     {
       "name": "disable_database_deletion_protection",
       "source": "apps/server/src/mcp/tools/dangerous.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "disable_database_public",
       "source": "apps/server/src/mcp/tools/resources.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "enable_auto_deploy",
       "source": "apps/server/src/mcp/tools/deployments.ts",
-      "status": "missing",
-      "ours": null
+      "status": "present",
+      "ours": "enable_auto_deploy"
     },
     {
       "name": "enable_database_public",
       "source": "apps/server/src/mcp/tools/resources.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "exec_in_pod",
@@ -329,7 +348,7 @@
       "source": "apps/server/src/mcp/tools/resources.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "find",
@@ -342,7 +361,7 @@
       "source": "apps/server/src/mcp/tools/database-recovery.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "get_alert_states",
@@ -354,49 +373,53 @@
       "name": "get_anomalies",
       "source": "apps/server/src/mcp/tools/observability.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "get_attack_signals",
       "source": "apps/server/src/mcp/tools/observability.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "get_audit_log",
       "source": "apps/server/src/mcp/tools/query.ts",
-      "status": "missing",
-      "ours": null
+      "status": "present",
+      "ours": "get_audit_log"
     },
     {
       "name": "get_auto_deploy_status",
       "source": "apps/server/src/mcp/tools/deployments.ts",
-      "status": "missing",
-      "ours": null
+      "status": "present",
+      "ours": "get_auto_deploy_status"
     },
     {
       "name": "get_build_history",
       "source": "apps/server/src/mcp/tools/observability.ts",
-      "status": "missing",
-      "ours": null
+      "status": "present",
+      "ours": "get_build_history"
     },
     {
       "name": "get_build_logs",
       "source": "apps/server/src/mcp/tools/query.ts",
-      "status": "missing",
-      "ours": null
+      "status": "present",
+      "ours": "get_build_logs"
     },
     {
       "name": "get_changes",
       "source": "apps/server/src/mcp/tools/observability.ts",
       "status": "partial",
-      "ours": "get_activity"
+      "ours": "get_activity",
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "get_compose_stack",
       "source": "apps/server/src/mcp/tools/compose.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "get_current_user",
@@ -409,97 +432,98 @@
       "source": "apps/server/src/mcp/tools/query.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "get_database_activity",
       "source": "apps/server/src/mcp/tools/database-recovery.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "get_database_backup_schedule",
       "source": "apps/server/src/mcp/tools/resources.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "get_database_connection",
       "source": "apps/server/src/mcp/tools/resources.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "get_database_limits",
       "source": "apps/server/src/mcp/tools/resources.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "get_database_metrics",
       "source": "apps/server/src/mcp/tools/query.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "get_database_operation",
       "source": "apps/server/src/mcp/tools/database-recovery.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "get_database_pooler",
       "source": "apps/server/src/mcp/tools/database-recovery.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "get_database_query_stats",
       "source": "apps/server/src/mcp/tools/resources.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "get_database_recovery_window",
       "source": "apps/server/src/mcp/tools/database-recovery.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "get_database_replication",
       "source": "apps/server/src/mcp/tools/database-recovery.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "get_database_security",
       "source": "apps/server/src/mcp/tools/database-recovery.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "get_database_settings",
       "source": "apps/server/src/mcp/tools/resources.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "get_deploy_verdict",
       "source": "apps/server/src/mcp/tools/observability.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "get_deployment",
@@ -511,7 +535,8 @@
       "name": "get_deployment_http_metrics",
       "source": "apps/server/src/mcp/tools/query.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "get_deployment_logs",
@@ -523,7 +548,8 @@
       "name": "get_deployment_metrics",
       "source": "apps/server/src/mcp/tools/query.ts",
       "status": "partial",
-      "ours": "get_resource_history"
+      "ours": "get_resource_history",
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "get_deployment_next_steps",
@@ -541,13 +567,15 @@
       "name": "get_deployment_volumes",
       "source": "apps/server/src/mcp/tools/query.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "get_env_vars",
       "source": "apps/server/src/mcp/tools/query.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "get_github_status",
@@ -559,19 +587,20 @@
       "name": "get_image_history",
       "source": "apps/server/src/mcp/tools/query.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "get_ingress",
       "source": "apps/server/src/mcp/tools/query.ts",
-      "status": "missing",
-      "ours": null
+      "status": "present",
+      "ours": "get_ingress"
     },
     {
       "name": "get_ingress_protection",
       "source": "apps/server/src/mcp/tools/configuration.ts",
-      "status": "missing",
-      "ours": null
+      "status": "present",
+      "ours": "get_ingress_protection"
     },
     {
       "name": "get_job",
@@ -582,8 +611,8 @@
     {
       "name": "get_job_run",
       "source": "apps/server/src/mcp/tools/jobs.ts",
-      "status": "missing",
-      "ours": null
+      "status": "present",
+      "ours": "get_job_run"
     },
     {
       "name": "get_job_run_logs",
@@ -594,8 +623,8 @@
     {
       "name": "get_killed_container_logs",
       "source": "apps/server/src/mcp/tools/query.ts",
-      "status": "not_applicable",
-      "ours": null,
+      "status": "present",
+      "ours": "get_killed_container_logs",
       "reason": "Pod/container orchestration is cluster-only; Nest exposes a single user-managed server."
     },
     {
@@ -608,7 +637,8 @@
       "name": "get_observability_link",
       "source": "apps/server/src/mcp/tools/observability.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "get_pod_details",
@@ -642,70 +672,74 @@
       "source": "apps/server/src/mcp/tools/database-recovery.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "get_repo_branches",
       "source": "apps/server/src/mcp/tools/query.ts",
-      "status": "missing",
-      "ours": null
+      "status": "present",
+      "ours": "get_repo_branches"
     },
     {
       "name": "get_repo_contents",
       "source": "apps/server/src/mcp/tools/query.ts",
-      "status": "missing",
-      "ours": null
+      "status": "present",
+      "ours": "get_repo_contents"
     },
     {
       "name": "get_repo_dockerfiles",
       "source": "apps/server/src/mcp/tools/query.ts",
-      "status": "missing",
-      "ours": null
+      "status": "present",
+      "ours": "get_repo_dockerfiles"
     },
     {
       "name": "get_request_stats",
       "source": "apps/server/src/mcp/tools/observability.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "get_resource_quota",
       "source": "apps/server/src/mcp/tools/query.ts",
       "status": "partial",
-      "ours": "get_project_resources"
+      "ours": "get_project_resources",
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "get_resource_recommendation",
       "source": "apps/server/src/mcp/tools/observability.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "get_sandbox",
       "source": "grafts/greenhouse/mcp/src/tools.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Greenhouse sandbox sessions require Orchard\u2019s cluster; this API targets the user\u2019s Nest server."
+      "reason": "Greenhouse sandbox sessions require Orchard’s cluster; this API targets the user’s Nest server."
     },
     {
       "name": "get_sandbox_session_diff",
       "source": "grafts/greenhouse/mcp/src/tools.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Greenhouse sandbox sessions require Orchard\u2019s cluster; this API targets the user\u2019s Nest server."
+      "reason": "Greenhouse sandbox sessions require Orchard’s cluster; this API targets the user’s Nest server."
     },
     {
       "name": "get_sandbox_session_transcript",
       "source": "grafts/greenhouse/mcp/src/tools.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Greenhouse sandbox sessions require Orchard\u2019s cluster; this API targets the user\u2019s Nest server."
+      "reason": "Greenhouse sandbox sessions require Orchard’s cluster; this API targets the user’s Nest server."
     },
     {
       "name": "get_shared_env_vars",
       "source": "apps/server/src/mcp/tools/environments.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "get_template",
@@ -737,82 +771,85 @@
     {
       "name": "get_volumes",
       "source": "apps/server/src/mcp/tools/observability.ts",
-      "status": "missing",
-      "ours": null
+      "status": "present",
+      "ours": "get_volumes"
     },
     {
       "name": "install_database_extension",
       "source": "apps/server/src/mcp/tools/resources.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "list_build_runs",
       "source": "apps/server/src/mcp/tools/rollout.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "list_checkpoints",
       "source": "apps/server/src/mcp/tools/database-recovery.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "list_compose_stacks",
       "source": "apps/server/src/mcp/tools/compose.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "list_database_backups",
       "source": "apps/server/src/mcp/tools/resources.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "list_database_extensions",
       "source": "apps/server/src/mcp/tools/resources.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "list_database_operations",
       "source": "apps/server/src/mcp/tools/database-recovery.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "list_database_restore_tests",
       "source": "apps/server/src/mcp/tools/database-recovery.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "list_database_users",
       "source": "apps/server/src/mcp/tools/database-recovery.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "list_databases",
       "source": "apps/server/src/mcp/tools/query.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "list_deleted_databases",
       "source": "apps/server/src/mcp/tools/database-recovery.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "list_deploy_webhook_tokens",
@@ -836,13 +873,14 @@
       "name": "list_environments",
       "source": "apps/server/src/mcp/tools/environments.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "list_github_deploy_targets",
       "source": "apps/server/src/mcp/tools/deployments.ts",
-      "status": "missing",
-      "ours": null
+      "status": "present",
+      "ours": "list_github_deploy_targets"
     },
     {
       "name": "list_github_repos",
@@ -854,7 +892,8 @@
       "name": "list_ingresses",
       "source": "apps/server/src/mcp/tools/query.ts",
       "status": "partial",
-      "ours": "list_domains"
+      "ours": "list_domains",
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "list_job_runs",
@@ -880,7 +919,7 @@
       "source": "apps/server/src/mcp/tools/query.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Node pools require cluster capacity management; Nest uses the user\u2019s existing server."
+      "reason": "Node pools require cluster capacity management; Nest uses the user’s existing server."
     },
     {
       "name": "list_notification_channels",
@@ -891,8 +930,8 @@
     {
       "name": "list_notification_deliveries",
       "source": "apps/server/src/mcp/tools/notifications.ts",
-      "status": "missing",
-      "ours": null
+      "status": "present",
+      "ours": "list_notification_deliveries"
     },
     {
       "name": "list_notification_rules",
@@ -904,7 +943,8 @@
       "name": "list_organizations",
       "source": "apps/server/src/mcp/tools/query.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "list_pods",
@@ -918,7 +958,7 @@
       "source": "apps/server/src/mcp/tools/database-recovery.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "list_projects",
@@ -929,34 +969,36 @@
     {
       "name": "list_registry_credentials",
       "source": "apps/server/src/mcp/tools/configuration.ts",
-      "status": "missing",
-      "ours": null
+      "status": "present",
+      "ours": "list_registry_credentials"
     },
     {
       "name": "list_releases",
       "source": "apps/server/src/mcp/tools/rollout.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "list_sandbox_sessions",
       "source": "grafts/greenhouse/mcp/src/tools.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Greenhouse sandbox sessions require Orchard\u2019s cluster; this API targets the user\u2019s Nest server."
+      "reason": "Greenhouse sandbox sessions require Orchard’s cluster; this API targets the user’s Nest server."
     },
     {
       "name": "list_sandboxes",
       "source": "apps/server/test/grafts.test.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Greenhouse sandbox sessions require Orchard\u2019s cluster; this API targets the user\u2019s Nest server."
+      "reason": "Greenhouse sandbox sessions require Orchard’s cluster; this API targets the user’s Nest server."
     },
     {
       "name": "list_services",
       "source": "apps/server/src/mcp/tools/query.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "list_template_instances",
@@ -977,7 +1019,7 @@
       "source": "grafts/greenhouse/mcp/src/tools.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Greenhouse sandbox sessions require Orchard\u2019s cluster; this API targets the user\u2019s Nest server."
+      "reason": "Greenhouse sandbox sessions require Orchard’s cluster; this API targets the user’s Nest server."
     },
     {
       "name": "rebuild_deployment",
@@ -989,77 +1031,83 @@
       "name": "redeploy_compose_stack",
       "source": "apps/server/src/mcp/tools/compose.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "rename_database",
       "source": "apps/server/src/mcp/tools/resources.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "rename_deployment",
       "source": "apps/server/src/mcp/tools/deployments.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "rename_environment",
       "source": "apps/server/src/mcp/tools/environments.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "replace_job_steps",
       "source": "apps/server/src/mcp/tools/jobs.ts",
-      "status": "missing",
-      "ours": null
+      "status": "present",
+      "ours": "replace_job_steps"
     },
     {
       "name": "replay_notification_channel",
       "source": "apps/server/src/mcp/tools/notifications.ts",
-      "status": "missing",
-      "ours": null
+      "status": "present",
+      "ours": "replay_notification_channel"
     },
     {
       "name": "reset_database_query_stats",
       "source": "apps/server/src/mcp/tools/resources.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "restart_database",
       "source": "apps/server/src/mcp/tools/resources.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "restart_deployment",
       "source": "apps/server/src/mcp/tools/deployments.ts",
       "status": "partial",
-      "ours": "restart_service"
+      "ours": "restart_service",
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "restore_checkpoint",
       "source": "apps/server/src/mcp/tools/dangerous.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "restore_database",
       "source": "apps/server/src/mcp/tools/dangerous.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "retry_deployment_apply",
       "source": "apps/server/src/mcp/tools/deployments.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "rollback_deployment",
@@ -1084,19 +1132,20 @@
       "source": "apps/server/src/mcp/tools/resources.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "scale_deployment",
       "source": "apps/server/src/mcp/tools/deployments.ts",
-      "status": "missing",
-      "ours": null
+      "status": "present",
+      "ours": "scale_deployment"
     },
     {
       "name": "search_api",
       "source": "apps/server/src/mcp/compact/compact-server.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "search_logs",
@@ -1109,34 +1158,35 @@
       "source": "apps/server/src/mcp/tools/resources.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "set_database_pooler",
       "source": "apps/server/src/mcp/tools/database-recovery.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "set_database_protection",
       "source": "apps/server/src/mcp/tools/database-recovery.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "set_database_replication",
       "source": "apps/server/src/mcp/tools/database-recovery.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "set_default_environment",
       "source": "apps/server/src/mcp/tools/environments.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "set_env_vars",
@@ -1147,79 +1197,82 @@
     {
       "name": "set_ingress_protection",
       "source": "apps/server/src/mcp/tools/configuration.ts",
-      "status": "missing",
-      "ours": null
+      "status": "present",
+      "ours": "set_ingress_protection"
     },
     {
       "name": "set_registry_credential",
       "source": "apps/server/src/mcp/tools/configuration.ts",
-      "status": "missing",
-      "ours": null
+      "status": "present",
+      "ours": "set_registry_credential"
     },
     {
       "name": "set_service_exposure",
       "source": "apps/server/src/mcp/tools/configuration.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "set_service_port_public",
       "source": "apps/server/src/mcp/tools/configuration.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "set_shared_env_vars",
       "source": "apps/server/src/mcp/tools/environments.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "start_database",
       "source": "apps/server/src/mcp/tools/resources.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "start_deployment",
       "source": "apps/server/src/mcp/tools/deployments.ts",
-      "status": "missing",
-      "ours": null
+      "status": "present",
+      "ours": "start_deployment"
     },
     {
       "name": "start_sandbox",
       "source": "grafts/greenhouse/mcp/src/tools.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Greenhouse sandbox sessions require Orchard\u2019s cluster; this API targets the user\u2019s Nest server."
+      "reason": "Greenhouse sandbox sessions require Orchard’s cluster; this API targets the user’s Nest server."
     },
     {
       "name": "stop_database",
       "source": "apps/server/src/mcp/tools/resources.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "stop_deployment",
       "source": "apps/server/src/mcp/tools/deployments.ts",
-      "status": "missing",
-      "ours": null
+      "status": "present",
+      "ours": "stop_deployment"
     },
     {
       "name": "stop_sandbox",
       "source": "grafts/greenhouse/mcp/src/tools.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Greenhouse sandbox sessions require Orchard\u2019s cluster; this API targets the user\u2019s Nest server."
+      "reason": "Greenhouse sandbox sessions require Orchard’s cluster; this API targets the user’s Nest server."
     },
     {
       "name": "test_database_backup",
       "source": "apps/server/src/mcp/tools/database-recovery.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "test_notification_channel",
@@ -1238,108 +1291,118 @@
       "source": "apps/server/src/mcp/tools/database-recovery.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "undo_database_restore",
       "source": "apps/server/src/mcp/tools/dangerous.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "uninstall_database_extension",
       "source": "apps/server/src/mcp/tools/resources.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "update_database_minor",
       "source": "apps/server/src/mcp/tools/database-recovery.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "update_database_resources",
       "source": "apps/server/src/mcp/tools/resources.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "update_database_settings",
       "source": "apps/server/src/mcp/tools/resources.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "update_deployment_build_config",
       "source": "apps/server/src/mcp/tools/configuration.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "update_deployment_disruption_budget",
       "source": "apps/server/src/mcp/tools/deployments.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "update_deployment_github_repo",
       "source": "apps/server/src/mcp/tools/deployments.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "update_deployment_health_check",
       "source": "apps/server/src/mcp/tools/configuration.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "update_deployment_image",
       "source": "apps/server/src/mcp/tools/configuration.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "update_deployment_placement",
       "source": "apps/server/src/mcp/tools/deployments.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "update_deployment_pull_policy",
       "source": "apps/server/src/mcp/tools/configuration.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "update_deployment_resources",
       "source": "apps/server/src/mcp/tools/deployments.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "update_deployment_strategy",
       "source": "apps/server/src/mcp/tools/configuration.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "update_deployment_volumes",
       "source": "apps/server/src/mcp/tools/configuration.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "update_ingress",
       "source": "apps/server/src/mcp/tools/configuration.ts",
-      "status": "missing",
-      "ours": null
+      "status": "present",
+      "ours": "update_ingress"
     },
     {
       "name": "update_job",
@@ -1350,14 +1413,14 @@
     {
       "name": "update_notification_channel",
       "source": "apps/server/src/mcp/tools/notifications.ts",
-      "status": "missing",
-      "ours": null
+      "status": "present",
+      "ours": "update_notification_channel"
     },
     {
       "name": "update_notification_rule",
       "source": "apps/server/src/mcp/tools/notifications.ts",
-      "status": "missing",
-      "ours": null
+      "status": "present",
+      "ours": "update_notification_rule"
     },
     {
       "name": "update_project",
@@ -1369,14 +1432,15 @@
       "name": "update_service",
       "source": "apps/server/src/mcp/tools/configuration.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "reason": "No corresponding registered endpoint exists in the current public API."
     },
     {
       "name": "upgrade_database",
       "source": "apps/server/src/mcp/tools/dangerous.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user\u2019s Nest server."
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
     },
     {
       "name": "validate_dns",
@@ -1386,30 +1450,65 @@
     }
   ],
   "ours_only": [
-    "delete_env_var",
-    "delete_file",
-    "download_file",
-    "get_analytics",
-    "get_container_inventory",
     "get_logs",
-    "get_notifications",
     "get_server_usage",
-    "get_status_page",
-    "list_env_vars",
-    "list_files",
-    "list_servers",
-    "make_folder",
-    "read_file",
-    "rename_file",
-    "revoke_deploy_hook",
     "set_env_var",
-    "terminal_close",
+    "delete_env_var",
+    "revoke_deploy_hook",
+    "get_notifications",
+    "test_notification",
+    "get_status_page",
+    "get_analytics",
+    "list_servers",
+    "get_container_inventory",
+    "terminal_status",
     "terminal_open",
+    "terminal_send",
     "terminal_read",
     "terminal_resize",
-    "terminal_send",
-    "terminal_status",
-    "test_notification",
-    "write_file"
-  ]
+    "terminal_close",
+    "list_files",
+    "read_file",
+    "download_file",
+    "write_file",
+    "make_folder",
+    "rename_file",
+    "delete_file",
+    "restart_deployment",
+    "get_notification_channel",
+    "list_env_vars",
+    "list_services",
+    "create_service",
+    "delete_service",
+    "set_service_exposure",
+    "set_service_port_public",
+    "create_deployment",
+    "delete_deployment",
+    "rename_deployment",
+    "retry_deployment_apply",
+    "update_deployment_build_config",
+    "update_deployment_health_check",
+    "update_deployment_image",
+    "update_deployment_pull_policy",
+    "update_deployment_strategy",
+    "update_deployment_resources",
+    "update_deployment_volumes",
+    "list_compose_stacks",
+    "get_compose_stack",
+    "list_compose_releases",
+    "redeploy_compose_stack",
+    "get_deploy_verdict",
+    "get_deployment_http_metrics",
+    "get_request_stats",
+    "get_anomalies",
+    "get_resource_recommendation",
+    "get_attack_signals",
+    "get_image_history",
+    "list_build_runs",
+    "get_observability_link",
+    "list_organizations",
+    "get_organization"
+  ],
+  "baseline_missing": 53,
+  "baseline_not_applicable": 79
 }

@@ -310,7 +310,7 @@ describe("scheduled jobs", () => {
 
 describe("deleting a project and password sign-in", () => {
   it("says a delete is refused before the container is touched, and that shared/ is kept", () => {
-    const code = read("web/src/server/project-delete.ts");
+    const code = read("web/src/server/projects.ts");
     expect(code).toContain("A deployment is still running for this project.");
     expect(code).toContain('["queued", "building", "deploying"]');
     expect(read("web/src/server/cleanup-guards.ts")).toContain("Cleanup is in progress for this project. Wait for it to finish or retry it before making changes.");
@@ -419,7 +419,7 @@ describe("self-hosting", () => {
       expect(page, text).toContain(text);
     }
     // The commands in the guide are the ones the scripts print and the files hold.
-    expect(read("web/scripts/egg-cli.mjs")).toContain("egg start [--dev]");
+    expect(read("web/scripts/egg-start.mjs")).toContain("`egg start`");
     expect(read("web/scripts/setup.mjs")).toContain("LOCAL_MODE=1");
     expect(read("web/scripts/service/templates.mjs")).toContain("systemctl --user enable --now");
     expect(readme).toContain("systemctl --user enable --now egg");

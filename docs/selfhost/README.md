@@ -438,6 +438,7 @@ Most names in the tables below are read in `web/src/server/config.ts`, which val
 | `HACKCLUB_CLIENT_ID`, `HACKCLUB_CLIENT_SECRET` | empty | Hack Club Auth app credentials. Both must be set for the Hack Club button to work. | You want Hack Club sign-in, or more than one account. |
 | `DEV_LOGIN` | `0` | `1` shows a fake sign-in with a name field. Works only with `pnpm dev`; ignored in a production build. | Developing Egg only. |
 | `SECURITY_REPORT_ADMIN_ID` | empty | The exact database id of the instance administrator. Turns on `/admin` and the private report inbox for that account. | You want an administrator account. |
+| `EMAIL_WEBHOOK_URL` | none | An https endpoint that receives sign-in and security events. Egg sends a signed POST; a failed delivery is dropped, so do not rely on it for alerts. | You want an external event sink. |
 
 ### Behind a proxy
 
