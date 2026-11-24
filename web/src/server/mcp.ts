@@ -97,12 +97,12 @@ export const RPC = {
   internal: -32603,
 } as const;
 
-const rpcError = (id: RpcId, code: number, message: string): RpcResponse => ({
+export const rpcError = (id: RpcId, code: number, message: string): RpcResponse => ({
   jsonrpc: "2.0",
   id,
   error: { code, message },
 });
-const rpcResult = (id: RpcId, result: unknown): RpcResponse => ({ jsonrpc: "2.0", id, result });
+export const rpcResult = (id: RpcId, result: unknown): RpcResponse => ({ jsonrpc: "2.0", id, result });
 
 const message = z.object({
   jsonrpc: z.literal("2.0"),
@@ -136,14 +136,44 @@ function untrustedResult(payload: string) {
 }
 
 /**
+ * Frame a payload that may carry container or repository bytes, so it reads as data. Nonce-delimited, see
+ * UNTRUSTED_PREAMBLE above. Other payloads pass through unchanged.
+ */
+export function frameOutput(untrusted: boolean, payload: string): string {
+  return untrusted ? untrustedResult(payload) : payload;
+}
+
+/**
  * Every byte the model sees from an endpoint that can carry remote data goes
  * through the frame — success AND failure. Otherwise an error could smuggle
  * injected instructions in as plain, apparently-trusted text. Errors stay
  * results, never crashes.
  */
 function toolResult(ep: Endpoint, payload: string, isError: boolean) {
-  const text = ep.untrusted ? untrustedResult(payload) : payload;
-  return { content: [{ type: "text", text }], isError };
+  return { content: [{ type: "text", text: frameOutput(ep.untrusted, payload) }], isError };
+}
+
+/** What running one endpoint produced, before framing. */
+export type ToolOutcome = { payload: string; isError: boolean };
+
+/**
+ * Run one endpoint for a token: the per-token rate limit first (its 429 is thrown to the route), then the
+ * endpoint. Scope, validation and ownership are all checked inside callEndpoint. Failures come back as an
+ * outcome with isError, never as a crash, and carry no internals.
+ */
+export async function runEndpoint(p: Principal, ep: Endpoint, args: unknown): Promise<ToolOutcome> {
+  enforceApiRate(p, ep.bucket);
+  try {
+    const data = await callEndpoint(p, ep, args ?? {});
+    return { payload: JSON.stringify(data, null, 2), isError: false };
+  } catch (err) {
+    // The message of an HttpError can itself carry remote bytes (SSH stderr,
+    // inventory/repo text), so it is framed just like a success payload.
+    if (err instanceof HttpError) return { payload: `${err.code}: ${err.message}`, isError: true };
+    // Control-flow errors from Next.js and anything unexpected: say nothing about internals.
+    console.error("MCP tool failed", ep.id, err instanceof Error ? err.name : "unknown");
+    return { payload: "internal: Something went wrong on our side.", isError: true };
+  }
 }
 
 async function callTool(p: Principal, params: unknown, id: RpcId, view: McpView): Promise<RpcResponse> {
@@ -158,19 +188,8 @@ async function callTool(p: Principal, params: unknown, id: RpcId, view: McpView)
     return rpcError(id, RPC.invalidParams, "Tool arguments must be an object.");
   }
 
-  // A rate limit is an HTTP-level 429 (it carries Retry-After); it is thrown to the route.
-  enforceApiRate(p, ep.bucket);
-  try {
-    const data = await callEndpoint(p, ep, args ?? {});
-    return rpcResult(id, toolResult(ep, JSON.stringify(data, null, 2), false));
-  } catch (err) {
-    // The message of an HttpError can itself carry remote bytes (SSH stderr,
-    // inventory/repo text), so it is framed just like a success payload.
-    if (err instanceof HttpError) return rpcResult(id, toolResult(ep, `${err.code}: ${err.message}`, true));
-    // Control-flow errors from Next.js and anything unexpected: say nothing about internals.
-    console.error("MCP tool failed", name, err instanceof Error ? err.name : "unknown");
-    return rpcResult(id, toolResult(ep, "internal: Something went wrong on our side.", true));
-  }
+  const outcome = await runEndpoint(p, ep, args);
+  return rpcResult(id, toolResult(ep, outcome.payload, outcome.isError));
 }
 
 /**
