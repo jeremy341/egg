@@ -25,10 +25,10 @@ let readOnlyKey: string;
 let noWebhookKey: string;
 
 const ORIGIN = "http://localhost:3000";
-function call(path: string, method: string, key: string | null, body?: unknown) {
+function call(path: string, method: string, key: string | null, body?: unknown, extraHeaders: Record<string, string> = {}) {
   return new NextRequest(`${ORIGIN}${path}`, {
     method,
-    headers: { "content-type": "application/json", ...(key ? { authorization: `Bearer ${key}` } : {}) },
+    headers: { ...extraHeaders, "content-type": "application/json", ...(key ? { authorization: `Bearer ${key}` } : {}) },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 }
@@ -147,4 +147,39 @@ describe("webhook routes", () => {
     }
     expect(limited).toBe(2);
   });
+
+  it("never stores a signing secret for Idempotency-Key replay", async () => {
+    const path = "/api/v1/webhooks";
+    const body = { url: "https://hooks.example.com/idempotent" };
+    const headers = { "Idempotency-Key": "webhook-secret-once" };
+    const first = await createRoute(call(path, "POST", samKey, body, headers), noCtx);
+    expect(first.status).toBe(201);
+    const secret = (await bodyOf(first)).secret as string;
+    expect(secret).toMatch(/^whsec_/);
+
+    const replay = await createRoute(call(path, "POST", samKey, body, headers), noCtx);
+    expect(replay.status).toBe(409);
+    const replayBody = await bodyOf(replay);
+    expect(replayBody).toMatchObject({
+      error: { code: "idempotency_secret_not_replayed" },
+    });
+    expect(JSON.stringify(replayBody)).not.toContain(secret);
+  });
+
+
+  it("never stores a rotated signing secret for Idempotency-Key replay", async () => {
+    const id = (await make()).body.webhook.id as string;
+    const headers = { "Idempotency-Key": "webhook-rotation-once" };
+    const first = await rotateRoute(call("/api/v1/webhooks/" + id + "/rotate", "POST", samKey, undefined, headers), idCtx(id));
+    expect(first.status).toBe(200);
+    const secret = (await bodyOf(first)).secret as string;
+    expect(secret).toMatch(/^whsec_/);
+
+    const replay = await rotateRoute(call("/api/v1/webhooks/" + id + "/rotate", "POST", samKey, undefined, headers), idCtx(id));
+    expect(replay.status).toBe(409);
+    const body = await bodyOf(replay);
+    expect(body).toMatchObject({ error: { code: "idempotency_secret_not_replayed" } });
+    expect(JSON.stringify(body)).not.toContain(secret);
+  });
+
 });

@@ -136,6 +136,7 @@ export function endpoint<P extends Shape = Empty, Q extends Shape = Empty, B ext
     path: def.path,
     scope: def.scope,
     bucket: def.bucket,
+    sensitive: def.sensitive,
     status: def.status ?? 200,
     tag: def.tag,
     summary: def.summary,

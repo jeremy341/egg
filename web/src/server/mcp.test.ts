@@ -189,6 +189,23 @@ describe("protocol", () => {
         "update_project",
         "verify_domain",
         "write_file",
+        "add_env_vars",
+        "set_env_vars",
+        "delete_env_vars",
+        "list_deploy_webhook_tokens",
+        "create_job",
+        "list_jobs",
+        "get_job",
+        "update_job",
+        "run_job",
+        "list_job_runs",
+        "get_job_run_logs",
+        "delete_job",
+        "list_notification_channels",
+        "create_notification_channel",
+        "list_notification_rules",
+        "create_notification_rule",
+        "test_notification_channel",
       ].sort()
     );
     expect(names.sort()).toEqual(ENDPOINTS.map((e) => e.id).sort());
@@ -436,6 +453,7 @@ describe("tools/call", () => {
       ["cancel_deployment", { deploymentId: theirDeploymentId }],
       ["rollback_deployment", { deploymentId: theirDeploymentId }],
     ] as const) {
+      rateLimiter().clear();
       const body = await (await call(secret, name, args)).json();
       expect(body.result.isError, name).toBe(true);
       expect(inner(text(body)), name).toMatch(/^not_found:/);
@@ -512,6 +530,9 @@ describe("the expanded tool list", () => {
       "get_resource_history", "get_project_resources", "list_servers", "get_container_inventory", "rotate_deploy_hook",
       "revoke_deploy_hook", "get_notifications", "test_notification", "get_alerts", "get_status_page",
       "terminal_open", "terminal_send", "terminal_read", "terminal_close", "list_files", "read_file", "write_file",
+      "add_env_vars", "set_env_vars", "delete_env_vars", "list_deploy_webhook_tokens",
+      "create_job", "list_jobs", "get_job", "update_job", "run_job", "list_job_runs", "get_job_run_logs", "delete_job",
+      "list_notification_channels", "create_notification_channel", "list_notification_rules", "create_notification_rule", "test_notification_channel",
       "make_folder", "delete_file",
     ]) {
       expect(tools.has(name), name).toBe(true);
@@ -523,7 +544,7 @@ describe("the expanded tool list", () => {
   it("marks every tool that deletes or can run commands or change files as destructive, and only writes", async () => {
     const tools = await byName();
     for (const name of [
-      "delete_project", "delete_env_var", "remove_domain", "rotate_deploy_hook", "revoke_deploy_hook", "cancel_deployment",
+      "delete_project", "delete_env_var", "delete_env_vars", "set_env_vars", "delete_job", "run_job", "remove_domain", "rotate_deploy_hook", "revoke_deploy_hook", "cancel_deployment",
       "rollback_deployment", "terminal_open", "terminal_send", "terminal_close", "write_file", "make_folder", "rename_file", "delete_file",
     ]) {
       expect(tools.get(name)!.annotations, name).toMatchObject({ readOnlyHint: false, destructiveHint: true });
@@ -549,8 +570,9 @@ describe("the expanded tool list", () => {
     }
     for (const name of ["write_file", "delete_file", "make_folder"]) expect(tools.get(name)!.description, name).toMatch(/shared\//);
     for (const ep of ENDPOINTS) expect(tools.get(ep.id)!.description).toContain(ep.scope ? `Needs the ${ep.scope} scope.` : "Needs no scope.");
-    for (const name of ["set_env_var", "rotate_deploy_hook"]) expect(tools.get(name)!.description).toMatch(/secret|write-only/i);
+    for (const name of ["set_env_var", "add_env_vars", "set_env_vars", "rotate_deploy_hook", "create_notification_channel"]) expect(tools.get(name)!.description).toMatch(/secret|write-only|once/i);
     expect(tools.get("rotate_deploy_hook")!.description).toMatch(/ONCE/);
+    expect(tools.get("create_notification_channel")!.description).toMatch(/once/i);
   });
 
   it("has strict input schemas that name required fields", async () => {
@@ -559,6 +581,7 @@ describe("the expanded tool list", () => {
     expect(tools.get("set_env_var")!.inputSchema.required).toEqual(expect.arrayContaining(["projectId", "key", "value"]));
     expect(tools.get("terminal_send")!.inputSchema.required).toEqual(expect.arrayContaining(["projectId", "sessionId", "data"]));
     expect(tools.get("create_project")!.inputSchema.required).toEqual(expect.arrayContaining(["serverId", "name", "repoUrl", "runtime"]));
+    for (const name of ["delete_project", "delete_env_var", "delete_env_vars", "set_env_vars", "rotate_deploy_hook", "revoke_deploy_hook", "delete_job", "run_job"]) expect(tools.get(name)!.inputSchema.required, name).toContain("confirmName");
   });
 });
 
@@ -567,16 +590,33 @@ describe("expanded tools/call", () => {
     const calls: [string, Scope, Record<string, unknown>][] = [
       ["create_project", "projects:write", { serverId, name: "X", repoUrl: "https://github.com/a/b.git", runtime: "node", port: 3999 }],
       ["update_project", "projects:write", { projectId, healthPath: "/x" }],
-      ["delete_project", "projects:write", { projectId }],
+      ["delete_project", "projects:write", { projectId, confirmName: "App" }],
       ["list_env_vars", "env:read", { projectId }],
       ["set_env_var", "env:write", { projectId, key: "A", value: "b" }],
-      ["delete_env_var", "env:write", { projectId, key: "A" }],
+      ["delete_env_var", "env:write", { projectId, key: "A", confirmName: "A" }],
+      ["add_env_vars", "env:write", { projectId, envVars: [{ key: "A", value: "b" }] }],
+      ["set_env_vars", "env:write", { projectId, confirmName: "App", envVars: [] }],
+      ["delete_env_vars", "env:write", { projectId, confirmName: "App", keys: ["A"] }],
       ["add_domain", "domains:write", { serverId, domain: "a.example.com", port: 3000 }],
       ["verify_domain", "domains:write", { domainId: "x" }],
       ["remove_domain", "domains:write", { domainId: "x" }],
-      ["rotate_deploy_hook", "deployments:write", { projectId }],
+      ["rotate_deploy_hook", "deployments:write", { projectId, confirmName: "App" }],
+      ["list_deploy_webhook_tokens", "deployments:read", { projectId }],
+      ["create_job", "jobs:write", { projectId, name: "MCP job", schedule: "0 * * * *", command: "true" }],
+      ["list_jobs", "jobs:read", { projectId }],
+      ["get_job", "jobs:read", { projectId, jobId: "missing" }],
+      ["update_job", "jobs:write", { projectId, jobId: "missing", enabled: false }],
+      ["run_job", "jobs:write", { projectId, jobId: "missing", confirmName: "MCP job" }],
+      ["list_job_runs", "jobs:read", { projectId, jobId: "missing" }],
+      ["get_job_run_logs", "jobs:read", { projectId, jobId: "missing" }],
+      ["delete_job", "jobs:write", { projectId, jobId: "missing", confirmName: "MCP job" }],
       ["get_notifications", "notifications:read", { projectId }],
       ["get_alerts", "alerts:read", { projectId }],
+      ["list_notification_channels", "webhooks:read", {}],
+      ["create_notification_channel", "webhooks:write", { url: "https://mcp.example.test/in" }],
+      ["list_notification_rules", "webhooks:read", {}],
+      ["create_notification_rule", "webhooks:write", { webhookId: "missing", events: ["deployment.failed"] }],
+      ["test_notification_channel", "webhooks:write", { webhookId: "missing" }],
       ["get_analytics", "analytics:read", { projectId }],
       ["get_project_resources", "resources:read", { projectId }],
       ["list_servers", "container:read", {}],
@@ -586,10 +626,11 @@ describe("expanded tools/call", () => {
       ["list_files", "files:read", { projectId }],
       ["write_file", "files:write", { projectId, path: "shared/a", content: "x" }],
       ["delete_file", "files:write", { projectId, path: "shared/a" }],
-    ];
+        ];
     const before = (await ctx.db.select().from(schema.projects)).length;
+    const secret = await token(["projects:read"]);
     for (const [name, scope, args] of calls) {
-      const secret = await token(ALL.filter((s) => s !== scope));
+      rateLimiter().clear();
       const body = await (await call(secret, name, args)).json();
       expect(body.result.isError, name).toBe(true);
       expect(text(body), name).toContain(scope);
@@ -602,12 +643,28 @@ describe("expanded tools/call", () => {
     const secret = await token();
     for (const [name, args] of [
       ["update_project", { projectId: theirProjectId, healthPath: "/x" }],
-      ["delete_project", { projectId: theirProjectId }],
+      ["delete_project", { projectId: theirProjectId, confirmName: "Theirs" }],
       ["list_env_vars", { projectId: theirProjectId }],
       ["set_env_var", { projectId: theirProjectId, key: "A", value: "b" }],
+      ["add_env_vars", { projectId: theirProjectId, envVars: [{ key: "A", value: "b" }] }],
+      ["set_env_vars", { projectId: theirProjectId, confirmName: "Theirs", envVars: [] }],
+      ["delete_env_vars", { projectId: theirProjectId, confirmName: "Theirs", keys: ["A"] }],
+      ["delete_env_var", { projectId: theirProjectId, key: "A", confirmName: "A" }],
+      ["list_deploy_webhook_tokens", { projectId: theirProjectId }],
+      ["create_job", { projectId: theirProjectId, name: "x", schedule: "0 * * * *", command: "true" }],
+      ["list_jobs", { projectId: theirProjectId }],
+      ["get_job", { projectId: theirProjectId, jobId: "missing" }],
+      ["update_job", { projectId: theirProjectId, jobId: "missing", enabled: false }],
+      ["run_job", { projectId: theirProjectId, jobId: "missing", confirmName: "x" }],
+      ["list_job_runs", { projectId: theirProjectId, jobId: "missing" }],
+      ["get_job_run_logs", { projectId: theirProjectId, jobId: "missing" }],
+      ["delete_job", { projectId: theirProjectId, jobId: "missing", confirmName: "x" }],
+      ["create_notification_channel", { url: "https://mcp.example.test/in", projectId: theirProjectId }],
+      ["create_notification_rule", { webhookId: "no-such-webhook", events: ["deployment.failed"] }],
+      ["test_notification_channel", { webhookId: "no-such-webhook" }],
       ["get_deployment", { deploymentId: theirDeploymentId }],
       ["get_deployment_logs", { deploymentId: theirDeploymentId }],
-      ["rotate_deploy_hook", { projectId: theirProjectId }],
+      ["rotate_deploy_hook", { projectId: theirProjectId, confirmName: "Theirs" }],
       ["get_alerts", { projectId: theirProjectId }],
       ["get_analytics", { projectId: theirProjectId }],
       ["get_status_page", { projectId: theirProjectId }],
@@ -617,6 +674,7 @@ describe("expanded tools/call", () => {
       ["list_files", { projectId: theirProjectId }],
       ["write_file", { projectId: theirProjectId, path: "shared/a", content: "x" }],
     ] as const) {
+      rateLimiter().clear();
       const body = await (await call(secret, name, args)).json();
       expect(body.result.isError, name).toBe(true);
       expect(inner(text(body)), name).toMatch(/^not_found:/);
@@ -644,14 +702,37 @@ describe("expanded tools/call", () => {
 
   it("returns the deploy hook URL once, from the rotate tool only", async () => {
     const secret = await token(["deployments:write", "projects:read", "notifications:read", "alerts:read"]);
-    const rotated = await (await call(secret, "rotate_deploy_hook", { projectId })).json();
+    const rotated = await (await call(secret, "rotate_deploy_hook", { projectId, confirmName: "App" })).json();
     const { hook } = JSON.parse(inner(text(rotated)));
     expect(hook.url).toMatch(/\/api\/hooks\/deploy\/ndh_/);
     const hookToken = hook.url.split("/").pop();
     for (const [name, args] of [["get_project", { projectId }], ["list_projects", {}], ["get_notifications", { projectId }], ["get_alerts", { projectId }]] as const) {
       expect(JSON.stringify(await (await call(secret, name, args)).json()), name).not.toContain(hookToken);
     }
-    await call(secret, "revoke_deploy_hook", { projectId });
+    await call(secret, "revoke_deploy_hook", { projectId, confirmName: "App" });
+  });
+
+
+  it("returns a webhook signing secret once and marks the create tool sensitive", async () => {
+    const secret = await token(["webhooks:read", "webhooks:write"]);
+    const created = await (await call(secret, "create_notification_channel", {
+      url: "https://mcp-secret.example.test/in",
+      projectId,
+      events: ["deployment.failed"],
+    })).json();
+    expect(created.result.isError).toBe(false);
+    const payload = JSON.parse(inner(text(created)));
+    expect(payload.secret).toMatch(/^whsec_/);
+
+    const listed = await (await call(secret, "list_notification_channels", {})).json();
+    expect(JSON.stringify(listed)).not.toContain(payload.secret);
+    const tools = (await (await send(rpc("tools/list"), secret)).json()).result.tools as {
+      name: string;
+      _meta?: Record<string, unknown>;
+    }[];
+    expect(tools.find((tool) => tool.name === "create_notification_channel")?._meta).toEqual({
+      "egg/sensitive": true,
+    });
   });
 
   it("refuses the terminal and file changes with disabled until the owner turns the switch on, before any SSH", async () => {
@@ -705,7 +786,7 @@ describe("expanded tools/call", () => {
 });
 
 describe("what tokens can never reach", () => {
-  const EXCLUDED = /orphan|permission|account|session|token|leftover|rotate_key|rotate-key/;
+  const EXCLUDED = /orphan|permission|account|session|leftover|rotate_key|rotate-key|(?:^|[_/])token(?:$|[_/])/;
   // Terminal session ids (/terminal/{sessionId}) are not browser sessions.
   const strip = (s: string) => s.replace(/\{sessionId\}|sessionId/g, "");
 

@@ -6,4 +6,4 @@ import { webhookRoute } from "@/server/webhooks-http";
 export const POST = webhookRoute("webhooks:write", "write", async (p, _req, id) => {
   if (!id) throw notFound("Webhook not found");
   return { data: await rotateWebhookSecret(p.userId, id) };
-});
+}, true);
