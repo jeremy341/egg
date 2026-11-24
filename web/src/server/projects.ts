@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+﻿import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { audit } from "@/server/audit";
 import { pickCloneSettings, type CloneSettings } from "@/server/clone-settings";
@@ -20,6 +20,7 @@ import { assertCleanupAllowsWork } from "@/server/cleanup-guards";
 import { maintenanceBlocksUser } from "@/server/maintenance";
 import { assertAccountCanWrite } from "@/server/account-standing";
 import { projectReadableBy } from "@/server/project-roles";
+import { assertProjectAccess, type ProjectLevel } from "@/server/permissions";
 import { forgetDeliveriesForDeployments } from "@/server/webhooks";
 import { providerClientForUser, publicProviderClient, repositoryNameFromUrl, validateProviderSource } from "@/server/providers/connections";
 import { genericGitEnvironment } from "@/server/providers/generic";
@@ -184,6 +185,20 @@ export async function assertOwned(userId: string, projectId: string): Promise<Pr
 }
 export const getProjectForUser = assertOwned;
 
+/**
+ * Load a project at the level the user holds (permissions.ts): view, edit or
+ * admin. Owners, organization owners and admins, and project members with the
+ * role for that level all pass. Anyone else gets 404; a missing level gets 403.
+ * Callers still on getProjectForUser are owner-only until they move here.
+ */
+export async function getProjectAtLevel(userId: string, projectId: string, level: ProjectLevel): Promise<ProjectRow> {
+  await assertProjectAccess(userId, projectId, level);
+  const db = await getDb();
+  const row = await db.select().from(schema.projects).where(eq(schema.projects.id, projectId)).get();
+  if (!row) throw notFound("Project not found");
+  return row;
+}
+
 /** Explicitly scoped read access; callers must not return this row directly. */
 export async function getReadableProject(userId: string, projectId: string): Promise<ProjectRow> {
   const db = await getDb();
@@ -194,7 +209,7 @@ export async function getReadableProject(userId: string, projectId: string): Pro
 
 /** Owner-only alias kept for the deploy actions that used to allow developer members. */
 async function getDevelopableProject(userId: string, projectId: string): Promise<ProjectRow> {
-  return assertOwned(userId, projectId);
+  return getProjectAtLevel(userId, projectId, "edit");
 }
 
 export async function listProjects(userId: string) {
@@ -412,7 +427,7 @@ async function assertPortFree(tx: Tx, serverId: string, port: number, message: s
 export async function updateProject(userId: string, projectId: string, raw: unknown) {
   await assertAccountCanWrite(userId);
   const input = updateProjectInput.parse(raw);
-  const project = await assertOwned(userId, projectId);
+  const project = await getProjectAtLevel(userId, projectId, "edit");
   if (input.autoDeploy && project.sourceProvider !== "github" && !project.providerWebhookSecretEnc) throw new HttpError(400, "Configure a provider webhook before enabling automatic deployments.", "validation");
   if (input.workloadKind && input.workloadKind !== project.workloadKind) throw new HttpError(400, "Create a separate project to change between a web service and a worker.", "validation");
   if (input.port !== undefined && input.listenPort !== undefined && input.port !== input.listenPort) throw new HttpError(400, "Port and listenPort must agree.", "validation");
@@ -499,7 +514,7 @@ export async function updateProject(userId: string, projectId: string, raw: unkn
     if (newPort !== null) await moveDomainsToPort(tx, project.id, newPort);
   }));
   await audit(userId, "project.update", project.id, { fields: Object.keys(clean).join(", ") });
-  return assertOwned(userId, projectId);
+  return getProjectAtLevel(userId, projectId, "edit");
 }
 
 // ------------------------------------------------------------ environment
@@ -517,7 +532,7 @@ export const envInput = z.object({
 
 export async function setEnvVar(userId: string, projectId: string, raw: unknown) {
   const input = envInput.parse(raw);
-  const project = await assertOwned(userId, projectId);
+  const project = await getProjectAtLevel(userId, projectId, "edit");
   const db = await getDb();
 
   await withLockRetry(() => db.transaction(async (tx) => {
@@ -569,7 +584,7 @@ export async function setEnvVar(userId: string, projectId: string, raw: unknown)
 
 /** Names and targets only. Values are never sent back to the browser. */
 export async function listEnvVars(userId: string, projectId: string) {
-  const project = await assertOwned(userId, projectId);
+  const project = await getProjectAtLevel(userId, projectId, "view");
   const db = await getDb();
   const rows = await db
     .select({ id: schema.envVars.id, key: schema.envVars.key, target: schema.envVars.target })
@@ -659,7 +674,7 @@ export async function replaceEnvVars(userId: string, projectId: string, raw: unk
 }
 
 export async function deleteEnvVar(userId: string, projectId: string, envId: string) {
-  const project = await assertOwned(userId, projectId);
+  const project = await getProjectAtLevel(userId, projectId, "edit");
   const db = await getDb();
   await db.transaction(async (tx) => {
     await assertCleanupAllowsWork(tx, userId, project.id);
@@ -887,7 +902,7 @@ export async function cancelDeployment(userId: string, deploymentId: string, via
   await audit(userId, "deploy.cancel", project.id, { branch: dep.branch, ...viaMeta(via) });
 }
 
-export async function ownedDeployment(userId: string, deploymentId: string) {
+export async function ownedDeployment(userId: string, deploymentId: string, level: ProjectLevel = "edit") {
   const db = await getDb();
   const dep = await db
     .select()
@@ -895,12 +910,14 @@ export async function ownedDeployment(userId: string, deploymentId: string) {
     .where(eq(schema.deployments.id, deploymentId))
     .get();
   if (!dep) throw notFound("Deployment not found");
-  const project = await assertOwned(userId, dep.projectId);
+  const project = await getProjectAtLevel(userId, dep.projectId, level);
   return { dep, project };
 }
 
-/** Both read and action access are owner-only since team collaboration was removed. */
-export const readableDeployment = ownedDeployment;
+/** Read access to one deployment: any role that can view the project. Actions use ownedDeployment (edit). */
+export function readableDeployment(userId: string, deploymentId: string) {
+  return ownedDeployment(userId, deploymentId, "view");
+}
 
 
 export async function listDeployments(userId: string, projectId?: string, limit = 50) {
@@ -973,6 +990,28 @@ export async function assertProjectIdle(tx: Pick<Db, "select">, projectId: strin
       and(
         eq(schema.deployments.projectId, projectId),
         inArray(schema.deployments.state, ["queued", "building", "deploying"])
+      )
+    )
+    .get();
+  if (running) {
+    throw new HttpError(
+      409,
+      "A deployment is still running for this project. Cancel it or wait for it to finish, then delete the project.",
+      "conflict"
+    );
+  }
+}
+
+/** Delete a project's records (deployments, logs and env vars cascade). */
+export async function deleteProjectRecords(userId: string, projectId: string) {
+  const project = await getProjectAtLevel(userId, projectId, "admin");
+  const db = await getDb();
+  await db.transaction(async (tx) => {
+    await assertCleanupAllowsWork(tx, userId, projectId);
+    await assertProjectIdle(tx, project.id);
+    await tx.delete(schema.projects).where(eq(schema.projects.id, project.id));
+  });
+}
       )
     )
     .get();

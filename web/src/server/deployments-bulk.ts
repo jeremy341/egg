@@ -42,7 +42,8 @@ export async function cancelPreview(userId: string, deploymentId: string) {
  * automatically.
  */
 export async function deletePreview(userId: string, deploymentId: string) {
-  const { dep, project } = await ownedDeployment(userId, deploymentId);
+  // Deleting is admin-only; cancelling a preview is an edit.
+  const { dep, project } = await ownedDeployment(userId, deploymentId, "admin");
   if (!canBulkDelete(candidate(dep))) {
     throw new HttpError(409, "Only old previews that are not live or removed can be deleted in bulk.", "conflict");
   }

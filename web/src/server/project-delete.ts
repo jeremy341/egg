@@ -5,7 +5,7 @@ import { assertCleanupAllowsWork } from "@/server/cleanup-guards";
 import { newId } from "@/server/crypto";
 import { getDb, schema } from "@/server/db";
 import { HttpError } from "@/server/http";
-import { assertDeletable, assertProjectIdle, getProjectForUser, type ProjectRow } from "@/server/projects";
+import { assertDeletable, assertProjectIdle, getProjectAtLevel, type ProjectRow } from "@/server/projects";
 import { moveProjectToTrash, trashProject } from "@/server/project-trash";
 import { removeProjectFromServer } from "@/server/runtime-info";
 import { getServerForUser } from "@/server/servers";
@@ -37,7 +37,7 @@ export async function deleteProject(
   deps: ProjectDeleteDeps = {}
 ) {
   if (!opts.remote) return trashProject(userId, projectId);
-  const project = await getProjectForUser(userId, projectId);
+  const project = await getProjectAtLevel(userId, projectId, "admin");
   assertDeletable(project);
   const reservation = await reserveProject(userId, project);
   // Keep the lease alive while the removal runs, so a slow server does not make the

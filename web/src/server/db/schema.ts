@@ -192,6 +192,47 @@ export const registryCredentials = sqliteTable(
 
 export const PULL_POLICIES = ["auto", "always", "cached"] as const;
 
+/**
+ * An organization groups projects under shared roles. Personal projects have no
+ * organization (`projects.orgId` is null).
+ */
+export const organizations = sqliteTable(
+  "organizations",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    slug: text("slug").notNull(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    createdAt: ts("created_at").notNull(),
+    updatedAt: ts("updated_at").notNull(),
+  },
+  (t) => [uniqueIndex("organizations_slug_idx").on(t.slug)]
+);
+
+export const ORG_ROLES = ["owner", "admin", "member", "guest"] as const;
+export type OrgRole = (typeof ORG_ROLES)[number];
+
+/** Organization membership. Owners and admins see every project in the organization. */
+export const orgMembers = sqliteTable(
+  "org_members",
+  {
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    role: text("role", { enum: ORG_ROLES }).notNull(),
+    createdAt: ts("created_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("org_members_org_user_idx").on(t.orgId, t.userId),
+    index("org_members_user_idx").on(t.userId),
+  ]
+);
+
 export const projects = sqliteTable(
   "projects",
   {
@@ -298,6 +339,8 @@ export const projects = sqliteTable(
     deletionProtected: integer("deletion_protected", { mode: "boolean" }).notNull().default(false),
     /** systemd's result for the service's last exit, such as "oom-kill". Null when unknown. */
     lastExitResult: text("last_exit_result"),
+    /** Organization that owns this project. Null for a personal project. */
+    orgId: text("org_id").references(() => organizations.id, { onDelete: "set null" }),
     createdAt: ts("created_at").notNull(),
     updatedAt: ts("updated_at").notNull(),
   },
@@ -311,7 +354,88 @@ export const projects = sqliteTable(
     uniqueIndex("projects_analytics_idx").on(t.analyticsKey),
     uniqueIndex("projects_status_idx").on(t.statusKey),
     index("projects_user_idx").on(t.userId),
+    index("projects_org_idx").on(t.orgId),
   ]
+);
+
+export const PROJECT_ROLES = ["admin", "member", "viewer"] as const;
+export type ProjectRole = (typeof PROJECT_ROLES)[number];
+
+/** Per-project access for people who are not the project owner or an org owner/admin. */
+export const projectMembers = sqliteTable(
+  "project_members",
+  {
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    role: text("role", { enum: PROJECT_ROLES }).notNull(),
+    createdAt: ts("created_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("project_members_project_user_idx").on(t.projectId, t.userId),
+    index("project_members_user_idx").on(t.userId),
+  ]
+);
+
+/**
+ * Email invitations to an organization. Only the SHA-256 of the token is stored;
+ * the link is shown once. `acceptedAt`, `cancelledAt` and `expiresAt` make a
+ * token single-use and time-limited.
+ */
+export const invitations = sqliteTable(
+  "invitations",
+  {
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    role: text("role", { enum: ORG_ROLES }).notNull(),
+    tokenHash: text("token_hash").notNull(),
+    invitedBy: text("invited_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    expiresAt: ts("expires_at").notNull(),
+    acceptedAt: ts("accepted_at"),
+    acceptedBy: text("accepted_by").references(() => users.id, { onDelete: "set null" }),
+    cancelledAt: ts("cancelled_at"),
+    createdAt: ts("created_at").notNull(),
+    updatedAt: ts("updated_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("invitations_token_hash_idx").on(t.tokenHash),
+    index("invitations_org_idx").on(t.orgId),
+  ]
+);
+
+/**
+ * Transfer of a project to another user. The recipient must already be a project
+ * member and must accept. Pending requests expire after 7 days.
+ */
+export const ownershipTransfers = sqliteTable(
+  "ownership_transfers",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    fromUserId: text("from_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    toUserId: text("to_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    state: text("state", { enum: ["pending", "accepted", "declined", "cancelled", "expired"] })
+      .notNull()
+      .default("pending"),
+    expiresAt: ts("expires_at").notNull(),
+    resolvedAt: ts("resolved_at"),
+    createdAt: ts("created_at").notNull(),
+  },
+  (t) => [index("ownership_transfers_project_idx").on(t.projectId, t.state), index("ownership_transfers_to_idx").on(t.toUserId, t.state)]
 );
 
 export const providerWebhookDeliveries = sqliteTable("provider_webhook_deliveries", {
@@ -684,14 +808,21 @@ export const userThemes = sqliteTable(
 
 export type UserTheme = typeof userThemes.$inferSelect;
 
+/**
+ * Who did what. `level` says which scope the entry belongs to: an app event, an
+ * organization event (then `orgId` is set) or an instance-wide admin event. Kept
+ * for 180 days (see cleanup-audit.ts).
+ */
 export const auditLog = sqliteTable("audit_log", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: text("user_id"),
   action: text("action").notNull(),
   target: text("target"),
   meta: text("meta"),
+  level: text("level", { enum: ["app", "organization", "instance"] }).notNull().default("app"),
+  orgId: text("org_id"),
   at: ts("at").notNull(),
-}, (t) => [index("audit_log_action_at_idx").on(t.action, t.at)]);
+}, (t) => [index("audit_log_action_at_idx").on(t.action, t.at), index("audit_log_at_idx").on(t.at), index("audit_log_org_idx").on(t.orgId, t.at)]);
 
 /** Server load, memory and disk, sampled by the worker so the dashboard can show trends. */
 export const usageSamples = sqliteTable(
