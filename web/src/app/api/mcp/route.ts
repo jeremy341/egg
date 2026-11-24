@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { IDEMPOTENCY_HEADER } from "@/server/api-idempotency";
 import { authenticate, jsonResponse, readCappedText } from "@/server/api-v1-http";
 import { handle, HttpError } from "@/server/http";
 import { handleMcpMessage, RPC } from "@/server/mcp";
@@ -25,7 +26,9 @@ export const POST = handle(
       return jsonResponse({ jsonrpc: "2.0", id: null, error: { code: RPC.parse, message: "Parse error" } }, 400);
     }
 
-    const outcome = await handleMcpMessage(principal, raw, view);
+    const outcome = await handleMcpMessage(principal, raw, view, {
+      idempotencyHeader: req.headers.get(IDEMPOTENCY_HEADER),
+    });
     if (outcome.kind === "accepted") return new NextResponse(null, { status: 202, headers: { "Cache-Control": "no-store" } });
     return jsonResponse(outcome.body, outcome.status);
   },

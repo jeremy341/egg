@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   index,
   integer,
+  primaryKey,
   real,
   sqliteTable,
   text,
@@ -1050,4 +1051,30 @@ export const oauthTokens = sqliteTable(
     createdAt: ts("created_at").notNull(),
   },
   (t) => [index("oauth_tokens_user_idx").on(t.userId)]
+);
+
+/**
+ * One Idempotency-Key answer, per (token, key). A row is a claim while `state` is
+ * pending, then holds the first answer for replay. A sensitive answer is stored
+ * with an empty body, so a repeat is refused and no secret is kept. A row expires
+ * 24 hours after it was claimed. `claimId` lets only the request that made the
+ * claim finish or release it.
+ */
+export const idempotencyKeys = sqliteTable(
+  "idempotency_keys",
+  {
+    /** The token id that made the first request, so one token never replays another's answer. */
+    scope: text("scope").notNull(),
+    key: text("key").notNull(),
+    claimId: text("claim_id").notNull(),
+    fingerprint: text("fingerprint").notNull(),
+    state: text("state", { enum: ["pending", "done"] }).notNull(),
+    status: integer("status"),
+    body: text("body").notNull().default(""),
+    headers: text("headers").notNull().default("[]"),
+    sensitive: integer("sensitive", { mode: "boolean" }).notNull().default(false),
+    createdAt: ts("created_at").notNull(),
+    expiresAt: ts("expires_at").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.scope, t.key] }), index("idempotency_keys_expires_idx").on(t.expiresAt)]
 );
