@@ -74,6 +74,20 @@ const related = (pages: [string, string][]) => (
   </P>
 );
 
+/** The closing list of further reading on a developer page. */
+const relatedResources = (pages: [string, string][]) => (
+  <P>
+    <B>Related resources:</B>{" "}
+    {pages.map(([id, title], i) => (
+      <span key={id}>
+        {i > 0 ? ", " : ""}
+        <InternalLink href={docsHref(id)}>{title}</InternalLink>
+      </span>
+    ))}
+    .
+  </P>
+);
+
 /** A short rationale for a choice that is not obvious. */
 const why = (children: ReactNode) => (
   <Callout tone="note" title="Why it works this way">
@@ -295,6 +309,7 @@ const CALLS: Call[] = [
   ["list_deployments", "GET", "/projects/{projectId}/deployments", "deployments:read", "Reads"],
   ["deploy_branch", "POST", "/projects/{projectId}/deployments", "deployments:write", "Changes"],
   ["get_deployment", "GET", "/deployments/{deploymentId}", "deployments:read", "Reads"],
+  ["get_rollout", "GET", "/deployments/{deploymentId}/rollout", "deployments:read", "Reads"],
   ["get_deployment_logs", "GET", "/deployments/{deploymentId}/logs", "deployments:read", "Container session"],
   ["redeploy", "POST", "/deployments/{deploymentId}/redeploy", "deployments:write", "Changes"],
   ["cancel_deployment", "POST", "/deployments/{deploymentId}/cancel", "deployments:write", "Changes"],
@@ -2255,7 +2270,10 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
           ["Not a JSON-RPC 2.0 message.", "400. Send { \"jsonrpc\": \"2.0\", \"id\": 1, \"method\": ..., \"params\": ... }."],
           ["Batches are not supported. Send one message per request.", "400. Send one message at a time."],
           ["Method not found: <method>", "Use initialize, ping, tools/list or tools/call."],
-          ["Unknown tool: <name>", "The MCP endpoint does not have that tool. Call tools/list."],
+          ["Unknown tool: <name>", "That tool is not in this connection’s list. Call tools/list to see what your token can run; a tool can also be hidden by the toolset or scope you picked on the address."],
+          ["Unknown toolset \"<name>\". Choose from: ...", "400. Pick a name from the list in the message. core is added for you."],
+          ["Unknown scope \"<name>\". Use read or deploy.", "400. Use read or deploy."],
+          ["This operation changes live systems and has not run. To run it, call call_api again with confirm set to \"<operationId>\".", "The compact server held the call. Send the same call again with confirm set to that id."],
           ["tools/call needs a tool name.", "Send params with a name."],
           ["Tool arguments must be an object.", "Send arguments as { … }."],
           ["<code>: <message>", "A tool that fails comes back as a result with isError set, and the text starts with the error code, for example forbidden: This token does not have the files:write permission."],
@@ -2331,24 +2349,32 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
   api: () => (
     <Section
       id="api"
-      intro="Access tokens let a script or an AI agent act for you, with only the permissions you pick."
+      intro="Make a token, give it only the permissions you need, and call Egg’s API from a script or an AI agent."
     >
       <P>
-        You make tokens on the Developer page. A token is a bearer secret that starts with <C>egg_</C>. The API is
-        under <C>/api/v1</C>, the agent endpoint is <C>/api/mcp</C>, and everything here is also in the OpenAPI
-        description at <C>/api/v1/openapi.json</C>. A token can do nothing its permissions do not name (the API and
-        its code call them scopes), and a few things it can never do at all. Egg runs every call on Egg’s machine.
-        The calls marked “Container session” in the table below also open an SSH connection to your container, so
-        they use a little of its CPU and are limited to 10 a minute for each token.
+        You make tokens on the Developer page. A token is a bearer secret that starts with <C>egg_</C>; send it in an{" "}
+        <C>Authorization: Bearer</C> header. You call the JSON API under <C>/api/v1</C>, you point an agent at{" "}
+        <C>/api/mcp</C>, and you read the descriptions at <C>/api/v1/openapi.json</C> and{" "}
+        <C>/api/v1/agent-spec.json</C>. The agent spec is a short list of operations built from the same document as
+        the OpenAPI reference, so the two cannot disagree on names. Your token can do nothing its permissions do not
+        name (the API and its code call them scopes), and a few things it can never do at all. Egg runs every call on
+        Egg’s machine. The calls marked “Container session” in the table below also open an SSH connection to your
+        container, so they use a little of its CPU and Egg limits them to 10 a minute for each token.
       </P>
+      <Callout tone="warning" title="Keep your token out of public code">
+        Anyone who reads a token you publish can act as you until you revoke it.
+      </Callout>
       <H2 id="api-tokens" />
       {steps("api-tokens-steps", "Make a token", [
-        { title: "Open Developer", body: "Press Create token to open the New token dialog.", path: ["Developer", "Access tokens", "Create token"] },
-        { title: "Name it", body: "A name is 1 to 60 characters. Pick one you will recognise later. It is what Activity shows for anything the token does." },
-        { title: "Tick Permissions", body: "Read only ticks every read permission. Deploy ticks projects:read, deployments:read, deployments:write and logs:read." },
-        { title: "Choose Expires after", body: "7, 30, 90 or 365 days. 90 is the default. With a terminal or file permission ticked only 7 days is allowed." },
-        { title: "Copy the secret", body: "It is shown once: “Copy it now. It is shown once.” Store it in a secret store, not in code." },
+        { title: "Open Developer", body: "Open Developer and press Create token. The New token dialog opens.", path: ["Developer", "Access tokens", "Create token"] },
+        { title: "Name it", body: "Type 1 to 60 characters. Pick a name you will recognise later: Activity shows it for everything the token does." },
+        { title: "Tick Permissions", body: "Tick only what you need. Read only ticks every read permission. Deploy ticks projects:read, deployments:read, deployments:write and logs:read." },
+        { title: "Choose Expires after", body: "Pick 7, 30, 90 or 365 days; 90 is the default. If you tick a terminal or file permission, you can pick only 7 days." },
+        { title: "Copy the secret", body: "Copy it when the dialog says “Copy it now. It is shown once.” Keep it in a secret store, not in code." },
       ])}
+      <Callout tone="note" title="Copy the secret before you close the dialog">
+        Egg stores only a hash of it, so no one can show you the secret again.
+      </Callout>
       <P>
         The list groups tokens as Active, Expired and Revoked, and flags an active token that ends within 7 days.
         Each shows when it was last used, at most once an hour, or “Never”. Each active token has Edit and Revoke.
@@ -2394,26 +2420,29 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         ]}
       />
       <P>
-        Projects, deployments, variables, domains, files and webhooks have a write permission, and{" "}
-        <C>terminal:use</C> runs commands. Notifications, alerts, analytics, resources, activity, the container and
-        logs are read only, and no permission changes notification or alert settings. Those stay in the browser.{" "}
-        <C>test_notification</C> needs only <C>notifications:read</C> but posts a real message to your channel, so an
-        agent should send it only when you ask.
+        You get write permissions for projects, deployments, variables, domains, files and webhooks, and{" "}
+        <C>terminal:use</C> lets you run commands. Notifications, alerts, analytics, resources, activity, the
+        container and logs are read only, and no permission changes notification or alert settings: those stay in the
+        browser. You can call <C>test_notification</C> with only <C>notifications:read</C>, but it posts a real message
+        to your channel. Send it only when you ask for it, and tell an agent to do the same.
       </P>
 
       <H2 id="api-limits" />
       <P>
-        Terminal and file changes are off until you switch them on for a server, and switching them on asks you to
-        sign in with Hack Club again. A token can use them only while that switch is on. A token that holds{" "}
-        <C>terminal:use</C> or <C>files:write</C> expires within 7 days, whatever length you picked, and the form shows
-        that as you tick it. If you send no expiry, it gets 7 days. Adding either permission to a longer-lived token
-        is refused unless the same edit sets the expiry to 7 days.
+        You switch terminal and file changes on for a server before a token can use them, and Egg asks you to sign in
+        with Hack Club again when you do. A token reaches them only while that switch is on. A token holding{" "}
+        <C>terminal:use</C> or <C>files:write</C> expires within 7 days, whatever length you picked, and the form says
+        so as you tick the permission. Send no expiry and it gets 7 days. Adding either permission to a longer-lived
+        token is refused unless the same edit sets the expiry to 7 days.
       </P>
       <P>
-        Some things stay with you in the browser. A token cannot remove leftovers, change the container permissions,
-        manage your account or sessions, or create other tokens. Files in <C>current/</C> stay read only, and a
-        release’s <C>.env</C> is never returned.
+        Some things stay with you in the browser. You cannot use a token to remove leftovers, change the container
+        permissions, manage your account or sessions, or create other tokens. Files in <C>current/</C> stay read only,
+        and a release’s <C>.env</C> is never returned.
       </P>
+      <Callout tone="warning" title="A leaked terminal token is short lived">
+        Whoever holds it can run commands on your container until its 7 days end or you switch the terminal off.
+      </Callout>
       {why(
         <>
           A terminal can run any command and a file change can alter the code your app runs, so a leaked token with
@@ -2425,19 +2454,21 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
 
       <H2 id="api-mcp" />
       <P>
-        The API is under <C>/api/v1</C> and takes the token as a bearer header. The description of every call is at{" "}
-        <C>/api/v1/openapi.json</C>. Start with <C>/api/v1/me</C>. It needs no permission, so any valid token can call
-        it. It returns the token’s name, permissions and expiry and how many servers and projects there are, and never
-        an email address.
+        You call the REST API under <C>/api/v1</C> with your token as a bearer header. Read the full reference at{" "}
+        <C>/api/v1/openapi.json</C>, or fetch the shorter <C>/api/v1/agent-spec.json</C> when you want only the
+        operation ids, methods, paths and parameters. Start with <C>/api/v1/me</C>: it needs no permission, so any
+        valid token can call it. It returns your token’s name, permissions and expiry and how many servers and
+        projects you have, and never an email address.
       </P>
       <List>
         <li>
-          <B>Requests.</B> Send JSON. A body field the call does not know is refused with an “Unknown field” message that lists the allowed ones, so a typo cannot silently do nothing. A value in the path wins over a body field of the same
-          name.
+          <B>Requests.</B> Send JSON. If a body field the call does not know is present, Egg refuses it with an
+          “Unknown field” message that lists the allowed ones, so a typo cannot silently do nothing. A value in the
+          path wins over a body field of the same name.
         </li>
         <li>
-          <B>Answers.</B> A success is <C>200</C>, or <C>201</C> for something new, or <C>202</C> for a deployment
-          that is queued and will finish later. An error is always <C>{"{ \"error\": { \"code\", \"message\" } }"}</C>.
+          <B>Answers.</B> You get <C>200</C>, or <C>201</C> for something new, or <C>202</C> for a deployment that is
+          queued and will finish later. An error is always <C>{"{ \"error\": { \"code\", \"message\" } }"}</C>.
           Authenticated answers are never cached.
         </li>
         <li>
@@ -2446,19 +2477,69 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         </li>
         <li>
           <B>Cross-origin use.</B> The API allows any origin and never reads cookies, so a page on another site can
-          call it only with a token it holds. Do not put a token in a public page.
+          call it only with a token it already holds. Keep your token out of a public page.
         </li>
       </List>
       <P>
-        AI agents connect to <C>/api/mcp</C> instead. It speaks JSON-RPC 2.0 over POST, with one message per request,
-        no sessions and no batches, and it offers the same calls as tools, with the same permissions and limits. It
-        answers <C>initialize</C>, <C>ping</C>, <C>tools/list</C> and <C>tools/call</C>. An agent should call the{" "}
-        <C>get_me</C> tool first. A tool error comes back as a result with <C>isError</C> set and text that starts with
-        the error code. A <C>GET</C> to the address is a 405.
+        You point an agent at <C>/api/mcp</C> instead. It speaks JSON-RPC 2.0 over POST: one message per request, no
+        sessions and no batches. It takes the same bearer token and never reads cookies. Each tool is one API call,
+        with the same scopes, limits and rules, and no way to reach leftover removal, permission switches, your
+        account or token management. It answers <C>initialize</C>, <C>ping</C>, <C>tools/list</C> and{" "}
+        <C>tools/call</C>. A tool that fails comes back as a result with <C>isError</C> set and text that starts with
+        the error code. A <C>GET</C> or <C>DELETE</C> to the address gets a 405.
       </P>
+      {steps("api-mcp-steps", "Connect an agent", [
+        {
+          title: "Make a token",
+          body: "Give your agent only the scopes it needs, and keep the secret in a store it can read. Use the steps above if you have not made a token yet.",
+        },
+        {
+          title: "Point the client at the agent endpoint",
+          body: "Use an HTTP MCP client with one line of configuration: the address, the token in an Authorization header, and no other settings.",
+          code: {
+            label: "MCP client config",
+            code: `{\n  "mcpServers": {\n    "egg": {\n      "type": "http",\n      "url": "https://your-egg/api/mcp",\n      "headers": { "Authorization": "Bearer ${TOKEN_PLACEHOLDER}" }\n    }\n  }\n}`,
+          },
+        },
+        {
+          title: "Call get_me first",
+          body: "It needs no permission. The answer tells your agent which scopes the token has and how many projects and servers you have, so it can plan its next calls.",
+        },
+        {
+          title: "Narrow the tool list if you want to",
+          body: "Add ?toolsets= or ?scope= to the address, as described below, to cut down what the agent sees. Leave both out to see every tool your token allows.",
+        },
+        {
+          title: "Use the compact server when context is tight",
+          body: "Point the client at /api/mcp/compact instead. It offers three tools instead of one per operation, with the same token, scopes and limits.",
+        },
+      ], 3)}
+      <H3 id="api-mcp-narrow" title="Narrow the tools your agent sees" />
       <P>
-        Deploys, redeploys, rollbacks, cancels and file or terminal actions made with a token are recorded in{" "}
-        <InternalLink href={docsHref("activity")}>Activity</InternalLink> with the token’s name.
+        You narrow the list with two query parameters, on <C>/api/mcp</C> and on <C>/api/mcp/compact</C>. Set{" "}
+        <C>?toolsets=</C> to a comma-separated list such as <C>toolsets=core,projects,deployments</C>. The <C>core</C>{" "}
+        group is always included, and leaving the parameter out shows every group. Set <C>?scope=read</C> to keep only
+        tools that change nothing, or <C>?scope=deploy</C> to add deployment changes and nothing else. Your token’s
+        own scopes still apply, and the server checks them again on every call: narrowing can only hide tools, never
+        add ones your token could not already run.
+      </P>
+      <Callout tone="warning" title="A mistyped toolset or scope is refused">
+        Egg answers 400 with the list of valid names instead of quietly showing a different set of tools.
+      </Callout>
+      <H3 id="api-mcp-compact" title="Use the compact server" />
+      <P>
+        You use <C>/api/mcp/compact</C> when the client has a small context window. It answers the same{" "}
+        <C>initialize</C>, <C>ping</C>, <C>tools/list</C> and <C>tools/call</C> methods but offers three tools:{" "}
+        <C>search_api</C> finds operations by keyword, <C>describe_operation</C> returns one operation’s schema, and{" "}
+        <C>call_api</C> runs it. A destructive operation does not run until you send its id again as <C>confirm</C>.
+        Each result is capped at 24,000 characters.
+      </P>
+      <Callout tone="note" title="A destructive call waits for your confirmation">
+        Without <C>confirm</C> set to the operation’s own id, the call changes nothing on Egg.
+      </Callout>
+      <P>
+        You see deploys, redeploys, rollbacks, cancels and file or terminal actions made with a token in{" "}
+        <InternalLink href={docsHref("activity")}>Activity</InternalLink>, named for the token that made them.
       </P>
       <Table
         caption="Every API call"
@@ -2471,23 +2552,23 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         ])}
       />
       <P>
-        Webhooks are plain routes under <C>/api/v1/webhooks</C> rather than tools: <C>GET</C> and <C>POST</C> on{" "}
-        <C>/webhooks</C>, <C>GET</C>, <C>PATCH</C> and <C>DELETE</C> on <C>/webhooks/{"{webhookId}"}</C>, and{" "}
-        <C>POST</C> on <C>/webhooks/{"{webhookId}"}/rotate</C> and <C>/webhooks/{"{webhookId}"}/test</C>. Creating
-        one takes <C>url</C>, an optional <C>events</C> list of <C>deployment.started</C>,{" "}
+        You reach webhooks as plain routes under <C>/api/v1/webhooks</C> rather than tools: <C>GET</C> and <C>POST</C>{" "}
+        on <C>/webhooks</C>, <C>GET</C>, <C>PATCH</C> and <C>DELETE</C> on <C>/webhooks/{"{webhookId}"}</C>, and{" "}
+        <C>POST</C> on <C>/webhooks/{"{webhookId}"}/rotate</C> and <C>/webhooks/{"{webhookId}"}/test</C>. To create
+        one you send <C>url</C>, an optional <C>events</C> list of <C>deployment.started</C>,{" "}
         <C>deployment.succeeded</C> and <C>deployment.failed</C>, and an optional <C>projectId</C>. The answer carries
         the signing secret once. The body is 4 KB at most, and the test call uses the container-session allowance.
-        They are not in the OpenAPI description or the agent tool list. How a receiver checks the{" "}
+        Webhooks are not in the OpenAPI description or the agent tool list. How your receiver checks the{" "}
         <C>X-Egg-Signature</C> header, what a delivery carries and how failed deliveries are tried again are on
         the <InternalLink href={docsHref("notifications")}>Notifications</InternalLink> page.
       </P>
 
       <H2 id="api-examples" />
       <P>
-        Ready-made starting points live in the repository. Each says which permissions it needs. Every example uses a
-        placeholder like <C>{TOKEN_PLACEHOLDER}</C>, so keep your real token in an environment variable or a secret
-        store. The TypeScript client is one file with no dependencies: copy it into your project and call its typed
-        methods.
+        You can start from the ready-made examples in the repository; each says which permissions it needs. Every
+        example uses a placeholder like <C>{TOKEN_PLACEHOLDER}</C>, so keep your real token in an environment variable
+        or a secret store. The TypeScript client is one file with no dependencies: copy it into your project and call
+        its typed methods.
       </P>
       <List>
         {BUILD_RESOURCES.map((r) => (
@@ -2508,40 +2589,45 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
       {steps("api-examples-steps", "Common calls", [
         {
           title: "Check the token",
-          body: "Needs no permission. It shows what the token may do and when it ends.",
+          body: "It needs no permission. The answer shows what your token may do and when it ends.",
           code: { label: "Terminal", code: `curl -H "Authorization: Bearer $NEST_TOKEN" https://your-egg/api/v1/me` },
         },
         {
           title: "List projects and find an id",
-          body: <>Needs <C>projects:read</C>.</>,
+          body: <>You need <C>projects:read</C>.</>,
           code: { label: "Terminal", code: `curl -H "Authorization: Bearer $NEST_TOKEN" https://your-egg/api/v1/projects` },
         },
         {
           title: "Deploy a branch",
-          body: <>Needs <C>deployments:write</C>. Leave the body out to deploy the production branch. Any other branch becomes a preview. The answer is 202 with the queued deployment. The build then runs on your container, and a production deploy restarts the app on your container.</>,
+          body: <>You need <C>deployments:write</C>. Leave the body out to deploy the production branch; any other branch becomes a preview. The answer is 202 with the queued deployment. The build then runs on your container, and a production deploy restarts the app on your container.</>,
           code: {
             label: "Terminal",
             code: `curl -X POST -H "Authorization: Bearer $NEST_TOKEN" \\\n  -H "Content-Type: application/json" \\\n  -d '{"branch":"pricing-page"}' \\\n  https://your-egg/api/v1/projects/PROJECT_ID/deployments`,
           },
         },
         {
+          title: "Give each write a key",
+          body: "Send Idempotency-Key with a fresh value on every write. Use a new UUID for each action you want to happen once. The key belongs to your token, and Egg keeps the answer for 24 hours. A repeat with the same key and the same request returns the kept answer with Idempotent-Replayed: true. A different request with that key gets 422.",
+          code: { label: "Terminal", code: `curl -X POST -H "Authorization: Bearer $NEST_TOKEN" \\\n  -H "Idempotency-Key: 7f1c2e6a-4b5d-4c8e-9a1f-3d2b0e5c7a90" \\\n  https://your-egg/api/v1/projects/PROJECT_ID/deployments` },
+        },
+        {
           title: "Watch it finish",
-          body: <>Needs <C>deployments:read</C>. The newest deployment comes first, and its <C>state</C> moves from queued to building to deploying and then to ready, error or canceled.</>,
-          code: { label: "Terminal", code: `curl -H "Authorization: Bearer $NEST_TOKEN" \\\n  "https://your-egg/api/v1/projects/PROJECT_ID/deployments?limit=1"` },
+          body: <>You need <C>deployments:read</C>. A 202 means the deploy is queued, not live. Call the rollout endpoint with <C>wait=1</C>: Egg reads the state every 2 seconds for up to 60 seconds and returns early at ready, error or canceled. The answer says <C>done</C> and <C>waitedMs</C>. If <C>done</C> is false, call again.</>,
+          code: { label: "Terminal", code: `curl -H "Authorization: Bearer $NEST_TOKEN" \\\n  "https://your-egg/api/v1/deployments/DEPLOYMENT_ID/rollout?wait=1"` },
         },
         {
           title: "Read why it failed",
-          body: <>Needs <C>deployments:read</C>. Pass the last line’s id as <C>after</C> to continue. It uses the container-session allowance of 10 a minute.</>,
+          body: <>You need <C>deployments:read</C>. Pass the last line’s id as <C>after</C> to continue. It uses the container-session allowance of 10 a minute.</>,
           code: { label: "Terminal", code: `curl -H "Authorization: Bearer $NEST_TOKEN" \\\n  "https://your-egg/api/v1/deployments/DEPLOYMENT_ID/logs?after=0&limit=200"` },
         },
         {
           title: "Set a variable",
-          body: <>Needs <C>env:write</C>. <C>target</C> is <C>all</C>, <C>production</C> or <C>preview</C>. The value reaches the app at the next deploy and is never returned.</>,
+          body: <>You need <C>env:write</C>. <C>target</C> is <C>all</C>, <C>production</C> or <C>preview</C>. The value reaches the app at the next deploy and is never returned.</>,
           code: { label: "Terminal", code: `curl -X PUT -H "Authorization: Bearer $NEST_TOKEN" \\\n  -H "Content-Type: application/json" \\\n  -d '{"value":"sk_test_123","target":"production"}' \\\n  https://your-egg/api/v1/projects/PROJECT_ID/env/STRIPE_KEY` },
         },
         {
           title: "Roll back",
-          body: <>Needs <C>deployments:write</C>. Pass the id of an earlier production deployment whose release is still on your container. Nothing is rebuilt: the service restarts on that older release, so the app is unavailable for a moment.</>,
+          body: <>You need <C>deployments:write</C>. Pass the id of an earlier production deployment whose release is still on your container. Nothing is rebuilt: the service restarts on that older release, so the app is unavailable for a moment.</>,
           code: { label: "Terminal", code: `curl -X POST -H "Authorization: Bearer $NEST_TOKEN" \\\n  https://your-egg/api/v1/deployments/DEPLOYMENT_ID/rollback` },
         },
         {
@@ -2562,13 +2648,16 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         },
         {
           title: "Call a tool over MCP",
-          body: "One JSON-RPC message per POST.",
+          body: "You send one JSON-RPC message per POST. Start with get_me, and add ?toolsets= or ?scope= to the address to narrow the tool list.",
           code: {
             label: "Terminal",
             code: `curl -X POST -H "Authorization: Bearer $NEST_TOKEN" \\\n  -H "Content-Type: application/json" \\\n  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_me","arguments":{}}}' \\\n  https://your-egg/api/mcp`,
           },
         },
       ])}
+      <Callout tone="note" title="Egg holds idempotency keys in memory">
+        A restart of Egg forgets them. Treat the key as protection against a lost connection, not as a long-term record.
+      </Callout>
 
       <H2 id="api-addresses" />
       <Table
@@ -2576,19 +2665,18 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         head={["For", "Address"]}
         rows={[
           ["API calls", <C key="1">https://your-egg/api/v1</C>],
-          ["Client generators and API tools", <C key="2">https://your-egg/api/v1/openapi.json</C>],
-          ["AI agents", <C key="3">https://your-egg/api/mcp</C>],
+          ["The full reference", <C key="2">https://your-egg/api/v1/openapi.json</C>],
+          ["A short index for agents", <C key="3">https://your-egg/api/v1/agent-spec.json</C>],
+          ["AI agents", <C key="4">https://your-egg/api/mcp</C>],
+          ["Agents with a small context window", <C key="5">https://your-egg/api/mcp/compact</C>],
         ]}
       />
       <P>
-        Replace <C>your-egg</C> with the address of your Egg. All three take the same token in an{" "}
-        <C>Authorization: Bearer</C> header, and none of them reads cookies. The OpenAPI document is public and holds
-        no data. A client that connects over MCP uses the same address and header:
+        Replace <C>your-egg</C> with the address of your Egg. Every address takes the same token in an{" "}
+        <C>Authorization: Bearer</C> header, and none of them reads cookies. The two description documents are public
+        and hold no data. You add <C>?toolsets=</C> or <C>?scope=</C> to either agent address to narrow the tools; the
+        client configuration is in the steps above.
       </P>
-      {code(
-        "MCP client config",
-        `{\n  "mcpServers": {\n    "egg": {\n      "type": "http",\n      "url": "https://your-egg/api/mcp",\n      "headers": { "Authorization": "Bearer ${TOKEN_PLACEHOLDER}" }\n    }\n  }\n}`
-      )}
 
       {limits("api-rates", [
         ["Reads", "120 a minute per token", "429 with a Retry-After header.", "server/api-v1-kit.ts (API_LIMITS.read)"],
@@ -2653,13 +2741,13 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         title: "Deploy from a script and wait",
         given: "A token with projects:read, deployments:read and deployments:write, and a project whose id you found with the call above.",
         steps: [
-          { title: "Start the deploy", body: "POST to the project’s deployments endpoint with no body." },
-          { title: "Poll", body: "List deployments with limit=1 every few seconds until state is ready, error or canceled." },
+          { title: "Start the deploy", body: "POST to the project’s deployments endpoint with no body, and send a fresh Idempotency-Key so a lost connection cannot start a second deploy." },
+          { title: "Watch the rollout", body: "Call the rollout endpoint with wait=1. It reads the state every 2 seconds for up to 60 seconds and returns when the deploy is ready, error or canceled. Call again if done is false." },
           { title: "On error, read the log", body: "Fetch the deployment’s logs and print the last lines." },
         ],
-        result: "The POST answers 202 with the queued deployment. When state reads ready, the release is live. Activity shows “Started a deployment of” with the token’s name.",
+        result: "The POST answers 202 with the queued deployment. When the rollout says done and the state is ready, the release is live. Activity shows “Started a deployment of” with the token’s name.",
       })}
-      {related([
+      {relatedResources([
         ["security", "Security"],
         ["limits", "Limits"],
         ["container", "Container, terminal and files"],

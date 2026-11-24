@@ -5,6 +5,20 @@ import { CodeBlock } from "../_components/code-block";
 import { B, C, Callout, ExternalLink, H2, InternalLink, List, P, Section, Table } from "../_components/prose";
 import { docsHref } from "../_data/nav";
 
+/** The closer on every page: a short list of where to read next. */
+const related = (pages: [string, string][]) => (
+  <P>
+    <B>Related:</B>{" "}
+    {pages.map(([id, title], i) => (
+      <span key={id}>
+        {i > 0 ? ", " : ""}
+        <InternalLink href={docsHref(id)}>{title}</InternalLink>
+      </span>
+    ))}
+    .
+  </P>
+);
+
 /**
  * Two pages for a person who is starting: the four chapters of the guided first-project tour in
  * text, and the short version of the self-hosting guide. The tour's own copy is in
@@ -199,34 +213,33 @@ export const GUIDE_C: Record<string, () => ReactNode> = {
   "getting-started": () => (
     <Section
       id="getting-started"
-      intro="The four chapters of the guided first-project tour, in text: connect your container, import a repository, watch the first deployment and give it an address."
+      intro="Follow the four chapters of the guided first-project tour in text: connect your container, import a repository, watch the first deployment and give it an address."
     >
       <P>
-        The tour has four chapters, and this page follows them in order. Each item starts with the words the tour
-        uses, then says which button on the real screen to press.
+        This page follows the tour in order. Each item gives you the words the tour uses, then the button to press on
+        the real screen, so you can read along as you work.
       </P>
       <P>You need three things before you start:</P>
       <List>
         <li>
-          <B>A Nest container and your Nest username.</B> The username is the name you log in with.
+          <B>A Nest container and your Nest username.</B> You use the name you log in with.
         </li>
         <li>
-          <B>A GitHub repository.</B> A public one can be imported by its address. A private one, and deploys on every
+          <B>A GitHub repository.</B> You can import a public one by its address. A private one, and deploys on every
           push, need the GitHub app.
         </li>
         <li>
-          <B>An app that listens on a port.</B> Egg sets <C>PORT</C> and <C>HOST</C> for it. A static site needs no code
-          for this.
+          <B>An app that listens on a port.</B> Egg sets <C>PORT</C> and <C>HOST</C> for it, so a static site needs no
+          code for this.
         </li>
       </List>
       <Callout tone="note" title="Not on Nest?">
-        If you run your own copy of Egg, or deploy to a server you own, the steps are close but some words differ. Read{" "}
-        <InternalLink href={docsHref("run-yourself")}>Run Egg yourself</InternalLink> first. The address chapter is the
-        one that differs most.
+        If you run your own copy of Egg, or deploy to a server you own, some words differ, so the address chapter is
+        the one to watch. Read <InternalLink href={docsHref("run-yourself")}>Run Egg yourself</InternalLink> first.
       </Callout>
 
       <H2 id="getting-started-connect" />
-      <P>The goal: Egg can reach your container and has checked what it can run.</P>
+      <P>In this chapter you connect your container, so Egg can reach it and check what it can run.</P>
       <List ordered>
         {CONNECT.map((s) => (
           <Step key={s.title} step={s} />
@@ -234,80 +247,91 @@ export const GUIDE_C: Record<string, () => ReactNode> = {
       </List>
 
       <H2 id="getting-started-import" />
-      <P>The goal: a project that points at your repository, with settings you have checked.</P>
+      <P>In this chapter you point a project at your repository, so Egg can read it and you can check the settings.</P>
       <List ordered>
         {IMPORT.map((s) => (
           <Step key={s.title} step={s} />
         ))}
       </List>
       <Callout tone="warning" title="Your app has to listen on the right port">
-        Egg starts your app with <C>PORT</C> set to the port you chose and <C>HOST</C> set to <C>0.0.0.0</C>. An app that
-        binds only to <C>localhost</C> cannot be reached, and the health check fails.
+        Egg starts your app with <C>PORT</C> set to the port you chose and <C>HOST</C> set to <C>0.0.0.0</C>. If your app
+        binds only to <C>localhost</C>, the health check fails.
       </Callout>
 
       <H2 id="getting-started-deploy" />
-      <P>The goal: a release that is running on your container.</P>
+      <P>In this chapter you start a release, so a build runs on your container.</P>
       <List ordered>
         {DEPLOY.map((s) => (
           <Step key={s.title} step={s} />
         ))}
       </List>
       <P>
-        If it fails, the{" "}
+        If the build fails, read the last lines of the log, then open the{" "}
         <InternalLink href={`${docsHref("troubleshooting")}#troubleshooting-build`}>troubleshooting page</InternalLink>{" "}
-        lists the usual causes of a failed build.
+        for the usual causes.
       </P>
 
       <H2 id="getting-started-address" />
-      <P>The goal: a web address that opens your app.</P>
+      <P>In this chapter you give the app a web address, so you can open it in a browser.</P>
       <List ordered>
         {ADDRESS.map((s) => (
           <Step key={s.title} step={s} />
         ))}
       </List>
       <P>
-        <B>Related:</B> <InternalLink href={docsHref("quickstart")}>Quick start</InternalLink> has the same path with
-        every button, limit and error message. <InternalLink href={docsHref("servers")}>Servers</InternalLink>,{" "}
-        <InternalLink href={docsHref("projects")}>Projects and runtimes</InternalLink>,{" "}
-        <InternalLink href={docsHref("deployments")}>Deployments</InternalLink> and{" "}
-        <InternalLink href={docsHref("domains")}>Domains</InternalLink> cover each part in full.
+        The first page below walks the same path with every button, limit and error message. The others cover each part
+        in full.
       </P>
+      {related([
+        ["quickstart", "Quick start"],
+        ["servers", "Servers"],
+        ["projects", "Projects and runtimes"],
+        ["deployments", "Deployments"],
+        ["domains", "Domains"],
+      ])}
     </Section>
   ),
 
   "run-locally": () => (
     <Section
       id="run-locally"
-      intro="Set up a working copy of the Egg code on your computer, start the development server, sign in, fill it with sample data and run the checks."
+      intro="Set up a working copy of Egg on your computer, start the development server, sign in, add sample data and run the checks."
     >
       <P>
-        Every command on this page runs in the <C>web</C> folder of the repository, unless it says otherwise. To use a
-        copy without changing it, <InternalLink href={docsHref("run-yourself")}>Run Egg yourself</InternalLink> is
-        shorter.
+        Run every command on this page in the <C>web</C> folder, unless it says otherwise. To use a copy without changing
+        it, read <InternalLink href={docsHref("run-yourself")}>Run Egg yourself</InternalLink>.
       </P>
+      <P>Work through these steps in order:</P>
+      <List ordered>
+        <li>Check your Node.js version and turn on corepack.</li>
+        <li>Clone the repository and install the dependencies.</li>
+        <li>Create <C>web/.env.local</C> with <C>pnpm run setup</C>.</li>
+        <li>Start the development server and sign in.</li>
+        <li>Seed sample data, then run the checks and the production build.</li>
+      </List>
 
       <H2 id="run-locally-prereqs" />
       <P>
-        You need Node.js 22.13 or newer and Git. The repository pins pnpm 11.20.0 in <C>package.json</C>, and that pnpm
-        needs Node 22.13. This block checks the Node version, turns on corepack, which comes with Node and installs the
-        pinned pnpm, and prints the pnpm version.
+        You need Node.js 22.13 or newer and Git. The repository pins pnpm 11.20.0 in <C>package.json</C>, so that pnpm
+        needs Node 22.13. This block checks your Node version, turns on corepack, which comes with Node and installs the
+        pinned pnpm, then prints the pnpm version.
       </P>
       <CodeBlock label="Terminal" code={"node -v\ncorepack enable\npnpm -v"} />
-      <P>If corepack is not allowed on your computer, install pnpm from pnpm.io and use the pinned version.</P>
+      <P>If your computer blocks corepack, install pnpm from pnpm.io at the pinned version.</P>
 
       <H2 id="run-locally-install" />
-      <P>This block downloads the code and installs its dependencies.</P>
+      <P>You download the code and install its dependencies here.</P>
       <CodeBlock label="Terminal" code={`git clone ${REPO_URL}.git\ncd egg/web\npnpm install`} />
 
       <H2 id="run-locally-env" />
       <P>
-        This block creates <C>web/.env.local</C> with a new <C>APP_SECRET</C> and <C>LOCAL_MODE_SECRET</C>. It never
+        This block creates <C>web/.env.local</C> with a new <C>APP_SECRET</C> and <C>LOCAL_MODE_SECRET</C>, so it never
         overwrites a file that exists. Type <C>pnpm run setup</C>, not <C>pnpm setup</C>, which is a different pnpm
         command.
       </P>
       <CodeBlock label="Terminal" code="pnpm run setup" />
       <P>
-        The file starts with the variables below, which are the ones the code reads for a local copy. The Hack Club and
+        The file starts with the variables below. These are the ones the code reads for a local copy. The Hack Club and
         GitHub app values are optional and stay empty. See{" "}
         <InternalLink href={docsHref("selfhost")}>Running your own</InternalLink> for every setting.
       </P>
@@ -325,10 +349,11 @@ export const GUIDE_C: Record<string, () => ReactNode> = {
       />
       <List>
         <li>
-          <C>APP_SECRET</C> seals the SSH keys and variables in your database. Back it up with <C>web/data/egg.db</C>.
+          <C>APP_SECRET</C> seals the SSH keys and variables in your database, so back it up with{" "}
+          <C>web/data/egg.db</C>.
         </li>
         <li>
-          <C>APP_URL</C> is the address you open in the browser. <C>pnpm egg start</C> uses its port for the server.
+          <C>APP_URL</C> is the address you open in the browser, and <C>pnpm egg start</C> uses its port for the server.
         </li>
         <li>
           <C>RUN_WORKER=1</C> runs the deployment queue inside the same process.
@@ -338,12 +363,12 @@ export const GUIDE_C: Record<string, () => ReactNode> = {
       <H2 id="run-locally-dev" />
       <P>
         This block starts the development server. It listens on <C>127.0.0.1</C> at port 3000, the Next.js default, and
-        reloads when you edit code. Open <C>http://localhost:3000/login</C>. The page at <C>/</C> is the public home
-        page, not the dashboard.
+        reloads when you edit code. Open <C>http://localhost:3000/login</C> in your browser, so you reach the dashboard
+        and not the public home page at <C>/</C>.
       </P>
       <CodeBlock label="Terminal" code="pnpm dev" />
       <P>
-        This block checks the computer first, starts the development server on the port in <C>APP_URL</C> and opens the
+        This block checks the computer first, then starts the server on the port in <C>APP_URL</C> and opens the
         browser. Ctrl+C stops either way of starting it.
       </P>
       <CodeBlock label="Terminal" code="pnpm egg start --dev" />
@@ -355,27 +380,27 @@ export const GUIDE_C: Record<string, () => ReactNode> = {
 
       <H2 id="run-locally-devlogin" />
       <P>
-        Development sign-in lets you in as a made-up user, with no Hack Club account. This line in <C>.env.local</C>{" "}
-        turns it on. Restart the server after you change it.
+        Development sign-in lets you in as a made-up user, so you need no Hack Club account. Add this line to{" "}
+        <C>.env.local</C> and restart the server.
       </P>
       <CodeBlock label=".env.local" code="DEV_LOGIN=1" />
       <List>
         <li>
-          The login page then shows a <B>Development sign-in</B> form with a name (<C>dev</C> by default, 40 characters
-          at most) and a <B>Sign in</B> button. The user is stored as <C>dev:</C> and the lowercase name.
+          You then see a <B>Development sign-in</B> form with a name (<C>dev</C> by default, 40 characters at most) and a{" "}
+          <B>Sign in</B> button. Egg stores the user as <C>dev:</C> plus the lowercase name.
         </li>
         <li>
-          It works only in development. In a production build the form is not shown and the route answers 404,
-          whatever <C>DEV_LOGIN</C> says.
+          It works only in development, so in a production build the form is hidden and the route answers 404, whatever{" "}
+          <C>DEV_LOGIN</C> says.
         </li>
         <li>
-          With <C>LOCAL_MODE=1</C> on, as <C>pnpm run setup</C> leaves it, the form also asks for the local password.
-          Make it first with <B>Sign in on this computer</B> and the recovery key from <C>.env.local</C>.
+          With <C>LOCAL_MODE=1</C> on, as <C>pnpm run setup</C> leaves it, the form also asks for the local password, so
+          set one first with <B>Sign in on this computer</B> and the recovery key from <C>.env.local</C>.
         </li>
         <li>
           <B>Origin rule.</B> Egg refuses a browser write whose <C>Origin</C> is not the origin of <C>APP_URL</C> or of
-          the address the request came to. It answers 403 “Cross-origin request blocked”. Open the site at the address
-          in <C>APP_URL</C>, and change <C>APP_URL</C> if you use another port. After sign-in Egg redirects to{" "}
+          the address the request came to, so it answers 403 “Cross-origin request blocked”. Open the site at the
+          address in <C>APP_URL</C>, and change <C>APP_URL</C> if you use another port. After sign-in Egg redirects to{" "}
           <C>APP_URL</C> followed by <C>/projects</C>.
         </li>
         <li>
@@ -385,22 +410,21 @@ export const GUIDE_C: Record<string, () => ReactNode> = {
 
       <H2 id="run-locally-demo" />
       <P>
-        This block fills the local database with sample projects, deployments and charts for the <C>dev</C> user, so
-        you can see the dashboard full. Sign in with the development form and the name <C>dev</C> to see them. Every
-        sample row id starts with <C>demo-</C>.
+        This block fills your local database with sample projects, deployments and charts for the <C>dev</C> user, so
+        you can see a full dashboard. Sign in with the development form and the name <C>dev</C>. Every sample row id
+        starts with <C>demo-</C>.
       </P>
       <CodeBlock label="Terminal" code="pnpm seed:demo" />
       <P>
-        The sample server points at <C>127.0.0.1</C> port 1, where nothing listens. Pages that read the server live,
-        such as the Service card and runtime logs, show a connection error. This block removes exactly the rows the
-        script made.
+        The sample server points at <C>127.0.0.1</C> port 1, so pages that read it live, such as the Service card and
+        runtime logs, show a connection error. This block removes exactly the rows the script made.
       </P>
       <CodeBlock label="Terminal" code="pnpm seed:demo --reset" />
 
       <H2 id="run-locally-checks" />
-      <P>This block runs every test once. The test runner is Vitest.</P>
+      <P>This block runs every test once, with Vitest as the test runner.</P>
       <CodeBlock label="Terminal" code="pnpm test" />
-      <P>This block runs the tests in one file. Replace the path with any test file.</P>
+      <P>This block runs the tests in one file, so replace the path with any test file you have.</P>
       <CodeBlock label="Terminal" code="pnpm test src/server/config.test.ts" />
       <P>This block runs the linter, then the TypeScript check, which writes no files.</P>
       <CodeBlock label="Terminal" code={"pnpm lint\npnpm typecheck"} />
@@ -415,19 +439,23 @@ export const GUIDE_C: Record<string, () => ReactNode> = {
         <C>pnpm egg start</C> does the same with the computer check first. It builds the first time by itself and uses
         the port in <C>APP_URL</C>.
       </P>
+      {related([
+        ["run-yourself", "Run Egg yourself"],
+        ["selfhost", "Running your own"],
+      ])}
     </Section>
   ),
 
   "run-yourself": () => (
     <Section
       id="run-yourself"
-      intro="Egg is open source. You can run your own copy, with or without a Hack Club account. This is the short version."
+      intro="Egg is open source, so you can run your own copy with or without a Hack Club account. This is the short version."
     >
       <P>
         The full guide is in the repository:{" "}
-        <ExternalLink href={repoLink("docs/selfhost/README.md")}>docs/selfhost/README.md</ExternalLink>. It has the exact
-        steps for Windows, macOS and Linux, every setting, the GitHub app setup and a troubleshooting list. This page
-        keeps to the choices that matter first.
+        <ExternalLink href={repoLink("docs/selfhost/README.md")}>docs/selfhost/README.md</ExternalLink>. It gives the
+        exact steps for Windows, macOS and Linux, every setting, the GitHub app setup and a troubleshooting list. This
+        page keeps to the choices that matter first.
       </P>
 
       <H2 id="run-yourself-modes" />
@@ -464,16 +492,16 @@ export const GUIDE_C: Record<string, () => ReactNode> = {
       <P>
         You need Node.js 22.13 or newer, pnpm and Git on the computer that runs Egg. That computer only clones the
         repository, packs the source and uploads it. The install and the build run on the server your app is deployed
-        to, so Egg needs no Docker for a local copy. The server setup uses Docker Compose and Caddy, which gets and
-        renews HTTPS by itself.
+        to, so Egg needs no Docker for a local copy. The server uses Docker Compose and Caddy, which gets and renews
+        HTTPS by itself.
       </P>
       <P>
-        Windows, macOS and Linux all work. Only Linux and macOS are in the automated checks. <C>pnpm fake-nest</C> needs
-        WSL on Windows.
+        Windows, macOS and Linux all work, but only Linux and macOS are in the automated checks. <C>pnpm fake-nest</C>{" "}
+        needs WSL on Windows.
       </P>
 
       <H2 id="run-yourself-signin" />
-      <P>Local mode is how you run without Hack Club. In short:</P>
+      <P>Local mode lets you run without Hack Club. Follow these steps:</P>
       <List ordered>
         <li>
           <C>pnpm run setup</C> writes <C>.env.local</C> with <C>LOCAL_MODE=1</C> and a private{" "}
@@ -489,34 +517,35 @@ export const GUIDE_C: Record<string, () => ReactNode> = {
         </li>
       </List>
       <P>
-        Egg stores only a salted hash of the password. Local mode makes one account, called Owner. It refuses to run when{" "}
-        <C>APP_URL</C> is not localhost, unless you also set <C>LOCAL_MODE_ALLOW_REMOTE=1</C>. Use that only behind a VPN or
-        an access proxy you control.
+        Egg stores only a salted hash of your password. Local mode makes one account, called Owner, and refuses to run
+        when <C>APP_URL</C> is not localhost unless you set <C>LOCAL_MODE_ALLOW_REMOTE=1</C>, so use that only behind a
+        VPN or an access proxy you control.
       </P>
       <List>
         <li>
-          <B>Hack Club sign-in.</B> Set <C>HACKCLUB_CLIENT_ID</C> and <C>HACKCLUB_CLIENT_SECRET</C>. Anyone with a Hack
-          Club account who can open your site can then sign in and gets their own account. Egg has no allow list.
+          <B>Hack Club sign-in.</B> Set <C>HACKCLUB_CLIENT_ID</C> and <C>HACKCLUB_CLIENT_SECRET</C>, so anyone with a
+          Hack Club account who can open your site gets their own account. Egg has no allow list.
         </li>
         <li>
           <B>Email and password.</B> The card on Account turns it on only within 5 minutes of a Hack Club sign-in, so it
           cannot be turned on without Hack Club. The local owner has no email address and cannot use it.
         </li>
         <li>
-          <B>Confirming again.</B> Turning on Terminal or File changes needs a sign-in from the last 5 minutes. With local
-          mode and no Hack Club, Egg counts you as signed in and does not ask. If you set Hack Club up as well, the
-          local owner is sent to Hack Club, which cannot confirm it, and the switch stays off. Do not mix the two.
+          <B>Confirming again.</B> Turning on Terminal or File changes needs a sign-in from the last 5 minutes. With
+          local mode and no Hack Club, Egg counts you as signed in, so it does not ask. If you set Hack Club up as well,
+          the local owner is sent to Hack Club, which cannot confirm it, so the switch stays off. Do not mix the two.
         </li>
       </List>
       <Callout tone="warning" title="One account without Hack Club">
-        A production copy with no Hack Club has exactly one account, the local owner. For more than one person, set up
+        A production copy with no Hack Club has exactly one account, the local owner, so a second person cannot sign in.
+        Set up
         Hack Club Auth, or run one copy of Egg for each person.
       </Callout>
 
       <H2 id="run-yourself-target" />
       <P>
-        Egg reaches the server your apps run on by SSH, with a key made only for it. Hack Club Nest is what Egg was made
-        for. A server you own is not tested.
+        Egg reaches the server your apps run on by SSH, with a key made only for it. Egg was made for Hack Club Nest, so
+        a server you own is not tested.
       </P>
       <List>
         <li>
@@ -530,46 +559,36 @@ export const GUIDE_C: Record<string, () => ReactNode> = {
           other hosts.
         </li>
         <li>
-          <B>Addresses.</B> The Domains page follows Nest’s rules. On your own server, put your own reverse proxy in front
-          of the app and keep its port closed to the internet.
+          <B>Addresses.</B> The Domains page follows Nest’s rules, so on your own server put a reverse proxy in front of
+          the app and keep its port closed to the internet.
         </li>
       </List>
       <P>
-        GitHub is optional. A public repository deploys from its address without any setup. Private repositories and
+        GitHub is optional, so a public repository deploys from its address with no setup. Private repositories and
         deploys on push need a GitHub app that you create yourself. GitHub must be able to reach{" "}
         <C>/api/webhooks/github</C> on your Egg to send pushes, so a copy on localhost needs a tunnel for that, or you
         deploy by hand.
       </P>
 
       <Callout tone="warning" title="Rotate values used with public static sites">
-        Before variables moved out of the release folder, a public static deployment could serve its <C>.env</C> file, so
-        a value could be downloaded from <C>/.env</C>. If you ran one, rotate those values at their source and deploy
-        again. Variables now live in the project’s <C>env/</C> folder on the server, outside every release, and the
-        static server refuses any path that starts with a dot.
+        A public static deployment could once serve its <C>.env</C> file, so a value could be downloaded from{" "}
+        <C>/.env</C>. If you ran one, rotate those values at their source and deploy again. Variables now live in the
+        project’s <C>env/</C> folder on the server, outside every release, and the static server refuses any path that
+        starts with a dot.
       </Callout>
 
       <H2 id="run-yourself-more" />
-      <List>
-        <li>
-          <ExternalLink href={repoLink("docs/selfhost/README.md")}>The full guide</ExternalLink>, for each system, every
-          setting and every error message.
-        </li>
-        <li>
-          <InternalLink href={docsHref("run-locally")}>Run Egg locally</InternalLink>, the commands for working on the
-          code: development server, sample data, tests and the production build.
-        </li>
-        <li>
-          <InternalLink href={docsHref("selfhost")}>Running your own</InternalLink>, the reference page in these docs.
-        </li>
-        <li>
-          <ExternalLink href={repoLink("docs/design/self-host-gaps.md")}>What does not work yet without Hack Club or Nest</ExternalLink>
-          , ranked.
-        </li>
-        <li>
-          <ExternalLink href={repoLink("docs/selfhost/customising.md")}>Customising</ExternalLink>, for the name, colours,
-          ports and build memory.
-        </li>
-      </List>
+      <P>
+        Read <ExternalLink href={repoLink("docs/selfhost/README.md")}>the full guide</ExternalLink> for each system, every
+        setting and every error message. <ExternalLink href={repoLink("docs/design/self-host-gaps.md")}>What does not work
+        yet without Hack Club or Nest</ExternalLink> is ranked, and{" "}
+        <ExternalLink href={repoLink("docs/selfhost/customising.md")}>Customising</ExternalLink> covers the name, colours,
+        ports and build memory.
+      </P>
+      {related([
+        ["run-locally", "Run Egg locally"],
+        ["selfhost", "Running your own"],
+      ])}
     </Section>
   ),
 };
