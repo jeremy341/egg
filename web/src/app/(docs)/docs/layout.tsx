@@ -4,13 +4,12 @@ import { DocsSectionNav } from "./_components/docs-section-nav";
 import { LegacyHashRedirect } from "./_components/legacy-hash";
 
 /**
- * The docs are one place inside the app shell and draw on the app's own
- * background. The list of pages lives in the app sidebar (from 1280px, where it
- * replaces the project and team links), so the frame holds only the reading
- * column, set directly on the app background (no card), and "On this page" in a
- * rail after it (see the page). Under 1280px a bar under the top bar names the
- * current page and opens the list. All docs text is left aligned. Only the pixel
- * face is the docs' own.
+ * The docs draw on the public docs shell's background (`(docs)/layout.tsx`),
+ * which needs no sign-in. The list of pages lives in that shell's sidebar (from
+ * 1280px), so the frame holds only the reading column, set directly on the
+ * background (no card), and "On this page" in a rail after it (see the page).
+ * Under 1280px a bar under the top bar names the current page and opens the
+ * list. All docs text is left aligned. Only the pixel face is the docs' own.
  */
 export default function DocsLayout({ children }: { children: React.ReactNode }) {
   return (
