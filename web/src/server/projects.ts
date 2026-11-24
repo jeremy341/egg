@@ -6,7 +6,9 @@ import { newId, open, seal } from "@/server/crypto";
 import { getDb, schema, withLockRetry, type Db } from "@/server/db";
 import { isUniqueViolation } from "@/server/db/errors";
 import { pageLimit, selectDeploymentPage, type DeploymentFilter } from "@/server/deployment-page";
-import { BUILD_LOCATIONS, RUNTIMES, WORKLOAD_KINDS, DEPLOYMENT_MODES } from "@/server/db/schema";
+import { BUILD_LOCATIONS, DEPLOY_STRATEGIES, PULL_POLICIES, RUNTIMES, WORKLOAD_KINDS, DEPLOYMENT_MODES } from "@/server/db/schema";
+import { strategyRefusal } from "@/server/deploy/strategy";
+import { IMAGE_REF_MAX, parseImageRef } from "@/server/deploy/image-ref";
 import { assertCloneUrl, BuildError } from "@/server/deploy/build";
 import { isValidSlug, slugify } from "@/server/deploy/layout";
 import { ENV_KEY, RESERVED_ENV } from "@/server/deploy/runtime";
@@ -77,10 +79,22 @@ export const branch = z
   .regex(/^[A-Za-z0-9._/-]+$/, "Branch names may use letters, digits, . _ - and /")
   .refine((v) => !v.startsWith("-") && !v.includes(".."), "Invalid branch name");
 
+/** Image apps default to port 80. Source apps run as a user, so they must use 1024 or higher (checked per app). */
+export const IMAGE_DEFAULT_PORT = 80;
+const SOURCE_MIN_PORT = 1024;
+
+/** Checks an image reference and returns it trimmed, ready to store. */
+export function checkImageRef(raw: string | null | undefined): string {
+  if (!raw) throw new HttpError(400, "An image app needs an image reference, such as nginx:1.27.", "validation");
+  const parsed = parseImageRef(raw);
+  if (!parsed.ok) throw new HttpError(400, parsed.reason, "validation");
+  return raw.trim();
+}
+
 const port = z
   .number()
   .int()
-  .min(1024)
+  .min(1)
   .max(65535)
   .refine(
     (p) => p < PREVIEW_PORT_MIN || p > PREVIEW_PORT_MAX,
@@ -91,16 +105,23 @@ export const createProjectInput = z.object({
   serverId: z.string().min(1),
   name: z.string().trim().min(1).max(60),
   slug: z.string().trim().toLowerCase().optional(),
-  repoUrl: z.string().trim().max(300),
+  /** Empty for an image app, which has no repository. */
+  repoUrl: z.string().trim().max(300).default(""),
   repoFullName: z.string().trim().max(200).nullable().optional(),
   sourceProvider: z.enum(["github", "gitlab", "forgejo", "codeberg", "generic"]).default("github"),
   providerConnectionId: z.string().min(1).max(64).nullable().optional(),
   installationId: z.number().int().positive().nullable().optional(),
   productionBranch: branch.default("main"),
   rootDir,
-  runtime: z.enum(RUNTIMES),
+  /** Required for source projects. An image app runs as the "command" runtime, which only records the choice. */
+  runtime: z.enum(RUNTIMES).optional(),
   workloadKind: z.enum(WORKLOAD_KINDS).default("web"),
   deploymentMode: z.enum(DEPLOYMENT_MODES).default("native"),
+  deployStrategy: z.enum(DEPLOY_STRATEGIES).default("rolling"),
+  /** Image mode only: the image reference, such as nginx:1.27 or ghcr.io/owner/app:1.2.0. */
+  imageRef: z.string().trim().max(IMAGE_REF_MAX).nullable().optional(),
+  /** Image mode only: when Docker pulls the image. Defaults to "auto". */
+  pullPolicy: z.enum(PULL_POLICIES).optional(),
   /** Dockerfile path relative to the repository root; used only in "dockerfile" mode. */
   dockerfilePath: repoFilePath.nullable().optional(),
   /** Compose file path relative to the repository root; used only in "compose" mode. */
@@ -142,6 +163,7 @@ export const updateProjectInput = createProjectInput
     autoDeploy: createProjectInput.shape.autoDeploy.removeDefault(),
     workloadKind: createProjectInput.shape.workloadKind.removeDefault(),
     deploymentMode: createProjectInput.shape.deploymentMode.removeDefault(),
+    deployStrategy: createProjectInput.shape.deployStrategy.removeDefault(),
   })
   .partial();
 
@@ -211,8 +233,14 @@ async function assertGithubLinks(
 
 export async function createProject(userId: string, raw: unknown): Promise<ProjectRow> {
   const input = createProjectInput.parse(raw);
+  const isImage = input.deploymentMode === "image";
+  if (!isImage && !input.repoUrl) throw new HttpError(400, "Enter the repository URL.", "validation");
+  if (!isImage && !input.runtime) throw new HttpError(400, "Choose a runtime.", "validation");
+  if (!isImage && (input.imageRef != null || input.pullPolicy !== undefined)) throw new HttpError(400, "Image settings apply only to image apps.", "validation");
+  const imageRef = isImage ? checkImageRef(input.imageRef) : null;
   if (input.port !== undefined && input.listenPort !== undefined && input.port !== input.listenPort) throw new HttpError(400, "Port and listenPort must agree.", "validation");
-  const selectedPort = input.listenPort !== undefined ? input.listenPort : input.port;
+  const selectedPort = input.listenPort !== undefined ? input.listenPort : (input.port ?? (isImage ? IMAGE_DEFAULT_PORT : undefined));
+  if (selectedPort != null && selectedPort < SOURCE_MIN_PORT && !isImage) throw new HttpError(400, "Ports below 1024 need a container image. Choose 1024 or higher.", "validation");
   if (input.workloadKind === "web" && selectedPort == null) throw new HttpError(400, "A web project needs a port.", "validation");
   if (input.workloadKind === "worker" && input.runtime === "static") throw new HttpError(400, "Static sites need a web workload.", "validation");
   if (input.deploymentMode === "dockerfile" && !input.dockerfilePath) throw new HttpError(400, "A Dockerfile project needs the Dockerfile path.", "validation");
@@ -222,7 +250,10 @@ export async function createProject(userId: string, raw: unknown): Promise<Proje
   await getServerForUser(userId, input.serverId);
   let providerRepoName = input.repoFullName ?? null;
 
-  if (input.sourceProvider === "github") {
+  if (isImage) {
+    // An image app has no repository to check; the reference was checked above.
+    providerRepoName = null;
+  } else if (input.sourceProvider === "github") {
     if (input.providerConnectionId) throw new HttpError(400, "GitHub uses an installation, not a provider connection.", "validation");
     try { assertCloneUrl(input.repoUrl); } catch (e) {
       if (e instanceof BuildError) throw new HttpError(400, e.message, "validation");
@@ -302,15 +333,18 @@ export async function createProject(userId: string, raw: unknown): Promise<Proje
       installationId: input.installationId ?? null,
       productionBranch: input.productionBranch,
       rootDir: input.rootDir,
-      runtime: input.runtime,
+      runtime: input.runtime ?? "command",
       workloadKind: input.workloadKind,
       deploymentMode: input.deploymentMode,
+      deployStrategy: input.deployStrategy,
+      imageRef,
+      pullPolicy: input.pullPolicy ?? "auto",
       // Container settings only mean something in Docker modes; native projects
       // store none, so switching modes never leaves stale file paths behind.
       dockerfilePath: input.deploymentMode === "dockerfile" ? input.dockerfilePath ?? null : null,
       composeFilePath: input.deploymentMode === "compose" ? input.composeFilePath ?? null : null,
       composeService: input.deploymentMode === "compose" ? input.composeService ?? null : null,
-      containerPort: input.deploymentMode === "native" ? null : input.containerPort ?? null,
+      containerPort: isImage ? (selectedPort ?? null) : input.deploymentMode === "native" ? null : input.containerPort ?? null,
       installCommand: input.installCommand || null,
       buildCommand: input.buildCommand || null,
       startCommand: input.startCommand || null,
@@ -320,7 +354,7 @@ export async function createProject(userId: string, raw: unknown): Promise<Proje
       port: selectedPort ?? 0,
       listenPort: selectedPort ?? null,
       healthPath: input.healthPath,
-      autoDeploy: input.sourceProvider !== "github" || input.adopted ? false : input.autoDeploy,
+      autoDeploy: isImage || input.sourceProvider !== "github" || input.adopted ? false : input.autoDeploy,
       createdAt: now,
       updatedAt: now,
     }).catch((err: unknown) => {
@@ -383,10 +417,21 @@ export async function updateProject(userId: string, projectId: string, raw: unkn
   if (project.workloadKind === "web" && portTouched && selectedPort === null) throw new HttpError(400, "A web project needs a port.", "validation");
   if (project.workloadKind === "worker" && input.runtime === "static") throw new HttpError(400, "Static sites need a web workload.", "validation");
   const selectedMode = input.deploymentMode ?? project.deploymentMode;
+  const isImage = selectedMode === "image";
+  if (isImage) {
+    if (input.autoDeploy) throw new HttpError(400, "Image apps deploy when you ask. There is no push to watch.", "validation");
+    if (input.imageRef !== undefined) checkImageRef(input.imageRef);
+    else if (!project.imageRef) throw new HttpError(400, "An image app needs an image reference, such as nginx:1.27.", "validation");
+  } else if (input.imageRef != null || input.pullPolicy !== undefined) {
+    throw new HttpError(400, "Image settings apply only to image apps.", "validation");
+  }
+  if (selectedPort != null && selectedPort < SOURCE_MIN_PORT && !isImage) throw new HttpError(400, "Ports below 1024 need a container image. Choose 1024 or higher.", "validation");
   if (selectedMode === "dockerfile" && (input.dockerfilePath ?? project.dockerfilePath) == null) throw new HttpError(400, "A Dockerfile project needs the Dockerfile path.", "validation");
   if (selectedMode === "compose" && (input.composeFilePath ?? project.composeFilePath) == null) throw new HttpError(400, "A Compose project needs the Compose file path.", "validation");
   if (selectedMode === "compose" && (input.composeService ?? project.composeService) == null) throw new HttpError(400, "A Compose project needs the service to run.", "validation");
   if (selectedMode !== "native" && (input.buildLocation ?? project.buildLocation) === "github") throw new HttpError(400, "Container projects build their image on your server. GitHub build settings are for native projects.", "validation");
+  const refusal = strategyRefusal({ strategy: input.deployStrategy ?? project.deployStrategy, hasVolume: project.hasVolumes && selectedMode === "compose" });
+  if (refusal) throw new HttpError(400, refusal, "validation");
   const db = await getDb();
 
   const clean = Object.fromEntries(
@@ -395,6 +440,12 @@ export async function updateProject(userId: string, projectId: string, raw: unkn
   if (portTouched) {
     if (selectedPort != null) { clean.port = selectedPort; clean.listenPort = selectedPort; }
     else if (project.workloadKind === "worker") { clean.port = 0; clean.listenPort = null; }
+  }
+  if (!isImage) {
+    // Image settings only mean something for an image app. A registry login is kept by its owner, not by the app.
+    clean.imageRef = null;
+    clean.pullPolicy = "auto";
+    clean.registryCredentialId = null;
   }
   if (selectedMode === "native") {
     // Container settings only mean something in Docker modes; keep the stored
@@ -674,6 +725,10 @@ export async function enqueueDeployment(
   // networks and named volumes are keyed by project name, so a preview would
   // overwrite the live stack. Refuse when the deployment is queued, not after
   // the build has run. Production and rollbacks are unaffected.
+  // Image apps: the deploy step that pulls and runs a prebuilt image is not built yet, so nothing is queued.
+  if (project.deploymentMode === "image") {
+    throw new HttpError(400, "Deploying a prebuilt image is not available yet. The image settings are saved; the deploy step is still to come.", "validation");
+  }
   if (jobType === "deploy" && input.env === "preview" && project.deploymentMode === "compose") {
     throw new HttpError(400, "Pull request previews are not available for Compose projects. Deploy the branch to production instead.", "validation");
   }

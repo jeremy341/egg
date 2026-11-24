@@ -9,6 +9,7 @@ import { getServerForUser, listServers, publicServer } from "@/server/servers";
 import { notifySummary } from "@/server/notify";
 import { getReadableProject } from "@/server/projects";
 import { projectReadableBy } from "@/server/project-roles";
+import { RIGHT_SIZE_WINDOW_DAYS, suggestRightSize, type RightSize } from "@/server/right-size";
 import { statusUrl } from "@/server/status-page";
 import { usageFromProbe } from "@/server/runtime-info";
 import { durationText, timeAgo, uiState, type UiState } from "@/lib/status";
@@ -30,7 +31,7 @@ export type ProjectView = {
   branch: string;
   runtime: string;
   workloadKind: "web" | "worker";
-  deploymentMode: "native" | "dockerfile" | "compose";
+  deploymentMode: "native" | "dockerfile" | "compose" | "image";
   /** Docker-mode settings; null in native mode. */
   dockerfilePath: string | null;
   composeFilePath: string | null;
@@ -398,6 +399,26 @@ export async function projectMetrics(
     .where(and(eq(schema.projectSamples.projectId, project.id), gte(schema.projectSamples.at, since)))
     .orderBy(asc(schema.projectSamples.at));
   return rows.map((r) => ({ at: r.at.getTime(), memMb: r.memMb, cpuPercent: r.cpuPercent }));
+}
+
+/**
+ * The resource suggestion for one project's service, computed from the same
+ * monitor samples the charts use. Reading it is owner-only like every other
+ * project read, and nothing is ever applied from here.
+ */
+export async function projectRightSize(userId: string, projectId: string): Promise<RightSize> {
+  const project = await getReadableProject(userId, projectId);
+  const db = await getDb();
+  const since = new Date(Date.now() - RIGHT_SIZE_WINDOW_DAYS * 24 * 3_600_000);
+  const rows = await db
+    .select()
+    .from(schema.projectSamples)
+    .where(and(eq(schema.projectSamples.projectId, project.id), gte(schema.projectSamples.at, since)))
+    .orderBy(asc(schema.projectSamples.at));
+  return suggestRightSize(
+    rows.map((r) => ({ at: r.at.getTime(), memMb: r.memMb, cpuPercent: r.cpuPercent })),
+    Date.now()
+  );
 }
 
 export type ProjectResource = {

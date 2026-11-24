@@ -483,7 +483,7 @@ describe("the expanded tool list", () => {
     for (const t of tools.values()) expect(t.inputSchema).toMatchObject({ type: "object", additionalProperties: false });
     expect(tools.get("set_env_var")!.inputSchema.required).toEqual(expect.arrayContaining(["projectId", "key", "value"]));
     expect(tools.get("terminal_send")!.inputSchema.required).toEqual(expect.arrayContaining(["projectId", "sessionId", "data"]));
-    expect(tools.get("create_project")!.inputSchema.required).toEqual(expect.arrayContaining(["serverId", "name", "repoUrl", "runtime"]));
+    expect(tools.get("create_project")!.inputSchema.required).toEqual(expect.arrayContaining(["serverId", "name"]));
     expect(tools.get("get_log_context")!.inputSchema.required).toEqual(expect.arrayContaining(["projectId", "at"]));
     expect(tools.get("triage_deployment_error")!.inputSchema.required).toEqual(expect.arrayContaining(["projectId", "fingerprint", "action"]));
   });

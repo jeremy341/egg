@@ -13,6 +13,7 @@ import { DeployButton } from "@/components/deploy-button";
 import { RollbackButton } from "@/components/rollback-button";
 import { ProjectResources } from "@/components/project-resources";
 import { ActivityHeatmap } from "@/components/activity-heatmap";
+import { RightSizeCard } from "@/components/right-size-card";
 import { PageHeader } from "@/components/page-header";
 import { ServiceCard } from "@/components/service-status";
 import { ProjectOverviewSkeleton } from "@/components/skeletons/project-overview";
@@ -26,7 +27,7 @@ import { buildHeatmap } from "@/lib/heatmap";
 import type { UiState } from "@/lib/status";
 import { requireUser } from "@/server/auth/current";
 import { projectDailyActivity } from "@/server/heatmap";
-import { deploymentViews, projectMetrics, projectViews, serverViews } from "@/server/queries";
+import { deploymentViews, projectMetrics, projectRightSize, projectViews, serverViews } from "@/server/queries";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -76,11 +77,12 @@ async function ProjectContent({ params }: Props) {
   const project = (await projectViews(user.id)).find((p) => p.slug === slug);
   if (!project) notFound();
 
-  const [history, servers, metrics, activity] = await Promise.all([
+  const [history, servers, metrics, activity, rightSize] = await Promise.all([
     deploymentViews(user.id, { projectId: project.id }),
     serverViews(user.id),
     projectMetrics(user.id, project.id),
     projectDailyActivity(project.id),
+    projectRightSize(user.id, project.id),
   ]);
   const server = servers.find((s) => s.id === project.serverId);
 
@@ -299,6 +301,8 @@ async function ProjectContent({ params }: Props) {
 
       {live ? <ServiceCard projectId={project.id} workloadKind={project.workloadKind} /> : null}
       {live ? <ProjectResources points={metrics} /> : null}
+      {live ? <RightSizeCard suggestion={rightSize} /> : null}
+      {live ? <RightSizeCard suggestion={rightSize} /> : null}
 
       <div className="grid gap-4 md:grid-cols-2">
         <section aria-labelledby="domains-heading" className="h-full rounded-lg bg-card p-4 shadow-border-small">

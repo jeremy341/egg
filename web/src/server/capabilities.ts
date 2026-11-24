@@ -27,7 +27,7 @@ if command -v docker-proxy >/dev/null 2>&1 || [ -e /usr/libexec/docker/docker-pr
 export const DOCKER_DISK_FLOOR_MB = 1024;
 
 export type TargetCapabilities = {
-  deploymentModes: { native: boolean; dockerfile: boolean; compose: boolean };
+  deploymentModes: { native: boolean; dockerfile: boolean; compose: boolean; image: boolean };
   docker: { available: boolean; composeAvailable: boolean; reason: string | null };
   runtimes: string[];
 };
@@ -72,7 +72,8 @@ export async function probeTargetCapabilities(session: Pick<NestSession, "script
     reason = problems.length > 0 ? problems.join("; ") : "Docker deployment is not verified on this target.";
   }
   return {
-    deploymentModes: { native, dockerfile, compose },
+    // An image app pulls with the same Docker engine, so it is available wherever Docker is.
+    deploymentModes: { native, dockerfile, compose, image: dockerfile },
     docker: { available: dockerfile, composeAvailable: compose, reason },
     runtimes: [...RUNTIMES],
   };
