@@ -151,9 +151,10 @@ export async function apiUpdateProject(
   return { project: await publicProjectFor(p, projectId) };
 }
 
-export async function apiDeleteProject(p: Principal, projectId: string, removeFromServer: boolean) {
+export async function apiDeleteProject(p: Principal, projectId: string, confirmName: string, removeFromServer: boolean) {
   requireScope(p, "projects:write");
-  await getProjectForUser(p.userId, projectId);
+  const project = await getProjectForUser(p.userId, projectId);
+  if (confirmName !== project.name) throw new HttpError(400, "Type the exact project name to confirm.", "confirmation_failed");
   if (removeFromServer) {
     // This opens an SSH session, so it also spends from the small SSH allowance.
     enforceApiRate(p, "ssh");
@@ -230,10 +231,11 @@ export async function apiSetEnv(p: Principal, projectId: string, key: string, va
   return { env: { key, target } };
 }
 
-export async function apiDeleteEnv(p: Principal, projectId: string, key: string, target?: "all" | "production" | "preview") {
+export async function apiDeleteEnv(p: Principal, projectId: string, key: string, confirmName: string, target?: "all" | "production" | "preview") {
   requireScope(p, "env:write");
   const rows = (await listEnvVars(p.userId, projectId)).filter((r) => r.key === key && (target ? r.target === target : true));
   if (rows.length === 0) throw notFound("Environment variable not found");
+  if (confirmName !== key) throw new HttpError(400, "Type the exact environment variable name to confirm.", "confirmation_failed");
   await tagAudit(
     p,
     "env.delete",
@@ -303,15 +305,19 @@ const addDomainBody = {
 
 // -------------------------------------------------------------- deploy hook
 
-export async function apiRotateHook(p: Principal, projectId: string) {
+export async function apiRotateHook(p: Principal, projectId: string, confirmName: string) {
   requireScope(p, "deployments:write");
+  const project = await getProjectForUser(p.userId, projectId);
+  if (confirmName !== project.name) throw new HttpError(400, "Type the exact project name to confirm.", "confirmation_failed");
   // The only place the URL is ever returned. Only its hash is kept.
   const { url } = await tagAudit(p, "hook.create", () => createDeployHook(p.userId, projectId));
   return { hook: { url, createdAt: new Date().toISOString() } };
 }
 
-export async function apiRevokeHook(p: Principal, projectId: string) {
+export async function apiRevokeHook(p: Principal, projectId: string, confirmName: string) {
   requireScope(p, "deployments:write");
+  const project = await getProjectForUser(p.userId, projectId);
+  if (confirmName !== project.name) throw new HttpError(400, "Type the exact project name to confirm.", "confirmation_failed");
   await tagAudit(p, "hook.revoke", () => revokeDeployHook(p.userId, projectId));
   return { revoked: true, projectId };
 }
@@ -734,13 +740,14 @@ export const EXPANDED_ENDPOINTS: Endpoint[] = [
     bucket: "write",
     tag: "Projects",
     summary: "Delete a project",
-    description: `DESTRUCTIVE and permanent. Deletes the project, its deployments, logs, environment variables and settings. By default the app keeps running on the container, now unmanaged; set removeFromServer to also stop its service and delete its releases and previews from the container (the shared data folder is kept; deleting that is only possible in the dashboard). removeFromServer also counts against the small SSH rate limit and can fail with 502, in which case nothing is deleted. Only use when the user asked. ${NOT_FOUND_NOTE}`,
+    description: `DESTRUCTIVE and permanent. Deletes the project, its deployments, logs, environment variables and settings. By default the app keeps running on the container, now unmanaged; set removeFromServer to also stop its service and delete its releases and previews from the container (the shared data folder is kept; deleting that is only possible in the dashboard). removeFromServer also counts against the small SSH rate limit and can fail with 502, in which case nothing is deleted. Before calling, pass confirmName exactly matching the project name. Only use when the user asked. ${NOT_FOUND_NOTE}`,
     pathParams: { projectId },
     query: { removeFromServer: flagInput.optional().describe("Also stop the service and delete the releases on the container. Default false.") },
+    body: { confirmName: z.string().min(1).max(100).describe("The exact project name to confirm permanent deletion.") },
     response: z.object({ deleted: z.boolean(), projectId: z.string(), removedFromServer: z.boolean() }),
     errors: [400, 404, 502],
     destructive: true,
-    run: (p, i) => apiDeleteProject(p, i.projectId, i.removeFromServer ?? false),
+    run: (p, i) => apiDeleteProject(p, i.projectId, i.confirmName, i.removeFromServer ?? false),
   }),
   endpoint({
     id: "get_github_status",
@@ -868,6 +875,7 @@ export const EXPANDED_ENDPOINTS: Endpoint[] = [
     path: "/projects/{projectId}/env/{key}",
     scope: "env:write",
     bucket: "write",
+    sensitive: true,
     tag: "Environment",
     summary: "Set an environment variable",
     // Opt out of framing: the key is strictly validated and the value is never returned.
@@ -890,13 +898,14 @@ export const EXPANDED_ENDPOINTS: Endpoint[] = [
     bucket: "write",
     tag: "Environment",
     summary: "Remove an environment variable",
-    description: `Remove an environment variable. Without a target it removes the name from every target; with one it removes only that target's entry. Returns 404 if there is none. The running app keeps its old value until the next deploy. ${NOT_FOUND_NOTE}`,
+    description: `Remove an environment variable. Without a target it removes the name from every target; with one it removes only that target's entry. Returns 404 if there is none. Pass confirmName exactly matching the environment variable key. The running app keeps its old value until the next deploy. ${NOT_FOUND_NOTE}`,
     pathParams: { projectId, key: envInput.shape.key },
     query: { target: envTarget.removeDefault().optional().describe("Only remove this target's entry. Default: all of them.") },
+    body: { confirmName: z.string().min(1).max(100).describe("The exact environment variable name to remove.") },
     response: z.object({ deleted: z.array(envEntrySchema) }),
     errors: [400, 404],
     destructive: true,
-    run: (p, i) => apiDeleteEnv(p, i.projectId, i.key, i.target),
+    run: (p, i) => apiDeleteEnv(p, i.projectId, i.key, i.confirmName, i.target),
   }),
 
   // ----- domains
@@ -961,12 +970,13 @@ export const EXPANDED_ENDPOINTS: Endpoint[] = [
     // Opt out of framing: the URL is generated by Egg, not remote data. The frame's
     // "never repeat secrets" preamble would hide the one-time value this tool exists to return.
     untrusted: false,
-    description: `Create the project's deploy hook, or replace it (the old URL stops working at once). The URL is a secret that starts a deployment when it receives a POST, and it keeps working after this token is revoked. It is returned ONCE, in this response, and can never be read again: treat it as a secret and do not print or log it. ${NOT_FOUND_NOTE}`,
+    description: `Create the project's deploy hook, or replace it (the old URL stops working at once). Pass confirmName exactly matching the project name. The URL is a secret that starts a deployment when it receives a POST, and it keeps working after this token is revoked. It is returned ONCE, in this response, and can never be read again: treat it as a secret and do not print or log it. ${NOT_FOUND_NOTE}`,
     pathParams: { projectId },
+    body: { confirmName: z.string().min(1).max(100).describe("The exact project name to confirm creating or replacing its hook.") },
     response: z.object({ hook: z.object({ url: z.string().describe("The secret hook URL. Shown only now."), createdAt: z.string() }) }),
     errors: [400, 404],
     destructive: true,
-    run: (p, i) => apiRotateHook(p, i.projectId),
+    run: (p, i) => apiRotateHook(p, i.projectId, i.confirmName),
   }),
   endpoint({
     id: "revoke_deploy_hook",
@@ -976,12 +986,13 @@ export const EXPANDED_ENDPOINTS: Endpoint[] = [
     bucket: "write",
     tag: "Deployments",
     summary: "Revoke the deploy hook",
-    description: `Revoke the project's deploy hook so its URL stops working. Anything that uses the URL (CI, scripts) will stop deploying. ${NOT_FOUND_NOTE}`,
+    description: `Revoke the project's deploy hook so its URL stops working. Pass confirmName exactly matching the project name. Anything that uses the URL (CI, scripts) will stop deploying. ${NOT_FOUND_NOTE}`,
     pathParams: { projectId },
+    body: { confirmName: z.string().min(1).max(100).describe("The exact project name to confirm revoking its hook.") },
     response: z.object({ revoked: z.boolean(), projectId: z.string() }),
     errors: [400, 404],
     destructive: true,
-    run: (p, i) => apiRevokeHook(p, i.projectId),
+    run: (p, i) => apiRevokeHook(p, i.projectId, i.confirmName),
   }),
 
   // ----- notifications, alerts, status page

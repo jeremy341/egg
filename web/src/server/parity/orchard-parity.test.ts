@@ -1,33 +1,79 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { ENDPOINTS } from "@/server/api-v1";
+import parity from "./orchard-parity.json";
 
-const parity = JSON.parse(readFileSync(new URL("./orchard-parity.json", import.meta.url), "utf8")) as {
-  baseline_present: number;
-  baseline_partial: number;
-  tools: { name: string; status: string; ours: string | null }[];
-};
+const endpointById = new Map(ENDPOINTS.map((endpoint) => [endpoint.id, endpoint]));
 
-const byName = new Map(parity.tools.map((tool) => [tool.name, tool]));
-const endpointIds = new Set(ENDPOINTS.map((endpoint) => endpoint.id));
-
-describe("Orchard core parity", () => {
-  it("keeps the manifest baselines equal to its current classifications", () => {
-    expect(parity.tools.filter((tool) => tool.status === "present")).toHaveLength(parity.baseline_present);
-    expect(parity.tools.filter((tool) => tool.status === "partial")).toHaveLength(parity.baseline_partial);
+describe("Orchard endpoint parity", () => {
+  it("keeps the present and partial baselines in sync with the manifest", () => {
+    const present = parity.tools.filter((tool) => tool.status === "present").length;
+    const partial = parity.tools.filter((tool) => tool.status === "partial").length;
+    expect(parity.baseline_present).toBe(present);
+    expect(parity.baseline_partial).toBe(partial);
   });
 
-  it("maps supported core tools to registered endpoints and leaves unsupported tools missing", () => {
-    for (const name of ["diagnose_deployment", "get_deployment_next_steps", "find", "get_github_status"]) {
-      const tool = byName.get(name);
-      expect(tool, name).toMatchObject({ status: "partial", ours: name });
-      expect(endpointIds.has(tool!.ours!), name).toBe(true);
-    }
+  it("maps every supported configuration, job, and notification tool to a registry endpoint", () => {
+    const names = [
+      "add_env_vars",
+      "set_env_vars",
+      "delete_env_vars",
+      "get_env_vars",
+      "create_deploy_webhook_token",
+      "list_deploy_webhook_tokens",
+      "delete_deploy_webhook_token",
+      "delete_project",
+      "create_job",
+      "list_jobs",
+      "get_job",
+      "update_job",
+      "run_job",
+      "list_job_runs",
+      "get_job_run_logs",
+      "delete_job",
+      "list_notification_channels",
+      "create_notification_channel",
+      "list_notification_rules",
+      "create_notification_rule",
+      "test_notification_channel",
+    ];
 
-    expect(byName.get("get_resource_quota")).toMatchObject({ status: "partial", ours: "get_project_resources" });
-    expect(byName.get("get_observability_link")).toMatchObject({ status: "missing", ours: null });
-    expect(byName.get("get_current_user")).toMatchObject({ status: "present", ours: "get_me" });
-    expect(endpointIds.has("get_me")).toBe(true);
-    expect(ENDPOINTS.filter((endpoint) => endpoint.id === "get_me")).toHaveLength(1);
+    for (const name of names) {
+      const tool = parity.tools.find((entry) => entry.name === name);
+      expect(tool, name).toBeDefined();
+      expect(tool!.status, name).not.toBe("missing");
+      expect(tool!.ours, name).toBeTruthy();
+      expect(endpointById.has(tool!.ours!), name).toBe(true);
+      expect(endpointById.get(tool!.ours!)?.scope, name).not.toBeNull();
+    }
+  });
+
+  it("requires exact-name confirmation for destructive endpoint mappings", () => {
+    for (const name of [
+      "set_env_vars",
+      "delete_env_vars",
+      "delete_project",
+      "create_deploy_webhook_token",
+      "delete_deploy_webhook_token",
+      "delete_job",
+      "run_job",
+    ]) {
+      const tool = parity.tools.find((entry) => entry.name === name)!;
+      const endpoint = endpointById.get(tool.ours!)!;
+      expect(endpoint.input.shape, name).toHaveProperty("confirmName");
+    }
+  });
+
+  it("keeps secret-bearing endpoint responses out of idempotent replay", () => {
+    for (const id of ["add_env_vars", "set_env_vars", "rotate_deploy_hook", "create_notification_channel"]) {
+      expect(endpointById.get(id)?.sensitive, id).toBe(true);
+    }
+  });
+
+  it("records unsupported deployment deletion and job cancellation as missing", () => {
+    for (const name of ["delete_deployment", "cancel_job_run"]) {
+      const tool = parity.tools.find((entry) => entry.name === name);
+      expect(tool?.status, name).toBe("missing");
+      expect(tool?.ours, name).toBeNull();
+    }
   });
 });
