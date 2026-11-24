@@ -29,7 +29,7 @@ export type ProjectView = {
   branch: string;
   runtime: string;
   workloadKind: "web" | "worker";
-  deploymentMode: "native" | "dockerfile" | "compose";
+  deploymentMode: "native" | "dockerfile" | "compose" | "image";
   /** Docker-mode settings; null in native mode. */
   dockerfilePath: string | null;
   composeFilePath: string | null;
