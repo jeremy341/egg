@@ -15,6 +15,7 @@ import {
 import {
   deploymentSchema,
   domainSchema,
+  paginateList,
   projectSchema,
   publicDomainFor,
   publicProjectFor,
@@ -209,10 +210,16 @@ const envEntrySchema = z.object({
   target: z.enum(["all", "production", "preview"]).describe("Which deployments get it."),
 });
 
-export async function apiListEnv(p: Principal, projectId: string) {
+export async function apiListEnv(p: Principal, projectId: string, limit = 100, cursor?: string) {
   requireScope(p, "env:read");
   const rows = await listEnvVars(p.userId, projectId);
-  return { env: rows.map((r) => ({ key: r.key, target: r.target })) };
+  // The store orders by name; add the target as a tie-breaker so the same name
+  // on two targets always has the same place in the pages.
+  const env = rows
+    .map((r) => ({ key: r.key, target: r.target }))
+    .sort((a, b) => a.key.localeCompare(b.key) || a.target.localeCompare(b.target));
+  // `env` keeps the whole list; `items` is the page requested by limit + cursor.
+  return { env, ...paginateList(env, { limit, cursor }, (r) => `${r.key}|${r.target}`) };
 }
 
 export async function apiSetEnv(p: Principal, projectId: string, key: string, value: string, target: "all" | "production" | "preview") {
@@ -447,20 +454,20 @@ const serverSchema = z.object({
   createdAt: z.string(),
 });
 
-export async function apiListServers(p: Principal) {
+export async function apiListServers(p: Principal, limit = 100, cursor?: string) {
   requireScope(p, "container:read");
   // Not exposed: key material, fingerprints and the last connection error text.
   const rows = await listServers(p.userId);
-  return {
-    servers: rows.map((r) => ({
-      id: r.id,
-      nestUsername: r.nestUsername,
-      host: r.host,
-      status: r.status,
-      lastCheckedAt: r.lastCheckedAt ? r.lastCheckedAt.toISOString() : null,
-      createdAt: r.createdAt.toISOString(),
-    })),
-  };
+  const servers = rows.map((r) => ({
+    id: r.id,
+    nestUsername: r.nestUsername,
+    host: r.host,
+    status: r.status,
+    lastCheckedAt: r.lastCheckedAt ? r.lastCheckedAt.toISOString() : null,
+    createdAt: r.createdAt.toISOString(),
+  }));
+  // `servers` keeps the whole list; `items` is the page requested by limit + cursor.
+  return { servers, ...paginateList(servers, { limit, cursor }, (s) => s.id) };
 }
 
 const unitState = z.enum(["running", "starting", "failed", "stopped", "unknown"]);
@@ -692,11 +699,20 @@ export const EXPANDED_ENDPOINTS: Endpoint[] = [
     summary: "List environment variable names",
     // Opt out of framing: only validated names and fixed targets come back.
     untrusted: false,
-    description: `List the names and targets (all, production or preview) of a project's environment variables. Values are never returned by any endpoint. ${NOT_FOUND_NOTE}`,
+    description: `List the names and targets (all, production or preview) of a project's environment variables, ordered by name then target. Values are never returned by any endpoint. Pass limit and then the returned nextCursor as cursor to page through them; items is the page, total is the number of entries, and env keeps the full list for older callers. ${NOT_FOUND_NOTE}`,
     pathParams: { projectId },
-    response: z.object({ env: z.array(envEntrySchema) }),
+    query: {
+      limit: z.coerce.number().int().min(1).max(100).default(100).describe("How many entries in a page, 1 to 100. Default 100."),
+      cursor: z.string().max(200).optional().describe("The nextCursor of the previous page. Omit for the first page."),
+    },
+    response: z.object({
+      env: z.array(envEntrySchema).describe("All the names and targets, unchanged for callers from before pagination."),
+      items: z.array(envEntrySchema).describe("This page of entries, in the same order as env."),
+      total: z.number().int().describe("Number of entries in all."),
+      nextCursor: z.string().nullable().describe("Pass as cursor for the next page, or null on the last page."),
+    }),
     errors: [400, 404],
-    run: (p, i) => apiListEnv(p, i.projectId),
+    run: (p, i) => apiListEnv(p, i.projectId, i.limit, i.cursor),
   }),
   endpoint({
     id: "set_env_var",
@@ -942,9 +958,18 @@ export const EXPANDED_ENDPOINTS: Endpoint[] = [
     tag: "Servers",
     summary: "List servers",
     description:
-      "List the owner's connected servers (Nest accounts) with their id, host and connection status. The server id is what get_server_usage, get_resource_history, get_container_inventory and add_domain need.",
-    response: z.object({ servers: z.array(serverSchema) }),
-    run: (p) => apiListServers(p),
+      "List the owner's connected servers (Nest accounts) with their id, host and connection status. The server id is what get_server_usage, get_resource_history, get_container_inventory and add_domain need. Pass limit and then the returned nextCursor as cursor to page through them; items is the page, total is the number of servers, and servers keeps the full list for older callers.",
+    query: {
+      limit: z.coerce.number().int().min(1).max(100).default(100).describe("How many servers in a page, 1 to 100. Default 100."),
+      cursor: z.string().max(200).optional().describe("The nextCursor of the previous page. Omit for the first page."),
+    },
+    response: z.object({
+      servers: z.array(serverSchema).describe("All the owner's servers, unchanged for callers from before pagination."),
+      items: z.array(serverSchema).describe("This page of servers, in the same order as servers."),
+      total: z.number().int().describe("Number of servers in all."),
+      nextCursor: z.string().nullable().describe("Pass as cursor for the next page, or null on the last page."),
+    }),
+    run: (p, i) => apiListServers(p, i.limit, i.cursor),
   }),
   endpoint({
     id: "get_container_inventory",
