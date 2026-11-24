@@ -3,6 +3,7 @@ import { getDb, schema } from "@/server/db";
 import { isInstanceAdmin } from "@/server/admin-identity";
 import { maintenanceState } from "@/server/maintenance";
 import { HttpError } from "@/server/http";
+import { describeAction } from "@/server/audit";
 
 export async function adminOverview(userId: string) {
   if (!(await isInstanceAdmin(userId))) throw new HttpError(403, "Only an instance administrator can open this dashboard.", "forbidden");
@@ -17,5 +18,5 @@ export async function adminOverview(userId: string) {
     db.select({ id: schema.auditLog.id, action: schema.auditLog.action, at: schema.auditLog.at }).from(schema.auditLog).where(sql`${schema.auditLog.action} like 'admin.%'`).orderBy(desc(schema.auditLog.at)).limit(20),
     maintenanceState(),
   ]);
-  return { users: users?.count ?? 0, projects: projects?.count ?? 0, servers: servers?.count ?? 0, jobs, reports, cleanup, events: events.map((e) => ({ ...e, at: e.at.toISOString() })), maintenance };
+  return { users: users?.count ?? 0, projects: projects?.count ?? 0, servers: servers?.count ?? 0, jobs, reports, cleanup, events: events.map((e) => ({ ...e, label: describeAction(e.action), at: e.at.toISOString() })), maintenance };
 }
