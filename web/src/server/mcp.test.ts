@@ -159,6 +159,7 @@ describe("protocol", () => {
         "get_project",
         "get_project_resources",
         "get_resource_history",
+        "get_rollout",
         "get_server_usage",
         "get_status_page",
         "list_deployments",
