@@ -6,8 +6,10 @@ import {
   REPORT_BODY_LIMIT,
   reportAdminId,
 } from "@/server/security-reports";
-import { enforceIngress, rateLimiter } from "@/server/rate-limit";
-import { keyedDigestHex } from "@/server/crypto";
+import { clientIp, enforceIngress, rateLimiter } from "@/server/rate-limit";
+import { keyedDigestHex, randomToken } from "@/server/crypto";
+import { getCurrentUser } from "@/server/auth/current";
+import { assertAccountCanWrite } from "@/server/account-standing";
 
 const HOUR_MS = 60 * 60_000;
 
@@ -49,6 +51,12 @@ export const POST = handle(async (req: NextRequest) => {
         "rate_limited",
         { "Retry-After": String(result.retryAfterSeconds) },
       );
+  }
+  // A signed-in account past its grace period cannot report. Anonymous reports never look up a session:
+  // the cookie check decides whether there is one to look at.
+  if (req.headers.get("cookie")) {
+    const signedIn = await getCurrentUser();
+    if (signedIn) await assertAccountCanWrite(signedIn.id);
   }
   const raw = await readJsonLimited(req, { maxBytes: REPORT_BODY_LIMIT });
   // No source is stored: the account is never linked to a report, not even as a digest.

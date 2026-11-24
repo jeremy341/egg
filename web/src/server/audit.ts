@@ -67,6 +67,8 @@ export const LABELS: Record<string, string> = {
   "account.cleanup_cancel_failed": "Dropped a failed cleanup after acknowledging possibly-unremoved projects",
   "admin.maintenance": "Changed maintenance settings",
   "admin.grant": "Made someone an administrator",
+  "admin.ban": "Banned an account",
+  "admin.unban": "Lifted a ban on an account",
   "admin.revoke": "Removed an administrator",
   "security_report.list": "Viewed the security report inbox",
   "security_report.read": "Read a security report",
