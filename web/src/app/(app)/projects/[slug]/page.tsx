@@ -396,6 +396,7 @@ async function ProjectContent({ params }: Props) {
           id="project-activity"
           title="Activity"
           scope="project"
+          // eslint-disable-next-line react-hooks/purity
           heatmap={buildHeatmap(activity, Date.now())}
           caption="Deployments and opened pull requests per UTC day, over the last 365 days. Pull requests are counted from the day this feature started recording them."
         />

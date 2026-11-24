@@ -82,6 +82,8 @@ export const LABELS: Record<string, string> = {
   "admin.ban": "Banned an account",
   "admin.unban": "Lifted a ban on an account",
   "org.create": "Created organization",
+  "org.rename": "Renamed organization",
+  "org.leave": "Left organization",
   "org.invite": "Invited someone to an organization",
   "org.invite.resend": "Sent a new invitation for an organization",
   "org.invite.cancel": "Cancelled an invitation to an organization",

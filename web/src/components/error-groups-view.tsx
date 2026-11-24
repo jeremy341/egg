@@ -47,6 +47,8 @@ export function ErrorGroupsView({
   }, [projectId, filter]);
 
   useEffect(() => {
+    // Fetch on mount and whenever the filter changes; the async loader updates state.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
   }, [load]);
 

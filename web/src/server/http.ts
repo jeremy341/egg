@@ -82,7 +82,13 @@ async function enforceRequestMaintenance(req: NextRequest) {
     const { bearerFrom, principalFor } = await import("@/server/api-tokens");
     userId = (await principalFor(bearerFrom(req)))?.userId ?? null;
   } else {
-    userId = (await getCurrentUser())?.id ?? null;
+    // Direct route-handler calls (tests, scripts) have no Next request scope,
+    // so session lookup cannot run. There is no user to check in that case.
+    try {
+      userId = (await getCurrentUser())?.id ?? null;
+    } catch {
+      userId = null;
+    }
   }
   const { isInstanceAdmin } = await import("@/server/admin-identity");
   if (!(await isInstanceAdmin(userId))) throw maintenanceError();
@@ -98,7 +104,13 @@ async function enforceAccountWrites(req: NextRequest) {
     const { bearerFrom, principalFor } = await import("@/server/api-tokens");
     userId = (await principalFor(bearerFrom(req)))?.userId ?? null;
   } else {
-    userId = (await getCurrentUser())?.id ?? null;
+    // Direct route-handler calls (tests, scripts) have no Next request scope,
+    // so session lookup cannot run. There is no user to check in that case.
+    try {
+      userId = (await getCurrentUser())?.id ?? null;
+    } catch {
+      userId = null;
+    }
   }
   if (userId) await assertAccountCanWrite(userId);
 }
