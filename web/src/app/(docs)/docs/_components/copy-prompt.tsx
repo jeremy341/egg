@@ -1,7 +1,7 @@
 "use client";
 
 import { useSyncExternalStore, useState } from "react";
-import { CaretDownIcon, CheckIcon, CopyIcon } from "@phosphor-icons/react";
+import { CaretDownIcon, ChatCircleIcon, CheckIcon, CopyIcon, SparkleIcon } from "@phosphor-icons/react";
 import { toast } from "@/components/ui/toast";
 
 /**
@@ -75,13 +75,19 @@ export function CopyPromptButton({
           <p className="px-2 py-1.5 text-[12px] leading-snug text-muted-foreground break-words">{prompt}</p>
           {claude ? (
             <a href={claude} target="_blank" rel="noopener noreferrer" className="block rounded-sm px-2 py-1.5 text-[13px] hover:bg-[var(--ds-gray-alpha-100)]">
-              Open in Claude
+              <span className="flex items-center gap-2">
+                <SparkleIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+                Open in Claude
+              </span>
               <span className="sr-only"> (opens in a new tab)</span>
             </a>
           ) : null}
           {chatgpt ? (
             <a href={chatgpt} target="_blank" rel="noopener noreferrer" className="block rounded-sm px-2 py-1.5 text-[13px] hover:bg-[var(--ds-gray-alpha-100)]">
-              Open in ChatGPT
+              <span className="flex items-center gap-2">
+                <ChatCircleIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+                Open in ChatGPT
+              </span>
               <span className="sr-only"> (opens in a new tab)</span>
             </a>
           ) : null}
