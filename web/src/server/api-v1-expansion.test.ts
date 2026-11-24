@@ -66,6 +66,10 @@ import { GET as listServersRoute } from "@/app/api/v1/servers/route";
 import { GET as inventoryRoute } from "@/app/api/v1/servers/[serverId]/inventory/route";
 import { GET as usageHistoryRoute } from "@/app/api/v1/servers/[serverId]/usage/history/route";
 import { GET as activityRoute } from "@/app/api/v1/activity/route";
+import { GET as findRoute } from "@/app/api/v1/find/route";
+import { GET as githubStatusRoute } from "@/app/api/v1/github/status/route";
+import { GET as diagnoseDeploymentRoute } from "@/app/api/v1/deployments/[deploymentId]/diagnosis/route";
+import { GET as deploymentNextStepsRoute } from "@/app/api/v1/deployments/[deploymentId]/next-steps/route";
 
 let ctx: Awaited<ReturnType<typeof useFreshDb>>;
 let me: { id: string };
@@ -257,6 +261,16 @@ const proj = (suffix: string) => (i: Ids) => `/projects/${i.projectId}${suffix}`
 const projParams = (i: Ids) => ({ projectId: i.projectId });
 
 const SPECS: Record<string, Spec> = {
+  find: { scope: "projects:read", handler: findRoute, method: "GET", path: () => "/find", params: () => ({}) },
+  get_github_status: { scope: "projects:read", handler: githubStatusRoute, method: "GET", path: () => "/github/status", params: () => ({}) },
+  diagnose_deployment: {
+    scope: "deployments:read", handler: diagnoseDeploymentRoute, method: "GET",
+    path: (i) => `/deployments/${i.deploymentId}/diagnosis`, params: (i) => ({ deploymentId: i.deploymentId }), owned: true,
+  },
+  get_deployment_next_steps: {
+    scope: "projects:read", handler: deploymentNextStepsRoute, method: "GET",
+    path: (i) => `/deployments/${i.deploymentId}/next-steps`, params: (i) => ({ deploymentId: i.deploymentId }), owned: true,
+  },
   create_project: {
     scope: "projects:write", handler: createProjectRoute, method: "POST", path: () => "/projects", params: () => ({}),
     body: (i) => ({ serverId: i.serverId, name: "Fresh", repoUrl: "https://github.com/sam/fresh.git", runtime: "node", port: 3900 }),
@@ -339,8 +353,13 @@ describe("authentication and scopes", () => {
 
   it("answers 403 naming the scope when a token lacks it, before doing anything", async () => {
     const before = await counts();
+    const lackingByScope = new Map<Scope, string>();
     for (const [id, spec] of Object.entries(SPECS)) {
-      const without = await token(ALL.filter((s) => s !== spec.scope));
+      let without = lackingByScope.get(spec.scope);
+      if (!without) {
+        without = await token(ALL.filter((s) => s !== spec.scope));
+        lackingByScope.set(spec.scope, without);
+      }
       const res = await callSpec(spec, mine, without);
       const e = await errorOf(res);
       expect(res.status, id).toBe(403);
