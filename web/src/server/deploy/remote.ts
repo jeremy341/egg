@@ -520,7 +520,7 @@ export function serviceStatus(args: { unit: string; port: number | null; path: s
     `unit=${shellQuote(args.unit)}\nport=${Number(args.port)}\npath=${shellQuote(path)}\n` +
     `echo "EGG_ACTIVE=$(systemctl is-active "$unit" 2>/dev/null || true)"\n` +
     `systemctl show "$unit" -p LoadState -p ActiveState -p SubState -p MainPID -p NRestarts ` +
-    `-p MemoryCurrent -p CPUUsageNSec -p ActiveEnterTimestampMonotonic 2>/dev/null | sed 's/^/EGG_/' || true\n` +
+    `-p MemoryCurrent -p CPUUsageNSec -p ActiveEnterTimestampMonotonic -p ExecMainStatus -p Result 2>/dev/null | sed 's/^/EGG_/' || true\n` +
     `echo "EGG_UPTIME=$(cut -d' ' -f1 /proc/uptime 2>/dev/null || true)"\n` +
     (args.port === null ? "" : `if command -v curl >/dev/null 2>&1; then\n` +
     `  echo "EGG_HTTP=$(curl -s -o /dev/null -w '%{http_code} %{time_total}' --max-time 3 "http://127.0.0.1:$port$path" || true)"\n` +

@@ -801,6 +801,13 @@ export const projectSamples = sqliteTable(
     /** Total CPU time the service has used, in nanoseconds. Used to work out cpuPercent. */
     cpuNs: real("cpu_ns"),
     restarts: integer("restarts"),
+    /**
+     * Exit status and systemd's reason (exit-code, signal, oom-kill, ...) of the
+     * service's last main process, kept when it was not a clean exit. Only the
+     * status and the reason are kept, never the program's output.
+     */
+    exitCode: integer("exit_code"),
+    exitReason: text("exit_reason"),
   },
   (t) => [index("project_samples_idx").on(t.projectId, t.at)]
 );
