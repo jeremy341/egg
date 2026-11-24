@@ -6,6 +6,7 @@ import { config } from "@/server/config";
 import { removePreview, removeProject, runtimeLogs, startUnit } from "@/server/deploy/remote";
 import { journalSince, type LogLevel, type LogRange } from "@/lib/log-filter";
 import { decodeLogCursor, pageLogLines } from "@/lib/log-page";
+import { capExport, EXPORT_LINE_CAP } from "@/lib/log-export";
 import { HttpError } from "@/server/http";
 import { removeUnits } from "@/server/deploy/jobs-remote";
 import { jobUnitNames } from "@/server/scheduled-jobs";
@@ -94,6 +95,45 @@ export async function fetchRuntimeLogPage(
     res.stdout.split(/\r?\n/).filter((l) => l.length > 0),
     { lines, asked, q, level, cursor }
   );
+}
+
+/** Pages read per export. At 1,000 lines a page this covers the 10,000-line cap even with some filtering. */
+const EXPORT_MAX_PAGES = 20;
+
+/**
+ * The newest lines for an export. Pages are read from newer to older and then
+ * put back in order. Stops when the cap is full, when the journal has no older
+ * lines, or at the page limit. `truncated` is true when lines were left out.
+ * Every page is a separate SSH read, so the route limits how often this runs.
+ */
+export async function exportRuntimeLogs(
+  userId: string,
+  projectId: string,
+  filter: { range?: LogRange; level?: LogLevel; search?: string; max?: number } = {}
+): Promise<{ lines: string[]; truncated: boolean }> {
+  const max = filter.max ?? EXPORT_LINE_CAP;
+  const pages: string[][] = [];
+  let count = 0;
+  let before: string | null = null;
+  let moreOlder = false;
+  for (let page = 0; page < EXPORT_MAX_PAGES; page++) {
+    const res = await fetchRuntimeLogPage(userId, projectId, 1000, filter.search ?? "", {
+      range: filter.range,
+      level: filter.level,
+      before,
+    });
+    pages.unshift(res.lines);
+    count += res.lines.length;
+    if (!res.older) break;
+    before = res.older;
+    if (count > max) {
+      moreOlder = true;
+      break;
+    }
+    if (page === EXPORT_MAX_PAGES - 1) moreOlder = true;
+  }
+  const capped = capExport(pages.flat(), max);
+  return { lines: capped.lines, truncated: capped.truncated || moreOlder };
 }
 
 /** Restart the production service without building anything. */
