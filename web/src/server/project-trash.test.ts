@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { upsertUser } from "@/server/auth/session";
 import { getDb, schema } from "@/server/db";
 import { createProject, getProjectForUser, listProjects, revealEnvVar, setEnvVar, updateProject } from "@/server/projects";
+import { createRule, listRules } from "@/server/alert-rules";
 import { listTrashedProjects, purgeExpiredTrash, restoreTrashedProject, trashProject, TRASH_KEEP_MS } from "@/server/project-trash";
 import { createServer } from "@/server/servers";
 import { useFreshDb } from "@/server/test/db";
@@ -84,6 +85,7 @@ describe("project trash", () => {
   it("moves a deleted app to the trash and restores it with its data", async () => {
     const project = await newProject("keeper");
     await setEnvVar(userId, project.id, { key: "API_TOKEN", value: "s3cret", target: "all" });
+    await createRule(userId, project.id, { metric: "cpu_percent", comparison: "above", threshold: 80, durationMinutes: 5 });
 
     await trashProject(userId, project.id);
     expect((await listProjects(userId)).map((p) => p.id)).not.toContain(project.id);
@@ -97,6 +99,7 @@ describe("project trash", () => {
     expect((await getProjectForUser(userId, project.id)).name).toBe("keeper");
     // The env var was sealed with the project's id, so it still reveals after the round trip.
     expect(await revealEnvVar(project.id, "API_TOKEN", "all")).toBe("s3cret");
+    expect((await listRules(userId, project.id)).map((r) => r.threshold)).toEqual([80]);
     expect((await listTrashedProjects(userId)).map((t) => t.projectId)).not.toContain(project.id);
   });
 
