@@ -2,6 +2,10 @@ import { z } from "zod";
 import { requireScope, type Principal } from "@/server/api-tokens";
 import { endpoint, deploymentIdInput, NOT_FOUND_NOTE, type Endpoint } from "@/server/api-v1-kit";
 import { deploymentSchema, requireView, toDeployment } from "@/server/api-v1-models";
+import { projectIdInput } from "@/server/api-v1-kit";
+import { enforceRateLimit } from "@/server/rate-limit";
+import { restartService } from "@/server/runtime-info";
+import { forgetServiceStatus } from "@/server/service-status";
 
 /**
  * Rollout state for agents: one GET that can wait for a deploy or rollback to
@@ -70,6 +74,19 @@ export async function apiGetRollout(
   };
 }
 
+/**
+ * Restart the production service of a project on its container. The same call the
+ * dashboard makes, with the same owner check and the same per-user restart limit.
+ */
+export async function apiRestartService(p: Principal, projectId: string) {
+  requireScope(p, "deployments:write");
+  enforceRateLimit("sshSession", p.userId);
+  enforceRateLimit("serviceRestart", p.userId);
+  await restartService(p.userId, projectId);
+  forgetServiceStatus(projectId);
+  return { restarted: true, projectId };
+}
+
 const wait = z
   .union([z.boolean(), z.enum(["0", "1", "false", "true"])])
   .optional()
@@ -97,5 +114,20 @@ export const ROLLOUT_ENDPOINTS: Endpoint[] = [
     errors: [400, 404],
     untrusted: true,
     run: (p, i) => apiGetRollout(p, i.deploymentId, i.wait === true || i.wait === "1" || i.wait === "true"),
+  }),
+  endpoint({
+    id: "restart_service",
+    method: "POST",
+    path: "/projects/{projectId}/restart",
+    scope: "deployments:write",
+    // Writes go in the write bucket; the restart itself is also limited (sshSession, serviceRestart) as on the dashboard.
+    bucket: "write",
+    tag: "Deployments",
+    summary: "Restart the production service",
+    description: `Restart the project's production service on its container, the same as the dashboard's Restart button. Visitors may see a brief gap. Needs owner access to the project. Returns 502 if the container could not restart it, for example because it is not deployed yet. ${NOT_FOUND_NOTE}`,
+    pathParams: { projectId: projectIdInput },
+    response: z.object({ restarted: z.boolean(), projectId: z.string() }),
+    errors: [400, 404, 502],
+    run: (p, i) => apiRestartService(p, i.projectId),
   }),
 ];
