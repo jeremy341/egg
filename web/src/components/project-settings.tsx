@@ -198,6 +198,19 @@ export function ProjectSettings({
   const [removeRemote, setRemoteRemoval] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [protectedNow, setProtectedNow] = useState(project.deletionProtected);
+  const [protectionError, setProtectionError] = useState<string | null>(null);
+
+  async function setProtection(on: boolean) {
+    setProtectionError(null);
+    try {
+      await api(`/api/projects/${project.id}`, { method: "PATCH", body: { deletionProtected: on } });
+      setProtectedNow(on);
+      router.refresh();
+    } catch (err) {
+      setProtectionError(err instanceof Error ? err.message : "Could not change deletion protection");
+    }
+  }
 
   async function destroy() {
     setDeleting(true);
@@ -470,6 +483,24 @@ export function ProjectSettings({
           <CleanupCard name={project.slug} projectId={project.id} />
 
           <Card
+            id="protection-heading"
+            title="Deletion protection"
+            description="While this is on, the app cannot be deleted. Turn it off here first."
+          >
+            <label className="touch-target inline-flex min-h-10 items-center gap-2 sm:min-h-8">
+              <input
+                type="checkbox"
+                checked={protectedNow}
+                onChange={(e) => void setProtection(e.target.checked)}
+              />
+              Protect this app from deletion
+            </label>
+            {protectionError ? (
+              <p role="alert" className="mt-2 text-label text-foreground">{protectionError}</p>
+            ) : null}
+          </Card>
+
+          <Card
             id="danger-heading"
             title="Delete Project"
             description="Removes the project from Egg. The lists below show what goes and what stays."
@@ -505,7 +536,7 @@ export function ProjectSettings({
               <div>
                 <p className="font-medium">Deleted</p>
                 <ul className="mt-1 list-disc space-y-0.5 pl-4 text-muted-foreground">
-                  <li>The project in Egg, with its deployment history, logs and environment variables</li>
+                  <li>The project in Egg moves to Recently deleted and is removed for good after 30 days. Deployment history and environment variables can be restored; logs and analytics cannot</li>
                   {removeRemote ? (
                     <li>On your container: the service, its scheduled jobs, previews and all releases</li>
                   ) : null}

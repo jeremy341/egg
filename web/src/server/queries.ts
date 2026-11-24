@@ -40,6 +40,8 @@ export type ProjectView = {
   port: number;
   healthPath: string;
   autoDeploy: boolean;
+  /** Refuses deletion while on. Switched from the danger zone of the settings page. */
+  deletionProtected: boolean;
   buildLocation: BuildLocation;
   /** True when a deploy hook exists. The URL is only ever shown when it is created. */
   hookActive: boolean;
@@ -186,6 +188,7 @@ async function loadProjectViews(userId: string): Promise<ProjectView[]> {
       port: p.port,
       healthPath: p.healthPath,
       autoDeploy: p.autoDeploy,
+      deletionProtected: p.deletionProtected,
       buildLocation: p.buildLocation,
       hookActive: Boolean(p.hookHash),
       hookCreatedAt: p.hookCreatedAt ? p.hookCreatedAt.toISOString() : null,

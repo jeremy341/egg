@@ -10,6 +10,7 @@ import { parseServiceStatus, type ServiceStatus } from "@/server/service-status"
 import { probeSession } from "@/server/ssh/probe";
 import { invalidateStatusPage } from "@/server/status-tags";
 import { withMaintenanceLease } from "@/server/maintenance-leases";
+import { purgeExpiredTrash } from "@/server/project-trash";
 
 /**
  * Uptime checks and usage history, run by the worker on a timer.
@@ -360,6 +361,8 @@ async function runOwnedMonitorPass(onError?: (err: unknown) => void, now?: Date)
   await db.delete(schema.projectSamples).where(lt(schema.projectSamples.at, cutoff));
   await prunePageviews(passFinishedAt);
   await pruneAlertEvents(passFinishedAt);
+  // The cleanup job: trashed apps past their 30 days are removed for good.
+  await purgeExpiredTrash(passFinishedAt);
   const { reconcileClosedPreviews } = await import("@/server/github/pulls");
   await reconcileClosedPreviews();
 }
