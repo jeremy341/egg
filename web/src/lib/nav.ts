@@ -8,6 +8,7 @@ import {
   ShieldWarningIcon,
   BookOpenTextIcon,
   FolderOpenIcon,
+  KeyIcon,
   TerminalWindowIcon,
   CubeFocusIcon,
   CodeIcon,
@@ -109,6 +110,12 @@ const TEAM_ITEMS: NavItem[] = [
     icon: HardDrivesIcon,
     active: (p) => p.startsWith("/connect"),
   },
+  {
+    href: "/keys",
+    label: "Keys",
+    icon: KeyIcon,
+    active: (p) => p.startsWith("/keys"),
+  },
 ];
 
 const TEAM_TITLES: Record<string, string> = {
@@ -121,6 +128,7 @@ const TEAM_TITLES: Record<string, string> = {
   "/container": "Container",
   "/developer": "Developer",
   "/connect": "Connect a server",
+  "/keys": "Keys",
 };
 
 function projectItems(slug: string): NavItem[] {

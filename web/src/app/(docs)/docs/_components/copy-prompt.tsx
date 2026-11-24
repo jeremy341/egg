@@ -1,30 +1,30 @@
 "use client";
 
 import { useSyncExternalStore, useState } from "react";
-import { CaretDownIcon, ChatCircleIcon, CheckIcon, CopyIcon, SparkleIcon, TerminalWindowIcon } from "@phosphor-icons/react";
+import { CaretDownIcon } from "@phosphor-icons/react";
+import { AgentMarks } from "@/components/agent-marks";
+import { Swap } from "@/components/motion/swap";
 import { toast } from "@/components/ui/toast";
 
 /**
- * Copies a prompt that points an agent at Egg's docs. Orchard puts this next
- * to the page title; we put it in the same action row as "Copy as Markdown".
- * The copied text is plain so it can be pasted anywhere, and the menu opens
- * the same ask in Claude or ChatGPT as a one click shortcut.
+ * Orchard's CopyPromptButton pattern: a row of agent marks and a label that
+ * copies a prompt pointing an agent at these docs. The marks are decorative;
+ * the label carries the name. The origin is browser state, read with the store
+ * hook so there is no setState-in-effect; before hydration the control is
+ * disabled. The chevron previews the text and opens the same ask in Claude or
+ * ChatGPT.
  *
  * Pass `slug` for a page-specific prompt, or `global` for the whole doc set.
- * The prompt needs an absolute address, which the server cannot know behind
- * a proxy, so it is built in the browser from window.location.origin.
  */
 export function CopyPromptButton({
   slug,
   global = false,
-  label = "Copy prompt",
+  label = "Copy docs prompt",
 }: {
   slug?: string;
   global?: boolean;
   label?: string;
 }) {
-  // The origin is browser state, read with the store hook so there is no
-  // setState-in-effect. On the server it is empty and the control is disabled.
   const origin = useSyncExternalStore(
     () => () => {},
     () => window.location.origin,
@@ -52,7 +52,7 @@ export function CopyPromptButton({
   const chatgpt = ask ? `https://chatgpt.com/?q=${ask}` : null;
 
   return (
-    <div className="inline-flex items-center rounded-md border">
+    <span className="inline-flex items-center rounded-md border">
       <button
         type="button"
         onClick={copy}
@@ -60,47 +60,33 @@ export function CopyPromptButton({
         aria-label={copied ? "Prompt copied" : label}
         className="touch-target inline-flex h-8 items-center gap-1.5 rounded-l-md px-2.5 font-medium text-muted-foreground transition-colors duration-(--dur-fast) hover:bg-[var(--ds-gray-alpha-100)] hover:text-foreground disabled:opacity-50"
       >
-        {/* Generic agent glyphs, not brand marks: a sparkle for a Claude-style
-            assistant, a chat bubble for a ChatGPT-style one and a terminal for
-            a coding agent. They are decoration; the label carries the name. */}
-        <span aria-hidden="true" className="inline-flex items-center gap-1 text-subtle-foreground">
-          <SparkleIcon className="size-3" />
-          <ChatCircleIcon className="size-3" />
-          <TerminalWindowIcon className="size-3" />
-        </span>
-        {copied ? <CheckIcon aria-hidden="true" className="size-3.5" /> : <CopyIcon aria-hidden="true" className="size-3.5" />}
-        {copied ? "Prompt copied" : label}
+        <AgentMarks />
+        <Swap value={copied}>{copied ? "Prompt copied" : label}</Swap>
       </button>
       <details className="group relative">
         <summary
-          aria-label="More ways to open this prompt"
-          title="More ways to open this prompt"
+          aria-label="Preview prompt"
+          title="Preview prompt"
           className="touch-target inline-flex h-8 w-7 cursor-pointer list-none items-center justify-center rounded-r-md text-muted-foreground transition-colors duration-(--dur-fast) hover:bg-[var(--ds-gray-alpha-100)] hover:text-foreground [&::-webkit-details-marker]:hidden"
         >
           <CaretDownIcon aria-hidden="true" className="size-3.5 transition-transform group-open:rotate-180" />
         </summary>
-        <div className="absolute right-0 top-full z-20 mt-1 w-80 rounded-md border bg-popover p-1 shadow-lg">
-          <p className="px-2 py-1.5 text-[12px] leading-snug text-muted-foreground break-words">{prompt}</p>
+        <div className="absolute right-0 top-full z-20 mt-1 w-80 max-w-[calc(100vw-2rem)] break-words rounded-md border bg-popover p-3 text-[12px] leading-5 shadow-lg">
+          <p className="text-muted-foreground">{prompt || "Loading the prompt…"}</p>
           {claude ? (
-            <a href={claude} target="_blank" rel="noopener noreferrer" className="block rounded-sm px-2 py-1.5 text-[13px] hover:bg-[var(--ds-gray-alpha-100)]">
-              <span className="flex items-center gap-2">
-                <SparkleIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
-                Open in Claude
-              </span>
+            <a href={claude} target="_blank" rel="noopener noreferrer" className="mt-2 block rounded-sm py-1 text-[13px] text-foreground hover:underline">
+              Open in Claude
               <span className="sr-only"> (opens in a new tab)</span>
             </a>
           ) : null}
           {chatgpt ? (
-            <a href={chatgpt} target="_blank" rel="noopener noreferrer" className="block rounded-sm px-2 py-1.5 text-[13px] hover:bg-[var(--ds-gray-alpha-100)]">
-              <span className="flex items-center gap-2">
-                <ChatCircleIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
-                Open in ChatGPT
-              </span>
+            <a href={chatgpt} target="_blank" rel="noopener noreferrer" className="block rounded-sm py-1 text-[13px] text-foreground hover:underline">
+              Open in ChatGPT
               <span className="sr-only"> (opens in a new tab)</span>
             </a>
           ) : null}
         </div>
       </details>
-    </div>
+    </span>
   );
 }

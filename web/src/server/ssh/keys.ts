@@ -35,8 +35,9 @@ export function generateEd25519Pair(comment?: string): { public: string; private
 }
 
 /**
- * A dedicated ed25519 key for one Nest server. It is never reused for another
- * user or service, so removing it from the Nest dashboard revokes our access.
+ * A dedicated ed25519 key for exactly one purpose: one Nest server login, one
+ * repository deploy key, or one personal key. It is never reused for another
+ * user or service, so removing it where it was installed revokes its access.
  */
 export function generateServerKey(comment: string): GeneratedKey {
   const pair = generateEd25519Pair(comment);

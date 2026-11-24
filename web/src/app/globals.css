@@ -291,6 +291,9 @@
   /* Surfaces and reading */
   --prose: color-mix(in oklab, var(--foreground) 84%, var(--background));
   --code-bg: var(--ds-background-200);
+  /* Cut-out colour for Orchard's agent marks on Copy buttons, so their details
+     read on both light and dark themes (and every custom theme). */
+  --o-mark-ink: var(--background);
   --skeleton-base: var(--ds-gray-100);
   --skeleton-highlight: var(--ds-gray-200);
   --grid-line: color-mix(in srgb, var(--foreground) 8%, transparent);

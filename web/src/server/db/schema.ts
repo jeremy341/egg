@@ -324,6 +324,44 @@ export const envVars = sqliteTable(
   (t) => [uniqueIndex("env_project_key_idx").on(t.projectId, t.key, t.target)]
 );
 
+/**
+ * SSH keys Egg generates for you, beyond the per-server key stored on the
+ * servers row. Each key's private half is sealed for its own row, and is
+ * replaced by a seal of "removed" once the key is revoked.
+ */
+export const SSH_KEY_KINDS = ["github_deploy", "git_key", "personal"] as const;
+export type SshKeyKind = (typeof SSH_KEY_KINDS)[number];
+
+export const sshKeys = sqliteTable(
+  "ssh_keys",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** The project a github_deploy or git_key belongs to. Always null for personal keys. */
+    projectId: text("project_id").references(() => projects.id, { onDelete: "cascade" }),
+    /** "github_deploy": added to the linked repo through the GitHub App. "git_key": pasted by you on your own git host. "personal": for your own use outside Egg. */
+    kind: text("kind", { enum: SSH_KEY_KINDS }).notNull(),
+    name: text("name").notNull(),
+    publicKey: text("public_key").notNull(),
+    privateKeyEnc: text("private_key_enc").notNull(),
+    /** SHA256 fingerprint of the public key, shown in lists. */
+    fingerprint: text("fingerprint").notNull(),
+    /** The id GitHub gave the deploy key, so it can be removed there on revoke. */
+    externalId: text("external_id"),
+    createdAt: ts("created_at").notNull(),
+    revokedAt: ts("revoked_at"),
+  },
+  (t) => [
+    // One active key per project and kind; revoking frees the slot.
+    uniqueIndex("ssh_keys_project_kind_idx")
+      .on(t.projectId, t.kind)
+      .where(sql`${t.projectId} is not null and ${t.revokedAt} is null`),
+    index("ssh_keys_user_idx").on(t.userId),
+  ]
+);
+
 export const DEPLOY_STATES = [
   "queued",
   "building",
