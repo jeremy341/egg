@@ -1,27 +1,19 @@
 import Link from "next/link";
-import { BookOpenTextIcon, CubeIcon, GaugeIcon, ShieldCheckIcon, TerminalWindowIcon } from "@phosphor-icons/react/dist/ssr";
+import { BookOpenTextIcon, CodeIcon, GaugeIcon, RocketIcon, ShieldCheckIcon, TerminalWindowIcon } from "@phosphor-icons/react/dist/ssr";
 import type { Icon } from "@phosphor-icons/react";
 import { DOCS_NAV, docsHref } from "../_data/nav";
 import { H2_CLASS } from "./prose";
 
-const GROUP_ICON: Record<string, Icon> = {
-  Start: BookOpenTextIcon,
-  "Use it": CubeIcon,
-  Automate: TerminalWindowIcon,
-  Bots: TerminalWindowIcon,
-  Watch: GaugeIcon,
-  Reference: ShieldCheckIcon,
+/** Card title, icon and one-line note for each sidebar group, in the order the sidebar uses. */
+const GROUP_CARD: Record<string, { title: string; icon: Icon; note: string }> = {
+  Start: { title: "Start", icon: BookOpenTextIcon, note: "What Egg is, and your first deploy." },
+  "Use it": { title: "Apps", icon: RocketIcon, note: "Deploy, configure and watch your apps." },
+  Bots: { title: "Bots", icon: TerminalWindowIcon, note: "Run a chat bot or background worker." },
+  Automate: { title: "Agents and API", icon: CodeIcon, note: "Let agents and scripts call Egg." },
+  Watch: { title: "Monitoring", icon: GaugeIcon, note: "Know that apps are up, and what changed." },
+  Reference: { title: "Reference", icon: ShieldCheckIcon, note: "Security, limits and fixes." },
 };
 
-/** What each group is for, in one line. Kept here, not imported from the client index. */
-const GROUP_NOTES: Record<string, string> = {
-  Start: "What it is, and your first deploy.",
-  "Use it": "What you do with a project, day to day.",
-  Automate: "Deploy and call the API without opening the dashboard.",
-  Bots: "Run a chat bot or background worker on Egg.",
-  Watch: "Know that apps are up, and what changed.",
-  Reference: "Look things up: security, limits and fixes.",
-};
 
 /** How many section links each card shows before "and N more". */
 const SHOWN = 5;
@@ -36,9 +28,10 @@ export function DocsBrowse() {
       <h2 id="docs-browse" className={H2_CLASS}>
         Browse the docs
       </h2>
-      <ul className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <ul className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {DOCS_NAV.map(({ group, sections }) => {
-          const Icon = GROUP_ICON[group] ?? BookOpenTextIcon;
+          const card = GROUP_CARD[group] ?? { title: group, icon: BookOpenTextIcon, note: "" };
+          const Icon = card.icon;
           const shown = sections.slice(0, SHOWN);
           const more = sections.length - shown.length;
           return (
@@ -48,8 +41,8 @@ export function DocsBrowse() {
                   <Icon className="size-5" weight="regular" />
                 </span>
                 <div className="min-w-0">
-                  <h3 className="text-[17px] leading-6 font-semibold text-foreground">{group}</h3>
-                  <p className="text-[13px] leading-5 text-muted-foreground">{GROUP_NOTES[group]}</p>
+                  <h3 className="text-[17px] leading-6 font-semibold text-foreground">{card.title}</h3>
+                  <p className="text-[13px] leading-5 text-muted-foreground">{card.note}</p>
                 </div>
               </div>
               <ul className="flex flex-col gap-1.5 text-[14px] leading-6">

@@ -16,7 +16,7 @@ export const metadata = {
 /** The docs home: where to start, then one index of every page, grouped like the sidebar. */
 export default function DocsHome() {
   return (
-    <article id="docs-article" data-docs-page="index" data-docs-body tabIndex={-1} className={cn(ARTICLE, "outline-none")}>
+    <article id="docs-article" data-docs-page="index" data-docs-body tabIndex={-1} className={cn(ARTICLE, "outline-none max-w-[1040px] min-[1536px]:max-w-[1040px]")}>
       <PageHeader
         tag="Documentation"
         title="Docs"
