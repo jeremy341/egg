@@ -145,7 +145,7 @@ describe("MCP write tools with Idempotency-Key", () => {
   });
 
   it("does not keep a sensitive answer: the repeat is refused and the table holds no URL", async () => {
-    const args = { projectId: hookProjectId };
+    const args = { projectId: hookProjectId, confirmName: "Hook" };
     const first = (await (await send(call("rotate_deploy_hook", args), tokenA, { "Idempotency-Key": "mcp-hook-1" })).json()) as Rpc;
     const url = (JSON.parse(first.result!.content[0].text) as { hook: { url: string } }).hook.url;
     expect(url).toMatch(/^https?:\/\//);

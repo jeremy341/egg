@@ -39,7 +39,6 @@ import { changeErrorGroup, errorGroups } from "@/server/error-groups";
 import { createDeployHook, revokeDeployHook } from "@/server/hooks";
 import { GithubError, listInstallationRepos, userInstallations } from "@/server/github/app";
 import { getInventory, type Inventory } from "@/server/inventory";
-import { userInstallations } from "@/server/github/app";
 import { getAlerts, notifySummary, sendTestNotification } from "@/server/notify";
 import {
   createProject,

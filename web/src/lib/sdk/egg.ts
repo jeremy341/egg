@@ -765,4 +765,88 @@ export class Egg {
   deleteFile(projectId: string, path: string, options: { recursive?: boolean } = {}): Promise<{ path: string }> {
     return this.request("DELETE", `/projects/${seg(projectId)}/files`, { path, recursive: options.recursive ? true : undefined });
   }
+
+  // -------------------------------------------------------------- agent API
+
+  find(q: string): Promise<unknown> {
+    return this.request("GET", "/find", { q });
+  }
+  searchLogs(projectId: string, q: string): Promise<unknown> {
+    return this.request("GET", `/projects/${seg(projectId)}/logs/search`, { q });
+  }
+  getLogContext(projectId: string, line: number): Promise<unknown> {
+    return this.request("GET", `/projects/${seg(projectId)}/logs/context`, { line });
+  }
+  listDeploymentErrors(projectId: string): Promise<unknown> {
+    return this.request("GET", `/projects/${seg(projectId)}/errors`);
+  }
+  triageDeploymentError(projectId: string, fingerprint: string, input: unknown): Promise<unknown> {
+    return this.request("POST", `/projects/${seg(projectId)}/errors/${seg(fingerprint)}`, {}, input);
+  }
+  diagnoseDeployment(deploymentId: string): Promise<unknown> {
+    return this.request("GET", `/deployments/${seg(deploymentId)}/diagnosis`);
+  }
+  getDeploymentNextSteps(deploymentId: string): Promise<unknown> {
+    return this.request("GET", `/deployments/${seg(deploymentId)}/next-steps`);
+  }
+  listGithubRepos(): Promise<unknown> {
+    return this.request("GET", "/github/repos");
+  }
+  getGithubStatus(projectId: string): Promise<unknown> {
+    return this.request("GET", "/github/status", { projectId });
+  }
+  listEnvVars(projectId: string): Promise<unknown> {
+    return this.request("GET", `/projects/${seg(projectId)}/env`);
+  }
+  addEnvVars(projectId: string, input: unknown): Promise<unknown> {
+    return this.request("POST", `/projects/${seg(projectId)}/env`, {}, input);
+  }
+  setEnvVars(projectId: string, input: unknown): Promise<unknown> {
+    return this.request("PUT", `/projects/${seg(projectId)}/env`, {}, input);
+  }
+  deleteEnvVars(projectId: string, input: unknown): Promise<unknown> {
+    return this.request("DELETE", `/projects/${seg(projectId)}/env`, {}, input);
+  }
+  listDeployWebhookTokens(projectId: string): Promise<unknown> {
+    return this.request("GET", `/projects/${seg(projectId)}/hook`);
+  }
+  listJobs(projectId: string): Promise<unknown> {
+    return this.request("GET", `/projects/${seg(projectId)}/jobs`);
+  }
+  getJob(projectId: string, jobId: string): Promise<unknown> {
+    return this.request("GET", `/projects/${seg(projectId)}/jobs/${seg(jobId)}`);
+  }
+  createJob(projectId: string, input: unknown): Promise<unknown> {
+    return this.request("POST", `/projects/${seg(projectId)}/jobs`, {}, input);
+  }
+  updateJob(projectId: string, jobId: string, input: unknown): Promise<unknown> {
+    return this.request("PATCH", `/projects/${seg(projectId)}/jobs/${seg(jobId)}`, {}, input);
+  }
+  runJob(projectId: string, jobId: string): Promise<unknown> {
+    return this.request("POST", `/projects/${seg(projectId)}/jobs/${seg(jobId)}/run`, {}, {});
+  }
+  listJobRuns(projectId: string, jobId: string): Promise<unknown> {
+    return this.request("GET", `/projects/${seg(projectId)}/jobs/${seg(jobId)}/runs`);
+  }
+  getJobRunLogs(projectId: string, jobId: string): Promise<unknown> {
+    return this.request("GET", `/projects/${seg(projectId)}/jobs/${seg(jobId)}/logs`);
+  }
+  deleteJob(projectId: string, jobId: string): Promise<unknown> {
+    return this.request("DELETE", `/projects/${seg(projectId)}/jobs/${seg(jobId)}`, {}, {});
+  }
+  listNotificationChannels(): Promise<unknown> {
+    return this.request("GET", "/webhooks");
+  }
+  createNotificationChannel(input: unknown): Promise<unknown> {
+    return this.request("POST", "/webhooks", {}, input);
+  }
+  listNotificationRules(): Promise<unknown> {
+    return this.request("GET", "/webhooks/rules");
+  }
+  createNotificationRule(webhookId: string, input: unknown): Promise<unknown> {
+    return this.request("POST", `/webhooks/${seg(webhookId)}/rules`, {}, input);
+  }
+  testNotificationChannel(webhookId: string): Promise<unknown> {
+    return this.request("POST", `/webhooks/${seg(webhookId)}/test`, {}, {});
+  }
 }
