@@ -790,6 +790,7 @@ export const EXPANDED_ENDPOINTS: Endpoint[] = [
     path: "/projects/{projectId}/hook/rotate",
     scope: "deployments:write",
     bucket: "write",
+    sensitive: true,
     status: 201,
     tag: "Deployments",
     summary: "Create or replace the deploy hook",

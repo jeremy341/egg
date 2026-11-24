@@ -149,6 +149,7 @@ export function v1Route(id: string) {
         scope: principal.tokenId,
         key: idemKey,
         fingerprint: fingerprintOf(req.method, req.nextUrl.pathname + req.nextUrl.search, text),
+        sensitive: ep.sensitive === true,
         run,
       });
     },

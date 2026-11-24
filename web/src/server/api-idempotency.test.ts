@@ -221,3 +221,27 @@ describe("the write routes under /api/v1", () => {
     expect(rows.some((r) => r.name === "Bad Key Site")).toBe(false);
   });
 });
+
+describe("secret-bearing answers are never replayed", () => {
+  it("runs once, refuses a repeat, and keeps no copy of the secret", async () => {
+    clearIdempotencyKeys();
+    const secret = "https://hooks.example/egg-secret-value";
+    let runs = 0;
+    const run = async () => {
+      runs++;
+      return new Response(JSON.stringify({ url: secret }), { status: 201 });
+    };
+    const first = await withIdempotency({ scope: "tok", key: "k-secret", fingerprint: "f", run, sensitive: true });
+    expect(first.status).toBe(201);
+    expect(await first.text()).toContain(secret);
+
+    await expect(
+      withIdempotency({ scope: "tok", key: "k-secret", fingerprint: "f", run, sensitive: true }),
+    ).rejects.toMatchObject({ status: 409, code: "idempotency_secret_not_replayed" });
+    expect(runs).toBe(1);
+
+    // The table entry holds no body, so nothing can be read back from memory.
+    const stored = [...(globalThis as unknown as Record<symbol, Map<string, { body?: string }>>)[Symbol.for("egg.idempotency")]!.values()];
+    expect(stored.some((e) => (e.body ?? "").includes(secret))).toBe(false);
+  });
+});
