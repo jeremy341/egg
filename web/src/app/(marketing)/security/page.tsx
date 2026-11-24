@@ -22,7 +22,6 @@ import {
   TextLink,
   type Brief,
 } from "./_components/parts";
-import { SecurityReportForm } from "@/components/security-report-form";
 
 export const metadata: Metadata = {
   title: "Security",
@@ -732,7 +731,11 @@ export default function SecurityPage() {
               Please do not open a public issue for a vulnerability. Say what you found, the steps to repeat it and
               which page or endpoint it is on. Leave real keys, tokens and passwords out of the report.
             </p>
-            <SecurityReportForm />
+            <p className="m-0">
+              To send a private report from Egg itself, sign in with Hack Club and open the{" "}
+              <TextLink href="/security/report">report form</TextLink>. Reports need a signed-in account, and you can
+              choose to leave out your identity.
+            </p>
             <p className="m-0 text-[0.9375rem] leading-6 text-muted-foreground">
               Instance administrators can open the <TextLink href="/security/reports">private report inbox</TextLink>.
               Access is restricted to the exact configured account.

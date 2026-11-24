@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   ArrowUpRightIcon,
   BookOpenIcon,
+  ShieldWarningIcon,
   MagnifyingGlassIcon,
 } from "@phosphor-icons/react";
 import { useFind } from "@/components/find-palette";
@@ -14,6 +15,7 @@ import {
   NavList,
   NavListSkeleton,
   navItemClass,
+  navItemCurrent,
   navItemIdle,
 } from "@/components/nav-list";
 import { ServerSwitcher } from "@/components/server-switcher";
@@ -43,6 +45,8 @@ export function FindButton({ className }: { className?: string }) {
 
 /** Desktop sidebar: 256px, fixed to the viewport, sits left of the page. */
 export function Sidebar() {
+  const pathname = usePathname();
+  const onReport = pathname.startsWith("/security/report");
   return (
     <aside
       aria-label="Sidebar"
@@ -88,6 +92,14 @@ export function Sidebar() {
           />
           <span className="sr-only">(opens in a new tab)</span>
         </a>
+        <Link
+          href="/security/report"
+          aria-current={onReport ? "page" : undefined}
+          className={cn(navItemClass, onReport ? navItemCurrent : navItemIdle)}
+        >
+          <ShieldWarningIcon aria-hidden="true" className="size-4 shrink-0" />
+          Report a vulnerability
+        </Link>
         <UserMenu />
       </div>
     </aside>
