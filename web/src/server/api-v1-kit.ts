@@ -103,7 +103,7 @@ export type Endpoint = {
   run: (p: Principal, input: never) => Promise<unknown>;
 };
 
-export const DEFAULT_MAX_BODY_BYTES = 16 * 1024;
+export const DEFAULT_MAX_BODY_BYTES = 100 * 1024;
 
 export function endpoint<P extends Shape = Empty, Q extends Shape = Empty, B extends Shape = Empty>(def: {
   id: string;

@@ -46,6 +46,7 @@ export const TOOLSET_OF: Record<string, Toolset> = {
   diagnose_deployment: "core",
   get_deployment_next_steps: "core",
   get_github_status: "core",
+  list_github_repos: "core",
 
   list_deployments: "deployments",
   get_rollout: "deployments",
@@ -55,9 +56,13 @@ export const TOOLSET_OF: Record<string, Toolset> = {
   cancel_deployment: "deployments",
   rollback_deployment: "deployments",
   restart_service: "deployments",
+  list_deployment_errors: "deployments",
+  triage_deployment_error: "deployments",
 
   get_logs: "logs",
   get_deployment_logs: "logs",
+  get_log_context: "logs",
+  search_logs: "logs",
 
   list_env_vars: "env",
   set_env_var: "env",
