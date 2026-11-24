@@ -3,6 +3,7 @@ import { audit } from "@/server/audit";
 import { config } from "@/server/config";
 import { randomToken } from "@/server/crypto";
 import { getDb, schema } from "@/server/db";
+import { publicNameFor } from "@/server/preferences";
 import { getProjectForUser } from "@/server/projects";
 import { invalidateStatusPage } from "@/server/status-tags";
 
@@ -127,6 +128,8 @@ export function dailyStrip(
 
 export type PublicStatus = {
   name: string;
+  /** The owner's public name: their display name, or "Someone". Never their Hack Club name. */
+  owner: string;
   workloadKind: "web" | "worker";
   state: "up" | "down" | "unknown";
   since: Date | null;
@@ -178,11 +181,13 @@ export async function publicStatus(key: string, now = new Date()): Promise<Publi
     if (started[0]) events.unshift(started[0]);
   }
   const incidents = incidentsFrom(events).filter((i) => (i.to ?? now) >= windowStart);
+  const owner = await publicNameFor(project.userId);
 
   // Without checks there is nothing honest to say about uptime.
   const hasData = project.monitorState !== "unknown";
   return {
     name: project.name,
+    owner,
     workloadKind: project.workloadKind,
     state: project.monitorState,
     since: project.monitorSince,

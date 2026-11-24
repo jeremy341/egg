@@ -72,6 +72,7 @@ export const LABELS: Record<string, string> = {
   "analytics.enable": "Turned on analytics for",
   "analytics.disable": "Turned off analytics for",
   "analytics.settings": "Changed what analytics records for",
+  "statistics.settings": "Changed which statistics show for",
   "status.enable": "Published a status page for",
   "status.disable": "Unpublished the status page for",
   "homepage_feed.enable": "Showed on the Egg homepage the deployments of",

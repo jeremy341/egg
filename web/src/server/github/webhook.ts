@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb, schema } from "@/server/db";
 import { isUniqueViolation } from "@/server/db/errors";
@@ -226,9 +227,39 @@ type PullPayload = {
   pull_request?: {
     number?: number;
     draft?: boolean;
+    updated_at?: string;
     head?: { ref?: string; sha?: string; repo?: { full_name?: string } | null };
   };
 };
+
+/**
+ * Record one pull_request event per trusted project, for the statistics page.
+ * The id is a digest of the event itself (project, action, number and the
+ * pull request's updated_at), so a redelivered event that is retried after a
+ * failure does not count twice.
+ */
+async function recordPullRequestEvents(
+  db: Awaited<ReturnType<typeof getDb>>,
+  projectIds: string[],
+  action: string,
+  number: number,
+  updatedAt: string | undefined,
+  fallbackKey: string,
+  now: Date
+) {
+  if (projectIds.length === 0) return;
+  // The window can open during this loop; a throw here releases the replay digest.
+  if ((await maintenanceState()).active) throw maintenanceError();
+  for (const projectId of projectIds) {
+    const id = createHash("sha256")
+      .update(JSON.stringify([projectId, action, number, updatedAt ?? fallbackKey]))
+      .digest("hex");
+    await db
+      .insert(schema.pullRequestEvents)
+      .values({ id, projectId, action, number, createdAt: now })
+      .onConflictDoNothing();
+  }
+}
 
 const BUILD_ACTIONS = new Set(["opened", "reopened", "synchronize", "ready_for_review"]);
 
@@ -247,10 +278,10 @@ async function handlePullRequest(payload: unknown): Promise<WebhookResult> {
   if (!fullName || !pr || !number || !branch || !sha) {
     return { handled: false, deployments: [], note: "incomplete pull request event" };
   }
+  const action = p.action ?? "";
   if (!isSafeBranch(branch) || !isSafeSha(sha)) {
     return { handled: false, deployments: [], note: "unsupported branch name" };
   }
-  const action = p.action ?? "";
   if (action !== "closed" && !BUILD_ACTIONS.has(action)) {
     return { handled: false, deployments: [], note: `ignored pull_request ${action}` };
   }
@@ -264,6 +295,17 @@ async function handlePullRequest(payload: unknown): Promise<WebhookResult> {
   for (const x of projects) {
     if (await installationTrusted(db, x, p.installation?.id)) trusted.push(x);
   }
+  // Recorded before the build path, for every pull request event (forks and drafts too).
+  // Build side effects below are unchanged.
+  await recordPullRequestEvents(
+    db,
+    trusted.map((x) => x.id),
+    action,
+    number,
+    pr.updated_at,
+    sha,
+    new Date()
+  );
 
   if (action === "closed") {
     // Not awaited: it talks to the user's server, and GitHub wants a quick answer.
