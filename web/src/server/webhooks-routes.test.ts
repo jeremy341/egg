@@ -94,7 +94,7 @@ describe("webhook routes", () => {
 
   it("treats another user's webhook as not found", async () => {
     const id = (await make()).body.webhook.id as string;
-    expect(await bodyOf(await listRoute(call("/api/v1/webhooks", "GET", kimKey), noCtx))).toEqual({ webhooks: [] });
+    expect(await bodyOf(await listRoute(call("/api/v1/webhooks", "GET", kimKey), noCtx))).toEqual({ channels: [], webhooks: [] });
     const attempts = [
       getRoute(call(`/api/v1/webhooks/${id}`, "GET", kimKey), idCtx(id)),
       patchRoute(call(`/api/v1/webhooks/${id}`, "PATCH", kimKey, { active: false }), idCtx(id)),

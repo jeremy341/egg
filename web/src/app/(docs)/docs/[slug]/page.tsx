@@ -53,7 +53,7 @@ async function DocsPageContent({ params }: Props) {
   if (!section || !content) notFound();
 
   return (
-    <div data-docs-page={slug} className="min-[1280px]:grid min-[1280px]:grid-cols-[minmax(0,680px)_minmax(0,1fr)_216px] min-[1280px]:pl-[56px] min-[1536px]:grid-cols-[minmax(0,780px)_minmax(0,1fr)_216px] min-[1280px]:gap-12">
+    <div data-docs-page={slug} className="mx-auto w-full min-[1280px]:grid min-[1280px]:grid-cols-[minmax(0,560px)_minmax(0,1fr)_180px] min-[1536px]:grid-cols-[minmax(0,620px)_minmax(0,1fr)_180px] min-[1280px]:gap-8">
       {/* The article and the rail sit on the page with space between them; the rail has no box. */}
       <article id="docs-article" data-docs-body tabIndex={-1} className={cn(ARTICLE, "scroll-mt-32 outline-none")}>
         <div className="mb-6 flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end [&>*]:w-full sm:[&>*]:w-auto">

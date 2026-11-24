@@ -56,7 +56,9 @@ export default function DocsShellLayout({ children }: { children: React.ReactNod
           id="main"
           className={cn(
             "mx-auto w-full min-w-0 max-w-[var(--page-width)] flex-1 px-4 py-6 pb-[calc(96px+env(safe-area-inset-bottom))] lg:px-6 lg:pb-10",
-            "has-[[data-docs-page]]:mx-0 has-[[data-docs-page]]:max-w-none has-[[data-docs-page]]:lg:pl-12"
+            // Docs pages use a centered column, like the Orchard docs, instead
+            // of hugging the sidebar. The page itself sets its own max width.
+            "has-[[data-docs-page]]:max-w-[900px]"
           )}
         >
           {children}

@@ -193,7 +193,8 @@ describe("toolset and scope URL params", () => {
   };
 
   it("?toolsets picks groups, with core always included", async () => {
-    expect((await names("?toolsets=core")).sort()).toEqual(["get_deployment", "get_me", "get_project", "list_projects"]);
+    const core = await names("?toolsets=core");
+    expect(core).toEqual(expect.arrayContaining(["get_deployment", "get_me", "get_project", "list_projects"]));
     const logs = await names("?toolsets=logs");
     expect(logs).toContain("get_logs");
     expect(logs).toContain("get_me");

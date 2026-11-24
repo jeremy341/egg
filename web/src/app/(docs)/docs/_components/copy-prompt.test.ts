@@ -6,8 +6,8 @@ import { CopyPromptButton } from "./copy-prompt";
 describe("CopyPromptButton", () => {
   it("renders the copy control and the Claude/ChatGPT menu trigger", () => {
     const html = renderToStaticMarkup(createElement(CopyPromptButton, { slug: "install" }));
-    expect(html).toContain("Copy prompt");
-    expect(html).toContain("More ways to open this prompt");
+    expect(html).toContain("Copy docs prompt");
+    expect(html).toContain("Preview prompt");
   });
 
   it("uses a custom label for the whole-docs prompt", () => {

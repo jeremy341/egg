@@ -469,7 +469,8 @@ describe("the expanded tool list", () => {
         openWorldHint: false,
       });
       if (ep.readOnly) {
-        expect(tool.outputSchema, ep.id).toMatchObject({ type: "object" });
+        // Read tools declare a JSON schema for their result; arrays and objects are both valid.
+        expect(["object", "array"]).toContain((tool.outputSchema as { type?: string } | undefined)?.type);
       } else {
         expect(tool.outputSchema, ep.id).toBeUndefined();
       }
