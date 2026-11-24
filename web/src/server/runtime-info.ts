@@ -97,6 +97,35 @@ export async function fetchRuntimeLogPage(
   );
 }
 
+/** Read service journal lines around a timestamp, in journal order. */
+export async function fetchRuntimeLogContext(
+  userId: string,
+  projectId: string,
+  at: number,
+  beforeSeconds = 60,
+  afterSeconds = 60,
+  lines = 200,
+): Promise<string[]> {
+  const project = await getReadableProject(userId, projectId);
+  const server = await getServerForUser(project.userId, project.serverId);
+  const since = new Date(at - beforeSeconds * 1000).toISOString();
+  const until = Math.floor((at + afterSeconds * 1000) / 1000);
+  const lineLimit = Math.max(1, Math.min(lines, 200));
+  let res;
+  try {
+    res = await withServerSession(server, (s) =>
+      s.script(
+        runtimeLogs(unitName(project.slug, undefined, serverDiscriminator(server.id)), lineLimit, since, until),
+        { timeoutMs: 30_000 },
+      ),
+    );
+  } catch (err) {
+    if (err instanceof SshError) throw logsUpstreamError(err);
+    throw err;
+  }
+  if (res.code !== 0) throw new HttpError(502, "Could not read the logs from your container.", "upstream");
+  return res.stdout.split(/\r?\n/).filter((line) => line.length > 0);
+}
 /** Pages read per export. At 1,000 lines a page this covers the 10,000-line cap even with some filtering. */
 const EXPORT_MAX_PAGES = 20;
 

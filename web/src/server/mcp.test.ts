@@ -153,6 +153,7 @@ describe("protocol", () => {
         "get_container_inventory",
         "get_deployment",
         "get_deployment_logs",
+        "get_log_context",
         "get_logs",
         "get_me",
         "get_notifications",
@@ -161,6 +162,7 @@ describe("protocol", () => {
         "get_resource_history",
         "get_server_usage",
         "get_status_page",
+        "list_deployment_errors",
         "list_deployments",
         "list_domains",
         "list_env_vars",
@@ -175,6 +177,7 @@ describe("protocol", () => {
         "revoke_deploy_hook",
         "rollback_deployment",
         "rotate_deploy_hook",
+        "search_logs",
         "set_env_var",
         "terminal_close",
         "terminal_open",
@@ -183,6 +186,7 @@ describe("protocol", () => {
         "terminal_send",
         "terminal_status",
         "test_notification",
+        "triage_deployment_error",
         "update_project",
         "verify_domain",
         "write_file",
@@ -429,9 +433,9 @@ describe("the expanded tool list", () => {
     const tools = await byName();
     for (const name of [
       "create_project", "update_project", "delete_project", "set_env_var", "delete_env_var", "list_env_vars", "add_domain",
-      "verify_domain", "remove_domain", "get_deployment", "get_deployment_logs", "get_activity", "get_analytics",
+      "verify_domain", "remove_domain", "get_deployment", "get_deployment_logs", "get_log_context", "get_activity", "get_analytics",
       "get_resource_history", "get_project_resources", "list_servers", "get_container_inventory", "rotate_deploy_hook",
-      "revoke_deploy_hook", "get_notifications", "test_notification", "get_alerts", "get_status_page",
+      "revoke_deploy_hook", "get_notifications", "test_notification", "get_alerts", "get_status_page", "list_deployment_errors", "search_logs", "triage_deployment_error",
       "terminal_open", "terminal_send", "terminal_read", "terminal_close", "list_files", "read_file", "write_file",
       "make_folder", "delete_file",
     ]) {
@@ -463,7 +467,7 @@ describe("the expanded tool list", () => {
       expect(tools.get(name)!.description, name).toMatch(/run for real/);
     }
     for (const name of [
-      "terminal_open", "terminal_send", "terminal_read", "read_file", "get_deployment_logs", "get_logs",
+      "terminal_open", "terminal_send", "terminal_read", "read_file", "get_deployment_logs", "get_log_context", "get_logs", "search_logs",
       "get_container_inventory", "get_deployment", "list_projects", "list_deployments",
     ]) {
       expect(tools.get(name)!.description, name).toMatch(/untrusted/i);
@@ -480,6 +484,8 @@ describe("the expanded tool list", () => {
     expect(tools.get("set_env_var")!.inputSchema.required).toEqual(expect.arrayContaining(["projectId", "key", "value"]));
     expect(tools.get("terminal_send")!.inputSchema.required).toEqual(expect.arrayContaining(["projectId", "sessionId", "data"]));
     expect(tools.get("create_project")!.inputSchema.required).toEqual(expect.arrayContaining(["serverId", "name", "repoUrl", "runtime"]));
+    expect(tools.get("get_log_context")!.inputSchema.required).toEqual(expect.arrayContaining(["projectId", "at"]));
+    expect(tools.get("triage_deployment_error")!.inputSchema.required).toEqual(expect.arrayContaining(["projectId", "fingerprint", "action"]));
   });
 });
 
@@ -499,6 +505,10 @@ describe("expanded tools/call", () => {
       ["get_notifications", "notifications:read", { projectId }],
       ["get_alerts", "alerts:read", { projectId }],
       ["get_analytics", "analytics:read", { projectId }],
+      ["search_logs", "logs:read", { projectId }],
+      ["get_log_context", "logs:read", { projectId, at: 1795514400000 }],
+      ["list_deployment_errors", "analytics:read", { projectId }],
+      ["triage_deployment_error", "projects:write", { projectId, fingerprint: "0123456789abcdef", action: "resolve" }],
       ["get_project_resources", "resources:read", { projectId }],
       ["list_servers", "container:read", {}],
       ["get_container_inventory", "container:read", { serverId }],
@@ -528,6 +538,10 @@ describe("expanded tools/call", () => {
       ["set_env_var", { projectId: theirProjectId, key: "A", value: "b" }],
       ["get_deployment", { deploymentId: theirDeploymentId }],
       ["get_deployment_logs", { deploymentId: theirDeploymentId }],
+      ["search_logs", { projectId: theirProjectId }],
+      ["get_log_context", { projectId: theirProjectId, at: 1795514400000 }],
+      ["list_deployment_errors", { projectId: theirProjectId }],
+      ["triage_deployment_error", { projectId: theirProjectId, fingerprint: "0123456789abcdef", action: "resolve" }],
       ["rotate_deploy_hook", { projectId: theirProjectId }],
       ["get_alerts", { projectId: theirProjectId }],
       ["get_analytics", { projectId: theirProjectId }],
