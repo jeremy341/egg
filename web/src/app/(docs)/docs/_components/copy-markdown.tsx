@@ -28,7 +28,7 @@ export function CopyMarkdownButton({ slug }: { slug: string }) {
   }
 
   return (
-    <div className="mb-6 flex items-center justify-end gap-2 text-[13px]">
+    <div className="flex items-center gap-2 text-[13px]">
       <button
         type="button"
         onClick={copy}

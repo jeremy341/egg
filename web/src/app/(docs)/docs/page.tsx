@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { CopyPromptButton } from "./_components/copy-prompt";
 import { DocsIndex } from "./_components/docs-index";
 import { ARTICLE, PageHeader } from "./_components/prose";
 import { StartHere } from "./_components/start-here";
@@ -19,6 +20,9 @@ export default function DocsHome() {
         titleId="docs-h"
         lead="How to connect your Nest container, deploy to it and keep an eye on it. New here? Read how it works, then the quick start. Every other page is listed below with what it covers."
       />
+      <div className="my-6 flex justify-end">
+        <CopyPromptButton global label="Copy docs prompt" />
+      </div>
       <StartHere />
       <DocsIndex />
     </article>
