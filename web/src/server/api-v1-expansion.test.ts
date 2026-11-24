@@ -66,6 +66,7 @@ import { GET as listServersRoute } from "@/app/api/v1/servers/route";
 import { GET as inventoryRoute } from "@/app/api/v1/servers/[serverId]/inventory/route";
 import { GET as usageHistoryRoute } from "@/app/api/v1/servers/[serverId]/usage/history/route";
 import { GET as activityRoute } from "@/app/api/v1/activity/route";
+import { GET as githubReposRoute } from "@/app/api/v1/github/repos/route";
 
 let ctx: Awaited<ReturnType<typeof useFreshDb>>;
 let me: { id: string };
@@ -286,6 +287,7 @@ const SPECS: Record<string, Spec> = {
   get_analytics: { scope: "analytics:read", handler: analyticsRoute, method: "GET", path: proj("/analytics"), params: projParams, owned: true },
   get_resource_history: { scope: "resources:read", handler: usageHistoryRoute, method: "GET", path: (i) => `/servers/${i.serverId}/usage/history`, params: (i) => ({ serverId: i.serverId }), owned: true },
   get_project_resources: { scope: "resources:read", handler: projectResourcesRoute, method: "GET", path: proj("/resources"), params: projParams, owned: true },
+  list_github_repos: { scope: "projects:read", handler: githubReposRoute, method: "GET", path: () => "/github/repos", params: () => ({}) },
   list_servers: { scope: "container:read", handler: listServersRoute, method: "GET", path: () => "/servers", params: () => ({}) },
   get_container_inventory: { scope: "container:read", handler: inventoryRoute, method: "GET", path: (i) => `/servers/${i.serverId}/inventory`, params: (i) => ({ serverId: i.serverId }), owned: true },
   get_activity: { scope: "activity:read", handler: activityRoute, method: "GET", path: () => "/activity", params: () => ({}) },
@@ -339,8 +341,13 @@ describe("authentication and scopes", () => {
 
   it("answers 403 naming the scope when a token lacks it, before doing anything", async () => {
     const before = await counts();
+    const missingScopeTokens = new Map<Scope, string>();
     for (const [id, spec] of Object.entries(SPECS)) {
-      const without = await token(ALL.filter((s) => s !== spec.scope));
+      let without = missingScopeTokens.get(spec.scope);
+      if (!without) {
+        without = await token(ALL.filter((s) => s !== spec.scope));
+        missingScopeTokens.set(spec.scope, without);
+      }
       const res = await callSpec(spec, mine, without);
       const e = await errorOf(res);
       expect(res.status, id).toBe(403);

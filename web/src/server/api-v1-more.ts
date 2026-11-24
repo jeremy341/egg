@@ -34,6 +34,7 @@ import {
 } from "@/server/domains";
 import { HttpError, notFound } from "@/server/http";
 import { createDeployHook, revokeDeployHook } from "@/server/hooks";
+import { GithubError, listInstallationRepos, userInstallations } from "@/server/github/app";
 import { getInventory, type Inventory } from "@/server/inventory";
 import { getAlerts, notifySummary, sendTestNotification } from "@/server/notify";
 import {
@@ -159,6 +160,61 @@ export async function apiDeleteProject(p: Principal, projectId: string, removeFr
   }
   await tagAudit(p, "project.delete", () => deleteProject(p.userId, projectId, { remote: removeFromServer }), { removedFromServer: removeFromServer });
   return { deleted: true, projectId, removedFromServer: removeFromServer };
+}
+
+const githubRepoSchema = z.object({
+  id: z.number().int(),
+  installationId: z.number().int(),
+  account: z.string(),
+  accountType: z.string(),
+  fullName: z.string(),
+  private: z.boolean(),
+  defaultBranch: z.string(),
+  pushedAt: z.string().nullable(),
+});
+
+/** List repositories reachable through this token owner's GitHub App installations. */
+export async function apiListGithubRepos(p: Principal, installationId?: number) {
+  requireScope(p, "projects:read");
+  const installations = await userInstallations(p.userId);
+  const selected = installationId === undefined
+    ? installations
+    : installations.filter((installation) => installation.id === installationId);
+  if (installationId !== undefined && selected.length === 0) {
+    throw notFound("GitHub installation not found");
+  }
+
+  try {
+    const pages = await Promise.all(
+      selected.map(async (installation) => {
+        const repositories = await listInstallationRepos(installation.id);
+        return repositories.map((repo) => ({
+          id: repo.id,
+          installationId: installation.id,
+          account: installation.accountLogin,
+          accountType: installation.accountType,
+          fullName: repo.fullName,
+          private: repo.private,
+          defaultBranch: repo.defaultBranch,
+          pushedAt: repo.pushedAt,
+        }));
+      })
+    );
+    return {
+      repos: pages.flat().sort(
+        (a, b) => (b.pushedAt ?? "").localeCompare(a.pushedAt ?? "") || a.fullName.localeCompare(b.fullName)
+      ),
+    };
+  } catch (error) {
+    if (error instanceof GithubError) {
+      throw new HttpError(
+        error.status === 403 ? 403 : 502,
+        error.status === 403 ? "GitHub denied access to that installation." : "Could not list repositories from GitHub.",
+        "github"
+      );
+    }
+    throw error;
+  }
 }
 
 // ------------------------------------------------------------ build output
@@ -629,6 +685,28 @@ export const EXPANDED_ENDPOINTS: Endpoint[] = [
       const { projectId: id, ...changes } = i;
       return apiUpdateProject(p, id, changes);
     },
+  }),
+  endpoint({
+    id: "list_github_repos",
+    method: "GET",
+    path: "/github/repos",
+    scope: "projects:read",
+    bucket: "read",
+    tag: "Projects",
+    summary: "List linked GitHub repositories",
+    description:
+      "List repositories visible through the token owner's GitHub App installations. Omit installation to include every linked installation, or pass an installation id to narrow the results. Repository names and settings are returned without clone URLs or credentials.",
+    query: {
+      installation: z
+        .coerce.number()
+        .int()
+        .positive()
+        .optional()
+        .describe("An installation id from your linked GitHub accounts. Omit to list repositories from all your installations."),
+    },
+    response: z.object({ repos: z.array(githubRepoSchema) }),
+    errors: [400, 403, 404, 502],
+    run: (p, i) => apiListGithubRepos(p, i.installation),
   }),
   endpoint({
     id: "delete_project",
