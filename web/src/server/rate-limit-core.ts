@@ -162,6 +162,8 @@ export const RATE_LIMITS = {
   // id so a single request, or a burst of them, cannot open dozens of sessions inside a minute.
   bulkSsh: { limit: 20, windowMs: 60_000, what: "bulk deployment operations" },
   serviceRestart: { limit: 6, windowMs: 60_000, what: "service restarts" },
+  // Resolving, reopening, ignoring or assigning error groups: database writes only, per signed-in user, per minute.
+  errorTriage: { limit: 60, windowMs: 60_000, what: "error group changes" },
   signIn: { limit: 20, windowMs: 60_000, what: "sign-in attempts" },
   badToken: { limit: 60, windowMs: 60_000, what: "unrecognised access tokens" },
   // GitHub builds: per project, per hour. Keyed by project id (the project the build credential belongs to).
