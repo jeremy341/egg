@@ -29,7 +29,7 @@ export const KIND_PREFIXES: Record<Exclude<ActivityKind, "other">, readonly stri
   domains: ["domain."],
   servers: ["server.", "container."],
   access: ["token.", "account.", "auth.", "webhook.", "admin.", "security_report.", "provider."],
-  monitoring: ["monitor."],
+  monitoring: ["monitor.", "alert_rule."],
   terminal: ["terminal.", "file."],
 };
 
@@ -414,6 +414,7 @@ const ACTION_FIELD_LABELS: Record<string, Record<string, string>> = {
   "env.delete": { name: "Variable" },
   "project.create": { name: "Project name" },
   "project.delete": { name: "Project name" },
+  "project.restore": { name: "Project name" },
   "token.create": { name: "Token name" },
   "token.update": { name: "New name", scopes: "New scopes" },
   "account.sessions_revoke_all": { count: "Browsers signed out" },

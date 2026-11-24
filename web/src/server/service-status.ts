@@ -83,7 +83,7 @@ export function parseServiceStatus(stdout: string, at = new Date()): ServiceStat
       return v && /^[0-9]+$/.test(v) && v !== UNSET ? Number(v) : null;
     })(),
     restarts: num(kv.get("NRestarts")),
-    result: kv.get("Result") || null,
+    result: kv.get("RESULT") || null,
     http,
     checkedAt: at.toISOString(),
   };
