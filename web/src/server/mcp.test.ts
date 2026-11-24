@@ -90,7 +90,7 @@ describe("authentication", () => {
       await send(rpc("tools/list"), null, { cookie: "egg_session=abc" }),
     ]) {
       expect(res.status).toBe(401);
-      expect(res.headers.get("www-authenticate")).toBe("Bearer");
+      expect(res.headers.get("www-authenticate")).toMatch(/^Bearer resource_metadata="https?:\/\/[^"]+\/\.well-known\/oauth-protected-resource\/api\/mcp"$/);
       expect((await res.json()).error.code).toBe("unauthorized");
     }
     expect(getCurrentUser).not.toHaveBeenCalled();

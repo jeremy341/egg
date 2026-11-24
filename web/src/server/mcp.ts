@@ -2,8 +2,27 @@ import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import type { Principal } from "@/server/api-tokens";
 import { callEndpoint, ENDPOINTS, enforceApiRate, type Endpoint } from "@/server/api-v1";
+import { authenticate } from "@/server/api-v1-http";
+import { config } from "@/server/config";
 import { HttpError } from "@/server/http";
 import { endpointVisible, FULL_VIEW, McpView, SENSITIVE_TOOLS, viewAllows } from "@/server/mcp-toolsets";
+import { protectedResourceMetadataUrl } from "@/server/oauth";
+
+/**
+ * Authenticate an MCP request. The 401 names the protected-resource document
+ * (RFC 9728), so an MCP client can find the authorization server and sign in.
+ */
+export async function authenticateMcp(req: Request): Promise<Principal> {
+  try {
+    return await authenticate(req);
+  } catch (err) {
+    if (err instanceof HttpError && err.status === 401) {
+      const metadata = protectedResourceMetadataUrl(config().APP_URL);
+      throw new HttpError(401, err.message, err.code, { "WWW-Authenticate": `Bearer resource_metadata="${metadata}"` });
+    }
+    throw err;
+  }
+}
 
 /**
  * A small MCP server over plain HTTP (JSON-RPC 2.0, one JSON response per
