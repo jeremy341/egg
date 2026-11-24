@@ -463,12 +463,13 @@ export const envInput = z.object({
 });
 
 export async function setEnvVar(userId: string, projectId: string, raw: unknown) {
-  await assertAccountCanWrite(userId);
   const input = envInput.parse(raw);
   const project = await assertOwned(userId, projectId);
   const db = await getDb();
 
   await withLockRetry(() => db.transaction(async (tx) => {
+    // Checked inside the write, so a ban that lands just before it is still refused.
+    await assertAccountCanWrite(userId, { db: tx });
     await assertCleanupAllowsWork(tx, userId, project.id);
     const valueEnc = seal(input.value, `env:${project.id}:${input.key}:${input.target}`);
     // Only a genuinely new variable consumes the 100-variable budget. The
