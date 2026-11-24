@@ -555,6 +555,8 @@ export const userPreferences = sqliteTable("user_preferences", {
   analyticsDefaults: text("analytics_defaults").notNull().default("{}"),
   /** JSON object of per-chapter marks, see src/lib/onboarding-marks.ts */
   onboarding: text("onboarding").notNull().default("{}"),
+  /** Show the display name on public status pages and the homepage feed. Off shows "Someone". */
+  showNamePublic: integer("show_name_public", { mode: "boolean" }).notNull().default(true),
   updatedAt: ts("updated_at").notNull(),
 });
 
@@ -871,6 +873,38 @@ export const githubWebhookEvents = sqliteTable("github_webhook_events", {
   /** Legacy SQL column name; now stores the digest of event type plus signed body. */
   eventHash: text("body_hash").primaryKey(),
   receivedAt: ts("received_at").notNull(),
+});
+
+/**
+ * Every pull_request webhook event for a project, recorded from the day this
+ * shipped (GitHub is not backfilled). `action` is the GitHub action as sent;
+ * the activity heatmap counts "opened". Kept apart from deployments so a PR
+ * that never builds still shows up.
+ */
+export const pullRequestEvents = sqliteTable("pull_request_events", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  action: text("action").notNull(),
+  number: integer("number").notNull(),
+  createdAt: ts("created_at").notNull(),
+}, (t) => [index("pull_request_events_project_idx").on(t.projectId, t.createdAt)]);
+
+/**
+ * Per-project switches for the statistics section. Every switch defaults to off;
+ * a project with no row has everything off. Visitors is the same data as the
+ * analytics pages, shown on the statistics section only when this is on.
+ */
+export const projectStatistics = sqliteTable("project_statistics", {
+  projectId: text("project_id")
+    .primaryKey()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  deployCount: integer("deploy_count", { mode: "boolean" }).notNull().default(false),
+  deploySuccess: integer("deploy_success", { mode: "boolean" }).notNull().default(false),
+  buildTime: integer("build_time", { mode: "boolean" }).notNull().default(false),
+  visitors: integer("visitors", { mode: "boolean" }).notNull().default(false),
+  updatedAt: ts("updated_at").notNull(),
 });
 
 /** Local-mode credential hash; the recovery secret remains in the owner's private environment. */
