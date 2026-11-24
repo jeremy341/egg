@@ -402,6 +402,20 @@
       "breakpoints": true
     },
     {
+      "idx": 57,
+      "version": "6",
+      "when": 1795600000000,
+      "tag": "0057_error_groups",
+      "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "6",
+      "when": 1795700000000,
+      "tag": "0058_crash_exit",
+      "breakpoints": true
+    },
+    {
       "idx": 72,
       "version": "6",
       "when": 1795527099279,

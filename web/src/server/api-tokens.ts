@@ -59,7 +59,7 @@ export const SCOPE_LABEL: Record<Scope, string> = {
   "domains:write": "Add, check and remove domains",
   "notifications:read": "Read notification settings and send a test message",
   "alerts:read": "Read alert settings and history",
-  "analytics:read": "Read visitor analytics",
+  "analytics:read": "Read visitor analytics and client error groups",
   "activity:read": "Read your activity log",
   "resources:read": "Read CPU, memory and disk, now and over time",
   "container:read": "List servers and see what is on the container (read only)",

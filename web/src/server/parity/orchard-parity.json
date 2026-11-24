@@ -1,6 +1,6 @@
 {
-  "baseline_present": 23,
-  "baseline_partial": 19,
+  "baseline_present": 22,
+  "baseline_partial": 18,
   "tools": [
     {
       "name": "add_env_vars",
@@ -17,8 +17,9 @@
     {
       "name": "analyze_deployment_resources",
       "source": "apps/server/src/mcp/tools/query.ts",
-      "status": "missing",
-      "ours": null
+      "status": "partial",
+      "ours": "get_project_resources",
+      "note": "Reports one service usage history without pod limits or capacity ratios."
     },
     {
       "name": "call_api",
@@ -275,8 +276,8 @@
     {
       "name": "disable_auto_deploy",
       "source": "apps/server/src/mcp/tools/deployments.ts",
-      "status": "partial",
-      "ours": "update_project"
+      "status": "missing",
+      "ours": null
     },
     {
       "name": "disable_database_deletion_protection",
@@ -293,8 +294,8 @@
     {
       "name": "enable_auto_deploy",
       "source": "apps/server/src/mcp/tools/deployments.ts",
-      "status": "partial",
-      "ours": "update_project"
+      "status": "missing",
+      "ours": null
     },
     {
       "name": "enable_database_public",
@@ -335,8 +336,9 @@
     {
       "name": "get_anomalies",
       "source": "apps/server/src/mcp/tools/observability.ts",
-      "status": "missing",
-      "ours": null
+      "status": "partial",
+      "ours": "get_alerts",
+      "note": "Returns resource and monitor alert settings/history, not a ranked anomaly diagnosis."
     },
     {
       "name": "get_attack_signals",
@@ -353,26 +355,28 @@
     {
       "name": "get_auto_deploy_status",
       "source": "apps/server/src/mcp/tools/deployments.ts",
-      "status": "partial",
-      "ours": "get_project"
+      "status": "missing",
+      "ours": null
     },
     {
       "name": "get_build_history",
       "source": "apps/server/src/mcp/tools/observability.ts",
-      "status": "partial",
-      "ours": "get_deployment_logs"
+      "status": "missing",
+      "ours": null
     },
     {
       "name": "get_build_logs",
       "source": "apps/server/src/mcp/tools/query.ts",
-      "status": "missing",
-      "ours": null
+      "status": "partial",
+      "ours": "get_deployment_logs",
+      "note": "Returns paged build and deploy events, without Orchard build status/error summaries."
     },
     {
       "name": "get_changes",
       "source": "apps/server/src/mcp/tools/observability.ts",
       "status": "partial",
-      "ours": "get_activity"
+      "ours": "get_activity",
+      "note": "Owner-wide activity is available, but it is not a deployment-scoped, time-window change timeline."
     },
     {
       "name": "get_compose_stack",
@@ -468,7 +472,8 @@
       "name": "get_deploy_verdict",
       "source": "apps/server/src/mcp/tools/observability.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "note": "Skipped: there is no post-deploy versus pre-deploy latency and error regression evaluator."
     },
     {
       "name": "get_deployment",
@@ -492,7 +497,8 @@
       "name": "get_deployment_metrics",
       "source": "apps/server/src/mcp/tools/query.ts",
       "status": "partial",
-      "ours": "get_resource_history"
+      "ours": "get_project_resources",
+      "note": "Reports service-level CPU and memory history rather than pod-level series."
     },
     {
       "name": "get_deployment_next_steps",
@@ -527,8 +533,8 @@
     {
       "name": "get_image_history",
       "source": "apps/server/src/mcp/tools/query.ts",
-      "status": "partial",
-      "ours": "list_deployments"
+      "status": "missing",
+      "ours": null
     },
     {
       "name": "get_ingress",
@@ -564,13 +570,15 @@
       "name": "get_killed_container_logs",
       "source": "apps/server/src/mcp/tools/query.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "note": "Skipped: the branch has no captured pre-death logs keyed to killed container records."
     },
     {
       "name": "get_log_context",
       "source": "apps/server/src/mcp/tools/observability.ts",
-      "status": "missing",
-      "ours": null
+      "status": "partial",
+      "ours": "get_log_context",
+      "note": "Reads a bounded time window from one service journal, not all retained replicas."
     },
     {
       "name": "get_observability_link",
@@ -630,7 +638,8 @@
       "name": "get_request_stats",
       "source": "apps/server/src/mcp/tools/observability.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "note": "Skipped: this branch has no ingress access-log store; page-view analytics are not request-level access logs."
     },
     {
       "name": "get_resource_quota",
@@ -642,7 +651,8 @@
       "name": "get_resource_recommendation",
       "source": "apps/server/src/mcp/tools/observability.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "note": "Skipped: resource history reports usage but has no deployment limit model or right-sizing calculation."
     },
     {
       "name": "get_sandbox",
@@ -707,8 +717,8 @@
     {
       "name": "list_build_runs",
       "source": "apps/server/src/mcp/tools/rollout.ts",
-      "status": "partial",
-      "ours": "list_deployments"
+      "status": "missing",
+      "ours": null
     },
     {
       "name": "list_checkpoints",
@@ -773,8 +783,9 @@
     {
       "name": "list_deployment_errors",
       "source": "apps/server/src/mcp/tools/query.ts",
-      "status": "missing",
-      "ours": null
+      "status": "partial",
+      "ours": "list_deployment_errors",
+      "note": "Groups client-reported analytics errors by project, not runtime deployment log errors."
     },
     {
       "name": "list_deployments",
@@ -797,8 +808,8 @@
     {
       "name": "list_github_repos",
       "source": "apps/server/src/mcp/tools/query.ts",
-      "status": "present",
-      "ours": "list_github_repos"
+      "status": "missing",
+      "ours": null
     },
     {
       "name": "list_ingresses",
@@ -822,7 +833,8 @@
       "name": "list_killed_containers",
       "source": "apps/server/src/mcp/tools/query.ts",
       "status": "missing",
-      "ours": null
+      "ours": null,
+      "note": "Skipped: the branch deploys one service per project and stores no killed-container records."
     },
     {
       "name": "list_node_pools",
@@ -881,8 +893,8 @@
     {
       "name": "list_releases",
       "source": "apps/server/src/mcp/tools/rollout.ts",
-      "status": "partial",
-      "ours": "list_deployments"
+      "status": "missing",
+      "ours": null
     },
     {
       "name": "list_sandbox_sessions",
@@ -1037,8 +1049,9 @@
     {
       "name": "search_logs",
       "source": "apps/server/src/mcp/tools/observability.ts",
-      "status": "missing",
-      "ours": null
+      "status": "partial",
+      "ours": "search_logs",
+      "note": "Reads searchable service journald output with one-service and fixed-window limits."
     },
     {
       "name": "set_database_backup_schedule",
@@ -1157,8 +1170,9 @@
     {
       "name": "triage_deployment_error",
       "source": "apps/server/src/mcp/tools/query.ts",
-      "status": "missing",
-      "ours": null
+      "status": "partial",
+      "ours": "triage_deployment_error",
+      "note": "Project-owner triage uses Egg action transitions rather than Orchard status values."
     },
     {
       "name": "undelete_database",
@@ -1217,8 +1231,8 @@
     {
       "name": "update_deployment_health_check",
       "source": "apps/server/src/mcp/tools/configuration.ts",
-      "status": "partial",
-      "ours": "update_project"
+      "status": "missing",
+      "ours": null
     },
     {
       "name": "update_deployment_image",

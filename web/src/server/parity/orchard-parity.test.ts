@@ -1,41 +1,76 @@
-import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { ENDPOINTS } from "@/server/api-v1";
+import parity from "./orchard-parity.json";
 
-const parityPath = new URL("./orchard-parity.json", import.meta.url);
-const promotedTools = [
-  ["list_github_repos", "present", "list_github_repos"],
-  ["get_image_history", "partial", "list_deployments"],
-  ["list_releases", "partial", "list_deployments"],
-  ["list_build_runs", "partial", "list_deployments"],
-  ["get_build_history", "partial", "get_deployment_logs"],
-  ["update_deployment_health_check", "partial", "update_project"],
-  ["enable_auto_deploy", "partial", "update_project"],
-  ["disable_auto_deploy", "partial", "update_project"],
-  ["get_auto_deploy_status", "partial", "get_project"],
-] as const;
+type Status = "present" | "partial" | "missing";
+type Tool = { name: string; status: Status; ours: string | null; note?: string };
+const tools = parity.tools as Tool[];
+const endpoints = new Set(ENDPOINTS.map((endpoint) => endpoint.id));
+const entry = (name: string) => {
+  const found = tools.find((tool) => tool.name === name);
+  if (!found) throw new Error(`Missing Orchard parity entry: ${name}`);
+  return found;
+};
 
-describe("Orchard deployment parity", () => {
-  it("maps each supported Orchard tool to a registered endpoint and raises the counts", () => {
-    const exists = existsSync(parityPath);
-    expect(exists).toBe(true);
-    if (!exists) return;
-
-    const parity = JSON.parse(readFileSync(parityPath, "utf8")) as {
-      baseline_present: number;
-      baseline_partial: number;
-      tools: { name: string; status: string; ours: string | null }[];
-    };
-    const entries = new Map(parity.tools.map((tool) => [tool.name, tool]));
-    const endpointIds = new Set(ENDPOINTS.map((endpoint) => endpoint.id));
-
-    for (const [name, status, ours] of promotedTools) {
-      expect(entries.get(name), name).toMatchObject({ status, ours });
-      expect(endpointIds.has(ours), `${name} -> ${ours}`).toBe(true);
+describe("Orchard query and observability parity", () => {
+  it("keeps the baseline counts in sync and every mapped tool points at a registered endpoint", () => {
+    expect(tools.filter((tool) => tool.status === "present")).toHaveLength(parity.baseline_present);
+    expect(tools.filter((tool) => tool.status === "partial")).toHaveLength(parity.baseline_partial);
+    for (const tool of tools) {
+      if (tool.status === "missing") expect(tool.ours, tool.name).toBeNull();
     }
-    expect(parity.baseline_present).toBe(23);
-    expect(parity.baseline_partial).toBe(19);
-    expect(parity.tools.filter((tool) => tool.status === "present")).toHaveLength(23);
-    expect(parity.tools.filter((tool) => tool.status === "partial")).toHaveLength(19);
+    for (const name of [
+      "get_deployment_logs", "search_logs", "get_log_context", "list_deployment_errors",
+      "triage_deployment_error", "get_anomalies", "get_changes", "get_build_logs",
+      "get_deployment_metrics", "analyze_deployment_resources",
+    ]) {
+      const tool = entry(name);
+      expect(tool.ours, name).toBeTruthy();
+      expect(endpoints.has(tool.ours!), `${name} -> ${tool.ours}`).toBe(true);
+    }
+  });
+
+  it("records the supported query and observability mappings with their limits", () => {
+    expect(Object.fromEntries([
+      "get_deployment_logs",
+      "search_logs",
+      "get_log_context",
+      "list_deployment_errors",
+      "triage_deployment_error",
+      "get_anomalies",
+      "get_changes",
+      "get_deploy_verdict",
+      "get_resource_recommendation",
+      "get_build_logs",
+      "list_killed_containers",
+      "get_killed_container_logs",
+      "get_deployment_metrics",
+      "analyze_deployment_resources",
+    ].map((name) => {
+      const tool = entry(name);
+      return [name, { status: tool.status, ours: tool.ours }];
+    }))).toEqual({
+      get_deployment_logs: { status: "present", ours: "get_logs" },
+      search_logs: { status: "partial", ours: "search_logs" },
+      get_log_context: { status: "partial", ours: "get_log_context" },
+      list_deployment_errors: { status: "partial", ours: "list_deployment_errors" },
+      triage_deployment_error: { status: "partial", ours: "triage_deployment_error" },
+      get_anomalies: { status: "partial", ours: "get_alerts" },
+      get_changes: { status: "partial", ours: "get_activity" },
+      get_deploy_verdict: { status: "missing", ours: null },
+      get_resource_recommendation: { status: "missing", ours: null },
+      get_build_logs: { status: "partial", ours: "get_deployment_logs" },
+      list_killed_containers: { status: "missing", ours: null },
+      get_killed_container_logs: { status: "missing", ours: null },
+      get_deployment_metrics: { status: "partial", ours: "get_project_resources" },
+      analyze_deployment_resources: { status: "partial", ours: "get_project_resources" },
+    });
+    expect(entry("search_logs").note).toMatch(/one-service/);
+    expect(entry("get_log_context").note).toMatch(/one service journal/);
+  });
+
+  it("skips request-level statistics when there is no ingress access-log store", () => {
+    expect(entry("get_request_stats")).toMatchObject({ status: "missing", ours: null });
+    expect(entry("get_request_stats").note).toMatch(/no ingress access-log store/);
   });
 });

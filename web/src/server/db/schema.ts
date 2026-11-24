@@ -749,6 +749,28 @@ export const analyticsErrors = sqliteTable(
 );
 
 /**
+ * Triage state of an error group. Groups are computed from `analytics_errors`
+ * by fingerprint (see server/error-fingerprint.ts); this row only holds what a
+ * person decided. No message or query string is stored here. A group with no
+ * row is open and unassigned.
+ */
+export const analyticsErrorGroups = sqliteTable(
+  "analytics_error_groups",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    fingerprint: text("fingerprint").notNull(),
+    status: text("status", { enum: ["open", "resolved", "ignored"] }).notNull().default("open"),
+    /** The project member this group is assigned to, or null. */
+    assigneeId: text("assignee_id"),
+    updatedAt: ts("updated_at").notNull(),
+  },
+  (t) => [uniqueIndex("analytics_error_groups_project_fp_idx").on(t.projectId, t.fingerprint)]
+);
+
+/**
  * Heartbeats for the live view: one row a minute from each open, visible page,
  * with the salted retention code. Deleted after an hour.
  */
@@ -780,6 +802,13 @@ export const projectSamples = sqliteTable(
     /** Total CPU time the service has used, in nanoseconds. Used to work out cpuPercent. */
     cpuNs: real("cpu_ns"),
     restarts: integer("restarts"),
+    /**
+     * Exit status and systemd's reason (exit-code, signal, oom-kill, ...) of the
+     * service's last main process, kept when it was not a clean exit. Only the
+     * status and the reason are kept, never the program's output.
+     */
+    exitCode: integer("exit_code"),
+    exitReason: text("exit_reason"),
   },
   (t) => [index("project_samples_idx").on(t.projectId, t.at)]
 );

@@ -13,6 +13,7 @@ import { api } from "@/components/api";
 import { Segmented } from "@/components/segmented";
 import { StatusIndicator } from "@/components/status-dot";
 import { ConnectionAlert } from "@/components/connection-alert";
+import { CrashPanel } from "@/components/crash-panel";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
@@ -54,6 +55,13 @@ function LevelMark({ level }: { level: LineLevel }) {
 }
 
 const SKELETON_LINE_WIDTHS = ["w-4/5", "w-3/5", "w-11/12", "w-2/3", "w-1/2", "w-3/4", "w-5/6"];
+
+/** The export link for the current filters. The server applies them and caps the lines. */
+function exportHref(projectId: string, range: LogRange, level: LogLevel, term: string, format: "txt" | "ndjson") {
+  const params = new URLSearchParams({ range, level, format });
+  if (term) params.set("q", term);
+  return `/api/projects/${encodeURIComponent(projectId)}/runtime-logs/export?${params.toString()}`;
+}
 
 /**
  * Runtime output of a project's service, read from the container's journal
@@ -292,6 +300,25 @@ export function LogsView({
             <DownloadSimpleIcon aria-hidden="true" />
             Download
           </Button>
+          {/* Full export (up to 10,000 lines) with the same filters as the page. */}
+          {projectId ? (
+            <>
+              <a
+                className={buttonVariants({ variant: "outline" })}
+                href={exportHref(projectId, range, level, term, "txt")}
+                download
+              >
+                Export text
+              </a>
+              <a
+                className={buttonVariants({ variant: "outline" })}
+                href={exportHref(projectId, range, level, term, "ndjson")}
+                download
+              >
+                Export NDJSON
+              </a>
+            </>
+          ) : null}
           <Button variant="outline" onClick={() => void load()} loading={loading}>
             <ArrowsClockwiseIcon aria-hidden="true" />
             Refresh
@@ -324,6 +351,8 @@ export function LogsView({
       </div>
 
       {error ? <ConnectionAlert message={error} onRetry={() => void load()} retrying={loading} /> : null}
+
+      {projectId ? <CrashPanel projectId={projectId} lines={all} /> : null}
 
       {/* What is on screen, in one line. Not a live region: auto refresh would chatter. */}
       <p className="tabular min-h-[18px] text-label text-muted-foreground">
