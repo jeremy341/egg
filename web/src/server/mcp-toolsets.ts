@@ -37,9 +37,13 @@ export type Toolset = (typeof TOOLSETS)[number];
 /** Every endpoint belongs to exactly one toolset. A test checks that none is left out. */
 export const TOOLSET_OF: Record<string, Toolset> = {
   get_me: "core",
+  find: "core",
   list_projects: "core",
   get_project: "core",
   get_deployment: "core",
+  diagnose_deployment: "core",
+  get_deployment_next_steps: "core",
+  get_github_status: "core",
 
   list_deployments: "deployments",
   get_rollout: "deployments",

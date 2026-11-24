@@ -74,6 +74,25 @@ export async function apiListProjects(p: Principal, limit = 100, cursor?: string
   return { projects, ...paginateList(projects, { limit, cursor }, (v) => v.id) };
 }
 
+export async function apiFindProjects(p: Principal, query?: string) {
+  requireScope(p, "projects:read");
+  const { projects } = await apiListProjects(p);
+  const needle = query?.trim().toLocaleLowerCase() ?? "";
+  const results = projects
+    .filter((project) =>
+      !needle || [project.name, project.slug, project.repo].some((value) => value?.toLocaleLowerCase().includes(needle))
+    )
+    .map((project) => ({
+      kind: "project" as const,
+      id: project.id,
+      name: project.name,
+      slug: project.slug,
+      repo: project.repo,
+      state: project.state,
+    }));
+  return { query: needle || null, results };
+}
+
 export async function apiGetProject(p: Principal, projectId: string) {
   requireScope(p, "projects:read");
   const view = (await projectViews(p.userId)).find((v) => v.id === projectId);
@@ -168,6 +187,30 @@ const deploymentId = deploymentIdInput;
 const serverId = serverIdInput;
 
 const CORE_ENDPOINTS: Endpoint[] = [
+  endpoint({
+    id: "find",
+    method: "GET",
+    path: "/find",
+    scope: "projects:read",
+    bucket: "read",
+    tag: "Projects",
+    summary: "Find a project",
+    description:
+      "Search the token owner's projects by name, slug or repository, or omit query to list them all. Results include the project id and latest deployment state. Organizations, standalone deployments and databases are not available in this app's search data.",
+    query: { query: z.string().trim().max(200).optional().describe("Case-insensitive text to match. Omit to return every project.") },
+    response: z.object({
+      query: z.string().nullable(),
+      results: z.array(z.object({
+        kind: z.literal("project"),
+        id: z.string(),
+        name: z.string(),
+        slug: z.string(),
+        repo: z.string().nullable(),
+        state: projectSchema.shape.state,
+      })),
+    }),
+    run: (p, i) => apiFindProjects(p, i.query),
+  }),
   endpoint({
     id: "list_projects",
     method: "GET",
