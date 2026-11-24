@@ -111,7 +111,7 @@ describe("assertAccountCanWrite (database)", () => {
       code: "account_suspended",
     });
     await expect(assertAccountCanWrite(blocked, { now: new Date("2026-11-20T00:00:00.000Z") })).rejects.toThrow(
-      /grace period ended on 2026-11-16/,
+      /grace period ended on Nov 16, 2026/,
     );
   });
 });
