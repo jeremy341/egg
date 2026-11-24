@@ -843,8 +843,6 @@ export const EXPANDED_ENDPOINTS: Endpoint[] = [
     destructive: true,
     run: (p, i) => apiDeleteProject(p, i.projectId, i.confirmName, i.removeFromServer ?? false),
   }),
-
-
   // ----- build output
   endpoint({
     id: "get_deployment",

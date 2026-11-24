@@ -67,6 +67,10 @@ import { GET as logContextRoute } from "@/app/api/v1/projects/[projectId]/logs/c
 import { GET as projectErrorsRoute } from "@/app/api/v1/projects/[projectId]/errors/route";
 import { POST as triageErrorRoute } from "@/app/api/v1/projects/[projectId]/errors/[fingerprint]/route";
 import { fingerprintOf } from "@/server/error-fingerprint";
+import { GET as findRoute } from "@/app/api/v1/find/route";
+import { GET as githubStatusRoute } from "@/app/api/v1/github/status/route";
+import { GET as diagnoseDeploymentRoute } from "@/app/api/v1/deployments/[deploymentId]/diagnosis/route";
+import { GET as deploymentNextStepsRoute } from "@/app/api/v1/deployments/[deploymentId]/next-steps/route";
 
 let ctx: Awaited<ReturnType<typeof useFreshDb>>;
 let me: { id: string };
@@ -268,6 +272,16 @@ const proj = (suffix: string) => (i: Ids) => `/projects/${i.projectId}${suffix}`
 const projParams = (i: Ids) => ({ projectId: i.projectId });
 
 const SPECS: Record<string, Spec> = {
+  find: { scope: "projects:read", handler: findRoute, method: "GET", path: () => "/find", params: () => ({}) },
+  get_github_status: { scope: "projects:read", handler: githubStatusRoute, method: "GET", path: () => "/github/status", params: () => ({}) },
+  diagnose_deployment: {
+    scope: "deployments:read", handler: diagnoseDeploymentRoute, method: "GET",
+    path: (i) => `/deployments/${i.deploymentId}/diagnosis`, params: (i) => ({ deploymentId: i.deploymentId }), owned: true,
+  },
+  get_deployment_next_steps: {
+    scope: "projects:read", handler: deploymentNextStepsRoute, method: "GET",
+    path: (i) => `/deployments/${i.deploymentId}/next-steps`, params: (i) => ({ deploymentId: i.deploymentId }), owned: true,
+  },
   create_project: {
     scope: "projects:write", handler: createProjectRoute, method: "POST", path: () => "/projects", params: () => ({}),
     body: (i) => ({ serverId: i.serverId, name: "Fresh", repoUrl: "https://github.com/sam/fresh.git", runtime: "node", port: 3900 }),

@@ -61,6 +61,12 @@ describe("toolset membership", () => {
     for (const set of Object.values(TOOLSET_OF)) expect(TOOLSETS).toContain(set);
   });
 
+  it("exposes the supported Orchard helpers in core", () => {
+    for (const id of ["find", "get_github_status", "diagnose_deployment", "get_deployment_next_steps"]) {
+      expect(TOOLSET_OF[id], id).toBe("core");
+    }
+  });
+
   it("marks one-time deploy-hook and webhook secrets as sensitive", () => {
     expect([...SENSITIVE_TOOLS]).toEqual(["rotate_deploy_hook", "create_notification_channel"]);
     const sensitive = TOOLS.filter((t) => t._meta?.["egg/sensitive"] === true).map((t) => t.name);
