@@ -500,6 +500,9 @@ export function ProjectSettings({
             {protectionError ? (
               <p role="alert" className="mt-2 text-label text-foreground">{protectionError}</p>
             ) : null}
+            <p className="mt-3 text-label text-muted-foreground">
+              Deleted apps are kept for 30 days. <a href="/projects/trash" className="link">See Recently deleted</a>.
+            </p>
           </Card>
 
           <Card
