@@ -1,8 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { authenticate, jsonResponse, readCappedText } from "@/server/api-v1-http";
+import { jsonResponse, readCappedText } from "@/server/api-v1-http";
 import { handle, HttpError } from "@/server/http";
 import { handleCompactMessage } from "@/server/mcp-compact";
-import { RPC } from "@/server/mcp";
+import { authenticateMcp, RPC } from "@/server/mcp";
 import { parseMcpView } from "@/server/mcp-toolsets";
 
 const MAX_BODY_BYTES = 100 * 1024;
@@ -14,7 +14,7 @@ const MAX_BODY_BYTES = 100 * 1024;
  */
 export const POST = handle(
   async (req: NextRequest) => {
-    const principal = await authenticate(req);
+    const principal = await authenticateMcp(req);
     const view = parseMcpView(req.nextUrl);
     const text = await readCappedText(req, MAX_BODY_BYTES);
 

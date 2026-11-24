@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { authenticate, jsonResponse, readCappedText } from "@/server/api-v1-http";
+import { jsonResponse, readCappedText } from "@/server/api-v1-http";
 import { handle, HttpError } from "@/server/http";
-import { handleMcpMessage, RPC } from "@/server/mcp";
+import { authenticateMcp, handleMcpMessage, RPC } from "@/server/mcp";
 import { parseMcpView } from "@/server/mcp-toolsets";
 
 const MAX_BODY_BYTES = 100 * 1024;
@@ -12,7 +12,7 @@ const MAX_BODY_BYTES = 100 * 1024;
  */
 export const POST = handle(
   async (req: NextRequest) => {
-    const principal = await authenticate(req);
+    const principal = await authenticateMcp(req);
     // The query string narrows the list (toolsets, read or deploy). It is read after the token, so a bad
     // value is a 400 only for a caller that is authenticated.
     const view = parseMcpView(req.nextUrl);
