@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 import { ENDPOINTS } from "@/server/api-v1";
 import { Egg, type FetchInit, type FetchLike } from "./egg";
 
@@ -19,6 +19,11 @@ const PARAMS: Record<string, string> = {
   sessionId: "SESS",
   key: "KEY",
   webhookId: "HOOK",
+  credentialId: "CRED",
+  runId: "RUN",
+  channelId: "HOOK",
+  ruleId: "RULE",
+  deliveryId: "DEL",
   fingerprint: "FP",
   jobId: "JOB",
 };
@@ -86,6 +91,40 @@ const CLIENT_CALLS: Record<string, Call$> = {
   make_folder: (n) => n.makeFolder("P", "shared/new"),
   rename_file: (n) => n.renameFile("P", { from: "shared/a", to: "shared/b" }),
   delete_file: (n) => n.deleteFile("P", "shared/a"),
+  get_audit_log: (n) => n.getAuditLog(),
+  list_registry_credentials: (n) => n.listRegistryCredentials(),
+  set_registry_credential: (n) => n.setRegistryCredential({ host: "ghcr.io" }),
+  delete_registry_credential: (n) => n.deleteRegistryCredential("CRED", { confirmName: "ghcr.io" }),
+  start_deployment: (n) => n.startDeployment("D"),
+  stop_deployment: (n) => n.stopDeployment("D"),
+  restart_deployment: (n) => n.restartDeployment("D"),
+  scale_deployment: (n) => n.scaleDeployment("D", { memoryMb: 512 }),
+  get_volumes: (n) => n.getVolumes("D"),
+  get_job_run: (n) => n.getJobRun("P", "JOB", "RUN"),
+  cancel_job_run: (n) => n.cancelJobRun("P", "JOB", "RUN"),
+  replace_job_steps: (n) => n.replaceJobSteps("P", "JOB", { steps: [] }),
+  get_build_logs: (n) => n.getBuildLogs("D"),
+  get_build_history: (n) => n.getBuildHistory("P"),
+  get_killed_container_logs: (n) => n.getKilledContainerLogs("P"),
+  get_repo_branches: (n) => n.getRepoBranches(),
+  get_repo_contents: (n) => n.getRepoContents(),
+  get_repo_dockerfiles: (n) => n.getRepoDockerfiles(),
+  detect_repo_config: (n) => n.detectRepoConfig(),
+  list_github_deploy_targets: (n) => n.listGithubDeployTargets(),
+  get_notification_channel: (n) => n.getNotificationChannel("HOOK"),
+  update_notification_channel: (n) => n.updateNotificationChannel("HOOK", {}),
+  delete_notification_channel: (n) => n.deleteNotificationChannel("HOOK"),
+  update_notification_rule: (n) => n.updateNotificationRule("HOOK", "RULE", {}),
+  delete_notification_rule: (n) => n.deleteNotificationRule("HOOK", "RULE"),
+  list_notification_deliveries: (n) => n.listNotificationDeliveries("HOOK"),
+  replay_notification_channel: (n) => n.replayNotificationChannel("HOOK", "DEL"),
+  get_auto_deploy_status: (n) => n.getAutoDeployStatus("P"),
+  enable_auto_deploy: (n) => n.enableAutoDeploy("P"),
+  disable_auto_deploy: (n) => n.disableAutoDeploy("P"),
+  get_ingress: (n) => n.getIngress("DOM"),
+  update_ingress: (n) => n.updateIngress("DOM", {}),
+  get_ingress_protection: (n) => n.getIngressProtection("DOM"),
+  set_ingress_protection: (n) => n.setIngressProtection("DOM", {}),
   find: (n) => n.find("demo"),
   search_logs: (n) => n.searchLogs("P", "error"),
   get_log_context: (n) => n.getLogContext("P", 1),
@@ -105,7 +144,7 @@ const CLIENT_CALLS: Record<string, Call$> = {
   update_job: (n) => n.updateJob("P", "JOB", {}),
   run_job: (n) => n.runJob("P", "JOB"),
   list_job_runs: (n) => n.listJobRuns("P", "JOB"),
-  get_job_run_logs: (n) => n.getJobRunLogs("P", "JOB"),
+  get_job_run_logs: (n) => n.getJobRunLogs("P", "JOB", "RUN"),
   delete_job: (n) => n.deleteJob("P", "JOB"),
   list_notification_channels: (n) => n.listNotificationChannels(),
   create_notification_channel: (n) => n.createNotificationChannel({}),
@@ -171,3 +210,4 @@ describe("request bodies and queries of the newer calls", () => {
     ]);
   });
 });
+

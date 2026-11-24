@@ -1,4 +1,4 @@
-/**
+﻿/**
  * A small client for the Egg API, in one file with no dependencies.
  * Copy this file into your own project, or import it from here.
  *
@@ -828,25 +828,82 @@ export class Egg {
   listJobRuns(projectId: string, jobId: string): Promise<unknown> {
     return this.request("GET", `/projects/${seg(projectId)}/jobs/${seg(jobId)}/runs`);
   }
-  getJobRunLogs(projectId: string, jobId: string): Promise<unknown> {
-    return this.request("GET", `/projects/${seg(projectId)}/jobs/${seg(jobId)}/logs`);
+  getJobRunLogs(projectId: string, jobId: string, runId: string): Promise<unknown> {
+    return this.request("GET", `/projects/${seg(projectId)}/jobs/${seg(jobId)}/runs/${seg(runId)}/logs`);
   }
   deleteJob(projectId: string, jobId: string): Promise<unknown> {
     return this.request("DELETE", `/projects/${seg(projectId)}/jobs/${seg(jobId)}`, {}, {});
   }
   listNotificationChannels(): Promise<unknown> {
-    return this.request("GET", "/webhooks");
+    return this.request("GET", "/notification-channels");
   }
   createNotificationChannel(input: unknown): Promise<unknown> {
-    return this.request("POST", "/webhooks", {}, input);
+    return this.request("POST", "/notification-channels", {}, input);
   }
   listNotificationRules(): Promise<unknown> {
-    return this.request("GET", "/webhooks/rules");
+    return this.request("GET", "/notification-rules");
   }
-  createNotificationRule(webhookId: string, input: unknown): Promise<unknown> {
-    return this.request("POST", `/webhooks/${seg(webhookId)}/rules`, {}, input);
+  createNotificationRule(channelId: string, input: unknown): Promise<unknown> {
+    return this.request("POST", `/notification-channels/${seg(channelId)}/rules`, {}, input);
   }
-  testNotificationChannel(webhookId: string): Promise<unknown> {
-    return this.request("POST", `/webhooks/${seg(webhookId)}/test`, {}, {});
+  testNotificationChannel(channelId: string): Promise<unknown> {
+    return this.request("POST", `/notification-channels/${seg(channelId)}/test`, {}, {});
+  }
+
+  // ------------------------------------------------- second parity pass
+  getAuditLog(q: Query = {}): Promise<unknown> { return this.request("GET", "/audit-log", q); }
+  listRegistryCredentials(): Promise<unknown> { return this.request("GET", "/registry-credentials"); }
+  setRegistryCredential(input: unknown): Promise<unknown> { return this.request("PUT", "/registry-credentials", {}, input); }
+  deleteRegistryCredential(credentialId: string, input: unknown): Promise<unknown> {
+    return this.request("DELETE", `/registry-credentials/${seg(credentialId)}`, {}, input);
+  }
+  startDeployment(deploymentId: string): Promise<unknown> { return this.request("POST", `/deployments/${seg(deploymentId)}/start`, {}, {}); }
+  stopDeployment(deploymentId: string): Promise<unknown> { return this.request("POST", `/deployments/${seg(deploymentId)}/stop`, {}, {}); }
+  restartDeployment(deploymentId: string): Promise<unknown> { return this.request("POST", `/deployments/${seg(deploymentId)}/restart`, {}, {}); }
+  scaleDeployment(deploymentId: string, input: unknown): Promise<unknown> { return this.request("POST", `/deployments/${seg(deploymentId)}/scale`, {}, input); }
+  getVolumes(deploymentId: string): Promise<unknown> { return this.request("GET", `/deployments/${seg(deploymentId)}/volumes`); }
+  getJobRun(projectId: string, jobId: string, runId: string): Promise<unknown> {
+    return this.request("GET", `/projects/${seg(projectId)}/jobs/${seg(jobId)}/runs/${seg(runId)}`);
+  }
+  cancelJobRun(projectId: string, jobId: string, runId: string): Promise<unknown> {
+    return this.request("POST", `/projects/${seg(projectId)}/jobs/${seg(jobId)}/runs/${seg(runId)}/cancel`, {}, {});
+  }
+  replaceJobSteps(projectId: string, jobId: string, input: unknown): Promise<unknown> {
+    return this.request("PUT", `/projects/${seg(projectId)}/jobs/${seg(jobId)}/steps`, {}, input);
+  }
+  getBuildLogs(deploymentId: string, q: Query = {}): Promise<unknown> { return this.request("GET", `/deployments/${seg(deploymentId)}/build-logs`, q); }
+  getBuildHistory(projectId: string, q: Query = {}): Promise<unknown> { return this.request("GET", `/projects/${seg(projectId)}/builds`, q); }
+  getKilledContainerLogs(projectId: string, q: Query = {}): Promise<unknown> { return this.request("GET", `/projects/${seg(projectId)}/logs/killed`, q); }
+  getRepoBranches(): Promise<unknown> { return this.request("GET", "/github/branches"); }
+  getRepoContents(q: Query = {}): Promise<unknown> { return this.request("GET", "/github/contents", q); }
+  getRepoDockerfiles(): Promise<unknown> { return this.request("GET", "/github/dockerfiles"); }
+  detectRepoConfig(): Promise<unknown> { return this.request("GET", "/github/config"); }
+  listGithubDeployTargets(): Promise<unknown> { return this.request("GET", "/github/deploy-targets"); }
+  getNotificationChannel(channelId: string): Promise<unknown> { return this.request("GET", `/notification-channels/${seg(channelId)}`); }
+  updateNotificationChannel(channelId: string, input: unknown): Promise<unknown> {
+    return this.request("PATCH", `/notification-channels/${seg(channelId)}`, {}, input);
+  }
+  deleteNotificationChannel(channelId: string): Promise<unknown> { return this.request("DELETE", `/notification-channels/${seg(channelId)}`); }
+  updateNotificationRule(channelId: string, ruleId: string, input: unknown): Promise<unknown> {
+    return this.request("PATCH", `/notification-channels/${seg(channelId)}/rules/${seg(ruleId)}`, {}, input);
+  }
+  deleteNotificationRule(channelId: string, ruleId: string): Promise<unknown> {
+    return this.request("DELETE", `/notification-channels/${seg(channelId)}/rules/${seg(ruleId)}`);
+  }
+  listNotificationDeliveries(channelId: string): Promise<unknown> {
+    return this.request("GET", `/notification-channels/${seg(channelId)}/deliveries`);
+  }
+  replayNotificationChannel(channelId: string, deliveryId: string): Promise<unknown> {
+    return this.request("POST", `/notification-channels/${seg(channelId)}/deliveries/${seg(deliveryId)}/replay`, {}, {});
+  }
+  getAutoDeployStatus(projectId: string): Promise<unknown> { return this.request("GET", `/projects/${seg(projectId)}/auto-deploy`); }
+  enableAutoDeploy(projectId: string): Promise<unknown> { return this.request("PUT", `/projects/${seg(projectId)}/auto-deploy`, {}, {}); }
+  disableAutoDeploy(projectId: string): Promise<unknown> { return this.request("DELETE", `/projects/${seg(projectId)}/auto-deploy`); }
+  getIngress(domainId: string): Promise<unknown> { return this.request("GET", `/domains/${seg(domainId)}`); }
+  updateIngress(domainId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/domains/${seg(domainId)}`, {}, input); }
+  getIngressProtection(domainId: string): Promise<unknown> { return this.request("GET", `/domains/${seg(domainId)}/protection`); }
+  setIngressProtection(domainId: string, input: unknown): Promise<unknown> {
+    return this.request("PUT", `/domains/${seg(domainId)}/protection`, {}, input);
   }
 }
+

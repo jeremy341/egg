@@ -825,28 +825,7 @@ export const EXPANDED_ENDPOINTS: Endpoint[] = [
       return apiUpdateProject(p, id, changes);
     },
   }),
-  endpoint({
-    id: "list_github_repos",
-    method: "GET",
-    path: "/github/repos",
-    scope: "projects:read",
-    bucket: "read",
-    tag: "Projects",
-    summary: "List linked GitHub repositories",
-    description:
-      "List repositories visible through the token owner's GitHub App installations. Omit installation to include every linked installation, or pass an installation id to narrow the results. Repository names and settings are returned without clone URLs or credentials.",
-    query: {
-      installation: z
-        .coerce.number()
-        .int()
-        .positive()
-        .optional()
-        .describe("An installation id from your linked GitHub accounts. Omit to list repositories from all your installations."),
-    },
-    response: z.object({ repos: z.array(githubRepoSchema) }),
-    errors: [400, 403, 404, 502],
-    run: (p, i) => apiListGithubRepos(p, i.installation),
-  }),
+
   endpoint({
     id: "delete_project",
     method: "DELETE",
@@ -864,27 +843,7 @@ export const EXPANDED_ENDPOINTS: Endpoint[] = [
     destructive: true,
     run: (p, i) => apiDeleteProject(p, i.projectId, i.confirmName, i.removeFromServer ?? false),
   }),
-  endpoint({
-    id: "get_github_status",
-    method: "GET",
-    path: "/github/status",
-    scope: "projects:read",
-    bucket: "read",
-    tag: "Account",
-    summary: "Check GitHub App connections",
-    description:
-      "Report the GitHub App installations linked to the token owner's account. This reflects installed accounts used by this app; it does not report a separate personal GitHub OAuth connection or check access to each repository.",
-    response: z.object({
-      connected: z.boolean(),
-      installations: z.array(z.object({
-        id: z.number().int(),
-        accountLogin: z.string(),
-        accountType: z.string(),
-        createdAt: z.string(),
-      })),
-    }),
-    run: (p) => apiGetGithubStatus(p),
-  }),
+
 
   // ----- build output
   endpoint({
@@ -960,31 +919,7 @@ export const EXPANDED_ENDPOINTS: Endpoint[] = [
   }),
 
   // ----- environment variables
-  endpoint({
-    id: "list_env_vars",
-    method: "GET",
-    path: "/projects/{projectId}/env",
-    scope: "env:read",
-    bucket: "read",
-    tag: "Environment",
-    summary: "List environment variable names",
-    // Opt out of framing: only validated names and fixed targets come back.
-    untrusted: false,
-    description: `List the names and targets (all, production or preview) of a project's environment variables, ordered by name then target. Values are never returned by any endpoint. Pass limit and then the returned nextCursor as cursor to page through them; items is the page, total is the number of entries, and env keeps the full list for older callers. ${NOT_FOUND_NOTE}`,
-    pathParams: { projectId },
-    query: {
-      limit: z.coerce.number().int().min(1).max(100).default(100).describe("How many entries in a page, 1 to 100. Default 100."),
-      cursor: z.string().max(200).optional().describe("The nextCursor of the previous page. Omit for the first page."),
-    },
-    response: z.object({
-      env: z.array(envEntrySchema).describe("All the names and targets, unchanged for callers from before pagination."),
-      items: z.array(envEntrySchema).describe("This page of entries, in the same order as env."),
-      total: z.number().int().describe("Number of entries in all."),
-      nextCursor: z.string().nullable().describe("Pass as cursor for the next page, or null on the last page."),
-    }),
-    errors: [400, 404],
-    run: (p, i) => apiListEnv(p, i.projectId, i.limit, i.cursor),
-  }),
+
   endpoint({
     id: "set_env_var",
     method: "PUT",
@@ -1161,57 +1096,8 @@ export const EXPANDED_ENDPOINTS: Endpoint[] = [
     errors: [400, 404],
     run: (p, i) => apiGetAlerts(p, i.projectId),
   }),
-  endpoint({
-    id: "list_deployment_errors",
-    method: "GET",
-    path: "/projects/{projectId}/errors",
-    scope: "analytics:read",
-    bucket: "read",
-    tag: "Analytics",
-    summary: "List project error groups",
-    description: `List grouped client-reported JavaScript errors for one project, with fingerprints, counts, first and last occurrence, triage state and assignee. These come from page analytics, not the service runtime journal, and they do not include deployment provenance. ${NOT_FOUND_NOTE}`,
-    pathParams: { projectId },
-    query: {
-      days: z.coerce.number().int().min(1).max(90).default(30).describe("Look back 1 to 90 days."),
-      status: z.enum(["all", "open", "resolved", "ignored"]).default("all").describe("Filter by triage state."),
-      limit: z.coerce.number().int().min(1).max(100).default(50).describe("Maximum groups to return, 1 to 100."),
-    },
-    response: z.object({
-      projectId: z.string(),
-      source: z.literal("client-analytics"),
-      groups: z.array(z.object({
-        fingerprint: z.string(),
-        message: z.string(),
-        file: z.string().nullable(),
-        count: z.number().int(),
-        firstSeen: z.number(),
-        lastSeen: z.number(),
-        status: z.enum(["open", "resolved", "ignored"]),
-        assigneeId: z.string().nullable(),
-      })),
-      truncated: z.boolean(),
-    }),
-    errors: [400, 404],
-    run: (p, i) => apiListDeploymentErrors(p, i.projectId, i.days, i.status, i.limit),
-  }),
-  endpoint({
-    id: "triage_deployment_error",
-    method: "POST",
-    path: "/projects/{projectId}/errors/{fingerprint}",
-    scope: "projects:write",
-    bucket: "write",
-    tag: "Analytics",
-    summary: "Triage a project error group",
-    description: `Resolve, reopen, ignore or assign a client-reported project error group. Triage follows the project's action transitions and only the project owner can change it; use list_deployment_errors to find fingerprints. This operates on project analytics errors, not deployment log errors. ${NOT_FOUND_NOTE}`,
-    pathParams: { projectId, fingerprint: z.string().min(1).max(64) },
-    body: {
-      action: z.enum(ERROR_GROUP_ACTIONS).describe("One of resolve, reopen, ignore or assign."),
-      assigneeId: z.string().min(1).max(64).nullable().optional().describe("Project member to assign, or null to unassign."),
-    },
-    response: z.object({ status: z.enum(["open", "resolved", "ignored"]), assigneeId: z.string().nullable() }),
-    errors: [400, 404, 409],
-    run: (p, i) => apiTriageDeploymentError(p, i.projectId, i.fingerprint, i.action, i.assigneeId),
-  }),
+
+
   endpoint({
     id: "get_status_page",
     method: "GET",
