@@ -10,7 +10,7 @@ import {
   withIdempotency,
 } from "@/server/api-idempotency";
 import { upsertUser } from "@/server/auth/session";
-import { schema } from "@/server/db";
+import { closeDbForTests, getDb, schema } from "@/server/db";
 import { HttpError } from "@/server/http";
 import { createServer } from "@/server/servers";
 import { rateLimiter } from "@/server/rate-limit";
@@ -38,13 +38,23 @@ beforeAll(async () => {
   tokenId = minted.token.id;
 });
 afterAll(async () => ctx.cleanup());
-beforeEach(() => {
-  clearIdempotencyKeys();
+beforeEach(async () => {
+  await clearIdempotencyKeys();
   rateLimiter().clear();
 });
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+
+/** The stored row for one (token, key), read straight from the table. */
+async function rowFor(scope: string, key: string) {
+  const db = await getDb();
+  const rows = await db
+    .select()
+    .from(schema.idempotencyKeys)
+    .where(eq(schema.idempotencyKeys.scope, scope));
+  return rows.find((r) => r.key === key);
+}
 
 describe("withIdempotency: the three cases", () => {
   it("runs the write once and replays the first answer for the same key and request", async () => {
@@ -96,6 +106,8 @@ describe("withIdempotency: the three cases", () => {
         return json(202, { queued: true });
       },
     });
+    // The claim is a row: wait until it is visible before the second request arrives.
+    await vi.waitFor(async () => expect((await rowFor("tok", "k3"))?.state).toBe("pending"));
     const busy = await withIdempotency({ scope: "tok", key: "k3", fingerprint: "fp", run: async () => json(202, {}) }).then(
       () => null,
       (e: unknown) => e
@@ -108,6 +120,24 @@ describe("withIdempotency: the three cases", () => {
     expect((await slow).status).toBe(202);
     // Once it finished, the same key replays it.
     expect((await withIdempotency({ scope: "tok", key: "k3", fingerprint: "fp", run: async () => json(500, {}) })).status).toBe(202);
+  });
+
+  it("runs once when two copies of one request arrive at the same moment", async () => {
+    let runs = 0;
+    const run = async () => {
+      runs++;
+      await new Promise((r) => setTimeout(r, 20));
+      return json(201, { n: runs });
+    };
+    const results = await Promise.allSettled([
+      withIdempotency({ scope: "tok", key: "race", fingerprint: "fp", run }),
+      withIdempotency({ scope: "tok", key: "race", fingerprint: "fp", run }),
+    ]);
+    expect(runs).toBe(1);
+    // The second copy is refused while the first runs, or replays its answer if it arrives after.
+    const statuses = results.map((r) => (r.status === "fulfilled" ? r.value.status : (r.reason as HttpError).status));
+    expect(statuses).toContain(201);
+    expect(statuses.every((s) => s === 201 || s === 409)).toBe(true);
   });
 
   it("keeps keys apart per token, so one token cannot replay another's answer", async () => {
@@ -152,6 +182,7 @@ describe("withIdempotency: the three cases", () => {
       },
     });
     expect(flaky.status).toBe(500);
+    expect(await rowFor("tok", "boom")).toBeUndefined();
     const retry = await withIdempotency({ scope: "tok", key: "boom", fingerprint: "fp", run: async () => (runs++, json(201, {})) });
     expect(retry.status).toBe(201);
     expect(runs).toBe(2);
@@ -163,6 +194,35 @@ describe("withIdempotency: the three cases", () => {
     for (const bad of ["x".repeat(256), "has space", "tab\tkey"]) {
       expect(() => idempotencyKeyFrom(new Request("http://x", { headers: { "Idempotency-Key": bad } }))).toThrow(HttpError);
     }
+  });
+});
+
+describe("the key is durable", () => {
+  it("a record written by one process is seen by a second process", async () => {
+    await withIdempotency({ scope: "tok", key: "durable", fingerprint: "fp", run: async () => json(201, { id: "d1" }) });
+
+    // A second process: close this connection and forget every module-level value, then
+    // open the database again and read the table with a fresh copy of the module.
+    await closeDbForTests();
+    vi.resetModules();
+    const other = await import("@/server/api-idempotency");
+    const { getDb: reopen, schema: freshSchema } = await import("@/server/db");
+    const db = await reopen();
+    // The closed connection is replaced for the rest of this file.
+    ctx.db = db;
+    const [stored] = await db.select().from(freshSchema.idempotencyKeys).where(eq(freshSchema.idempotencyKeys.key, "durable"));
+    expect(stored).toMatchObject({ scope: "tok", state: "done", status: 201 });
+
+    let runs = 0;
+    const replay = await other.withIdempotency({
+      scope: "tok",
+      key: "durable",
+      fingerprint: "fp",
+      run: async () => (runs++, json(201, { id: "d2" })),
+    });
+    expect(runs).toBe(0);
+    expect(await replay.json()).toEqual({ id: "d1" });
+    expect(replay.headers.get("Idempotent-Replayed")).toBe("true");
   });
 });
 
@@ -224,7 +284,6 @@ describe("the write routes under /api/v1", () => {
 
 describe("secret-bearing answers are never replayed", () => {
   it("runs once, refuses a repeat, and keeps no copy of the secret", async () => {
-    clearIdempotencyKeys();
     const secret = "https://hooks.example/egg-secret-value";
     let runs = 0;
     const run = async () => {
@@ -240,8 +299,9 @@ describe("secret-bearing answers are never replayed", () => {
     ).rejects.toMatchObject({ status: 409, code: "idempotency_secret_not_replayed" });
     expect(runs).toBe(1);
 
-    // The table entry holds no body, so nothing can be read back from memory.
-    const stored = [...(globalThis as unknown as Record<symbol, Map<string, { body?: string }>>)[Symbol.for("egg.idempotency")]!.values()];
-    expect(stored.some((e) => (e.body ?? "").includes(secret))).toBe(false);
+    // The stored row holds no body, so nothing can be read back from the table.
+    const row = await rowFor("tok", "k-secret");
+    expect(row).toMatchObject({ state: "done", sensitive: true, body: "" });
+    expect(JSON.stringify(row)).not.toContain(secret);
   });
 });
