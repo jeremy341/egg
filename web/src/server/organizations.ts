@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
+import { audit } from "@/server/audit";
 import { getDb, schema } from "@/server/db";
 import type { OrgRole } from "@/server/db/schema";
 import { HttpError, notFound } from "@/server/http";
@@ -52,5 +53,6 @@ export async function createOrganization(userId: string, name: string, now = new
     await tx.insert(schema.organizations).values({ id, name: trimmed, slug, ownerId: userId, createdAt: now, updatedAt: now });
     await tx.insert(schema.orgMembers).values({ orgId: id, userId, role: "owner", createdAt: now });
   });
+  await audit(userId, "org.create", id, undefined, { level: "organization", orgId: id });
   return { id, slug };
 }

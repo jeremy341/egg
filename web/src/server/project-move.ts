@@ -138,10 +138,13 @@ export async function confirmProjectMove(
   }
   const db = await getDb();
   await db.update(schema.projects).set({ orgId: toOrgId, updatedAt: now }).where(eq(schema.projects.id, projectId));
-  await audit(actorId, "project.move", projectId, {
-    from: preview.fromOrgId ?? "personal",
-    to: toOrgId ?? "personal",
-    losing: preview.losing.length,
-  });
+  // Filed under the organization the project is leaving, or else the one it joins.
+  await audit(
+    actorId,
+    "project.move",
+    projectId,
+    { from: preview.fromOrgId ?? "personal", to: toOrgId ?? "personal", losing: preview.losing.length },
+    { level: "organization", orgId: preview.fromOrgId ?? toOrgId }
+  );
   return { fromOrgId: preview.fromOrgId, toOrgId };
 }

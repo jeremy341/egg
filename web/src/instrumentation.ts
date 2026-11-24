@@ -43,6 +43,12 @@ export async function register() {
         console.error("report source cleanup failed", err);
       }
       }, 60_000, 15 * 60_000);
+      try {
+        const { pruneAuditLog } = await import("@/server/audit-retention");
+        await pruneAuditLog();
+      } catch (err) {
+        console.error("audit log cleanup failed", err);
+      }
       const { pruneDeploymentLogs } = await import("@/server/retention");
       await pruneDeploymentLogs();
     };

@@ -5,11 +5,21 @@ import { getDb, schema } from "@/server/db";
  * Who did what. Written next to the change itself and never allowed to break
  * it: if the log cannot be written, the action still goes through.
  */
+export type AuditLevel = "app" | "organization" | "instance";
+
+/**
+ * Which scope an entry belongs to. Defaults to "app". An "organization" entry
+ * names its organization in `orgId`. Entries are kept for AUDIT_KEEP_DAYS
+ * (audit-retention.ts).
+ */
+export type AuditScope = { level: AuditLevel; orgId?: string | null };
+
 export async function audit(
   userId: string | null,
   action: string,
   target?: string | null,
-  meta?: Record<string, string | number | boolean | null>
+  meta?: Record<string, string | number | boolean | null>,
+  scope: AuditScope = { level: "app" }
 ) {
   try {
     const db = await getDb();
@@ -18,6 +28,8 @@ export async function audit(
       action,
       target: target ?? null,
       meta: meta ? JSON.stringify(meta) : null,
+      level: scope.level,
+      orgId: scope.orgId ?? null,
       at: new Date(),
     });
   } catch (err) {
@@ -59,6 +71,16 @@ export const LABELS: Record<string, string> = {
   "account.cleanup_cancel_failed": "Dropped a failed cleanup after acknowledging possibly-unremoved projects",
   "admin.maintenance": "Changed maintenance settings",
   "admin.grant": "Made someone an administrator",
+  "org.create": "Created organization",
+  "org.invite": "Invited someone to an organization",
+  "org.invite.resend": "Sent a new invitation for an organization",
+  "org.invite.cancel": "Cancelled an invitation to an organization",
+  "org.join": "Joined an organization",
+  "project.move": "Moved a project between organizations",
+  "project.transfer.request": "Asked to hand over ownership of",
+  "project.transfer.accept": "Accepted ownership of",
+  "project.transfer.decline": "Declined ownership of",
+  "project.transfer.cancel": "Cancelled an ownership handover of",
   "admin.revoke": "Removed an administrator",
   "security_report.list": "Viewed the security report inbox",
   "security_report.read": "Read a security report",
