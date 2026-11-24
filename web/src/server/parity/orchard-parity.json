@@ -1,12 +1,12 @@
 {
-  "baseline_present": 28,
+  "baseline_present": 23,
   "baseline_partial": 19,
   "tools": [
     {
       "name": "add_env_vars",
       "source": "apps/server/src/mcp/tools/configuration.ts",
       "status": "partial",
-      "ours": "add_env_vars"
+      "ours": "set_env_var"
     },
     {
       "name": "add_shared_env_vars",
@@ -101,20 +101,20 @@
     {
       "name": "create_job",
       "source": "apps/server/src/mcp/tools/jobs.ts",
-      "status": "present",
-      "ours": "create_job"
+      "status": "missing",
+      "ours": null
     },
     {
       "name": "create_notification_channel",
       "source": "apps/server/src/mcp/tools/notifications.ts",
-      "status": "partial",
-      "ours": "create_notification_channel"
+      "status": "missing",
+      "ours": null
     },
     {
       "name": "create_notification_rule",
       "source": "apps/server/src/mcp/tools/notifications.ts",
-      "status": "partial",
-      "ours": "create_notification_rule"
+      "status": "missing",
+      "ours": null
     },
     {
       "name": "create_project",
@@ -155,8 +155,8 @@
     {
       "name": "delete_deploy_webhook_token",
       "source": "apps/server/src/mcp/tools/dangerous.ts",
-      "status": "partial",
-      "ours": "revoke_deploy_hook"
+      "status": "missing",
+      "ours": null
     },
     {
       "name": "delete_deployment",
@@ -168,7 +168,7 @@
       "name": "delete_env_vars",
       "source": "apps/server/src/mcp/tools/dangerous.ts",
       "status": "present",
-      "ours": "delete_env_vars"
+      "ours": "delete_env_var"
     },
     {
       "name": "delete_environment",
@@ -185,8 +185,8 @@
     {
       "name": "delete_job",
       "source": "apps/server/src/mcp/tools/jobs.ts",
-      "status": "present",
-      "ours": "delete_job"
+      "status": "missing",
+      "ours": null
     },
     {
       "name": "delete_notification_channel",
@@ -275,8 +275,8 @@
     {
       "name": "disable_auto_deploy",
       "source": "apps/server/src/mcp/tools/deployments.ts",
-      "status": "missing",
-      "ours": null
+      "status": "partial",
+      "ours": "update_project"
     },
     {
       "name": "disable_database_deletion_protection",
@@ -293,8 +293,8 @@
     {
       "name": "enable_auto_deploy",
       "source": "apps/server/src/mcp/tools/deployments.ts",
-      "status": "missing",
-      "ours": null
+      "status": "partial",
+      "ours": "update_project"
     },
     {
       "name": "enable_database_public",
@@ -353,14 +353,14 @@
     {
       "name": "get_auto_deploy_status",
       "source": "apps/server/src/mcp/tools/deployments.ts",
-      "status": "missing",
-      "ours": null
+      "status": "partial",
+      "ours": "get_project"
     },
     {
       "name": "get_build_history",
       "source": "apps/server/src/mcp/tools/observability.ts",
-      "status": "missing",
-      "ours": null
+      "status": "partial",
+      "ours": "get_deployment_logs"
     },
     {
       "name": "get_build_logs",
@@ -515,8 +515,8 @@
     {
       "name": "get_env_vars",
       "source": "apps/server/src/mcp/tools/query.ts",
-      "status": "partial",
-      "ours": "list_env_vars"
+      "status": "missing",
+      "ours": null
     },
     {
       "name": "get_github_status",
@@ -527,8 +527,8 @@
     {
       "name": "get_image_history",
       "source": "apps/server/src/mcp/tools/query.ts",
-      "status": "missing",
-      "ours": null
+      "status": "partial",
+      "ours": "list_deployments"
     },
     {
       "name": "get_ingress",
@@ -545,8 +545,8 @@
     {
       "name": "get_job",
       "source": "apps/server/src/mcp/tools/jobs.ts",
-      "status": "present",
-      "ours": "get_job"
+      "status": "missing",
+      "ours": null
     },
     {
       "name": "get_job_run",
@@ -557,8 +557,8 @@
     {
       "name": "get_job_run_logs",
       "source": "apps/server/src/mcp/tools/jobs.ts",
-      "status": "partial",
-      "ours": "get_job_run_logs"
+      "status": "missing",
+      "ours": null
     },
     {
       "name": "get_killed_container_logs",
@@ -707,8 +707,8 @@
     {
       "name": "list_build_runs",
       "source": "apps/server/src/mcp/tools/rollout.ts",
-      "status": "missing",
-      "ours": null
+      "status": "partial",
+      "ours": "list_deployments"
     },
     {
       "name": "list_checkpoints",
@@ -767,8 +767,8 @@
     {
       "name": "list_deploy_webhook_tokens",
       "source": "apps/server/src/mcp/tools/deployments.ts",
-      "status": "partial",
-      "ours": "list_deploy_webhook_tokens"
+      "status": "missing",
+      "ours": null
     },
     {
       "name": "list_deployment_errors",
@@ -797,8 +797,8 @@
     {
       "name": "list_github_repos",
       "source": "apps/server/src/mcp/tools/query.ts",
-      "status": "missing",
-      "ours": null
+      "status": "present",
+      "ours": "list_github_repos"
     },
     {
       "name": "list_ingresses",
@@ -809,14 +809,14 @@
     {
       "name": "list_job_runs",
       "source": "apps/server/src/mcp/tools/jobs.ts",
-      "status": "partial",
-      "ours": "list_job_runs"
+      "status": "missing",
+      "ours": null
     },
     {
       "name": "list_jobs",
       "source": "apps/server/src/mcp/tools/jobs.ts",
-      "status": "present",
-      "ours": "list_jobs"
+      "status": "missing",
+      "ours": null
     },
     {
       "name": "list_killed_containers",
@@ -834,7 +834,7 @@
       "name": "list_notification_channels",
       "source": "apps/server/src/mcp/tools/notifications.ts",
       "status": "partial",
-      "ours": "list_notification_channels"
+      "ours": "get_notifications"
     },
     {
       "name": "list_notification_deliveries",
@@ -845,8 +845,8 @@
     {
       "name": "list_notification_rules",
       "source": "apps/server/src/mcp/tools/notifications.ts",
-      "status": "partial",
-      "ours": "list_notification_rules"
+      "status": "missing",
+      "ours": null
     },
     {
       "name": "list_organizations",
@@ -881,8 +881,8 @@
     {
       "name": "list_releases",
       "source": "apps/server/src/mcp/tools/rollout.ts",
-      "status": "missing",
-      "ours": null
+      "status": "partial",
+      "ours": "list_deployments"
     },
     {
       "name": "list_sandbox_sessions",
@@ -1013,8 +1013,8 @@
     {
       "name": "run_job",
       "source": "apps/server/src/mcp/tools/jobs.ts",
-      "status": "present",
-      "ours": "run_job"
+      "status": "missing",
+      "ours": null
     },
     {
       "name": "scale_database",
@@ -1074,7 +1074,7 @@
       "name": "set_env_vars",
       "source": "apps/server/src/mcp/tools/configuration.ts",
       "status": "partial",
-      "ours": "set_env_vars"
+      "ours": "set_env_var"
     },
     {
       "name": "set_ingress_protection",
@@ -1152,7 +1152,7 @@
       "name": "test_notification_channel",
       "source": "apps/server/src/mcp/tools/notifications.ts",
       "status": "partial",
-      "ours": "test_notification_channel"
+      "ours": "test_notification"
     },
     {
       "name": "triage_deployment_error",
@@ -1217,8 +1217,8 @@
     {
       "name": "update_deployment_health_check",
       "source": "apps/server/src/mcp/tools/configuration.ts",
-      "status": "missing",
-      "ours": null
+      "status": "partial",
+      "ours": "update_project"
     },
     {
       "name": "update_deployment_image",
@@ -1265,8 +1265,8 @@
     {
       "name": "update_job",
       "source": "apps/server/src/mcp/tools/jobs.ts",
-      "status": "present",
-      "ours": "update_job"
+      "status": "missing",
+      "ours": null
     },
     {
       "name": "update_notification_channel",
