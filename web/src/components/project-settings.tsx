@@ -24,6 +24,7 @@ import { PixelAvatar } from "@/components/ui/pixel-avatar";
 import type { ProjectView } from "@/server/queries";
 import { cn } from "@/lib/utils";
 import { CleanupCard } from "@/components/cleanup-card";
+import { ProjectMembersCard } from "@/components/project-members-card";
 import { HostingOptions, StartCommandHelp, runtimeHint, type TargetCapabilities } from "@/components/hosting-options";
 import { ContainerDeploymentFields, containerConfigurationError, containerDeploymentBody, defaultContainerForm } from "@/components/container-deployment-fields";
 
@@ -464,6 +465,10 @@ export function ProjectSettings({
                 <HomepageFeedCard project={project} />
               </div>
             </Advanced>
+          </Section>
+
+          <Section id="members-heading" title="Members">
+            <ProjectMembersCard projectId={project.id} />
           </Section>
 
           <Section id="section-danger" title="Danger zone">
