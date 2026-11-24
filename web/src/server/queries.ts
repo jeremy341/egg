@@ -10,6 +10,7 @@ import { notifySummary } from "@/server/notify";
 import { getReadableProject } from "@/server/projects";
 import { projectReadableBy } from "@/server/project-roles";
 import { RIGHT_SIZE_WINDOW_DAYS, suggestRightSize, type RightSize } from "@/server/right-size";
+import { parseStoredCheck } from "@/server/deploy-regression";
 import { statusUrl } from "@/server/status-page";
 import { usageFromProbe } from "@/server/runtime-info";
 import { durationText, timeAgo, uiState, type UiState } from "@/lib/status";
@@ -42,6 +43,8 @@ export type ProjectView = {
   port: number;
   healthPath: string;
   autoDeploy: boolean;
+  /** Refuses deletion while on. Switched from the danger zone of the settings page. */
+  deletionProtected: boolean;
   buildLocation: BuildLocation;
   /** True when a deploy hook exists. The URL is only ever shown when it is created. */
   hookActive: boolean;
@@ -188,6 +191,7 @@ async function loadProjectViews(userId: string): Promise<ProjectView[]> {
       port: p.port,
       healthPath: p.healthPath,
       autoDeploy: p.autoDeploy,
+      deletionProtected: p.deletionProtected,
       buildLocation: p.buildLocation,
       hookActive: Boolean(p.hookHash),
       hookCreatedAt: p.hookCreatedAt ? p.hookCreatedAt.toISOString() : null,
@@ -271,6 +275,15 @@ export async function deploymentView(userId: string, deploymentId: string) {
     .where(eq(schema.domains.projectId, row.p.id));
   return {
     deployment: toDeploymentView(row.d, row.p, userId),
+    /** The before/after comparison, or null while it is still waiting for 15 minutes of checks. */
+    postDeployCheck: parseStoredCheck(row.d.postDeployCheck),
+    /** A production deploy that became ready in the last 20 minutes and is not compared yet. */
+    postDeployWaiting:
+      row.d.state === "ready" &&
+      row.d.env === "production" &&
+      row.d.postDeployCheck === null &&
+      row.d.finishedAt !== null &&
+      Date.now() - row.d.finishedAt.getTime() < 20 * 60_000,
     project: {
       id: row.p.id,
       slug: row.p.slug,

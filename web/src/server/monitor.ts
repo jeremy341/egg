@@ -10,6 +10,9 @@ import { parseServiceStatus, type ServiceStatus } from "@/server/service-status"
 import { probeSession } from "@/server/ssh/probe";
 import { invalidateStatusPage } from "@/server/status-tags";
 import { withMaintenanceLease } from "@/server/maintenance-leases";
+import { purgeExpiredTrash } from "@/server/project-trash";
+import { runPostDeployChecks } from "@/server/deploy-regression-job";
+import { evaluateRules } from "@/server/alert-rules";
 
 /**
  * Uptime checks and usage history, run by the worker on a timer.
@@ -272,26 +275,40 @@ async function checkServer(server: typeof schema.servers.$inferSelect, now: Date
   for (const p of projects) {
     await checkResources(p, usage, now);
     const status = results.get(p.id);
-    if (!status) continue; // could not read it; that says nothing about the app
+    if (!status) {
+      // Could not read it: that says nothing about the app, so its rules see no value.
+      await evaluateRules(p.id, { cpuPercent: null, memMb: null, healthMs: null }, now);
+      continue;
+    }
+    // Every check is kept, failed ones too, so the error rate and restart count see crashes.
     // A service that is not running still gets a row when its last exit was a crash, so the crash is kept.
-    if (status.state === "running" || status.lastExit) {
-      const prev = await db
-        .select({ at: schema.projectSamples.at, cpuNs: schema.projectSamples.cpuNs })
-        .from(schema.projectSamples)
-        .where(eq(schema.projectSamples.projectId, p.id))
-        .orderBy(desc(schema.projectSamples.at))
-        .limit(1)
-        .get();
-      await db.insert(schema.projectSamples).values({
-        projectId: p.id,
-        at: now,
-        memMb: status.memoryMb,
-        cpuNs: status.cpuNs,
-        cpuPercent: cpuPercentBetween(prev, { at: now, cpuNs: status.cpuNs }),
-        restarts: status.restarts,
-        exitCode: status.lastExit?.code ?? null,
-        exitReason: status.lastExit?.reason ?? null,
-      });
+    const prev = await db
+      .select({ at: schema.projectSamples.at, cpuNs: schema.projectSamples.cpuNs })
+      .from(schema.projectSamples)
+      .where(eq(schema.projectSamples.projectId, p.id))
+      .orderBy(desc(schema.projectSamples.at))
+      .limit(1)
+      .get();
+    const reading = {
+      cpuPercent: cpuPercentBetween(prev, { at: now, cpuNs: status.cpuNs }),
+      memMb: status.state === "running" ? status.memoryMb : null,
+      healthMs: status.http?.ms ?? null,
+    };
+    await db.insert(schema.projectSamples).values({
+      projectId: p.id,
+      at: now,
+      memMb: reading.memMb,
+      cpuNs: status.cpuNs,
+      cpuPercent: reading.cpuPercent,
+      restarts: status.restarts,
+      exitCode: status.lastExit?.code ?? null,
+      exitReason: status.lastExit?.reason ?? null,
+      healthMs: reading.healthMs,
+      healthOk: isHealthy(status, null),
+    });
+    await evaluateRules(p.id, reading, now);
+    if (status.result !== p.lastExitResult) {
+      await db.update(schema.projects).set({ lastExitResult: status.result }).where(eq(schema.projects.id, p.id));
     }
     const next = nextMonitorState(
       { state: p.monitorState, failures: p.monitorFailures },
@@ -363,6 +380,9 @@ async function runOwnedMonitorPass(onError?: (err: unknown) => void, now?: Date)
   await db.delete(schema.projectSamples).where(lt(schema.projectSamples.at, cutoff));
   await prunePageviews(passFinishedAt);
   await pruneAlertEvents(passFinishedAt);
+  // The cleanup job: trashed apps past their 30 days are removed for good.
+  await runPostDeployChecks(passFinishedAt);
+  await purgeExpiredTrash(passFinishedAt);
   const { reconcileClosedPreviews } = await import("@/server/github/pulls");
   await reconcileClosedPreviews();
 }

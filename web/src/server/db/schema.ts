@@ -285,6 +285,10 @@ export const projects = sqliteTable(
      * status page. Only ever honoured for a repository that GitHub confirms is public (server/public-feed.ts).
      */
     homepageFeed: integer("homepage_feed", { mode: "boolean" }).notNull().default(false),
+    /** While on, the app cannot be deleted (or moved to the trash) until someone switches it off. */
+    deletionProtected: integer("deletion_protected", { mode: "boolean" }).notNull().default(false),
+    /** systemd's result for the service's last exit, such as "oom-kill". Null when unknown. */
+    lastExitResult: text("last_exit_result"),
     createdAt: ts("created_at").notNull(),
     updatedAt: ts("updated_at").notNull(),
   },
@@ -412,6 +416,9 @@ export const deployments = sqliteTable(
     /** Set atomically immediately before production/preview activation; cancellation is refused after this point. */
     activationStartedAt: ts("activation_started_at"),
     finishedAt: ts("finished_at"),
+    /** Before/after comparison 15 minutes after the deploy became ready. JSON; null until it has run. */
+    postDeployCheck: text("post_deploy_check"),
+    postDeployCheckedAt: ts("post_deploy_checked_at"),
   },
   (t) => [
     index("deployments_project_idx").on(t.projectId, t.createdAt, t.id),
@@ -890,8 +897,66 @@ export const projectSamples = sqliteTable(
      */
     exitCode: integer("exit_code"),
     exitReason: text("exit_reason"),
+    /** Time the health path took, in milliseconds. Null when nothing answered or it was not checked. */
+    healthMs: integer("health_ms"),
+    /** Whether the health path answered below a server error. Null when the service was not checked. */
+    healthOk: integer("health_ok", { mode: "boolean" }),
   },
   (t) => [index("project_samples_idx").on(t.projectId, t.at)]
+);
+
+export const ALERT_RULE_METRICS = ["cpu_percent", "memory_mb", "latency_ms"] as const;
+export type AlertRuleMetric = (typeof ALERT_RULE_METRICS)[number];
+export const ALERT_RULE_STATUSES = ["ok", "over", "firing", "recovering", "no_data"] as const;
+export type AlertRuleStatus = (typeof ALERT_RULE_STATUSES)[number];
+
+/**
+ * A threshold rule on one app metric. `status` is the last evaluated state; the
+ * time fields say when the metric first crossed the line and when it came back.
+ */
+export const alertRules = sqliteTable(
+  "alert_rules",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    metric: text("metric", { enum: ALERT_RULE_METRICS }).notNull(),
+    comparison: text("comparison", { enum: ["above", "below"] }).notNull(),
+    threshold: real("threshold").notNull(),
+    /** Minutes the metric must stay past the threshold before the rule fires. */
+    durationMinutes: integer("duration_minutes").notNull(),
+    paused: integer("paused", { mode: "boolean" }).notNull().default(false),
+    status: text("status", { enum: ALERT_RULE_STATUSES }).notNull().default("ok"),
+    breachSince: ts("breach_since"),
+    recoverSince: ts("recover_since"),
+    lastValue: real("last_value"),
+    evaluatedAt: ts("evaluated_at"),
+    createdAt: ts("created_at").notNull(),
+    updatedAt: ts("updated_at").notNull(),
+  },
+  (t) => [index("alert_rules_project_idx").on(t.projectId)]
+);
+
+/**
+ * A deleted app, kept for 30 days. `payload` is a snapshot of its rows (sealed
+ * fields stay sealed); restoring puts them back under the same ids.
+ */
+export const projectTrash = sqliteTable(
+  "project_trash",
+  {
+    projectId: text("project_id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    slug: text("slug").notNull(),
+    serverId: text("server_id").notNull(),
+    payload: text("payload").notNull(),
+    deletedAt: ts("deleted_at").notNull(),
+    purgeAt: ts("purge_at").notNull(),
+  },
+  (t) => [index("project_trash_user_idx").on(t.userId), index("project_trash_purge_idx").on(t.purgeAt)]
 );
 
 export const ALERT_TYPES = ["down", "disk", "memory", "cpu", "deploy"] as const;
@@ -925,6 +990,7 @@ export const WEBHOOK_EVENTS = [
   "deployment.started",
   "deployment.succeeded",
   "deployment.failed",
+  "deploy.regressed",
 ] as const;
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
 
