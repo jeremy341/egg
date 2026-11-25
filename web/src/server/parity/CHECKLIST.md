@@ -1,128 +1,34 @@
 # Orchard parity checklist (MCP and API tools)
 
-Generated from hackclub/orchard `apps/server/src/mcp/tools/*.ts` and `grafts/greenhouse/mcp`. Our side: `ENDPOINTS` in `web/src/server/api-v1.ts`. Test-only names are excluded.
+Generated from the Orchard parity manifest (`orchard-parity.json`). Our side: `ENDPOINTS` in `web/src/server/api-v1*.ts`. Test-only names are excluded.
 
-Totals: 217 Orchard product tools. Present: 22. Partial: 11. Missing: 184. Ours only: 20.
+Totals: 217 Orchard product tools. Present: 107. Partial: 10. Missing: 21. Not applicable: 79. Ours only: 29.
 
 `present` means an equivalent endpoint exists with the same job. `partial` means it covers part of the job. `missing` means no equivalent yet.
-
-## apps/server/src/mcp/compact/compact-server.ts
-
-| Orchard tool | Status | Our endpoint |
-|---|---|---|
-| [ ] `call_api` | missing | - |
-| [ ] `describe_operation` | missing | - |
-| [ ] `search_api` | missing | - |
-
-## apps/server/src/mcp/tools/compose.ts
-
-| Orchard tool | Status | Our endpoint |
-|---|---|---|
-| [ ] `get_compose_stack` | missing | - |
-| [ ] `list_compose_stacks` | missing | - |
-| [ ] `redeploy_compose_stack` | missing | - |
 
 ## apps/server/src/mcp/tools/configuration.ts
 
 | Orchard tool | Status | Our endpoint |
 |---|---|---|
-| [~] `add_env_vars` | partial | `set_env_var` |
-| [x] `create_ingress` | present | `add_domain` |
-| [ ] `create_service` | missing | - |
-| [ ] `delete_registry_credential` | missing | - |
-| [ ] `get_ingress_protection` | missing | - |
-| [ ] `list_registry_credentials` | missing | - |
-| [~] `set_env_vars` | partial | `set_env_var` |
-| [ ] `set_ingress_protection` | missing | - |
-| [ ] `set_registry_credential` | missing | - |
-| [ ] `set_service_exposure` | missing | - |
-| [ ] `set_service_port_public` | missing | - |
-| [ ] `update_deployment_build_config` | missing | - |
-| [ ] `update_deployment_health_check` | missing | - |
-| [ ] `update_deployment_image` | missing | - |
-| [ ] `update_deployment_pull_policy` | missing | - |
-| [ ] `update_deployment_strategy` | missing | - |
-| [ ] `update_deployment_volumes` | missing | - |
-| [ ] `update_ingress` | missing | - |
+| [x] `add_env_vars` | present | `add_env_vars` |
+| [~] `create_ingress` | partial | `add_domain` |
+| [x] `create_service` | present | `create_service` |
+| [x] `delete_registry_credential` | present | `delete_registry_credential` |
+| [x] `get_ingress_protection` | present | `get_ingress_protection` |
+| [x] `list_registry_credentials` | present | `list_registry_credentials` |
+| [x] `set_env_vars` | present | `set_env_vars` |
+| [x] `set_ingress_protection` | present | `set_ingress_protection` |
+| [x] `set_registry_credential` | present | `set_registry_credential` |
+| [x] `set_service_exposure` | present | `set_service_exposure` |
+| [x] `set_service_port_public` | present | `set_service_port_public` |
+| [x] `update_deployment_build_config` | present | `update_deployment_build_config` |
+| [x] `update_deployment_health_check` | present | `update_deployment_health_check` |
+| [x] `update_deployment_image` | present | `update_deployment_image` |
+| [x] `update_deployment_pull_policy` | present | `update_deployment_pull_policy` |
+| [x] `update_deployment_strategy` | present | `update_deployment_strategy` |
+| [x] `update_deployment_volumes` | present | `update_deployment_volumes` |
+| [x] `update_ingress` | present | `update_ingress` |
 | [ ] `update_service` | missing | - |
-
-## apps/server/src/mcp/tools/dangerous.ts
-
-| Orchard tool | Status | Our endpoint |
-|---|---|---|
-| [ ] `delete_database` | missing | - |
-| [ ] `delete_deploy_webhook_token` | missing | - |
-| [ ] `delete_deployment` | missing | - |
-| [x] `delete_env_vars` | present | `delete_env_var` |
-| [ ] `delete_environment` | missing | - |
-| [x] `delete_ingress` | present | `remove_domain` |
-| [ ] `delete_notification_channel` | missing | - |
-| [x] `delete_project` | present | `delete_project` |
-| [ ] `delete_service` | missing | - |
-| [ ] `delete_template_instance` | missing | - |
-| [ ] `disable_database_deletion_protection` | missing | - |
-| [ ] `restore_checkpoint` | missing | - |
-| [ ] `restore_database` | missing | - |
-| [ ] `undo_database_restore` | missing | - |
-| [ ] `upgrade_database` | missing | - |
-
-## apps/server/src/mcp/tools/database-recovery.ts
-
-| Orchard tool | Status | Our endpoint |
-|---|---|---|
-| [ ] `cancel_database_operation` | missing | - |
-| [ ] `create_checkpoint` | missing | - |
-| [ ] `create_database_user` | missing | - |
-| [ ] `delete_database_user` | missing | - |
-| [ ] `diagnose_database` | missing | - |
-| [ ] `fork_database` | missing | - |
-| [ ] `get_database_activity` | missing | - |
-| [ ] `get_database_operation` | missing | - |
-| [ ] `get_database_pooler` | missing | - |
-| [ ] `get_database_recovery_window` | missing | - |
-| [ ] `get_database_replication` | missing | - |
-| [ ] `get_database_security` | missing | - |
-| [ ] `get_project_database_security` | missing | - |
-| [ ] `list_checkpoints` | missing | - |
-| [ ] `list_database_operations` | missing | - |
-| [ ] `list_database_restore_tests` | missing | - |
-| [ ] `list_database_users` | missing | - |
-| [ ] `list_deleted_databases` | missing | - |
-| [ ] `list_postgres_versions` | missing | - |
-| [ ] `set_database_pooler` | missing | - |
-| [ ] `set_database_protection` | missing | - |
-| [ ] `set_database_replication` | missing | - |
-| [ ] `test_database_backup` | missing | - |
-| [ ] `undelete_database` | missing | - |
-| [ ] `update_database_minor` | missing | - |
-
-## apps/server/src/mcp/tools/deployments.ts
-
-| Orchard tool | Status | Our endpoint |
-|---|---|---|
-| [x] `cancel_build` | present | `cancel_deployment` |
-| [~] `create_deploy_webhook_token` | partial | `rotate_deploy_hook` |
-| [ ] `create_deployment` | missing | - |
-| [~] `deploy_from_github` | partial | `deploy_branch` |
-| [~] `deploy_from_github_url` | partial | `deploy_branch` |
-| [ ] `disable_auto_deploy` | missing | - |
-| [ ] `enable_auto_deploy` | missing | - |
-| [ ] `get_auto_deploy_status` | missing | - |
-| [ ] `get_deployment_next_steps` | missing | - |
-| [ ] `list_deploy_webhook_tokens` | missing | - |
-| [ ] `list_github_deploy_targets` | missing | - |
-| [x] `rebuild_deployment` | present | `redeploy` |
-| [ ] `rename_deployment` | missing | - |
-| [~] `restart_deployment` | partial | `restart_service` |
-| [ ] `retry_deployment_apply` | missing | - |
-| [x] `rollback_deployment` | present | `rollback_deployment` |
-| [ ] `scale_deployment` | missing | - |
-| [ ] `start_deployment` | missing | - |
-| [ ] `stop_deployment` | missing | - |
-| [ ] `update_deployment_disruption_budget` | missing | - |
-| [ ] `update_deployment_github_repo` | missing | - |
-| [ ] `update_deployment_placement` | missing | - |
-| [ ] `update_deployment_resources` | missing | - |
 
 ## apps/server/src/mcp/tools/environments.ts
 
@@ -137,166 +43,260 @@ Totals: 217 Orchard product tools. Present: 22. Partial: 11. Missing: 184. Ours 
 | [ ] `set_default_environment` | missing | - |
 | [ ] `set_shared_env_vars` | missing | - |
 
-## apps/server/src/mcp/tools/jobs.ts
-
-| Orchard tool | Status | Our endpoint |
-|---|---|---|
-| [ ] `cancel_job_run` | missing | - |
-| [ ] `create_job` | missing | - |
-| [ ] `delete_job` | missing | - |
-| [ ] `get_job` | missing | - |
-| [ ] `get_job_run` | missing | - |
-| [ ] `get_job_run_logs` | missing | - |
-| [ ] `list_job_runs` | missing | - |
-| [ ] `list_jobs` | missing | - |
-| [ ] `replace_job_steps` | missing | - |
-| [ ] `run_job` | missing | - |
-| [ ] `update_job` | missing | - |
-
-## apps/server/src/mcp/tools/notifications.ts
-
-| Orchard tool | Status | Our endpoint |
-|---|---|---|
-| [ ] `create_notification_channel` | missing | - |
-| [ ] `create_notification_rule` | missing | - |
-| [ ] `delete_notification_rule` | missing | - |
-| [~] `list_notification_channels` | partial | `get_notifications` |
-| [ ] `list_notification_deliveries` | missing | - |
-| [ ] `list_notification_rules` | missing | - |
-| [ ] `replay_notification_channel` | missing | - |
-| [~] `test_notification_channel` | partial | `test_notification` |
-| [ ] `update_notification_channel` | missing | - |
-| [ ] `update_notification_rule` | missing | - |
-
-## apps/server/src/mcp/tools/observability.ts
-
-| Orchard tool | Status | Our endpoint |
-|---|---|---|
-| [ ] `diagnose_deployment` | missing | - |
-| [x] `get_alert_states` | present | `get_alerts` |
-| [ ] `get_anomalies` | missing | - |
-| [ ] `get_attack_signals` | missing | - |
-| [ ] `get_build_history` | missing | - |
-| [~] `get_changes` | partial | `get_activity` |
-| [ ] `get_deploy_verdict` | missing | - |
-| [ ] `get_log_context` | missing | - |
-| [ ] `get_observability_link` | missing | - |
-| [ ] `get_pod_health` | missing | - |
-| [ ] `get_request_stats` | missing | - |
-| [ ] `get_resource_recommendation` | missing | - |
-| [x] `get_timeline` | present | `get_activity` |
-| [ ] `get_volumes` | missing | - |
-| [ ] `search_logs` | missing | - |
-
 ## apps/server/src/mcp/tools/query.ts
 
 | Orchard tool | Status | Our endpoint |
 |---|---|---|
-| [ ] `analyze_deployment_resources` | missing | - |
-| [ ] `detect_repo_config` | missing | - |
-| [~] `exec_in_pod` | partial | `terminal_send` |
-| [ ] `find` | missing | - |
-| [ ] `get_audit_log` | missing | - |
-| [ ] `get_build_logs` | missing | - |
+| [x] `analyze_deployment_resources` | present | `analyze_deployment_resources` |
+| [x] `detect_repo_config` | present | `detect_repo_config` |
+| [-] `exec_in_pod` | not applicable | - |
+| [x] `find` | present | `find` |
+| [x] `get_audit_log` | present | `get_audit_log` |
+| [x] `get_build_logs` | present | `get_build_logs` |
 | [x] `get_current_user` | present | `get_me` |
-| [ ] `get_database` | missing | - |
-| [ ] `get_database_metrics` | missing | - |
+| [-] `get_database` | not applicable | - |
+| [-] `get_database_metrics` | not applicable | - |
 | [x] `get_deployment` | present | `get_deployment` |
-| [ ] `get_deployment_http_metrics` | missing | - |
-| [x] `get_deployment_logs` | present | `get_logs` |
+| [x] `get_deployment_http_metrics` | present | `get_deployment_http_metrics` |
+| [x] `get_deployment_logs` | present | `get_deployment_logs` |
 | [~] `get_deployment_metrics` | partial | `get_resource_history` |
-| [ ] `get_deployment_volumes` | missing | - |
+| [x] `get_deployment_volumes` | present | `get_deployment_volumes` |
 | [ ] `get_env_vars` | missing | - |
-| [ ] `get_github_status` | missing | - |
-| [ ] `get_image_history` | missing | - |
-| [ ] `get_ingress` | missing | - |
-| [ ] `get_killed_container_logs` | missing | - |
-| [ ] `get_pod_details` | missing | - |
-| [ ] `get_pod_logs` | missing | - |
+| [x] `get_github_status` | present | `get_github_status` |
+| [x] `get_image_history` | present | `get_image_history` |
+| [x] `get_ingress` | present | `get_ingress` |
+| [x] `get_killed_container_logs` | present | `get_killed_container_logs` |
+| [-] `get_pod_details` | not applicable | - |
+| [-] `get_pod_logs` | not applicable | - |
 | [x] `get_project` | present | `get_project` |
-| [ ] `get_repo_branches` | missing | - |
-| [ ] `get_repo_contents` | missing | - |
-| [ ] `get_repo_dockerfiles` | missing | - |
-| [x] `get_resource_quota` | present | `get_project_resources` |
-| [ ] `get_template` | missing | - |
-| [ ] `get_template_instance` | missing | - |
-| [ ] `get_template_yaml_guide` | missing | - |
-| [ ] `list_databases` | missing | - |
-| [ ] `list_deployment_errors` | missing | - |
+| [x] `get_repo_branches` | present | `get_repo_branches` |
+| [x] `get_repo_contents` | present | `get_repo_contents` |
+| [x] `get_repo_dockerfiles` | present | `get_repo_dockerfiles` |
+| [~] `get_resource_quota` | partial | `get_project_resources` |
+| [-] `get_template` | not applicable | - |
+| [-] `get_template_instance` | not applicable | - |
+| [-] `get_template_yaml_guide` | not applicable | - |
+| [-] `list_databases` | not applicable | - |
+| [x] `list_deployment_errors` | present | `list_deployment_errors` |
 | [x] `list_deployments` | present | `list_deployments` |
-| [ ] `list_github_repos` | missing | - |
-| [x] `list_ingresses` | present | `list_domains` |
-| [ ] `list_killed_containers` | missing | - |
-| [ ] `list_node_pools` | missing | - |
-| [ ] `list_organizations` | missing | - |
-| [ ] `list_pods` | missing | - |
+| [x] `list_github_repos` | present | `list_github_repos` |
+| [~] `list_ingresses` | partial | `list_domains` |
+| [-] `list_killed_containers` | not applicable | - |
+| [-] `list_node_pools` | not applicable | - |
+| [x] `list_organizations` | present | `list_organizations` |
+| [-] `list_pods` | not applicable | - |
 | [x] `list_projects` | present | `list_projects` |
-| [ ] `list_services` | missing | - |
-| [ ] `list_template_instances` | missing | - |
-| [ ] `list_templates` | missing | - |
-| [ ] `triage_deployment_error` | missing | - |
+| [x] `list_services` | present | `list_services` |
+| [-] `list_template_instances` | not applicable | - |
+| [-] `list_templates` | not applicable | - |
+| [x] `triage_deployment_error` | present | `triage_deployment_error` |
 | [x] `validate_dns` | present | `verify_domain` |
+
+## apps/server/src/mcp/compact/compact-server.ts
+
+| Orchard tool | Status | Our endpoint |
+|---|---|---|
+| [ ] `call_api` | missing | - |
+| [ ] `describe_operation` | missing | - |
+| [ ] `search_api` | missing | - |
+
+## apps/server/src/mcp/tools/deployments.ts
+
+| Orchard tool | Status | Our endpoint |
+|---|---|---|
+| [~] `cancel_build` | partial | `cancel_deployment` |
+| [~] `create_deploy_webhook_token` | partial | `rotate_deploy_hook` |
+| [x] `create_deployment` | present | `create_deployment` |
+| [~] `deploy_from_github` | partial | `deploy_branch` |
+| [~] `deploy_from_github_url` | partial | `deploy_branch` |
+| [x] `disable_auto_deploy` | present | `disable_auto_deploy` |
+| [x] `enable_auto_deploy` | present | `enable_auto_deploy` |
+| [x] `get_auto_deploy_status` | present | `get_auto_deploy_status` |
+| [x] `get_deployment_next_steps` | present | `get_deployment_next_steps` |
+| [x] `list_deploy_webhook_tokens` | present | `list_deploy_webhook_tokens` |
+| [x] `list_github_deploy_targets` | present | `list_github_deploy_targets` |
+| [x] `rebuild_deployment` | present | `redeploy` |
+| [x] `rename_deployment` | present | `rename_deployment` |
+| [x] `restart_deployment` | present | `restart_deployment` |
+| [x] `retry_deployment_apply` | present | `retry_deployment_apply` |
+| [x] `rollback_deployment` | present | `rollback_deployment` |
+| [x] `scale_deployment` | present | `scale_deployment` |
+| [x] `start_deployment` | present | `start_deployment` |
+| [x] `stop_deployment` | present | `stop_deployment` |
+| [ ] `update_deployment_disruption_budget` | missing | - |
+| [ ] `update_deployment_github_repo` | missing | - |
+| [ ] `update_deployment_placement` | missing | - |
+| [x] `update_deployment_resources` | present | `update_deployment_resources` |
+
+## apps/server/src/mcp/tools/database-recovery.ts
+
+| Orchard tool | Status | Our endpoint |
+|---|---|---|
+| [-] `cancel_database_operation` | not applicable | - |
+| [ ] `create_checkpoint` | missing | - |
+| [-] `create_database_user` | not applicable | - |
+| [-] `delete_database_user` | not applicable | - |
+| [-] `diagnose_database` | not applicable | - |
+| [-] `fork_database` | not applicable | - |
+| [-] `get_database_activity` | not applicable | - |
+| [-] `get_database_operation` | not applicable | - |
+| [-] `get_database_pooler` | not applicable | - |
+| [-] `get_database_recovery_window` | not applicable | - |
+| [-] `get_database_replication` | not applicable | - |
+| [-] `get_database_security` | not applicable | - |
+| [-] `get_project_database_security` | not applicable | - |
+| [ ] `list_checkpoints` | missing | - |
+| [-] `list_database_operations` | not applicable | - |
+| [-] `list_database_restore_tests` | not applicable | - |
+| [-] `list_database_users` | not applicable | - |
+| [-] `list_deleted_databases` | not applicable | - |
+| [-] `list_postgres_versions` | not applicable | - |
+| [-] `set_database_pooler` | not applicable | - |
+| [-] `set_database_protection` | not applicable | - |
+| [-] `set_database_replication` | not applicable | - |
+| [-] `test_database_backup` | not applicable | - |
+| [-] `undelete_database` | not applicable | - |
+| [-] `update_database_minor` | not applicable | - |
+
+## apps/server/src/mcp/tools/jobs.ts
+
+| Orchard tool | Status | Our endpoint |
+|---|---|---|
+| [x] `cancel_job_run` | present | `cancel_job_run` |
+| [x] `create_job` | present | `create_job` |
+| [x] `delete_job` | present | `delete_job` |
+| [x] `get_job` | present | `get_job` |
+| [x] `get_job_run` | present | `get_job_run` |
+| [x] `get_job_run_logs` | present | `get_job_run_logs` |
+| [x] `list_job_runs` | present | `list_job_runs` |
+| [x] `list_jobs` | present | `list_jobs` |
+| [x] `replace_job_steps` | present | `replace_job_steps` |
+| [x] `run_job` | present | `run_job` |
+| [x] `update_job` | present | `update_job` |
 
 ## apps/server/src/mcp/tools/resources.ts
 
 | Orchard tool | Status | Our endpoint |
 |---|---|---|
-| [ ] `clear_database_backup_schedule` | missing | - |
-| [ ] `create_database` | missing | - |
-| [ ] `create_database_backup` | missing | - |
+| [-] `clear_database_backup_schedule` | not applicable | - |
+| [-] `create_database` | not applicable | - |
+| [-] `create_database_backup` | not applicable | - |
 | [x] `create_project` | present | `create_project` |
-| [ ] `deploy_template` | missing | - |
-| [ ] `disable_database_public` | missing | - |
-| [ ] `enable_database_public` | missing | - |
-| [ ] `expand_database_storage` | missing | - |
-| [ ] `get_database_backup_schedule` | missing | - |
-| [ ] `get_database_connection` | missing | - |
-| [ ] `get_database_limits` | missing | - |
-| [ ] `get_database_query_stats` | missing | - |
-| [ ] `get_database_settings` | missing | - |
-| [ ] `install_database_extension` | missing | - |
-| [ ] `list_database_backups` | missing | - |
-| [ ] `list_database_extensions` | missing | - |
-| [ ] `rename_database` | missing | - |
-| [ ] `reset_database_query_stats` | missing | - |
-| [ ] `restart_database` | missing | - |
-| [ ] `scale_database` | missing | - |
-| [ ] `set_database_backup_schedule` | missing | - |
-| [ ] `start_database` | missing | - |
-| [ ] `stop_database` | missing | - |
-| [ ] `uninstall_database_extension` | missing | - |
-| [ ] `update_database_resources` | missing | - |
-| [ ] `update_database_settings` | missing | - |
+| [-] `deploy_template` | not applicable | - |
+| [-] `disable_database_public` | not applicable | - |
+| [-] `enable_database_public` | not applicable | - |
+| [-] `expand_database_storage` | not applicable | - |
+| [-] `get_database_backup_schedule` | not applicable | - |
+| [-] `get_database_connection` | not applicable | - |
+| [-] `get_database_limits` | not applicable | - |
+| [-] `get_database_query_stats` | not applicable | - |
+| [-] `get_database_settings` | not applicable | - |
+| [-] `install_database_extension` | not applicable | - |
+| [-] `list_database_backups` | not applicable | - |
+| [-] `list_database_extensions` | not applicable | - |
+| [-] `rename_database` | not applicable | - |
+| [-] `reset_database_query_stats` | not applicable | - |
+| [-] `restart_database` | not applicable | - |
+| [-] `scale_database` | not applicable | - |
+| [-] `set_database_backup_schedule` | not applicable | - |
+| [-] `start_database` | not applicable | - |
+| [-] `stop_database` | not applicable | - |
+| [-] `uninstall_database_extension` | not applicable | - |
+| [-] `update_database_resources` | not applicable | - |
+| [-] `update_database_settings` | not applicable | - |
 | [x] `update_project` | present | `update_project` |
+
+## apps/server/src/mcp/tools/notifications.ts
+
+| Orchard tool | Status | Our endpoint |
+|---|---|---|
+| [x] `create_notification_channel` | present | `create_notification_channel` |
+| [x] `create_notification_rule` | present | `create_notification_rule` |
+| [x] `delete_notification_rule` | present | `delete_notification_rule` |
+| [x] `list_notification_channels` | present | `list_notification_channels` |
+| [x] `list_notification_deliveries` | present | `list_notification_deliveries` |
+| [x] `list_notification_rules` | present | `list_notification_rules` |
+| [x] `replay_notification_channel` | present | `replay_notification_channel` |
+| [x] `test_notification_channel` | present | `test_notification_channel` |
+| [x] `update_notification_channel` | present | `update_notification_channel` |
+| [x] `update_notification_rule` | present | `update_notification_rule` |
+
+## grafts/greenhouse/mcp/src/tools.ts
+
+| Orchard tool | Status | Our endpoint |
+|---|---|---|
+| [-] `create_sandbox_session` | not applicable | - |
+| [-] `create_sandbox_session_pr` | not applicable | - |
+| [-] `get_sandbox` | not applicable | - |
+| [-] `get_sandbox_session_diff` | not applicable | - |
+| [-] `get_sandbox_session_transcript` | not applicable | - |
+| [-] `list_sandbox_sessions` | not applicable | - |
+| [-] `prompt_sandbox_session` | not applicable | - |
+| [-] `start_sandbox` | not applicable | - |
+| [-] `stop_sandbox` | not applicable | - |
+
+## apps/server/src/mcp/tools/dangerous.ts
+
+| Orchard tool | Status | Our endpoint |
+|---|---|---|
+| [-] `delete_database` | not applicable | - |
+| [ ] `delete_deploy_webhook_token` | missing | - |
+| [x] `delete_deployment` | present | `delete_deployment` |
+| [x] `delete_env_vars` | present | `delete_env_vars` |
+| [ ] `delete_environment` | missing | - |
+| [~] `delete_ingress` | partial | `remove_domain` |
+| [x] `delete_notification_channel` | present | `delete_notification_channel` |
+| [x] `delete_project` | present | `delete_project` |
+| [x] `delete_service` | present | `delete_service` |
+| [-] `delete_template_instance` | not applicable | - |
+| [-] `disable_database_deletion_protection` | not applicable | - |
+| [ ] `restore_checkpoint` | missing | - |
+| [-] `restore_database` | not applicable | - |
+| [-] `undo_database_restore` | not applicable | - |
+| [-] `upgrade_database` | not applicable | - |
+
+## apps/server/src/mcp/tools/observability.ts
+
+| Orchard tool | Status | Our endpoint |
+|---|---|---|
+| [x] `diagnose_deployment` | present | `diagnose_deployment` |
+| [x] `get_alert_states` | present | `get_alerts` |
+| [x] `get_anomalies` | present | `get_anomalies` |
+| [x] `get_attack_signals` | present | `get_attack_signals` |
+| [x] `get_build_history` | present | `get_build_history` |
+| [~] `get_changes` | partial | `get_activity` |
+| [x] `get_deploy_verdict` | present | `get_deploy_verdict` |
+| [x] `get_log_context` | present | `get_log_context` |
+| [x] `get_observability_link` | present | `get_observability_link` |
+| [-] `get_pod_health` | not applicable | - |
+| [x] `get_request_stats` | present | `get_request_stats` |
+| [x] `get_resource_recommendation` | present | `get_resource_recommendation` |
+| [x] `get_timeline` | present | `get_activity` |
+| [x] `get_volumes` | present | `get_volumes` |
+| [x] `search_logs` | present | `search_logs` |
+
+## apps/server/src/mcp/tools/compose.ts
+
+| Orchard tool | Status | Our endpoint |
+|---|---|---|
+| [x] `get_compose_stack` | present | `get_compose_stack` |
+| [x] `list_compose_stacks` | present | `list_compose_stacks` |
+| [x] `redeploy_compose_stack` | present | `redeploy_compose_stack` |
 
 ## apps/server/src/mcp/tools/rollout.ts
 
 | Orchard tool | Status | Our endpoint |
 |---|---|---|
 | [x] `get_deployment_rollout` | present | `get_rollout` |
-| [ ] `list_build_runs` | missing | - |
-| [ ] `list_releases` | missing | - |
+| [x] `list_build_runs` | present | `list_build_runs` |
+| [x] `list_releases` | present | `list_releases` |
 | [x] `rollback_to_previous` | present | `rollback_deployment` |
 
 ## apps/server/test/grafts.test.ts
 
 | Orchard tool | Status | Our endpoint |
 |---|---|---|
-| [ ] `list_sandboxes` | missing | - |
-
-## grafts/greenhouse/mcp/src/tools.ts
-
-| Orchard tool | Status | Our endpoint |
-|---|---|---|
-| [ ] `create_sandbox_session` | missing | - |
-| [ ] `create_sandbox_session_pr` | missing | - |
-| [ ] `get_sandbox` | missing | - |
-| [ ] `get_sandbox_session_diff` | missing | - |
-| [ ] `get_sandbox_session_transcript` | missing | - |
-| [ ] `list_sandbox_sessions` | missing | - |
-| [ ] `prompt_sandbox_session` | missing | - |
-| [ ] `start_sandbox` | missing | - |
-| [ ] `stop_sandbox` | missing | - |
+| [-] `list_sandboxes` | not applicable | - |
 
 ## Ours only (no Orchard equivalent)
 
