@@ -12,6 +12,7 @@ type Ctx = { params: Promise<{ id: string }> };
  */
 export const GET = handle<Ctx>(async (req, { params }) => {
   const user = await authed();
+  enforceRateLimit("sshSession", user.id);
   const { id } = await params;
   enforceRateLimit("sshCall", user.id);
   const n = Number(req.nextUrl.searchParams.get("lines") ?? 200);
