@@ -53,6 +53,7 @@ import { IMAGE_ENDPOINTS } from "@/server/api-v1-images";
 import { ORG_ENDPOINTS } from "@/server/api-v1-orgs";
 import { RELEASE_ENDPOINTS } from "@/server/api-v1-releases";
 import { QUERY_ENDPOINTS } from "@/server/api-v1-query";
+import { RESOURCE_QUOTA_ENDPOINTS } from "@/server/api-v1-resource-quota";
 import { getDb, schema } from "@/server/db";
 import { notFound, zodToHttp } from "@/server/http";
 import {
@@ -483,6 +484,7 @@ export const ENDPOINTS: Endpoint[] = [
   ...RELEASE_ENDPOINTS,
   ...QUERY_ENDPOINTS,
   ...DEPLOY_FROM_URL_ENDPOINTS,
+  ...RESOURCE_QUOTA_ENDPOINTS,
 ];
 
 export function endpointById(id: string): Endpoint | undefined {
