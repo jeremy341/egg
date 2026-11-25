@@ -70,6 +70,15 @@ export const TOOLSET_OF: Record<string, Toolset> = {
   add_env_vars: "env",
   set_env_vars: "env",
   delete_env_vars: "env",
+  list_environments: "env",
+  create_environment: "env",
+  rename_environment: "env",
+  delete_environment: "env",
+  set_default_environment: "env",
+  get_shared_env_vars: "env",
+  add_shared_env_vars: "env",
+  set_shared_env_vars: "env",
+  delete_shared_env_vars: "env",
 
   update_project: "projects",
   delete_project: "projects",
@@ -166,7 +175,9 @@ export const TOOLSET_OF: Record<string, Toolset> = {
 
   // Third parity pass.
   list_services: "deployments",
+  update_deployment_github_repo: "deployments",
   create_service: "deployments",
+  update_service: "domains",
   delete_service: "deployments",
   set_service_exposure: "domains",
   set_service_port_public: "domains",

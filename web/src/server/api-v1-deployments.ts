@@ -13,7 +13,15 @@ import {
 import { deploymentSchema, projectSchema, publicProjectFor, requireView, toDeployment } from "@/server/api-v1-models";
 import { HttpError } from "@/server/http";
 import { operateDeployment } from "@/server/deploy/lifecycle";
-import { createProject, createProjectInput, getProjectForUser, redeploy, updateProject } from "@/server/projects";
+import {
+  createProject,
+  createProjectInput,
+  getProjectForUser,
+  redeploy,
+  updateGithubRepositoryInput,
+  updateProject,
+  updateProjectGithubRepository,
+} from "@/server/projects";
 
 const deploymentId = deploymentIdInput.describe("The project or deployment id, as specified by the operation.");
 const projectName = z.string().trim().min(1).max(60);
@@ -89,6 +97,16 @@ export async function apiUpdateDeploymentResources(
     throw new HttpError(400, "Set a memory or CPU limit to change deployment resources.", "validation");
   }
   return operateDeployment(p.userId, id, { action: "scale", ...input });
+}
+
+export async function apiUpdateDeploymentGithubRepository(
+  p: Principal,
+  id: string,
+  input: z.output<typeof updateGithubRepositoryInput>,
+) {
+  requireScope(p, "projects:write");
+  await tagAudit(p, "project.update", () => updateProjectGithubRepository(p.userId, id, input));
+  return { project: await publicProjectFor(p, id) };
 }
 
 export const DEPLOYMENT_CRUD_ENDPOINTS: Endpoint[] = [
@@ -170,6 +188,24 @@ export const DEPLOYMENT_CRUD_ENDPOINTS: Endpoint[] = [
     run: (p, i) => {
       const { deploymentId: id, ...changes } = i;
       return updateDeploymentProject(p, id, changes, "project.update");
+    },
+  }),
+  endpoint({
+    id: "update_deployment_github_repo",
+    method: "PATCH",
+    path: "/deployments/{deploymentId}/github-repo",
+    scope: "projects:write",
+    bucket: "write",
+    tag: "Deployments",
+    summary: "Update a deployment's GitHub repository or branch",
+    description: `Change the GitHub repository and/or production branch used by a project. If repoFullName is omitted, the project's existing repository is used. The repository and branch must be accessible through its linked GitHub App installation, or public if no installation is linked. This updates future deployments and does not queue a build. ${NOT_FOUND_NOTE}`,
+    pathParams: { deploymentId },
+    body: updateGithubRepositoryInput.shape,
+    response: projectResponse,
+    errors: [400, 403, 404, 502],
+    run: (p, i) => {
+      const { deploymentId: id, ...changes } = i;
+      return apiUpdateDeploymentGithubRepository(p, id, changes);
     },
   }),
   endpoint({

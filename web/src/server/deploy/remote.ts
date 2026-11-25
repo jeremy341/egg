@@ -587,6 +587,7 @@ export function dockerCreateCommand(a: {
   envFile: string;
   hostPort: number | null;
   containerPort: number | null;
+  portMappings?: Array<{ hostPort: number; containerPort: number; protocol: "TCP" | "UDP" }>;
   /** Aux services from the Compose file are reached on this network. */
   network?: string | null;
   /** Named volumes of the main Compose service, under their Compose project prefix. */
@@ -599,7 +600,16 @@ export function dockerCreateCommand(a: {
   pidsLimit?: number;
 }) {
   if (!DOCKER_NAME.test(a.container)) throw new Error("The container name is not valid.");
-  const port = a.hostPort != null && a.containerPort != null;
+  const portMappings = a.portMappings ?? (a.hostPort != null && a.containerPort != null
+    ? [{ hostPort: a.hostPort, containerPort: a.containerPort, protocol: "TCP" as const }]
+    : []);
+  for (const mapping of portMappings) {
+    if (!Number.isInteger(mapping.hostPort) || mapping.hostPort < 1 || mapping.hostPort > 65535 ||
+      !Number.isInteger(mapping.containerPort) || mapping.containerPort < 1 || mapping.containerPort > 65535) {
+      throw new Error("A port mapping is outside the valid range.");
+    }
+  }
+  const primaryContainerPort = portMappings[0]?.containerPort ?? a.containerPort;
   const limits = [
     ...(Number.isFinite(a.memoryMb) && Number(a.memoryMb) > 0 ? [`--memory=${Math.floor(Number(a.memoryMb))}m`] : []),
     ...(Number.isFinite(a.cpus) && Number(a.cpus) > 0 ? [`--cpus=${Math.max(0.1, Number(Number(a.cpus).toFixed(2)))}`] : []),
@@ -611,8 +621,11 @@ export function dockerCreateCommand(a: {
     // systemd owns the restarts; docker's own policy stays out of the way.
     "--restart=no",
     ...limits,
-    ...(port ? ["-p", `127.0.0.1:${a.hostPort}:${a.containerPort}`] : []),
-    ...(a.containerPort != null ? ["-e", `PORT=${a.containerPort}`, "-e", "HOST=0.0.0.0"] : []),
+    ...portMappings.flatMap((mapping) => [
+      "-p",
+      `127.0.0.1:${mapping.hostPort}:${mapping.containerPort}${mapping.protocol === "UDP" ? "/udp" : ""}`,
+    ]),
+    ...(primaryContainerPort != null ? ["-e", `PORT=${primaryContainerPort}`, "-e", "HOST=0.0.0.0"] : []),
     "--env-file", a.envFile,
     ...(a.volumes ?? []).flatMap((v) => ["-v", v]),
     ...(a.network ? ["--network", a.network] : []),

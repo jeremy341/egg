@@ -1,6 +1,6 @@
 {
-  "baseline_present": 110,
-  "baseline_partial": 10,
+  "baseline_present": 121,
+  "baseline_partial": 12,
   "tools": [
     {
       "name": "add_env_vars",
@@ -11,9 +11,8 @@
     {
       "name": "add_shared_env_vars",
       "source": "apps/server/src/mcp/tools/environments.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "add_shared_env_vars"
     },
     {
       "name": "analyze_deployment_resources",
@@ -32,7 +31,7 @@
       "source": "apps/server/src/mcp/tools/deployments.ts",
       "status": "partial",
       "ours": "cancel_deployment",
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "reason": "Egg cancellation targets a deployment record; it does not expose a separate build object or build-specific cancellation state."
     },
     {
       "name": "cancel_database_operation",
@@ -87,7 +86,7 @@
       "source": "apps/server/src/mcp/tools/deployments.ts",
       "status": "partial",
       "ours": "rotate_deploy_hook",
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "reason": "Egg has one rotatable deploy hook per project, rather than multiple deployment-scoped tokens with stable token IDs."
     },
     {
       "name": "create_deployment",
@@ -98,16 +97,15 @@
     {
       "name": "create_environment",
       "source": "apps/server/src/mcp/tools/environments.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "create_environment"
     },
     {
       "name": "create_ingress",
       "source": "apps/server/src/mcp/tools/configuration.ts",
       "status": "partial",
       "ours": "add_domain",
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "reason": "Egg adds an owner-managed domain record but does not create a cluster ingress resource or route configuration."
     },
     {
       "name": "create_job",
@@ -170,9 +168,9 @@
     {
       "name": "delete_deploy_webhook_token",
       "source": "apps/server/src/mcp/tools/dangerous.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "partial",
+      "ours": "revoke_deploy_hook",
+      "reason": "Egg has one rotatable deploy hook per project, rather than multiple deployment-scoped tokens with stable token IDs."
     },
     {
       "name": "delete_deployment",
@@ -189,16 +187,15 @@
     {
       "name": "delete_environment",
       "source": "apps/server/src/mcp/tools/dangerous.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "delete_environment"
     },
     {
       "name": "delete_ingress",
       "source": "apps/server/src/mcp/tools/dangerous.ts",
       "status": "partial",
       "ours": "remove_domain",
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "reason": "Egg removes the domain record; it does not manage separate Kubernetes ingress objects."
     },
     {
       "name": "delete_job",
@@ -239,9 +236,8 @@
     {
       "name": "delete_shared_env_vars",
       "source": "apps/server/src/mcp/tools/environments.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "delete_shared_env_vars"
     },
     {
       "name": "delete_template_instance",
@@ -255,14 +251,14 @@
       "source": "apps/server/src/mcp/tools/deployments.ts",
       "status": "partial",
       "ours": "deploy_branch",
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "reason": "Egg deploys the project's configured repository and branch; change the configured repository separately before deploying another source."
     },
     {
       "name": "deploy_from_github_url",
       "source": "apps/server/src/mcp/tools/deployments.ts",
       "status": "partial",
       "ours": "deploy_branch",
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "reason": "Egg accepts a project and branch, not an arbitrary repository URL; update the configured source separately before deploying."
     },
     {
       "name": "deploy_template",
@@ -403,7 +399,7 @@
       "source": "apps/server/src/mcp/tools/observability.ts",
       "status": "partial",
       "ours": "get_activity",
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "reason": "Egg activity is audit and activity history, not a Git change set or file diff."
     },
     {
       "name": "get_compose_stack",
@@ -537,7 +533,7 @@
       "source": "apps/server/src/mcp/tools/query.ts",
       "status": "partial",
       "ours": "get_resource_history",
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "reason": "Egg returns server resource history, not metrics scoped to an individual deployment."
     },
     {
       "name": "get_deployment_next_steps",
@@ -560,9 +556,9 @@
     {
       "name": "get_env_vars",
       "source": "apps/server/src/mcp/tools/query.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "partial",
+      "ours": "list_env_vars",
+      "reason": "Egg lists variable names and targets only; Orchard also returns non-secret values and marks secret values as write-only."
     },
     {
       "name": "get_github_status",
@@ -688,7 +684,7 @@
       "source": "apps/server/src/mcp/tools/query.ts",
       "status": "partial",
       "ours": "get_project_resources",
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "reason": "Egg reports current project resource usage, not a cluster quota or remaining quota."
     },
     {
       "name": "get_resource_recommendation",
@@ -720,9 +716,8 @@
     {
       "name": "get_shared_env_vars",
       "source": "apps/server/src/mcp/tools/environments.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "get_shared_env_vars"
     },
     {
       "name": "get_template",
@@ -853,9 +848,8 @@
     {
       "name": "list_environments",
       "source": "apps/server/src/mcp/tools/environments.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "list_environments"
     },
     {
       "name": "list_github_deploy_targets",
@@ -874,7 +868,7 @@
       "source": "apps/server/src/mcp/tools/query.ts",
       "status": "partial",
       "ours": "list_domains",
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "reason": "Egg lists domain records and validation status, not ingress route objects or controller configuration."
     },
     {
       "name": "list_job_runs",
@@ -1027,9 +1021,8 @@
     {
       "name": "rename_environment",
       "source": "apps/server/src/mcp/tools/environments.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "rename_environment"
     },
     {
       "name": "replace_job_steps",
@@ -1157,9 +1150,8 @@
     {
       "name": "set_default_environment",
       "source": "apps/server/src/mcp/tools/environments.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "set_default_environment"
     },
     {
       "name": "set_env_vars",
@@ -1194,9 +1186,8 @@
     {
       "name": "set_shared_env_vars",
       "source": "apps/server/src/mcp/tools/environments.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "set_shared_env_vars"
     },
     {
       "name": "start_database",
@@ -1308,16 +1299,15 @@
     {
       "name": "update_deployment_disruption_budget",
       "source": "apps/server/src/mcp/tools/deployments.ts",
-      "status": "missing",
+      "status": "not_applicable",
       "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "reason": "Kubernetes disruption-budget scheduling control; Egg deploys services to a user-owned Nest server without a cluster scheduler."
     },
     {
       "name": "update_deployment_github_repo",
       "source": "apps/server/src/mcp/tools/deployments.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "update_deployment_github_repo"
     },
     {
       "name": "update_deployment_health_check",
@@ -1334,9 +1324,9 @@
     {
       "name": "update_deployment_placement",
       "source": "apps/server/src/mcp/tools/deployments.ts",
-      "status": "missing",
+      "status": "not_applicable",
       "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "reason": "Kubernetes placement and scheduling control; Egg deploys services to a user-owned Nest server without a cluster scheduler."
     },
     {
       "name": "update_deployment_pull_policy",
@@ -1395,9 +1385,8 @@
     {
       "name": "update_service",
       "source": "apps/server/src/mcp/tools/configuration.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "update_service"
     },
     {
       "name": "upgrade_database",
@@ -1426,14 +1415,12 @@
     "get_server_usage",
     "get_status_page",
     "list_compose_releases",
-    "list_env_vars",
     "list_files",
     "list_servers",
     "make_folder",
     "read_file",
     "rename_file",
     "restart_service",
-    "revoke_deploy_hook",
     "set_env_var",
     "terminal_close",
     "terminal_open",
@@ -1444,6 +1431,6 @@
     "test_notification",
     "write_file"
   ],
-  "baseline_missing": 15,
-  "baseline_not_applicable": 82
+  "baseline_missing": 0,
+  "baseline_not_applicable": 84
 }

@@ -2,7 +2,7 @@
 
 Generated from the Orchard parity manifest (`orchard-parity.json`). Our side: `ENDPOINTS` in `web/src/server/api-v1*.ts`, plus the compact server's three tools in `web/src/server/mcp-compact.ts`. Test-only names are excluded.
 
-Totals: 217 Orchard product tools. Present: 110. Partial: 10. Missing: 15. Not applicable: 82. Ours only: 29.
+Totals: 217 Orchard product tools. Present: 121. Partial: 12. Missing: 0. Not applicable: 84. Ours only: 27.
 
 `present` means an equivalent endpoint exists with the same job. `partial` means it covers part of the job. `missing` means no equivalent yet.
 
@@ -28,20 +28,20 @@ Totals: 217 Orchard product tools. Present: 110. Partial: 10. Missing: 15. Not a
 | [x] `update_deployment_strategy` | present | `update_deployment_strategy` |
 | [x] `update_deployment_volumes` | present | `update_deployment_volumes` |
 | [x] `update_ingress` | present | `update_ingress` |
-| [ ] `update_service` | missing | - |
+| [x] `update_service` | present | `update_service` |
 
 ## apps/server/src/mcp/tools/environments.ts
 
 | Orchard tool | Status | Our endpoint |
 |---|---|---|
-| [ ] `add_shared_env_vars` | missing | - |
-| [ ] `create_environment` | missing | - |
-| [ ] `delete_shared_env_vars` | missing | - |
-| [ ] `get_shared_env_vars` | missing | - |
-| [ ] `list_environments` | missing | - |
-| [ ] `rename_environment` | missing | - |
-| [ ] `set_default_environment` | missing | - |
-| [ ] `set_shared_env_vars` | missing | - |
+| [x] `add_shared_env_vars` | present | `add_shared_env_vars` |
+| [x] `create_environment` | present | `create_environment` |
+| [x] `delete_shared_env_vars` | present | `delete_shared_env_vars` |
+| [x] `get_shared_env_vars` | present | `get_shared_env_vars` |
+| [x] `list_environments` | present | `list_environments` |
+| [x] `rename_environment` | present | `rename_environment` |
+| [x] `set_default_environment` | present | `set_default_environment` |
+| [x] `set_shared_env_vars` | present | `set_shared_env_vars` |
 
 ## apps/server/src/mcp/tools/query.ts
 
@@ -61,7 +61,7 @@ Totals: 217 Orchard product tools. Present: 110. Partial: 10. Missing: 15. Not a
 | [x] `get_deployment_logs` | present | `get_deployment_logs` |
 | [~] `get_deployment_metrics` | partial | `get_resource_history` |
 | [x] `get_deployment_volumes` | present | `get_deployment_volumes` |
-| [ ] `get_env_vars` | missing | - |
+| [~] `get_env_vars` | partial | `list_env_vars` |
 | [x] `get_github_status` | present | `get_github_status` |
 | [x] `get_image_history` | present | `get_image_history` |
 | [x] `get_ingress` | present | `get_ingress` |
@@ -123,9 +123,9 @@ Totals: 217 Orchard product tools. Present: 110. Partial: 10. Missing: 15. Not a
 | [x] `scale_deployment` | present | `scale_deployment` |
 | [x] `start_deployment` | present | `start_deployment` |
 | [x] `stop_deployment` | present | `stop_deployment` |
-| [ ] `update_deployment_disruption_budget` | missing | - |
-| [ ] `update_deployment_github_repo` | missing | - |
-| [ ] `update_deployment_placement` | missing | - |
+| [-] `update_deployment_disruption_budget` | not applicable | - |
+| [x] `update_deployment_github_repo` | present | `update_deployment_github_repo` |
+| [-] `update_deployment_placement` | not applicable | - |
 | [x] `update_deployment_resources` | present | `update_deployment_resources` |
 
 ## apps/server/src/mcp/tools/database-recovery.ts
@@ -240,10 +240,10 @@ Totals: 217 Orchard product tools. Present: 110. Partial: 10. Missing: 15. Not a
 | Orchard tool | Status | Our endpoint |
 |---|---|---|
 | [-] `delete_database` | not applicable | - |
-| [ ] `delete_deploy_webhook_token` | missing | - |
+| [~] `delete_deploy_webhook_token` | partial | `revoke_deploy_hook` |
 | [x] `delete_deployment` | present | `delete_deployment` |
 | [x] `delete_env_vars` | present | `delete_env_vars` |
-| [ ] `delete_environment` | missing | - |
+| [x] `delete_environment` | present | `delete_environment` |
 | [~] `delete_ingress` | partial | `remove_domain` |
 | [x] `delete_notification_channel` | present | `delete_notification_channel` |
 | [x] `delete_project` | present | `delete_project` |
@@ -300,14 +300,14 @@ Totals: 217 Orchard product tools. Present: 110. Partial: 10. Missing: 15. Not a
 
 ## Ours only (no Orchard equivalent)
 
-`delete_env_var`, `delete_file`, `download_file`, `get_analytics`, `get_container_inventory`, `get_logs`, `get_notification_channel`, `get_notifications`, `get_organization`, `get_server_usage`, `get_status_page`, `list_compose_releases`, `list_env_vars`, `list_files`, `list_servers`, `make_folder`, `read_file`, `rename_file`, `restart_service`, `revoke_deploy_hook`, `set_env_var`, `terminal_close`, `terminal_open`, `terminal_read`, `terminal_resize`, `terminal_send`, `terminal_status`, `test_notification`, `write_file`
+`delete_env_var`, `delete_file`, `download_file`, `get_analytics`, `get_container_inventory`, `get_logs`, `get_notification_channel`, `get_notifications`, `get_organization`, `get_server_usage`, `get_status_page`, `list_compose_releases`, `list_files`, `list_servers`, `make_folder`, `read_file`, `rename_file`, `restart_service`, `set_env_var`, `terminal_close`, `terminal_open`, `terminal_read`, `terminal_resize`, `terminal_send`, `terminal_status`, `test_notification`, `write_file`
 
 ## Not in the MCP list (ported or not, tracked separately)
 
-- CLI: Orchard has 421 command definitions in Go (`apps/cli/cmd`, cobra `Use:` strings, including group nodes and subcommands). Egg has 29 commands in `web/scripts/egg-cli.mjs`, including the bearer API commands.
+- CLI: Orchard has 421 command definitions in Go (`apps/cli/cmd`, cobra `Use:` strings, including group nodes and subcommands). Egg has 69 commands in `web/scripts/egg-cli.mjs`, including the bearer API commands.
 - API routes: Orchard has 73 controllers. Egg has 171 route files under `web/src/app/api`.
 - Database migrations: Orchard has 145 SQL files. Egg has 56.
-- Grafts (extension system): Orchard has 3 (greenhouse, forum, announcements). Egg has none. Greenhouse is Phase 6.
+- Grafts (extension system): Orchard has 3 (greenhouse, forum, announcements). Egg has a first-party grafts registry with Announcements (`web/src/server/grafts`). Greenhouse is not built: it needs cloud sandboxes.
 - Managed Postgres (backups, checkpoints, replicas, pooler, extensions, users): Orchard has about 42 database tools. Egg has none, by decision (Phase 5 reduced to `pg_dump` backups).
 - Templates registry and template instances: Orchard has 6 tools. Egg has none.
 - Infrastructure (Kubernetes, Helm, Terraform, Tailscale, Firecracker builds, gateway, S3 gateway): not ported. Out of scope for one Nest container, by decision.

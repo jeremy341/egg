@@ -278,8 +278,8 @@ http.server.ThreadingHTTPServer(('0.0.0.0', PORT), Handler).serve_forever()
 
 export const ENV_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
-/** Variables that would break the service or let a project hijack its unit. */
-export const RESERVED_ENV = new Set(["PORT", "HOST", "PATH", "HOME", "EGG"]);
+/** Variables Egg generates outside the encrypted env file and must keep authoritative. */
+export const RESERVED_ENV = new Set(["PORT", "HOST", "PATH", "HOME", "NODE_ENV", "EGG"]);
 
 /**
  * systemd EnvironmentFile syntax: KEY="value" with C-style escapes. An empty

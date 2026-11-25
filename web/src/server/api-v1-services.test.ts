@@ -50,6 +50,7 @@ describe("service endpoints", () => {
     expect(SERVICES_ENDPOINTS.map(({ id, method, path }) => ({ id, method, path }))).toEqual([
       { id: "list_services", method: "GET", path: "/services" },
       { id: "create_service", method: "POST", path: "/services" },
+      { id: "update_service", method: "PATCH", path: "/services/{serviceId}" },
       { id: "delete_service", method: "DELETE", path: "/services/{serviceId}" },
       { id: "set_service_exposure", method: "PATCH", path: "/services/{serviceId}/exposure" },
       { id: "set_service_port_public", method: "PATCH", path: "/services/{serviceId}/port" },

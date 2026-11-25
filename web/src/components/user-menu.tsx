@@ -63,6 +63,12 @@ export function UserMenu({ className }: { className?: string }) {
           <UserCircleIcon />
           Account
         </DropdownMenuItem>
+        {user.isAdmin ? (
+          <DropdownMenuItem render={<Link href="/admin/grafts" />}>
+            <ShieldWarningIcon />
+            Instance administration
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuItem render={<Link href="/connect" />}>
           <PlusIcon />
           Connect a server

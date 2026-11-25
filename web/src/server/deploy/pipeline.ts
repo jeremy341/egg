@@ -36,6 +36,7 @@ import {
   renderEnvFile,
   resolveStartCommand,
 } from "@/server/deploy/runtime";
+import { servicePortsForProject } from "@/server/service-config";
 import { commentDeploymentOnPr } from "@/server/github/pulls";
 import { notifyDeploymentFinished } from "@/server/notify";
 import { dispatchDeploymentEvent } from "@/server/webhooks";
@@ -123,10 +124,28 @@ export async function envForDeployment(
   env: "production" | "preview"
 ): Promise<Record<string, string>> {
   const db = await getDb();
-  const rows = await db
+  const [project, rows] = await Promise.all([
+    db.select({ userId: schema.projects.userId })
+      .from(schema.projects)
+      .where(eq(schema.projects.id, projectId))
+      .get(),
+    db
     .select()
     .from(schema.envVars)
-    .where(eq(schema.envVars.projectId, projectId));
+    .where(eq(schema.envVars.projectId, projectId)),
+  ]);
+  const defaultSet = project
+    ? await db.select({ id: schema.sharedEnvSets.id })
+      .from(schema.sharedEnvSets)
+      .where(and(
+        eq(schema.sharedEnvSets.userId, project.userId),
+        eq(schema.sharedEnvSets.isDefault, true),
+      ))
+      .get()
+    : undefined;
+  const sharedRows = defaultSet
+    ? await db.select().from(schema.sharedEnvVars).where(eq(schema.sharedEnvVars.setId, defaultSet.id))
+    : [];
   // One undecryptable row (e.g. after an APP_SECRET rotation or a restore) must not
   // break every env read and every deployment. Skip that key with a clear warning;
   // the remaining variables still work and the operator can repair the bad row.
@@ -141,7 +160,24 @@ export async function envForDeployment(
       return [];
     }
   });
-  return mergeEnvForDeployment(decrypted, env);
+  const decryptedShared = sharedRows.flatMap((r) => {
+    try {
+      return [{ ...r, value: open(r.valueEnc, `shared-env:${r.setId}:${r.key}:${r.target}`) }];
+    } catch (err) {
+      console.warn(
+        `Skipping shared env var ${r.key} in environment ${r.setId}: it cannot be decrypted with the current APP_SECRET.`,
+        err instanceof Error ? err.message : err
+      );
+      return [];
+    }
+  });
+  // Resolve target-specific values within each source first, then layer project
+  // values over shared values. Reserved variables are filtered in both layers,
+  // leaving Egg's generated runtime values authoritative.
+  return {
+    ...mergeEnvForDeployment(decryptedShared, env),
+    ...mergeEnvForDeployment(decrypted, env),
+  };
 }
 
 /**
@@ -548,6 +584,15 @@ export async function runDeployJob(
     const composeProject = remote.dockerComposeProjectName(project.slug, scope);
     const composePaths = composeConfigFiles(home, project.slug, dep.releaseId);
     const composeMode = project.deploymentMode === "compose";
+    const servicePorts = servicePortsForProject(project);
+    const deploymentPortMappings = project.servicePorts === null && project.containerPort === null ? [] : servicePorts
+      .filter((_, index) => dep.env !== "preview" || index === 0)
+      .map((port, index) => ({
+        hostPort: index === 0 ? dep.port : port.servicePort,
+        containerPort: port.containerPort,
+        protocol: port.protocol,
+      }))
+      .filter((port) => port.hostPort > 0);
     // The aux services of the resolved Compose form, and the main service's named volumes, are
     // read from the resolved output after the unpack; they steer activation below.
     let composeAux: string[] = [];
@@ -561,6 +606,7 @@ export async function runDeployJob(
         envFile,
         hostPort: dep.port === 0 ? null : dep.port,
         containerPort: project.containerPort ?? null,
+        portMappings: deploymentPortMappings,
         ...(composeMode ? { network: `${composeProject}_default`, volumes: composeVolumes } : {}),
         memoryMb: probe.memTotalMb ?? undefined,
         cpus: Math.max(0.5, Number(probe.cpus ?? reportedCpus(server.probe) ?? 1) - 0.5),
