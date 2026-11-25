@@ -93,7 +93,7 @@ export default function AgentApiPage() {
       <Section id="destructive-actions" title="Destructive actions">
         <P>
           Ask the user before deleting or changing a live resource. First call <C>call_api</C> with the exact operation
-          ID in <C>confirm</C>. Then provide the route's confirmation field. For example, project deletion needs the
+          ID in <C>confirm</C>. Then provide the route&apos;s confirmation field. For example, project deletion needs the
           exact project name:
         </P>
         <Example>{deleteProjectExample}</Example>
