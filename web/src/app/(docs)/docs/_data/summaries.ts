@@ -37,4 +37,10 @@ export const SUMMARIES: Record<string, string> = {
   selfhost: "Run your own copy of Egg on your computer or a server, with what it needs and what builds cost that machine.",
   limits: "Every number Egg enforces, grouped by what it limits.",
   troubleshooting: "What to check when a connection, build, domain, hook, alert or token call goes wrong.",
+  "api-resources": "Create a project record from a public HTTPS repository, deploy it and change its settings, with an access token.",
+  "api-configuration": "Read and change a project's variables and a deployment's build, health check, image, pull policy and strategy settings through the API.",
+  "api-releases": "List a project's release records, newest first, and page through them with the cursor from each response.",
+  "api-query": "Read a deployment's resource analysis and its volumes through the API, and the scope each read needs.",
+  "api-monitoring": "Read deployment health, logs and resource signals, and manage signed notification channels and their delivery history through the API.",
+  "api-agent-safety": "The rules agents follow when they call Egg's API: confirm before changing a live resource, and the confirmation field each destructive call needs.",
 };
