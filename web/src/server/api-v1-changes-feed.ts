@@ -52,6 +52,10 @@ function stringMeta(meta: Record<string, string | number | boolean>, key: string
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function oneLine(summary: string): string {
+  return summary.replace(/\s+/g, " ").trim();
+}
+
 function summarize(row: ChangeRow, projectName: string): string {
   const meta = parseMeta(row.meta);
   const { clean, suffix } = formatMeta(row.action, meta);
@@ -63,11 +67,11 @@ function summarize(row: ChangeRow, projectName: string): string {
     const name = stringMeta(clean, "name");
     const target = row.action === "env.set" ? stringMeta(clean, "target") : null;
     const detail = name ? `: ${name}${target ? ` (${target})` : ""}` : "";
-    return `${label} ${projectName}${detail}`;
+    return oneLine(`${label} ${projectName}${detail}`);
   }
 
   const target = row.action.startsWith("domain.") ? stringMeta(clean, "domain") ?? projectName : projectName;
-  return [label, target, suffix].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+  return oneLine([label, target, suffix].filter(Boolean).join(" "));
 }
 
 function deploymentIdFor(row: ChangeRow, projectDeployments: Set<string>): string | undefined {
@@ -95,7 +99,7 @@ export async function apiGetChanges(
   const projectDeploymentIds = deployments.map((deployment) => deployment.id);
   const projectDeploymentSet = new Set(projectDeploymentIds);
 
-  const changePrefixes = (Object.values(KIND_PREFIXES) as readonly string[][]).flat();
+  const changePrefixes = Object.values(KIND_PREFIXES).flat();
   const conditions: SQL[] = [
     eq(schema.auditLog.userId, p.userId),
     inArray(schema.auditLog.target, [projectId, ...projectDeploymentIds]),
