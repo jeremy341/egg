@@ -17,7 +17,16 @@ describe("classifyPlainDeployFailure", () => {
     ["the OOM killer", "Killed by the OOM killer"],
   ])("explains an OOM kill from %s and names the configured limit", (_name, line) => {
     expect(classifyPlainDeployFailure({ lines: [line], memoryLimitMb: 1024 })).toEqual({
-      plainMessage: "The app ran out of memory. Its configured limit is 1024 MB.",
+      plainMessage: "Memory ran out. The configured limit is 1024 MB.",
+      plainLine: line,
+    });
+  });
+
+  it("reads the configured memory limit from the deploy log", () => {
+    const line = "The build failed (exit 137).";
+
+    expect(classifyPlainDeployFailure({ lines: ["Building on your container, capped at 1536 MB of memory.", line], stage: "building" })).toEqual({
+      plainMessage: "Memory ran out. The configured limit is 1536 MB.",
       plainLine: line,
     });
   });
@@ -35,6 +44,7 @@ describe("classifyPlainDeployFailure", () => {
   it.each([
     "The start command is empty.",
     "Nothing to run in this release.",
+    "Set a start command for this project.",
   ])("explains an empty start command from %j", (line) => {
     expect(classifyPlainDeployFailure({ lines: [line] })).toEqual({
       plainMessage: "The start command is empty.",

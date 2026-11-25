@@ -323,6 +323,16 @@ describe("buildTimeline: a build failure", () => {
     const oom = buildTimeline({ ...dep, error: "The build needed more memory than the cap of 1024 MB." }, metrics, beforeBuild);
     expect(oom.failure?.message).toMatch(/^The build ran out of memory at its cap of 1024 MB\. Raise Build memory on the Container page/);
   });
+
+  it("adds a plain OOM explanation with the configured build cap and matching line", () => {
+    const line = "The build failed (exit 137).";
+    const oom = buildTimeline({ ...dep, error: line }, metrics, beforeBuild);
+
+    expect(oom.failure).toMatchObject({
+      plainMessage: "Memory ran out. The configured limit is 1024 MB.",
+      plainLine: line,
+    });
+  });
 });
 
 describe("buildTimeline: a canceled deploy", () => {
@@ -449,6 +459,30 @@ describe("explainFailure", () => {
       expect(f.message).toBe("Egg could not finish this deployment. Read the last lines of the log below to see why, then deploy again.");
     }
     expect(explainFailure({ error: "Something odd happened" }).recorded).toBe("Something odd happened");
+    expect(explainFailure({ error: "Something odd happened" })).toMatchObject({ plainMessage: null, plainLine: null });
+  });
+
+  it("adds a plain explanation and raw matching line to the deployment failure", () => {
+    const line = "Error: listen EADDRINUSE: address already in use :::3000";
+    const timeline = buildTimeline(
+      {
+        ...base,
+        state: "error",
+        startedAt: at(1),
+        activationStartedAt: at(2),
+        finishedAt: at(4),
+        error: "The new release did not become healthy on port 3000.",
+      },
+      [metric("activation", 2, 3), metric("health", 3, 4, "failed")],
+      [log(3, line, "error")],
+    );
+
+    expect(timeline.failure).toMatchObject({
+      message: "Your app did not become healthy on port 3000. Make it listen on the PORT environment variable and on 0.0.0.0.",
+      known: true,
+      plainMessage: "Port 3000 is already in use by another process.",
+      plainLine: line,
+    });
   });
 
   it("keeps a failed install apart from a failed build", () => {
