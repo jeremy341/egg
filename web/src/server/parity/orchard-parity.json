@@ -1,6 +1,6 @@
 {
-  "baseline_present": 121,
-  "baseline_partial": 12,
+  "baseline_present": 124,
+  "baseline_partial": 9,
   "tools": [
     {
       "name": "add_env_vars",
@@ -555,8 +555,7 @@
       "name": "get_env_vars",
       "source": "apps/server/src/mcp/tools/query.ts",
       "status": "present",
-      "ours": "get_env_vars",
-      "prior_status": "partial"
+      "ours": "get_env_vars"
     },
     {
       "name": "get_github_status",
