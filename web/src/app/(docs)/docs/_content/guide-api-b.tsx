@@ -3,14 +3,22 @@ import { B, C, H2, InternalLink, List, P, Section, Table } from "../_components/
 import { CodeBlock } from "../_components/code-block";
 import { docsHref } from "../_data/nav";
 
-/** The links that end each page. One line, named for what the reader can open next. */
+/**
+ * The links that end each page. One line, named for what the reader can open next.
+ * An id may carry a heading after "#" when the target is an anchor on another page.
+ */
+const relatedHref = (id: string) => {
+  const [section, anchor] = id.split("#");
+  return anchor ? `${docsHref(section)}#${anchor}` : docsHref(section);
+};
+
 const related = (pages: [string, string][]) => (
   <P>
     <B>Related resources:</B>{" "}
     {pages.map(([id, title], i) => (
       <span key={id}>
         {i > 0 ? ", " : ""}
-        <InternalLink href={docsHref(id)}>{title}</InternalLink>
+        <InternalLink href={relatedHref(id)}>{title}</InternalLink>
       </span>
     ))}
     .
@@ -47,7 +55,15 @@ const sampleRelease = {
 const SEARCH_EXAMPLE = `curl -X POST "$NEST_URL/api/mcp/compact" \\
   -H "Authorization: Bearer $NEST_TOKEN" \\
   -H "Content-Type: application/json" \\
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"search_api","arguments":{"query":"scheduled jobs","limit":5}}}'`;
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "search_api",
+      "arguments": { "query": "scheduled jobs", "limit": 5 }
+    }
+  }'`;
 
 const LIST_JOBS_EXAMPLE = `curl -X GET \\
   -H "Authorization: Bearer $NEST_TOKEN" \\
@@ -81,20 +97,15 @@ export const GUIDE_API_B: Record<string, () => ReactNode> = {
       </P>
 
       <H2 id="api-query-parameters" title="Parameters" />
+      <P>
+        Both endpoints take one path parameter, <C>deploymentId</C>, which is the deployment&apos;s id.
+      </P>
       <Table
-        caption="Query parameters"
-        head={["Endpoint", "Path parameter", "Scope"]}
+        caption="Query endpoints and required scopes"
+        head={["Endpoint", "Scope"]}
         rows={[
-          [
-            <C key="resource">analyze_deployment_resources</C>,
-            <C key="resource-id">deploymentId</C>,
-            <C key="resource-scope">resources:read</C>,
-          ],
-          [
-            <C key="volumes">get_deployment_volumes</C>,
-            <C key="volume-id">deploymentId</C>,
-            <C key="volume-scope">deployments:read</C>,
-          ],
+          [<C key="resource">analyze_deployment_resources</C>, <C key="resource-scope">resources:read</C>],
+          [<C key="volumes">get_deployment_volumes</C>, <C key="volume-scope">deployments:read</C>],
         ]}
       />
 
@@ -185,8 +196,8 @@ export const GUIDE_API_B: Record<string, () => ReactNode> = {
       </P>
       <P>
         The full MCP endpoint at <C>/api/mcp</C> exposes each operation as its own tool. Both endpoints apply the
-        token&apos;s scopes and any toolset filter in the URL. Batch requests are refused, so send one message per
-        request.
+        token&apos;s scopes and any toolset filter in the URL, such as <C>?toolsets=core</C>. Batch requests are refused,
+        so send one message per request.
       </P>
       <P>
         Set <C>NEST_URL</C> to your Egg address and <C>NEST_TOKEN</C> to the token. Then run a search:
@@ -228,24 +239,24 @@ export const GUIDE_API_B: Record<string, () => ReactNode> = {
 
       <H2 id="api-agent-safety-destructive" title="Destructive actions" />
       <P>
-        Ask the user before you delete or change a live resource. A permanent delete cannot be taken back. Egg refuses
-        an operation flagged as destructive until <C>confirm</C> repeats its operation ID exactly. Examples include{" "}
-        <C>delete_project</C>, <C>delete_job</C> and <C>cancel_job_run</C>. Project deletion also needs{" "}
-        <C>confirmName</C> set to the exact project name:
+        Ask the user before you delete or change a live resource. A permanent delete cannot be taken back. Through{" "}
+        <C>call_api</C>, Egg refuses an operation flagged as destructive until <C>confirm</C> repeats its operation ID
+        exactly. Examples include <C>delete_project</C>, <C>delete_job</C>, <C>run_job</C> and{" "}
+        <C>cancel_job_run</C>. Project deletion also needs <C>confirmName</C> set to the exact project name:
       </P>
       <CodeBlock label="JSON" code={DELETE_PROJECT_EXAMPLE} />
       <P>
         Deleting a notification channel needs <C>confirmName</C> set to the exact channel host, such as{" "}
-        <C>hooks.example.com</C>. Egg records each successful delete in the audit log with the token that made it.
+        <C>hooks.example.com</C>. Egg records the channel delete in the audit log with the token that made it.
       </P>
       <P>
         Replacing or deleting environment variables with <C>set_env_vars</C> or <C>delete_env_vars</C> needs{" "}
         <C>confirmName</C> set to the exact project name. Values are write-only, so an agent cannot read a secret back.
       </P>
       {related([
-        ["api-mcp", "The API and agents"],
-        ["api-scopes", "What a token can do"],
-        ["api-tokens", "Making a token"],
+        ["api#api-mcp", "The API and agents"],
+        ["api#api-scopes", "What a token can do"],
+        ["api#api-tokens", "Making a token"],
       ])}
     </Section>
   ),
