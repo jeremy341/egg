@@ -46,6 +46,11 @@ const channelId = z
   .min(1)
   .max(100)
   .describe("The notification channel id, from list_notification_channels.");
+const channelConfirmName = z
+  .string()
+  .min(1)
+  .max(253)
+  .describe("The exact notification channel host to confirm deletion.");
 const ruleId = z
   .string()
   .trim()
@@ -144,9 +149,12 @@ export async function apiUpdateNotificationChannel(p: Principal, channel: string
   return { channel: updated };
 }
 
-export async function apiDeleteNotificationChannel(p: Principal, channel: string) {
+export async function apiDeleteNotificationChannel(p: Principal, channel: string, confirmName: string) {
   requireScope(p, "webhooks:write");
   const current = await getWebhook(p.userId, channel);
+  if (confirmName !== current.host) {
+    throw new HttpError(400, "Type the exact notification channel host to confirm.", "confirmation_failed");
+  }
   await tagAudit(p, "webhook.delete", () => deleteWebhook(p.userId, channel), { host: current.host });
   return { deleted: true, channelId: channel };
 }
@@ -351,12 +359,13 @@ export const NOTIFICATION_ENDPOINTS: Endpoint[] = [
     bucket: "write",
     tag: "Notifications",
     summary: "Delete a notification channel",
-    description: `Permanently remove one notification channel and stop its sends. Its signing secret and delivery log go with it. This cannot be undone. ${NOT_FOUND_NOTE}`,
+    description: `Permanently remove one notification channel and stop its sends. Its signing secret and delivery log go with it. Pass confirmName exactly matching the channel host. This cannot be undone. ${NOT_FOUND_NOTE}`,
     pathParams: { channelId },
+    body: { confirmName: channelConfirmName },
     response: z.object({ deleted: z.boolean(), channelId: z.string() }),
     errors: [400, 404],
     destructive: true,
-    run: (p, i) => apiDeleteNotificationChannel(p, i.channelId),
+    run: (p, i) => apiDeleteNotificationChannel(p, i.channelId, i.confirmName),
   }),
   endpoint({
     id: "list_notification_rules",
