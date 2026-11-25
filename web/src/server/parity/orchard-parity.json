@@ -680,8 +680,8 @@
       "name": "get_resource_quota",
       "source": "apps/server/src/mcp/tools/query.ts",
       "status": "partial",
-      "ours": "get_project_resources",
-      "reason": "Egg reports current project resource usage, not a cluster quota or remaining quota."
+      "ours": "get_resource_quota",
+      "reason": "Quota data is limited to Egg-managed service limits and recorded project/server measurements; it does not represent cluster quota or remaining quota."
     },
     {
       "name": "get_resource_recommendation",
@@ -1409,6 +1409,7 @@
     "get_notification_channel",
     "get_notifications",
     "get_organization",
+    "get_project_resources",
     "get_resource_history",
     "get_server_usage",
     "get_status_page",

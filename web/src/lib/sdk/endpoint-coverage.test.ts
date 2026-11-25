@@ -74,6 +74,7 @@ const CLIENT_CALLS: Record<string, Call$> = {
   get_server_usage: (n) => n.getServerUsage("S"),
   get_resource_history: (n) => n.getUsageHistory("S"),
   get_project_resources: (n) => n.getProjectResources("P"),
+  get_resource_quota: (n) => n.getResourceQuota("P"),
   list_servers: (n) => n.listServers(),
   get_container_inventory: (n) => n.getContainerInventory("S"),
   list_env_vars: (n) => n.listEnvNames("P"),

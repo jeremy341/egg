@@ -290,6 +290,25 @@ export type ProjectResources = {
   points: { at: string; memMb: number | null; cpuPercent: number | null }[];
 };
 
+export type ResourceQuota = {
+  project: {
+    id: string;
+    slug: string;
+    name: string;
+    cpuLimitCores: number | null;
+    memoryLimitMb: number | null;
+    cpuUsagePercent: number | null;
+    memoryUsageMb: number | null;
+  };
+  server: {
+    serviceCount: number;
+    memoryTotalMb: number | null;
+    memoryUsedMb: number | null;
+    diskTotalMb: number | null;
+    diskUsedMb: number | null;
+  };
+};
+
 type ServiceState = "running" | "starting" | "failed" | "stopped" | "unknown";
 
 export type Inventory = {
@@ -692,6 +711,11 @@ export class Egg {
   /** Memory, CPU and restarts of one project's service over the last 1 to 168 hours (default 24). Needs `resources:read`. */
   getProjectResources(projectId: string, options: { hours?: number } = {}): Promise<{ resources: ProjectResources }> {
     return this.request("GET", `/projects/${seg(projectId)}/resources`, { hours: options.hours });
+  }
+
+  /** CPU and memory limits and latest project/server usage. Needs `resources:read`. */
+  getResourceQuota(projectId: string): Promise<ResourceQuota> {
+    return this.request("GET", `/projects/${seg(projectId)}/resources/quota`);
   }
 
   /** What runs on a server: project services, leftovers and ports. Needs `container:read`. */
