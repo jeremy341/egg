@@ -59,7 +59,8 @@ export const GUIDE_API_A: Record<string, () => ReactNode> = {
       <H2 id="api-configuration-what" title="What it does" />
       <P>
         The API lists variable names, adds or replaces variables and removes selected keys. Values are encrypted at rest.
-        Write-only: no endpoint returns them.
+        Each variable has a secret flag, on by default. Only a variable marked non-secret returns its value, from{" "}
+        <C>GET /env/values</C>. Secret values are write-only: no endpoint returns them.
       </P>
       <P>
         Each variable has a target. <C>production</C> covers the production branch, <C>preview</C> covers branch previews
@@ -87,6 +88,22 @@ export const GUIDE_API_A: Record<string, () => ReactNode> = {
           [
             <C key="k88">DELETE</C>,
             "Removes the named keys, for every target or for one target. Needs env:write and confirmName.",
+          ],
+        ]}
+      />
+      <Table
+        caption="Environment variable values and the secret flag"
+        head={["Method and path", "Scope", "What it does"]}
+        rows={[
+          [
+            <C key="v1">GET /api/v1/projects/{"{projectId}"}/env/values</C>,
+            <C key="v2">env:read</C>,
+            "Returns the value of each variable marked non-secret. Secret variables are left out.",
+          ],
+          [
+            <C key="v3">PATCH /api/v1/projects/{"{projectId}"}/env/{"{key}"}/{"{target}"}/secret</C>,
+            <C key="v4">env:write</C>,
+            "Sets the secret flag for one variable and target. Send secret: false to let get_env_vars return its value. Saving a value never changes the flag.",
           ],
         ]}
       />
@@ -234,6 +251,13 @@ export const GUIDE_API_A: Record<string, () => ReactNode> = {
         The request returns <C>409</C> when the slug or the port is already in use.
       </P>
 
+      <P>
+        <B>Deploy from a GitHub URL.</B> <C>POST /api/v1/projects/{"{projectId}"}/deploy-from-github-url</C> updates the project&apos;s repository, then
+        deploys it. It needs <C>deployments:write</C> and <C>projects:write</C>. The body takes a github.com URL in the
+        https, <C>.git</C> or <C>git@</C> form, with an optional <C>/tree/&lt;branch&gt;</C>. The URL&apos;s branch is
+        used when it has one, and the default branch otherwise. Credentials in the URL are never shown.
+      </P>
+
       <H2 id="api-resources-example" title="Example" />
       <P>
         Set <C>EGG_URL</C> to your Egg address and <C>EGG_TOKEN</C> to a token with <C>projects:write</C>. Then run the two
@@ -321,6 +345,31 @@ export const GUIDE_API_A: Record<string, () => ReactNode> = {
             <C key="k321">GET /api/v1/notification-channels/{"{channelId}"}/deliveries</C>,
             <C key="k322">webhooks:read</C>,
             "Recent sends for one channel, 1 to 100 at a time. Defaults to 20.",
+          ],
+          [
+            <C key="k326">GET /api/v1/projects/{"{projectId}"}/crash-reports</C>,
+            <C key="k327">logs:read</C>,
+            "Crash reports for the project. Each keeps up to 200 journal lines from the release that was live, with known secrets masked.",
+          ],
+          [
+            <C key="k328">GET /api/v1/crash-reports/{"{crashId}"}</C>,
+            <C key="k329">logs:read</C>,
+            "One crash report, with the same journal lines.",
+          ],
+          [
+            <C key="k330">GET /api/v1/deployments/{"{deploymentId}"}/metrics</C>,
+            <C key="k331">deployments:read</C>,
+            "Bucketed CPU and memory averages and restart counts for the deployment’s project. Samples are per project, not per release.",
+          ],
+          [
+            <C key="k332">GET /api/v1/projects/{"{projectId}"}/resources/quota</C>,
+            <C key="k333">resources:read</C>,
+            "Limits and current usage. A value Egg has not measured is null, never zero.",
+          ],
+          [
+            <C key="k334">GET /api/v1/projects/{"{projectId}"}/changes</C>,
+            <C key="k335">activity:read</C>,
+            "The project’s change feed, newest first: deploys, rollbacks, redeploys, domain and build-config changes. Environment variables appear by name only.",
           ],
         ]}
       />

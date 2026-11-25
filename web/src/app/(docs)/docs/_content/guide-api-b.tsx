@@ -83,7 +83,7 @@ export const GUIDE_API_B: Record<string, () => ReactNode> = {
   "api-query": () => (
     <Section
       id="api-query"
-      intro="Read resource recommendations and the named Compose volumes owned by a deployment."
+      intro="Read resource recommendations, deployment metrics and the named Compose volumes owned by a deployment."
     >
       <H2 id="api-query-what" title="What it does" />
       <P>
@@ -92,8 +92,13 @@ export const GUIDE_API_B: Record<string, () => ReactNode> = {
       </P>
       <P>
         <C>get_deployment_volumes</C> lists named Docker volumes owned by a Compose deployment. A native deployment
-        has no Docker volumes, and the endpoint returns <C>409</C>. Egg never returns environment variable values. Use{" "}
-        <C>list_env_vars</C> to read names and targets.
+        has no Docker volumes, and the endpoint returns <C>409</C>. Egg returns an environment variable value only
+        through <C>get_env_vars</C>, and only for a variable marked non-secret. Use <C>list_env_vars</C> to read names
+        and targets.
+      </P>
+      <P>
+        <C>get_deployment_metrics</C> returns bucketed CPU and memory averages and restart counts for the deployment&apos;s
+        project. The samples are per project, not per release.
       </P>
 
       <H2 id="api-query-parameters" title="Parameters" />
@@ -106,6 +111,7 @@ export const GUIDE_API_B: Record<string, () => ReactNode> = {
         rows={[
           [<C key="resource">analyze_deployment_resources</C>, <C key="resource-scope">resources:read</C>],
           [<C key="volumes">get_deployment_volumes</C>, <C key="volume-scope">deployments:read</C>],
+          [<C key="metrics">get_deployment_metrics</C>, <C key="metrics-scope">deployments:read</C>],
         ]}
       />
 
@@ -251,7 +257,8 @@ export const GUIDE_API_B: Record<string, () => ReactNode> = {
       </P>
       <P>
         Replacing or deleting environment variables with <C>set_env_vars</C> or <C>delete_env_vars</C> needs{" "}
-        <C>confirmName</C> set to the exact project name. Values are write-only, so an agent cannot read a secret back.
+        <C>confirmName</C> set to the exact project name. Secret values are write-only, so an agent cannot read one back.
+        Only a variable marked non-secret comes back, from <C>get_env_vars</C>.
       </P>
       {related([
         ["api#api-mcp", "The API and agents"],
