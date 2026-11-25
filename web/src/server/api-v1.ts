@@ -32,6 +32,7 @@ import { EXPANDED_ENDPOINTS } from "@/server/api-v1-more";
 import { ORCHARD_ENDPOINTS } from "@/server/api-v1-orchard";
 import { SHELL_ENDPOINTS } from "@/server/api-v1-shell";
 import { AUDIT_ENDPOINTS } from "@/server/api-v1-audit";
+import { CHANGES_FEED_ENDPOINTS } from "@/server/api-v1-changes-feed";
 import { REGISTRY_ENDPOINTS } from "@/server/api-v1-registry";
 import { LIFECYCLE_ENDPOINTS } from "@/server/api-v1-lifecycle";
 import { JOBS_ENDPOINTS } from "@/server/api-v1-jobs";
@@ -463,6 +464,7 @@ export const ENDPOINTS: Endpoint[] = [
   ...ORCHARD_ENDPOINTS,
   ...SHELL_ENDPOINTS,
   ...AUDIT_ENDPOINTS,
+  ...CHANGES_FEED_ENDPOINTS,
   ...REGISTRY_ENDPOINTS,
   ...LIFECYCLE_ENDPOINTS,
   ...JOBS_ENDPOINTS,
