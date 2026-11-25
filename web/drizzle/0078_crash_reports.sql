@@ -7,4 +7,4 @@ CREATE TABLE `crash_reports` (
 	`captured_lines` text NOT NULL
 );
 --> statement-breakpoint
-CREATE INDEX `crash_reports_project_created_idx` ON `crash_reports` (`project_id`,`created_at` DESC,`id` DESC);
+CREATE INDEX `crash_reports_project_created_idx` ON `crash_reports` (`project_id`,`created_at`,`id`);
