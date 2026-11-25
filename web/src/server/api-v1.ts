@@ -39,6 +39,7 @@ import { LOG_ENDPOINTS } from "@/server/api-v1-logs";
 import { GITHUB_ENDPOINTS } from "@/server/api-v1-github";
 import { NOTIFICATION_ENDPOINTS } from "@/server/api-v1-notifications";
 import { ENV_ENDPOINTS } from "@/server/api-v1-env";
+import { ENV_PLAIN_VALUES_ENDPOINTS } from "@/server/api-v1-env-plain-values";
 import { ENVIRONMENT_SET_ENDPOINTS } from "@/server/api-v1-environments";
 import { AUTODEPLOY_ENDPOINTS } from "@/server/api-v1-autodeploy";
 import { DOMAIN_ENDPOINTS } from "@/server/api-v1-domains";
@@ -468,6 +469,7 @@ export const ENDPOINTS: Endpoint[] = [
   ...GITHUB_ENDPOINTS,
   ...NOTIFICATION_ENDPOINTS,
   ...ENV_ENDPOINTS,
+  ...ENV_PLAIN_VALUES_ENDPOINTS,
   ...ENVIRONMENT_SET_ENDPOINTS,
   ...AUTODEPLOY_ENDPOINTS,
   ...DOMAIN_ENDPOINTS,
