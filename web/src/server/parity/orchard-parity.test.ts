@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { ENDPOINTS } from "@/server/api-v1";
+import { COMPACT_TOOLS } from "@/server/mcp-compact";
 
 /**
  * Ratchet for parity with Orchard's MCP tools. The manifest lists every Orchard
@@ -16,6 +17,8 @@ type Manifest = { baseline_present: number; baseline_partial: number; baseline_m
 
 const manifest = JSON.parse(readFileSync(path.join(__dirname, "orchard-parity.json"), "utf8")) as Manifest;
 const ids = new Set(ENDPOINTS.map((e) => e.id));
+// Compact-server tools map as "compact:<name>" because they are not registry endpoints.
+const compactNames = new Set(COMPACT_TOOLS.map((t) => t.name));
 
 describe("Orchard MCP parity manifest", () => {
   it("lists each Orchard tool once, with a known status", () => {
@@ -27,7 +30,11 @@ describe("Orchard MCP parity manifest", () => {
   it("points every present or partial tool at an endpoint that exists", () => {
     for (const t of manifest.tools.filter((x) => x.status === "present" || x.status === "partial")) {
       expect(t.ours, t.name).not.toBeNull();
-      expect(ids.has(t.ours as string), `${t.name} -> ${t.ours} is missing from ENDPOINTS`).toBe(true);
+      if (t.ours?.startsWith("compact:")) {
+        expect(compactNames.has(t.ours.slice("compact:".length)), `${t.name} -> ${t.ours} is not a compact tool`).toBe(true);
+      } else {
+        expect(ids.has(t.ours as string), `${t.name} -> ${t.ours} is missing from ENDPOINTS`).toBe(true);
+      }
     }
   });
 
