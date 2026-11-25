@@ -139,6 +139,7 @@ export const LABELS: Record<string, string> = {
   "key.rotate": "Replaced an SSH key for",
   "auth.reauth": "Confirmed sign-in with Hack Club",
   "deploy.trigger": "Started a deployment of",
+  "deploy.from_github_url": "Started a deployment from a GitHub URL for",
   "deploy.reconcile": "Recovered a missed GitHub deployment of",
   "adoption.plan": "Planned an existing app import for",
   "adoption.confirm_attempt": "Confirmed an existing app import for",

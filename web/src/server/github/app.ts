@@ -124,6 +124,47 @@ export async function listInstallationRepos(
   return out.sort((a, b) => (b.pushedAt ?? "").localeCompare(a.pushedAt ?? ""));
 }
 
+/** Read the default branch of a public or installation-accessible repository. */
+export async function getGithubRepositoryDefaultBranch(
+  installationId: number | null,
+  repoFullName: string,
+  fetchImpl: FetchLike = fetch,
+): Promise<string> {
+  const [owner, name] = repoFullName.split("/");
+  const token = installationId ? await installationToken(installationId, fetchImpl) : null;
+  const requestHeaders = token
+    ? headers(token)
+    : { accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28", "user-agent": "egg" };
+  let response: Response;
+  try {
+    response = await fetchImpl(`${API}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`, {
+      headers: requestHeaders,
+      signal: AbortSignal.timeout(5000),
+    });
+  } catch {
+    throw new GithubError("Could not read the repository from GitHub.");
+  }
+  if (response.status === 404) throw new GithubError("The repository was not found.", 404);
+  if (response.status === 403) throw new GithubError("GitHub denied access to the repository.", 403);
+  if (!response.ok) throw new GithubError(`Could not read the repository (${response.status}).`, response.status);
+
+  let repository: { full_name?: unknown; default_branch?: unknown };
+  try {
+    repository = (await response.json()) as { full_name?: unknown; default_branch?: unknown };
+  } catch {
+    throw new GithubError("GitHub returned invalid repository metadata.");
+  }
+  if (
+    typeof repository.full_name !== "string" ||
+    repository.full_name.toLowerCase() !== repoFullName.toLowerCase() ||
+    typeof repository.default_branch !== "string" ||
+    repository.default_branch.length === 0
+  ) {
+    throw new GithubError("GitHub returned invalid repository metadata.", 404);
+  }
+  return repository.default_branch;
+}
+
 /** Resolve a public or installation-accessible repository and branch before saving them to a project. */
 export async function verifyGithubRepositoryBranch(
   installationId: number | null,

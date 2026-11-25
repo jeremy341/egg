@@ -1,3 +1,12 @@
+import { z } from "zod";
+import { requireScope, type Principal } from "@/server/api-tokens";
+import { apiUpdateDeploymentGithubRepository } from "@/server/api-v1-deployments";
+import { endpoint, NOT_FOUND_NOTE, projectIdInput, type Endpoint } from "@/server/api-v1-kit";
+import { deploymentSchema, projectSchema } from "@/server/api-v1-models";
+import { getGithubRepositoryDefaultBranch, GithubError } from "@/server/github/app";
+import { HttpError } from "@/server/http";
+import { getProjectForUser } from "@/server/projects";
+
 export type ParsedGithubRepositoryUrl = {
   repoFullName: string;
   branch?: string;
@@ -52,7 +61,65 @@ export function parseGithubRepositoryUrl(raw: string): ParsedGithubRepositoryUrl
 
   if (suffix === undefined) return { repoFullName: `${owner}/${repo}` };
   if (suffix !== "tree" || branchParts.length === 0) return null;
-  const branch = [branchParts[0], ...branchParts.slice(1)].join("/");
+  const branch = branchParts.join("/");
   if (!validBranch(branch)) return null;
   return { repoFullName: `${owner}/${repo}`, branch };
 }
+
+function defaultBranchError(error: GithubError): HttpError {
+  if (error.status === 403) return new HttpError(403, "GitHub denied access to that repository.", "forbidden");
+  if (error.status === 404) return new HttpError(400, "That repository is not available through the project's GitHub connection.", "validation");
+  return new HttpError(502, "Could not read the repository's default branch from GitHub.", "github");
+}
+
+/** Change the source to the URL's repository, then queue its production branch. */
+export async function apiDeployFromGithubUrl(p: Principal, projectId: string, githubUrl: string) {
+  requireScope(p, "projects:write");
+  requireScope(p, "deployments:write");
+
+  const parsed = parseGithubRepositoryUrl(githubUrl);
+  if (!parsed) {
+    throw new HttpError(400, "Use a GitHub HTTPS repository URL or git@github.com URL, optionally ending in /tree/<branch>.", "validation");
+  }
+
+  const project = await getProjectForUser(p.userId, projectId);
+  let productionBranch = parsed.branch;
+  if (!productionBranch) {
+    try {
+      productionBranch = await getGithubRepositoryDefaultBranch(project.installationId, parsed.repoFullName);
+    } catch (error) {
+      if (error instanceof GithubError) throw defaultBranchError(error);
+      throw error;
+    }
+  }
+
+  const updated = await apiUpdateDeploymentGithubRepository(p, projectId, {
+    repoFullName: parsed.repoFullName,
+    productionBranch,
+  });
+  const { apiDeployBranch } = await import("@/server/api-v1");
+  const queued = await apiDeployBranch(p, projectId, undefined, "deploy.from_github_url");
+  return { project: updated.project, deployment: queued.deployment };
+}
+
+export const DEPLOY_FROM_URL_ENDPOINTS: Endpoint[] = [
+  endpoint({
+    id: "deploy_from_github_url",
+    method: "POST",
+    path: "/projects/{projectId}/deploy-from-github-url",
+    scope: "deployments:write",
+    bucket: "write",
+    status: 202,
+    sensitive: true,
+    tag: "Deployments",
+    summary: "Deploy from a GitHub URL",
+    description: `Set the project's GitHub repository from a supported GitHub URL, choose the URL's branch or the repository's default branch, and queue a production deployment. Requires projects:write and deployments:write. The URL is never stored in the audit log. ${NOT_FOUND_NOTE}`,
+    pathParams: { projectId: projectIdInput },
+    body: {
+      githubUrl: z.string().trim().min(1).max(1000).describe("GitHub repository URL: https://github.com/owner/repo, its .git form, git@github.com:owner/repo.git, or a URL ending in /tree/<branch>."),
+    },
+    response: z.object({ project: projectSchema, deployment: deploymentSchema }),
+    errors: [400, 403, 404, 409, 502],
+    run: (p, i) => apiDeployFromGithubUrl(p, i.projectId, i.githubUrl),
+  }),
+];

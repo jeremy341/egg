@@ -538,6 +538,11 @@ export class Egg {
     return this.request("POST", `/projects/${seg(projectId)}/deployments`, {}, options.branch ? { branch: options.branch } : {});
   }
 
+  /** Change a project's GitHub source from a repository URL and queue its production branch. Needs `projects:write` and `deployments:write`. */
+  deployFromGithubUrl(projectId: string, githubUrl: string): Promise<{ project: Project; deployment: Deployment }> {
+    return this.request("POST", `/projects/${seg(projectId)}/deploy-from-github-url`, {}, { githubUrl });
+  }
+
   /** Build the same commit again. Needs `deployments:write`. */
   redeploy(deploymentId: string): Promise<{ deployment: Deployment }> {
     return this.request("POST", `/deployments/${seg(deploymentId)}/redeploy`);

@@ -255,9 +255,8 @@
     {
       "name": "deploy_from_github_url",
       "source": "apps/server/src/mcp/tools/deployments.ts",
-      "status": "partial",
-      "ours": "deploy_branch",
-      "reason": "Egg accepts a project and branch, not an arbitrary repository URL; update the configured source separately before deploying."
+      "status": "present",
+      "ours": "deploy_from_github_url"
     },
     {
       "name": "deploy_template",
