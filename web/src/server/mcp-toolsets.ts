@@ -49,6 +49,7 @@ export const TOOLSET_OF: Record<string, Toolset> = {
   list_github_repos: "core",
 
   list_deployments: "deployments",
+  get_deployment_metrics: "deployments",
   get_rollout: "deployments",
   create_project: "deployments",
   deploy_branch: "deployments",

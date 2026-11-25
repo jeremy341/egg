@@ -531,8 +531,8 @@
       "name": "get_deployment_metrics",
       "source": "apps/server/src/mcp/tools/query.ts",
       "status": "partial",
-      "ours": "get_resource_history",
-      "reason": "Egg returns server resource history, not metrics scoped to an individual deployment."
+      "ours": "get_deployment_metrics",
+      "reason": "Samples are tracked per project, not attributed to individual releases."
     },
     {
       "name": "get_deployment_next_steps",
@@ -1411,6 +1411,7 @@
     "get_notification_channel",
     "get_notifications",
     "get_organization",
+    "get_resource_history",
     "get_server_usage",
     "get_status_page",
     "list_compose_releases",
