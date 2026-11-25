@@ -21,6 +21,8 @@ export type ServiceStatus = {
   restarts: number | null;
   /** systemd's result for the last exit or run, such as "success" or "oom-kill". Null when unknown. */
   result: string | null;
+  /** systemd's identifier for the current unit invocation, used to deduplicate crash captures. */
+  invocationId: string | null;
   /** One request to the health path. Code 0 means nothing answered. */
   http: { code: number; ms: number | null } | null;
   /**
@@ -93,6 +95,7 @@ export function parseServiceStatus(stdout: string, at = new Date()): ServiceStat
       return v && /^[0-9]+$/.test(v) && v !== UNSET ? Number(v) : null;
     })(),
     restarts: num(kv.get("NRestarts")),
+    invocationId: kv.get("InvocationID") || null,
     result: kv.get("RESULT") || null,
     http,
     checkedAt: at.toISOString(),

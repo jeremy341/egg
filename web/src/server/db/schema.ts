@@ -648,6 +648,19 @@ export const deploymentLogs = sqliteTable(
   (t) => [index("logs_deployment_idx").on(t.deploymentId, t.id), index("logs_retention_at_idx").on(t.at)]
 );
 
+export const crashReports = sqliteTable(
+  "crash_reports",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+    releaseId: text("release_id").notNull(),
+    createdAt: ts("created_at").notNull(),
+    reason: text("reason").notNull(),
+    capturedLines: text("captured_lines").notNull(),
+  },
+  (t) => [index("crash_reports_project_created_idx").on(t.projectId, t.createdAt, t.id)]
+);
+
 export const domains = sqliteTable(
   "domains",
   {
