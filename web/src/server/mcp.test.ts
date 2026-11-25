@@ -405,7 +405,7 @@ describe("the expanded tool list", () => {
       "create_project", "update_project", "delete_project", "set_env_var", "delete_env_var", "list_env_vars", "add_domain",
       "verify_domain", "remove_domain", "get_deployment", "get_deployment_logs", "get_log_context", "get_activity", "get_analytics",
       "get_resource_history", "get_project_resources", "list_servers", "get_container_inventory", "rotate_deploy_hook",
-      "revoke_deploy_hook", "get_notifications", "test_notification", "get_alerts", "get_status_page", "list_deployment_errors", "search_logs", "triage_deployment_error",
+      "revoke_deploy_hook", "create_deploy_webhook_token", "delete_deploy_webhook_token", "get_notifications", "test_notification", "get_alerts", "get_status_page", "list_deployment_errors", "search_logs", "triage_deployment_error",
       "terminal_open", "terminal_send", "terminal_read", "terminal_close", "list_files", "read_file", "write_file",
       "make_folder", "delete_file",
     ]) {
@@ -418,7 +418,7 @@ describe("the expanded tool list", () => {
   it("marks every tool that deletes or can run commands or change files as destructive, and only writes", async () => {
     const tools = await byName();
     for (const name of [
-      "delete_project", "delete_env_var", "remove_domain", "rotate_deploy_hook", "revoke_deploy_hook", "cancel_deployment",
+      "delete_project", "delete_env_var", "remove_domain", "rotate_deploy_hook", "revoke_deploy_hook", "delete_deploy_webhook_token", "cancel_deployment",
       "rollback_deployment", "terminal_open", "terminal_send", "terminal_close", "write_file", "make_folder", "rename_file", "delete_file",
     ]) {
       expect(tools.get(name)!.annotations, name).toMatchObject({ readOnlyHint: false, destructiveHint: true });
@@ -444,8 +444,9 @@ describe("the expanded tool list", () => {
     }
     for (const name of ["write_file", "delete_file", "make_folder"]) expect(tools.get(name)!.description, name).toMatch(/shared\//);
     for (const ep of ENDPOINTS) expect(tools.get(ep.id)!.description).toContain(ep.scope ? `Needs the ${ep.scope} scope.` : "Needs no scope.");
-    for (const name of ["set_env_var", "rotate_deploy_hook"]) expect(tools.get(name)!.description).toMatch(/secret|write-only/i);
+    for (const name of ["set_env_var", "rotate_deploy_hook", "create_deploy_webhook_token"]) expect(tools.get(name)!.description).toMatch(/secret|write-only/i);
     expect(tools.get("rotate_deploy_hook")!.description).toMatch(/ONCE/);
+    expect(tools.get("create_deploy_webhook_token")!.description).toMatch(/ONCE/);
   });
 
   it("has strict input schemas that name required fields", async () => {
@@ -454,6 +455,8 @@ describe("the expanded tool list", () => {
     expect(tools.get("set_env_var")!.inputSchema.required).toEqual(expect.arrayContaining(["projectId", "key", "value"]));
     expect(tools.get("terminal_send")!.inputSchema.required).toEqual(expect.arrayContaining(["projectId", "sessionId", "data"]));
     expect(tools.get("create_project")!.inputSchema.required).toEqual(expect.arrayContaining(["serverId", "name"]));
+    expect(tools.get("create_deploy_webhook_token")!.inputSchema.required).toEqual(expect.arrayContaining(["projectId", "name"]));
+    expect(tools.get("delete_deploy_webhook_token")!.inputSchema.required).toEqual(expect.arrayContaining(["projectId", "tokenId", "confirmName"]));
     expect(tools.get("get_log_context")!.inputSchema.required).toEqual(expect.arrayContaining(["projectId", "at"]));
     expect(tools.get("triage_deployment_error")!.inputSchema.required).toEqual(expect.arrayContaining(["projectId", "fingerprint", "action"]));
   });
@@ -537,11 +540,22 @@ describe("expanded tools/call", () => {
       ["delete_file", "files:write", { projectId, path: "shared/a" }],
     ];
     const before = (await ctx.db.select().from(schema.projects)).length;
+    const secretsWithoutScope = new Map<Scope, string>();
     for (const [name, scope, args] of calls) {
       const secret = await token(ALL.filter((s) => s !== scope));
+      secretsWithoutScope.set(scope, secret);
       const body = await (await call(secret, name, args)).json();
       expect(body.result.isError, name).toBe(true);
       expect(text(body), name).toContain(scope);
+    }
+    const withoutDeployWrite = secretsWithoutScope.get("deployments:write")!;
+    for (const [name, args] of [
+      ["create_deploy_webhook_token", { projectId, name: "CI" }],
+      ["delete_deploy_webhook_token", { projectId, tokenId: "TOKEN", confirmName: "CI" }],
+    ] as const) {
+      const body = await (await call(withoutDeployWrite, name, args)).json();
+      expect(body.result.isError, name).toBe(true);
+      expect(text(body), name).toContain("deployments:write");
     }
     expect((await ctx.db.select().from(schema.projects)).length).toBe(before);
     expect(vi.mocked(withServerSession)).not.toHaveBeenCalled();
@@ -561,6 +575,8 @@ describe("expanded tools/call", () => {
       ["list_deployment_errors", { projectId: theirProjectId }],
       ["triage_deployment_error", { projectId: theirProjectId, fingerprint: "0123456789abcdef", action: "resolve" }],
       ["rotate_deploy_hook", { projectId: theirProjectId, confirmName: "Theirs" }],
+      ["create_deploy_webhook_token", { projectId: theirProjectId, name: "CI" }],
+      ["delete_deploy_webhook_token", { projectId: theirProjectId, tokenId: "TOKEN", confirmName: "CI" }],
       ["get_alerts", { projectId: theirProjectId }],
       ["get_analytics", { projectId: theirProjectId }],
       ["get_status_page", { projectId: theirProjectId }],

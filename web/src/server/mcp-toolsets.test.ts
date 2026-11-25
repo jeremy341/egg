@@ -67,10 +67,15 @@ describe("toolset membership", () => {
     }
   });
 
+  it("groups deploy-hook token management with deployments", () => {
+    expect(TOOLSET_OF.create_deploy_webhook_token).toBe("deployments");
+    expect(TOOLSET_OF.delete_deploy_webhook_token).toBe("deployments");
+  });
+
   it("marks one-time deploy-hook and webhook secrets as sensitive", () => {
-    expect([...SENSITIVE_TOOLS]).toEqual(["rotate_deploy_hook", "create_notification_channel"]);
+    expect([...SENSITIVE_TOOLS]).toEqual(["rotate_deploy_hook", "create_deploy_webhook_token", "create_notification_channel"]);
     const sensitive = TOOLS.filter((t) => t._meta?.["egg/sensitive"] === true).map((t) => t.name);
-    expect(sensitive).toEqual(["rotate_deploy_hook", "create_notification_channel"]);
+    expect(sensitive).toEqual(["rotate_deploy_hook", "create_deploy_webhook_token", "create_notification_channel"]);
   });
 });
 
@@ -214,7 +219,7 @@ describe("sensitive tools", () => {
   it("marks the one-time secret tools with egg/sensitive in tools/list", async () => {
     const tools = await toolsList("", allScopes);
     const flagged = tools.filter((t) => t._meta && t._meta["egg/sensitive"] === true).map((t) => t.name);
-    expect(flagged).toEqual(["rotate_deploy_hook", "create_notification_channel"]);
+    expect(flagged).toEqual(["rotate_deploy_hook", "create_deploy_webhook_token", "create_notification_channel"]);
   });
 
   it("keeps the mark when the tool is narrowed into the list", async () => {
