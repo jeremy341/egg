@@ -384,6 +384,6 @@ export const LOG_ENDPOINTS: Endpoint[] = [
     },
     response: z.object({ status: z.enum(["open", "resolved", "ignored"]), assigneeId: z.string().nullable() }),
     errors: [400, 404, 409],
-    run: (p, i) => apiTriageDeploymentError(p, i.projectId, i.fingerprint, i.action, i.assigneeId ?? null),
+    run: (p, i) => apiTriageDeploymentError(p, i.projectId, i.fingerprint, i.action, i.assigneeId),
   }),
 ];
