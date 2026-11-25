@@ -883,7 +883,10 @@ export class Egg {
   updateNotificationChannel(channelId: string, input: unknown): Promise<unknown> {
     return this.request("PATCH", `/notification-channels/${seg(channelId)}`, {}, input);
   }
-  deleteNotificationChannel(channelId: string): Promise<unknown> { return this.request("DELETE", `/notification-channels/${seg(channelId)}`); }
+  /** Delete a notification channel. `confirmName` must be the channel host exactly. Needs `webhooks:write`. */
+  deleteNotificationChannel(channelId: string, confirmName: string): Promise<unknown> {
+    return this.request("DELETE", `/notification-channels/${seg(channelId)}`, {}, { confirmName });
+  }
   updateNotificationRule(channelId: string, ruleId: string, input: unknown): Promise<unknown> {
     return this.request("PATCH", `/notification-channels/${seg(channelId)}/rules/${seg(ruleId)}`, {}, input);
   }
@@ -928,7 +931,7 @@ export class Egg {
   listComposeReleases(projectId: string): Promise<unknown> { return this.request("GET", `/compose-stacks/${seg(projectId)}/releases`); }
   /** Releases recorded for a project. Needs `deployments:read`. */
   listReleases(projectId: string): Promise<unknown> { return this.request("GET", `/projects/${seg(projectId)}/releases`); }
-  /** Resource analysis for one deployment. Needs `deployments:read`. */
+  /** Resource analysis for one deployment. Needs `resources:read`. */
   analyzeDeploymentResources(deploymentId: string): Promise<unknown> { return this.request("GET", `/deployments/${seg(deploymentId)}/resource-analysis`); }
   /** Volumes attached to one deployment. Needs `deployments:read`. */
   getDeploymentVolumes(deploymentId: string): Promise<unknown> { return this.request("GET", `/deployments/${seg(deploymentId)}/deployment-volumes`); }
