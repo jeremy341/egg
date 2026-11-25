@@ -92,6 +92,34 @@ describe("get_env_vars", () => {
     expect(JSON.stringify(result)).not.toContain(SECRET_ZED);
   });
 
+  it("never returns secret values from any environment endpoint response", async () => {
+    const responses = [
+      await call(owner.id, ["env:read"], "list_env_vars"),
+      await call(owner.id, ["env:write"], "add_env_vars", {
+        envVars: [{ key: "NEW_KEY", value: VALUE_NEW, target: "preview" }],
+      }),
+      await call(owner.id, ["env:write"], "set_env_vars", {
+        confirmName: projectName,
+        envVars: [
+          { key: "ALPHA", value: SECRET_ALPHA, target: "all" },
+          { key: "ZED", value: SECRET_ZED, target: "production" },
+          { key: "NEW_KEY", value: VALUE_NEW, target: "preview" },
+        ],
+      }),
+      await call(owner.id, ["env:write"], "set_env_var_secret", {
+        key: "ALPHA", target: "all", secret: true,
+      }),
+      await call(owner.id, ["env:write"], "delete_env_vars", {
+        keys: ["ALPHA"], confirmName: projectName, target: "all",
+      }),
+      await call(owner.id, ["env:read"], "get_env_vars"),
+    ];
+    const serialized = JSON.stringify(responses);
+    expect(serialized).not.toContain(SECRET_ALPHA);
+    expect(serialized).not.toContain(SECRET_ZED);
+    expect(serialized).not.toContain(VALUE_NEW);
+  });
+
   it("defaults new variables to secret and value writes leave the flag unchanged", async () => {
     await call(owner.id, ["env:write"], "add_env_vars", {
       envVars: [{ key: "NEW_KEY", value: VALUE_NEW, target: "preview" }],
