@@ -554,9 +554,9 @@
     {
       "name": "get_env_vars",
       "source": "apps/server/src/mcp/tools/query.ts",
-      "status": "partial",
-      "ours": "list_env_vars",
-      "reason": "Egg lists variable names and targets only; Orchard also returns non-secret values and marks secret values as write-only."
+      "status": "present",
+      "ours": "get_env_vars",
+      "prior_status": "partial"
     },
     {
       "name": "get_github_status",
@@ -1414,6 +1414,7 @@
     "get_server_usage",
     "get_status_page",
     "list_compose_releases",
+    "list_env_vars",
     "list_files",
     "list_servers",
     "make_folder",
@@ -1421,6 +1422,7 @@
     "rename_file",
     "restart_service",
     "set_env_var",
+    "set_env_var_secret",
     "terminal_close",
     "terminal_open",
     "terminal_read",

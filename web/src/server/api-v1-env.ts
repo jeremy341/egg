@@ -19,9 +19,9 @@ import {
  * delete by name. All of them go through the same services the dashboard uses,
  * so the storage, limits and audit entries stay identical.
  *
- * Values are write-only. Only `key` and `target` ever leave these functions,
- * both in successful responses and in the declared response schemas; a value
- * is sealed by the service and is never read back, echoed or put in an error.
+ * The batch operations keep supplied values out of their successful responses
+ * and errors. `get_env_vars` is the explicit read path and returns a value only
+ * for a variable that was separately marked non-secret.
  */
 
 const projectId = projectIdInput;
@@ -33,7 +33,7 @@ const envEntrySchema = z.object({
 });
 const envValueSchema = z.object({
   key: envInput.shape.key,
-  value: envInput.shape.value.describe("The value, up to 10000 characters. Write-only, never returned."),
+  value: envInput.shape.value.describe("The value, up to 10000 characters. Omitted from write responses; get_env_vars returns it only when explicitly marked non-secret."),
   target: envTarget,
 });
 /** One entry per name and target, so a batch cannot contradict itself. */
@@ -137,7 +137,7 @@ export const ENV_ENDPOINTS: Endpoint[] = [
     summary: "List environment variable names",
     // Only validated names and fixed targets come back; no remote bytes.
     untrusted: false,
-    description: `List the names and targets (all, production or preview) of a project's environment variables, ordered by name then target. Values are never returned by any endpoint. Pass limit and then the returned nextCursor as cursor to page through them; items is the page, total is the number of entries, and env keeps the full list for older callers. ${NOT_FOUND_NOTE}`,
+    description: `List the names and targets (all, production or preview) of a project's environment variables, ordered by name then target. Values marked secret are never returned; get_env_vars returns values only for variables explicitly marked non-secret. Pass limit and then the returned nextCursor as cursor to page through them; items is the page, total is the number of entries, and env keeps the full list for older callers. ${NOT_FOUND_NOTE}`,
     pathParams: { projectId },
     query: {
       limit: z.coerce.number().int().min(1).max(100).default(100).describe("How many entries in a page, 1 to 100. Default 100."),
@@ -161,7 +161,7 @@ export const ENV_ENDPOINTS: Endpoint[] = [
     sensitive: true,
     tag: "Environment",
     summary: "Merge environment variables",
-    description: "Add or replace the supplied project variables while leaving other names and targets unchanged. Values are encrypted at rest, write-only and never returned. Each variable reaches the app on the next deploy.",
+    description: "Add or replace the supplied project variables while leaving other names and targets unchanged. Values are encrypted at rest and omitted from write responses; get_env_vars returns them only when explicitly marked non-secret. Each variable reaches the app on the next deploy.",
     pathParams: { projectId },
     body: { envVars: envValues },
     response: z.object({ env: z.array(envEntrySchema) }),
@@ -178,7 +178,7 @@ export const ENV_ENDPOINTS: Endpoint[] = [
     sensitive: true,
     tag: "Environment",
     summary: "Replace all environment variables",
-    description: "Replace every variable and target on the project with the supplied list. Omitted names are deleted. Egg keeps all values write-only, so existing secret values cannot be read or round-tripped. Requires confirmName to exactly match the project name.",
+    description: "Replace every variable and target on the project with the supplied list. Omitted names are deleted. Existing secret flags stay with matching names and targets; new variables default to secret. Secret values cannot be read or round-tripped. Requires confirmName to exactly match the project name.",
     pathParams: { projectId },
     body: { envVars: envValues, confirmName },
     response: z.object({ env: z.array(envEntrySchema), deleted: z.array(envEntrySchema) }),

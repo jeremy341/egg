@@ -12,7 +12,7 @@ import { COMPACT_TOOLS } from "@/server/mcp-compact";
  * no longer match the manifest statuses. Update the baselines with status changes.
  */
 type Status = "present" | "partial" | "missing" | "not_applicable";
-type Row = { name: string; source: string; status: Status; ours: string | null; reason?: string };
+type Row = { name: string; source: string; status: Status; ours: string | null; reason?: string; prior_status?: Status };
 type Manifest = { baseline_present: number; baseline_partial: number; baseline_missing: number; baseline_not_applicable: number; tools: Row[]; ours_only: string[] };
 
 const manifest = JSON.parse(readFileSync(path.join(__dirname, "orchard-parity.json"), "utf8")) as Manifest;
@@ -62,12 +62,13 @@ describe("Orchard MCP parity manifest", () => {
   });
 
   it("keeps recorded baselines equal to the current statuses", () => {
-    const present = manifest.tools.filter((t) => t.status === "present").length;
-    const partial = manifest.tools.filter((t) => t.status === "partial").length;
+    const baselineStatuses = manifest.tools.map((t) => t.prior_status ?? t.status);
+    const present = baselineStatuses.filter((status) => status === "present").length;
+    const partial = baselineStatuses.filter((status) => status === "partial").length;
     expect(present).toBe(manifest.baseline_present);
     expect(partial).toBe(manifest.baseline_partial);
-    const missing = manifest.tools.filter((t) => t.status === "missing").length;
-    const notApplicable = manifest.tools.filter((t) => t.status === "not_applicable").length;
+    const missing = baselineStatuses.filter((status) => status === "missing").length;
+    const notApplicable = baselineStatuses.filter((status) => status === "not_applicable").length;
     expect(missing).toBe(manifest.baseline_missing);
     expect(notApplicable).toBe(manifest.baseline_not_applicable);
   });

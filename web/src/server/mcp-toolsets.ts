@@ -67,7 +67,9 @@ export const TOOLSET_OF: Record<string, Toolset> = {
   search_logs: "logs",
 
   list_env_vars: "env",
+  get_env_vars: "env",
   set_env_var: "env",
+  set_env_var_secret: "env",
   delete_env_var: "env",
   add_env_vars: "env",
   set_env_vars: "env",

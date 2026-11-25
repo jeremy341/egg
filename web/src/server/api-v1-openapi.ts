@@ -30,7 +30,7 @@ Rate limits are per token: ${API_LIMITS.read.limit} requests a minute for reads 
 
 Errors are always JSON: \`{ "error": { "code": "...", "message": "..." } }\`.
 
-**Secrets are write-only.** Environment values, notification webhook URLs and token secrets are never returned. A deploy hook URL is returned once, by the call that creates it.
+**Secrets are write-only.** Environment values marked secret, notification webhook URLs and token secrets are never returned. The get_env_vars endpoint returns values only when their flag is explicitly set to non-secret. A deploy hook URL is returned once, by the call that creates it.
 
 **Tightly limited:** the terminal (\`terminal:use\`) and file changes (\`files:write\`) need the owner to have turned the matching switch on for the server, and a token that holds either expires within 7 days. File changes only reach a project's \`shared/\` folder, never the live release.
 
