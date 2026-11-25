@@ -44,6 +44,7 @@ import { AUTODEPLOY_ENDPOINTS } from "@/server/api-v1-autodeploy";
 import { DOMAIN_ENDPOINTS } from "@/server/api-v1-domains";
 import { SERVICES_ENDPOINTS } from "@/server/api-v1-services";
 import { DEPLOYMENT_CRUD_ENDPOINTS } from "@/server/api-v1-deployments";
+import { DEPLOYMENT_METRICS_ENDPOINTS } from "@/server/api-v1-deployment-metrics";
 import { COMPOSE_ENDPOINTS } from "@/server/api-v1-compose";
 import { VERDICT_ENDPOINTS } from "@/server/api-v1-verdict";
 import { IMAGE_ENDPOINTS } from "@/server/api-v1-images";
@@ -466,6 +467,7 @@ export const ENDPOINTS: Endpoint[] = [
   ...DOMAIN_ENDPOINTS,
   ...SERVICES_ENDPOINTS,
   ...DEPLOYMENT_CRUD_ENDPOINTS,
+  ...DEPLOYMENT_METRICS_ENDPOINTS,
   ...COMPOSE_ENDPOINTS,
   ...VERDICT_ENDPOINTS,
   ...IMAGE_ENDPOINTS,
