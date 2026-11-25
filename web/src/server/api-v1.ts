@@ -55,6 +55,7 @@ import { ORG_ENDPOINTS } from "@/server/api-v1-orgs";
 import { RELEASE_ENDPOINTS } from "@/server/api-v1-releases";
 import { QUERY_ENDPOINTS } from "@/server/api-v1-query";
 import { RESOURCE_QUOTA_ENDPOINTS } from "@/server/api-v1-resource-quota";
+import { CRASH_REPORT_ENDPOINTS } from "@/server/api-v1-crash-reports";
 import { getDb, schema } from "@/server/db";
 import { notFound, zodToHttp } from "@/server/http";
 import {
@@ -469,6 +470,7 @@ export const ENDPOINTS: Endpoint[] = [
   ...LIFECYCLE_ENDPOINTS,
   ...JOBS_ENDPOINTS,
   ...LOG_ENDPOINTS,
+  ...CRASH_REPORT_ENDPOINTS,
   ...GITHUB_ENDPOINTS,
   ...NOTIFICATION_ENDPOINTS,
   ...ENV_ENDPOINTS,

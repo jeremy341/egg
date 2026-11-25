@@ -13,6 +13,7 @@ import { withMaintenanceLease } from "@/server/maintenance-leases";
 import { purgeExpiredTrash } from "@/server/project-trash";
 import { runPostDeployChecks } from "@/server/deploy-regression-job";
 import { evaluateRules } from "@/server/alert-rules";
+import { captureFailedUnit } from "@/server/crash-reports";
 
 /**
  * Uptime checks and usage history, run by the worker on a timer.
@@ -231,6 +232,16 @@ async function checkable(serverId: string): Promise<ProjectRow[]> {
 async function checkServer(server: typeof schema.servers.$inferSelect, now: Date, onError?: (err: unknown) => void) {
   const db = await getDb();
   const projects = await checkable(server.id);
+  const currentReleases = projects.length
+    ? await db.select({ projectId: schema.deployments.projectId, releaseId: schema.deployments.releaseId })
+      .from(schema.deployments)
+      .where(and(
+        inArray(schema.deployments.projectId, projects.map((project) => project.id)),
+        eq(schema.deployments.env, "production"),
+        eq(schema.deployments.isCurrent, true),
+      ))
+    : [];
+  const releaseByProject = new Map(currentReleases.map((release) => [release.projectId, release.releaseId]));
 
   const { probe, results } = await withServerSession(server, async (s) => {
     const probe = await probeSession(s);
@@ -249,6 +260,24 @@ async function checkServer(server: typeof schema.servers.$inferSelect, now: Date
         if (p) results.set(p.id, parseServiceStatus(parts[i + 1], now));
       }
     }, onError, 2);
+    for (const p of projects) {
+      const status = results.get(p.id);
+      const releaseId = releaseByProject.get(p.id);
+      if (status?.state !== "failed" || !releaseId) continue;
+      try {
+        await captureFailedUnit({
+          projectId: p.id,
+          releaseId,
+          unit: unitName(p.slug, undefined, serverDiscriminator(server.id)),
+          status,
+          session: s,
+          at: now,
+        });
+      } catch (err) {
+        // A journal read must not prevent the health sample or alert from being saved.
+        onError?.(err);
+      }
+    }
     return { probe, results };
   });
 
