@@ -203,6 +203,7 @@ describe("the notification endpoint list", () => {
       ["create_notification_channel", { url: URL, stray: true }],
       ["get_notification_channel", { channelId: "  " }],
       ["update_notification_channel", { channelId: "c", active: "yes" }],
+      ["delete_notification_channel", { channelId: "c" }],
       ["delete_notification_channel", { channelId: "c", extra: 1 }],
       ["create_notification_rule", { channelId: "c", events: ["not.an.event"] }],
       ["update_notification_rule", { channelId: "c", ruleId: "r", events: [] }],
@@ -251,11 +252,28 @@ describe("channel CRUD", () => {
     expect(updated.channel.events).toEqual(["deployment.failed"]);
     expect(updated.channel.active).toBe(false);
 
-    const deleted = (await call("delete_notification_channel", writer(), { channelId: channel.id })) as {
+    await expect(
+      call("delete_notification_channel", writer(), { channelId: channel.id, confirmChannelId: "different-channel" })
+    ).rejects.toMatchObject({ status: 400, code: "confirmation_failed" });
+
+    const deleted = (await call("delete_notification_channel", writer(), {
+      channelId: channel.id,
+      confirmChannelId: channel.id,
+    })) as {
       deleted: boolean;
       channelId: string;
     };
     expect(deleted).toEqual({ deleted: true, channelId: channel.id });
+    const deleteAudit = (await ctx.db.select().from(schema.auditLog)).find((row) => {
+      if (row.userId !== ownerId || row.action !== "webhook.delete" || !row.meta) return false;
+      try {
+        return JSON.parse(row.meta).channelId === channel.id;
+      } catch {
+        return false;
+      }
+    });
+    expect(deleteAudit?.meta).toContain('"via":"api"');
+    expect(deleteAudit?.meta).toContain('"token":"test-token"');
     expect((await call("list_notification_channels", reader())) as { channels: Channel[] }).toMatchObject({
       channels: [],
     });
@@ -270,9 +288,9 @@ describe("channel CRUD", () => {
     await expect(
       call("update_notification_channel", outsider(), { channelId: channel.id, active: false })
     ).rejects.toMatchObject({ status: 404 });
-    await expect(call("delete_notification_channel", outsider(), { channelId: channel.id })).rejects.toMatchObject({
-      status: 404,
-    });
+    await expect(
+      call("delete_notification_channel", outsider(), { channelId: channel.id, confirmChannelId: channel.id })
+    ).rejects.toMatchObject({ status: 404 });
     await expect(call("list_notification_deliveries", outsider(), { channelId: channel.id })).rejects.toMatchObject({
       status: 404,
     });
