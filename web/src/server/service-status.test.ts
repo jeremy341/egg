@@ -36,6 +36,7 @@ describe("parseServiceStatus", () => {
       detail: "running",
       pid: 4242,
       uptimeSeconds: 1, // 1000.5 s since boot minus 1000 s when it started, rounded
+      invocationId: null, // the sample unit prints no InvocationID
       memoryMb: 84,
       cpuNs: 2_500_000_000,
       restarts: 2,
