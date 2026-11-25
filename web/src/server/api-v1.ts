@@ -47,6 +47,8 @@ import { COMPOSE_ENDPOINTS } from "@/server/api-v1-compose";
 import { VERDICT_ENDPOINTS } from "@/server/api-v1-verdict";
 import { IMAGE_ENDPOINTS } from "@/server/api-v1-images";
 import { ORG_ENDPOINTS } from "@/server/api-v1-orgs";
+import { RELEASE_ENDPOINTS } from "@/server/api-v1-releases";
+import { QUERY_ENDPOINTS } from "@/server/api-v1-query";
 import { getDb, schema } from "@/server/db";
 import { notFound, zodToHttp } from "@/server/http";
 import {
@@ -466,6 +468,8 @@ export const ENDPOINTS: Endpoint[] = [
   ...VERDICT_ENDPOINTS,
   ...IMAGE_ENDPOINTS,
   ...ORG_ENDPOINTS,
+  ...RELEASE_ENDPOINTS,
+  ...QUERY_ENDPOINTS,
 ];
 
 export function endpointById(id: string): Endpoint | undefined {
