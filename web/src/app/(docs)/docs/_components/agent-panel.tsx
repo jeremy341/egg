@@ -20,7 +20,7 @@ export function AgentPanel({ slug }: { slug: string }) {
               Copies a prompt that points at <C>/llms.txt</C>. The arrow opens the same ask in Claude or ChatGPT.
             </p>
           </div>
-          <CopyPromptButton global label="Copy docs prompt" />
+          <CopyPromptButton global />
         </div>
         <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 py-4">
           <div className="min-w-0">

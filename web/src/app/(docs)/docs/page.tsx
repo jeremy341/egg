@@ -30,8 +30,8 @@ export default function DocsHome() {
         <Link href={docsHref("run-yourself")} className="inline-flex h-10 items-center rounded-md border px-4 text-[15px] font-medium text-foreground transition-colors duration-(--dur-fast) hover:bg-[var(--ds-gray-alpha-100)]">
           Install Egg
         </Link>
-        <div className="ml-auto">
-          <CopyPromptButton global label="Copy docs prompt" />
+        <div className="w-full sm:ml-auto sm:w-auto">
+          <CopyPromptButton global />
         </div>
       </div>
       <StartHere />

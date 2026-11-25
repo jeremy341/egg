@@ -19,7 +19,7 @@ import { toast } from "@/components/ui/toast";
 export function CopyPromptButton({
   slug,
   global = false,
-  label = "Copy docs prompt",
+  label = "Copy prompt",
 }: {
   slug?: string;
   global?: boolean;
