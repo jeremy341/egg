@@ -90,6 +90,7 @@ const CLIENT_CALLS: Record<string, Call$> = {
   get_status_page: (n) => n.getStatusPage("P"),
   get_analytics: (n) => n.getAnalytics("P"),
   get_activity: (n) => n.getActivity(),
+  get_changes: (n) => n.getChanges("P"),
   terminal_status: (n) => n.terminalStatus("P"),
   terminal_open: (n) => n.terminalOpen("P"),
   terminal_send: (n) => n.terminalSend("P", "SESS", "ls\n"),
