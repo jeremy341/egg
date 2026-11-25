@@ -112,7 +112,9 @@ describe("project roles on the migrated routes", () => {
     expect((await patchProject(req("PATCH", { name: "Nope" }), idCtx(p))).status).toBe(403);
     expect((await setEnv(req("POST", { key: "A_KEY", value: "x" }), idCtx(p))).status).toBe(403);
     expect((await postCleanup(req("POST", { confirm: "x" }), idCtx(p))).status).toBe(403);
-    expect((await deleteProjectRoute(req("DELETE"), idCtx(p))).status).toBe(403);
+    // Deleting a project is owner-only: a project member cannot even learn
+    // that it exists through this route.
+    expect((await deleteProjectRoute(req("DELETE"), idCtx(p))).status).toBe(404);
     const still = await ctx.db.select().from(schema.projects).where(eq(schema.projects.id, p)).get();
     expect(still?.name).toBe("PA " + p.replace("pa", ""));
   });
@@ -122,14 +124,21 @@ describe("project roles on the migrated routes", () => {
     as("pMember");
     expect((await patchProject(req("PATCH", { name: "Edited by member" }), idCtx(p))).status).toBe(200);
     expect((await setEnv(req("POST", { key: "MEMBER_KEY", value: "x" }), idCtx(p))).status).toBe(201);
-    expect((await deleteProjectRoute(req("DELETE"), idCtx(p))).status).toBe(403);
+    expect((await deleteProjectRoute(req("DELETE"), idCtx(p))).status).toBe(404);
     expect((await postCleanup(req("POST", { confirm: "x" }), idCtx(p))).status).toBe(403);
     expect((await ctx.db.select().from(schema.projects).where(eq(schema.projects.id, p)).get())).toBeTruthy();
   });
 
-  it("an admin deletes the project records", async () => {
+  it("a project admin who does not own the project cannot delete it", async () => {
     const p = await makeProject([["pAdmin", "admin"]]);
     as("pAdmin");
+    expect((await deleteProjectRoute(req("DELETE"), idCtx(p))).status).toBe(404);
+    expect(await ctx.db.select().from(schema.projects).where(eq(schema.projects.id, p)).get()).toBeTruthy();
+  });
+
+  it("the owner deletes the project records", async () => {
+    const p = await makeProject([]);
+    as("owner");
     expect((await deleteProjectRoute(req("DELETE"), idCtx(p))).status).toBe(200);
     expect(await ctx.db.select().from(schema.projects).where(eq(schema.projects.id, p)).get()).toBeUndefined();
   });
