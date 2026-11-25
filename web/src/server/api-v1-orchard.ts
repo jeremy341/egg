@@ -3,7 +3,7 @@ import { requireScope, type Principal } from "@/server/api-tokens";
 import { tagAudit } from "@/server/api-v1-audit";
 import { endpoint, projectIdInput, type Endpoint } from "@/server/api-v1-kit";
 import { HttpError, notFound } from "@/server/http";
-import { listDeployHookTokens } from "@/server/hooks";
+import { hookStatus } from "@/server/hooks";
 import { deleteEnvVar, envInput, getProjectForUser, listEnvVars, mergeEnvVars, replaceEnvVars } from "@/server/projects";
 import {
   createJob,
@@ -171,14 +171,12 @@ export async function apiDeleteEnvVars(
 
 export async function apiListDeployWebhookTokens(p: Principal, projectIdValue: string) {
   requireScope(p, "deployments:read");
-  const tokens = await listDeployHookTokens(p.userId, projectIdValue);
+  const status = await hookStatus(p.userId, projectIdValue);
+  // Egg has one hook per project and stores no token id or recoverable token.
   return {
-    tokens: tokens.map((token) => ({
-      id: token.id,
-      name: token.name,
-      active: token.active,
-      createdAt: token.createdAt?.toISOString() ?? null,
-    })),
+    tokens: status.active
+      ? [{ active: true, createdAt: status.createdAt?.toISOString() ?? null }]
+      : [],
   };
 }
 
@@ -347,15 +345,10 @@ export const ORCHARD_ENDPOINTS: Endpoint[] = [
     bucket: "read",
     tag: "Deployments",
     summary: "List deploy webhook token status",
-    description: "List named deploy-hook token ids and names with their active status and creation time, plus the status of the legacy project hook when present. Secrets and URLs are never returned.",
+    description: "Egg has one deploy hook per project. This returns whether it is active and when it was created; it never returns the token or URL. The hook has no listable token id, so this is a partial match for token inventory.",
     pathParams: { projectId },
     response: z.object({
-      tokens: z.array(z.object({
-        active: z.boolean(),
-        createdAt: z.string().nullable(),
-        id: z.string().nullable(),
-        name: z.string().nullable(),
-      })),
+      tokens: z.array(z.object({ active: z.boolean(), createdAt: z.string().nullable() })),
     }),
     errors: [400, 404],
     run: (p, i) => apiListDeployWebhookTokens(p, i.projectId),

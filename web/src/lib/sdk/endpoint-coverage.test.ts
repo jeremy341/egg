@@ -31,7 +31,6 @@ const PARAMS: Record<string, string> = {
   fingerprint: "FP",
   jobId: "JOB",
   crashId: "CRASH",
-  tokenId: "TOKEN",
 };
 
 function recorder() {
@@ -86,8 +85,6 @@ const CLIENT_CALLS: Record<string, Call$> = {
   delete_env_var: (n) => n.deleteEnvVar("P", "KEY"),
   rotate_deploy_hook: (n) => n.rotateDeployHook("P"),
   revoke_deploy_hook: (n) => n.revokeDeployHook("P"),
-  create_deploy_webhook_token: (n) => n.createDeployWebhookToken("P", "CI production"),
-  delete_deploy_webhook_token: (n) => n.deleteDeployWebhookToken("P", "TOKEN", "CI production"),
   get_notifications: (n) => n.getNotifications("P"),
   test_notification: (n) => n.testNotification("P"),
   get_alerts: (n) => n.getAlerts("P"),
@@ -239,14 +236,6 @@ describe("the typed client covers the whole public API", () => {
 });
 
 describe("request bodies and queries of the newer calls", () => {
-  it("sends the deploy-hook token name and exact deletion confirmation", async () => {
-    const { nest, calls } = recorder();
-    await nest.createDeployWebhookToken("P", "CI production");
-    await nest.deleteDeployWebhookToken("P", "TOKEN", "CI production");
-    expect(JSON.parse(calls[0].init.body!)).toEqual({ name: "CI production" });
-    expect(JSON.parse(calls[1].init.body!)).toEqual({ confirmName: "CI production" });
-  });
-
   it("sends the channel host as confirmName when deleting a notification channel", async () => {
     const { nest, calls } = recorder();
     await nest.deleteNotificationChannel("HOOK", "hooks.example.com");
