@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import type { Principal } from "@/server/api-tokens";
 import { callEndpoint, ENDPOINTS, enforceApiRate, type Endpoint } from "@/server/api-v1";
 import { HttpError } from "@/server/http";
-import { endpointVisible, FULL_VIEW, McpView, SENSITIVE_TOOLS, viewAllows } from "@/server/mcp-toolsets";
 
 /**
  * A small MCP server over plain HTTP (JSON-RPC 2.0, one JSON response per
@@ -37,57 +36,31 @@ export type McpTool = {
   title: string;
   description: string;
   inputSchema: Record<string, unknown>;
-  /** JSON Schema of the response for a read-only tool, so clients can validate its structuredContent. */
-  outputSchema?: Record<string, unknown>;
   annotations: { readOnlyHint: boolean; destructiveHint: boolean; idempotentHint: boolean; openWorldHint: boolean };
-  /** Extra metadata for the client. `egg/sensitive` marks a result that carries a secret shown once. */
-  _meta?: Record<string, unknown>;
 };
 
-/** JSON Schema for a zod type, without `$schema` (MCP supplies its own dialect). */
-function jsonSchemaOf(zod: z.ZodType, io: "input" | "output"): Record<string, unknown> {
-  const { $schema, ...schema } = z.toJSONSchema(zod, { io, target: "draft-2020-12" }) as Record<string, unknown>;
-  void $schema;
-  return schema;
-}
-
 function toTool(ep: Endpoint): McpTool {
+  const { $schema, ...inputSchema } = z.toJSONSchema(ep.input, { io: "input", target: "draft-2020-12" }) as Record<
+    string,
+    unknown
+  >;
+  void $schema;
   return {
     name: ep.id,
     title: ep.summary,
     description: `${ep.description} ${ep.scope ? `Needs the ${ep.scope} scope.` : "Needs no scope."}`,
-    inputSchema: jsonSchemaOf(ep.input, "input"),
-    // Only read-only tools declare an outputSchema: declare one means the tool
-    // must always return structuredContent that validates against it.
-    ...(ep.readOnly ? { outputSchema: jsonSchemaOf(ep.response, "output") } : {}),
+    inputSchema,
     annotations: {
       readOnlyHint: ep.readOnly,
       destructiveHint: !ep.readOnly && ep.destructive,
       idempotentHint: ep.readOnly,
       openWorldHint: false,
     },
-    ...(SENSITIVE_TOOLS.has(ep.id) ? { _meta: { "egg/sensitive": true } } : {}),
   };
 }
 
-/** Every tool the server knows, with no token or view applied. */
 export const TOOLS: McpTool[] = ENDPOINTS.map(toTool);
 const BY_NAME = new Map(ENDPOINTS.map((e) => [e.id, e]));
-
-/** The tools this token may see through this view. Nothing outside the token's scopes is ever listed. */
-export function toolsFor(p: Principal, view: McpView = FULL_VIEW): McpTool[] {
-  return ENDPOINTS.filter((ep) => endpointVisible(p, ep, view)).map((ep) => TOOLS.find((t) => t.name === ep.id)!);
-}
-
-/**
- * The endpoint for a tool name when the connection's view includes it. A tool outside the view reads as
- * unknown. A token's missing scope is not checked here: the call reaches the endpoint, which refuses it
- * with a message that names the scope, as it always has.
- */
-export function viewedEndpoint(name: string, view: McpView): Endpoint | undefined {
-  const ep = BY_NAME.get(name);
-  return ep && viewAllows(ep, view) ? ep : undefined;
-}
 
 // ---------------------------------------------------------------- JSON-RPC
 
@@ -104,12 +77,12 @@ export const RPC = {
   internal: -32603,
 } as const;
 
-export const rpcError = (id: RpcId, code: number, message: string): RpcResponse => ({
+const rpcError = (id: RpcId, code: number, message: string): RpcResponse => ({
   jsonrpc: "2.0",
   id,
   error: { code, message },
 });
-export const rpcResult = (id: RpcId, result: unknown): RpcResponse => ({ jsonrpc: "2.0", id, result });
+const rpcResult = (id: RpcId, result: unknown): RpcResponse => ({ jsonrpc: "2.0", id, result });
 
 const message = z.object({
   jsonrpc: z.literal("2.0"),
@@ -143,90 +116,47 @@ function untrustedResult(payload: string) {
 }
 
 /**
- * Frame a payload that may carry container or repository bytes, so it reads as data. Nonce-delimited, see
- * UNTRUSTED_PREAMBLE above. Other payloads pass through unchanged.
- */
-export function frameOutput(untrusted: boolean, payload: string): string {
-  return untrusted ? untrustedResult(payload) : payload;
-}
-
-/**
  * Every byte the model sees from an endpoint that can carry remote data goes
  * through the frame — success AND failure. Otherwise an error could smuggle
  * injected instructions in as plain, apparently-trusted text. Errors stay
  * results, never crashes.
  */
-function toolResult(ep: Endpoint, outcome: ToolOutcome) {
-  return {
-    // The text content is framed exactly as before; structured output rides alongside it.
-    content: [{ type: "text", text: frameOutput(ep.untrusted, outcome.payload) }],
-    ...(outcome.structuredContent ? { structuredContent: outcome.structuredContent } : {}),
-    isError: outcome.isError,
-  };
+function toolResult(ep: Endpoint, payload: string, isError: boolean) {
+  const text = ep.untrusted ? untrustedResult(payload) : payload;
+  return { content: [{ type: "text", text }], isError };
 }
 
-/** What running one endpoint produced, before framing. */
-export type ToolOutcome = {
-  payload: string;
-  isError: boolean;
-  /** The response object, for read-only tools that declared an outputSchema. */
-  structuredContent?: Record<string, unknown>;
-};
-
-/** The response parsed through its own schema, so it has the shape the outputSchema advertises. */
-function structuredContentOf(ep: Endpoint, data: unknown): Record<string, unknown> {
-  const parsed = ep.response.safeParse(data);
-  const value = parsed.success ? parsed.data : data;
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : { value };
-}
-
-/**
- * Run one endpoint for a token: the per-token rate limit first (its 429 is thrown to the route), then the
- * endpoint. Scope, validation and ownership are all checked inside callEndpoint. Failures come back as an
- * outcome with isError, never as a crash, and carry no internals.
- */
-export async function runEndpoint(p: Principal, ep: Endpoint, args: unknown): Promise<ToolOutcome> {
-  enforceApiRate(p, ep.bucket);
-  try {
-    const data = await callEndpoint(p, ep, args ?? {});
-    return {
-      payload: JSON.stringify(data, null, 2),
-      isError: false,
-      ...(ep.readOnly ? { structuredContent: structuredContentOf(ep, data) } : {}),
-    };
-  } catch (err) {
-    // The message of an HttpError can itself carry remote bytes (SSH stderr,
-    // inventory/repo text), so it is framed just like a success payload.
-    if (err instanceof HttpError) return { payload: `${err.code}: ${err.message}`, isError: true };
-    // Control-flow errors from Next.js and anything unexpected: say nothing about internals.
-    console.error("MCP tool failed", ep.id, err instanceof Error ? err.name : "unknown");
-    return { payload: "internal: Something went wrong on our side.", isError: true };
-  }
-}
-
-async function callTool(p: Principal, params: unknown, id: RpcId, view: McpView): Promise<RpcResponse> {
+async function callTool(p: Principal, params: unknown, id: RpcId): Promise<RpcResponse> {
   const parsed = callParams.safeParse(params);
   if (!parsed.success) return rpcError(id, RPC.invalidParams, "tools/call needs a tool name.");
   const { name, arguments: args } = parsed.data;
 
-  // A tool outside the view is indistinguishable from one that does not exist.
-  const ep = viewedEndpoint(name, view);
+  const ep = BY_NAME.get(name);
   if (!ep) return rpcError(id, RPC.invalidParams, `Unknown tool: ${name.slice(0, 80)}`);
   if (args !== undefined && (args === null || typeof args !== "object" || Array.isArray(args))) {
     return rpcError(id, RPC.invalidParams, "Tool arguments must be an object.");
   }
 
-  const outcome = await runEndpoint(p, ep, args);
-  return rpcResult(id, toolResult(ep, outcome));
+  // A rate limit is an HTTP-level 429 (it carries Retry-After); it is thrown to the route.
+  enforceApiRate(p, ep.bucket);
+  try {
+    const data = await callEndpoint(p, ep, args ?? {});
+    return rpcResult(id, toolResult(ep, JSON.stringify(data, null, 2), false));
+  } catch (err) {
+    // The message of an HttpError can itself carry remote bytes (SSH stderr,
+    // inventory/repo text), so it is framed just like a success payload.
+    if (err instanceof HttpError) return rpcResult(id, toolResult(ep, `${err.code}: ${err.message}`, true));
+    // Control-flow errors from Next.js and anything unexpected: say nothing about internals.
+    console.error("MCP tool failed", name, err instanceof Error ? err.name : "unknown");
+    return rpcResult(id, toolResult(ep, "internal: Something went wrong on our side.", true));
+  }
 }
 
 /**
  * Handle one already-authenticated JSON-RPC message. Throws HttpError only for
  * the 429 rate limit; everything else becomes a JSON-RPC response.
  */
-export async function handleMcpMessage(p: Principal, raw: unknown, view: McpView = FULL_VIEW): Promise<McpOutcome> {
+export async function handleMcpMessage(p: Principal, raw: unknown): Promise<McpOutcome> {
   if (Array.isArray(raw)) {
     return { kind: "response", status: 400, body: rpcError(null, RPC.invalidRequest, "Batches are not supported. Send one message per request.") };
   }
@@ -244,7 +174,7 @@ export async function handleMcpMessage(p: Principal, raw: unknown, view: McpView
 
   const reply = (body: RpcResponse): McpOutcome => ({ kind: "response", status: 200, body });
 
-  if (method === "tools/call") return reply(await callTool(p, params, id, view));
+  if (method === "tools/call") return reply(await callTool(p, params, id));
 
   enforceApiRate(p, "read");
   switch (method) {
@@ -263,7 +193,7 @@ export async function handleMcpMessage(p: Principal, raw: unknown, view: McpView
     case "ping":
       return reply(rpcResult(id, {}));
     case "tools/list":
-      return reply(rpcResult(id, { tools: toolsFor(p, view) }));
+      return reply(rpcResult(id, { tools: TOOLS }));
     default:
       return reply(rpcError(id, RPC.methodNotFound, `Method not found: ${method.slice(0, 80)}`));
   }

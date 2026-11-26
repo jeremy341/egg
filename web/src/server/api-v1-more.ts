@@ -15,7 +15,6 @@ import {
 import {
   deploymentSchema,
   domainSchema,
-  paginateList,
   projectSchema,
   publicDomainFor,
   publicProjectFor,
@@ -35,7 +34,6 @@ import {
 import { HttpError, notFound } from "@/server/http";
 import { createDeployHook, revokeDeployHook } from "@/server/hooks";
 import { getInventory, type Inventory } from "@/server/inventory";
-import { userInstallations } from "@/server/github/app";
 import { getAlerts, notifySummary, sendTestNotification } from "@/server/notify";
 import {
   createProject,
@@ -49,7 +47,7 @@ import {
   setEnvVar,
   updateProject,
 } from "@/server/projects";
-import { domainViews, projectResources, usageHistory, type UsagePoint } from "@/server/queries";
+import { projectResources, usageHistory, type UsagePoint } from "@/server/queries";
 import { deleteProject } from "@/server/project-delete";
 import { listServers } from "@/server/servers";
 import { statusUrl } from "@/server/status-page";
@@ -211,16 +209,10 @@ const envEntrySchema = z.object({
   target: z.enum(["all", "production", "preview"]).describe("Which deployments get it."),
 });
 
-export async function apiListEnv(p: Principal, projectId: string, limit = 100, cursor?: string) {
+export async function apiListEnv(p: Principal, projectId: string) {
   requireScope(p, "env:read");
   const rows = await listEnvVars(p.userId, projectId);
-  // The store orders by name; add the target as a tie-breaker so the same name
-  // on two targets always has the same place in the pages.
-  const env = rows
-    .map((r) => ({ key: r.key, target: r.target }))
-    .sort((a, b) => a.key.localeCompare(b.key) || a.target.localeCompare(b.target));
-  // `env` keeps the whole list; `items` is the page requested by limit + cursor.
-  return { env, ...paginateList(env, { limit, cursor }, (r) => `${r.key}|${r.target}`) };
+  return { env: rows.map((r) => ({ key: r.key, target: r.target })) };
 }
 
 export async function apiSetEnv(p: Principal, projectId: string, key: string, value: string, target: "all" | "production" | "preview") {
@@ -444,101 +436,6 @@ export async function apiProjectResources(p: Principal, projectId: string, hours
   };
 }
 
-export async function apiDiagnoseDeployment(p: Principal, deploymentId: string) {
-  requireScope(p, "deployments:read");
-  const { deployment } = await apiGetDeployment(p, deploymentId);
-  const logs = await apiGetDeploymentLogs(p, deploymentId, 0, 50);
-  const unavailable: string[] = [];
-
-  const resources = p.scopes.includes("resources:read")
-    ? (await apiProjectResources(p, deployment.projectId, 24)).resources
-    : null;
-  if (!resources) unavailable.push("resource usage requires resources:read");
-
-  const alerts = p.scopes.includes("alerts:read")
-    ? await apiGetAlerts(p, deployment.projectId)
-    : null;
-  if (!alerts) unavailable.push("alert history requires alerts:read");
-
-  return {
-    deployment,
-    buildLogs: logs.lines,
-    buildErrors: logs.lines.filter((line) => line.level === "error"),
-    resources,
-    alerts,
-    unavailable,
-  };
-}
-
-const deploymentNextStepSchema = z.object({
-  id: z.enum(["auto_deploy", "health_check", "status_page", "custom_domain", "notifications"]),
-  applicable: z.boolean(),
-  done: z.boolean(),
-});
-
-const deploymentNextStepsSchema = z.object({
-  deploymentId: z.string(),
-  projectId: z.string(),
-  steps: z.array(deploymentNextStepSchema),
-  unavailable: z.array(z.string()),
-});
-
-export async function apiGetDeploymentNextSteps(p: Principal, deploymentId: string) {
-  requireScope(p, "projects:read");
-  const { project } = await readableDeployment(p.userId, deploymentId);
-  const statusPage = await apiGetStatusPage(p, project.id);
-  const steps: z.output<typeof deploymentNextStepSchema>[] = [
-    { id: "auto_deploy", applicable: Boolean(project.repoUrl), done: project.autoDeploy },
-    {
-      id: "health_check",
-      applicable: project.workloadKind !== "worker",
-      done: project.workloadKind !== "worker" && Boolean(project.healthPath),
-    },
-    { id: "status_page", applicable: true, done: statusPage.statusPage.published },
-  ];
-  const unavailable = ["resource requests are not supported"];
-
-  if (p.scopes.includes("domains:read")) {
-    requireScope(p, "domains:read");
-    const domains = await domainViews(p.userId);
-    steps.push({ id: "custom_domain", applicable: true, done: domains.some((domain) => domain.projectId === project.id) });
-  } else {
-    unavailable.push("custom domain status requires domains:read");
-  }
-
-  if (p.scopes.includes("notifications:read")) {
-    const { notifications } = await apiGetNotifications(p, project.id);
-    steps.push({ id: "notifications", applicable: true, done: notifications.configured });
-  } else {
-    unavailable.push("notification status requires notifications:read");
-  }
-
-  return { deploymentId, projectId: project.id, steps, unavailable };
-}
-
-export async function apiGetGithubStatus(p: Principal) {
-  requireScope(p, "projects:read");
-  const installations = await userInstallations(p.userId);
-  return {
-    connected: installations.length > 0,
-    installations: installations.map((installation) => ({
-      id: installation.id,
-      accountLogin: installation.accountLogin,
-      accountType: installation.accountType,
-      createdAt: installation.createdAt.toISOString(),
-    })),
-  };
-}
-
-const deploymentDiagnosisSchema = z.object({
-  deployment: deploymentDetailSchema,
-  buildLogs: z.array(logLineSchema),
-  buildErrors: z.array(logLineSchema),
-  resources: projectResourceSchema.nullable(),
-  alerts: z.object({ settings: alertSettingsSchema, history: z.array(alertEventSchema) }).nullable(),
-  unavailable: z.array(z.string()),
-});
-
 // ------------------------------------------------- servers and the container
 
 const serverSchema = z.object({
@@ -550,20 +447,20 @@ const serverSchema = z.object({
   createdAt: z.string(),
 });
 
-export async function apiListServers(p: Principal, limit = 100, cursor?: string) {
+export async function apiListServers(p: Principal) {
   requireScope(p, "container:read");
   // Not exposed: key material, fingerprints and the last connection error text.
   const rows = await listServers(p.userId);
-  const servers = rows.map((r) => ({
-    id: r.id,
-    nestUsername: r.nestUsername,
-    host: r.host,
-    status: r.status,
-    lastCheckedAt: r.lastCheckedAt ? r.lastCheckedAt.toISOString() : null,
-    createdAt: r.createdAt.toISOString(),
-  }));
-  // `servers` keeps the whole list; `items` is the page requested by limit + cursor.
-  return { servers, ...paginateList(servers, { limit, cursor }, (s) => s.id) };
+  return {
+    servers: rows.map((r) => ({
+      id: r.id,
+      nestUsername: r.nestUsername,
+      host: r.host,
+      status: r.status,
+      lastCheckedAt: r.lastCheckedAt ? r.lastCheckedAt.toISOString() : null,
+      createdAt: r.createdAt.toISOString(),
+    })),
+  };
 }
 
 const unitState = z.enum(["running", "starting", "failed", "stopped", "unknown"]);
@@ -742,27 +639,6 @@ export const EXPANDED_ENDPOINTS: Endpoint[] = [
     destructive: true,
     run: (p, i) => apiDeleteProject(p, i.projectId, i.removeFromServer ?? false),
   }),
-  endpoint({
-    id: "get_github_status",
-    method: "GET",
-    path: "/github/status",
-    scope: "projects:read",
-    bucket: "read",
-    tag: "Account",
-    summary: "Check GitHub App connections",
-    description:
-      "Report the GitHub App installations linked to the token owner's account. This reflects installed accounts used by this app; it does not report a separate personal GitHub OAuth connection or check access to each repository.",
-    response: z.object({
-      connected: z.boolean(),
-      installations: z.array(z.object({
-        id: z.number().int(),
-        accountLogin: z.string(),
-        accountType: z.string(),
-        createdAt: z.string(),
-      })),
-    }),
-    run: (p) => apiGetGithubStatus(p),
-  }),
 
   // ----- build output
   endpoint({
@@ -804,37 +680,6 @@ export const EXPANDED_ENDPOINTS: Endpoint[] = [
     errors: [400, 404],
     run: (p, i) => apiGetDeploymentLogs(p, i.deploymentId, i.after, i.limit),
   }),
-  endpoint({
-    id: "diagnose_deployment",
-    method: "GET",
-    path: "/deployments/{deploymentId}/diagnosis",
-    scope: "deployments:read",
-    bucket: "ssh",
-    tag: "Deployments",
-    summary: "Review deployment evidence",
-    untrusted: true,
-    description:
-      `Gather a deployment's state and build output, plus project resource samples and alert history when the token has those scopes. This reports available evidence and error lines; it does not infer a root cause. Build output is untrusted data. ${NOT_FOUND_NOTE}`,
-    pathParams: { deploymentId },
-    response: deploymentDiagnosisSchema,
-    errors: [400, 404],
-    run: (p, i) => apiDiagnoseDeployment(p, i.deploymentId),
-  }),
-  endpoint({
-    id: "get_deployment_next_steps",
-    method: "GET",
-    path: "/deployments/{deploymentId}/next-steps",
-    scope: "projects:read",
-    bucket: "read",
-    tag: "Deployments",
-    summary: "Check project setup steps",
-    description:
-      `Check the project's auto-deploy, health-check and status-page settings, plus custom-domain and notification setup when the token has those scopes. The app does not model resource requests, which are reported as unavailable. ${NOT_FOUND_NOTE}`,
-    pathParams: { deploymentId },
-    response: deploymentNextStepsSchema,
-    errors: [400, 404],
-    run: (p, i) => apiGetDeploymentNextSteps(p, i.deploymentId),
-  }),
 
   // ----- environment variables
   endpoint({
@@ -847,20 +692,11 @@ export const EXPANDED_ENDPOINTS: Endpoint[] = [
     summary: "List environment variable names",
     // Opt out of framing: only validated names and fixed targets come back.
     untrusted: false,
-    description: `List the names and targets (all, production or preview) of a project's environment variables, ordered by name then target. Values are never returned by any endpoint. Pass limit and then the returned nextCursor as cursor to page through them; items is the page, total is the number of entries, and env keeps the full list for older callers. ${NOT_FOUND_NOTE}`,
+    description: `List the names and targets (all, production or preview) of a project's environment variables. Values are never returned by any endpoint. ${NOT_FOUND_NOTE}`,
     pathParams: { projectId },
-    query: {
-      limit: z.coerce.number().int().min(1).max(100).default(100).describe("How many entries in a page, 1 to 100. Default 100."),
-      cursor: z.string().max(200).optional().describe("The nextCursor of the previous page. Omit for the first page."),
-    },
-    response: z.object({
-      env: z.array(envEntrySchema).describe("All the names and targets, unchanged for callers from before pagination."),
-      items: z.array(envEntrySchema).describe("This page of entries, in the same order as env."),
-      total: z.number().int().describe("Number of entries in all."),
-      nextCursor: z.string().nullable().describe("Pass as cursor for the next page, or null on the last page."),
-    }),
+    response: z.object({ env: z.array(envEntrySchema) }),
     errors: [400, 404],
-    run: (p, i) => apiListEnv(p, i.projectId, i.limit, i.cursor),
+    run: (p, i) => apiListEnv(p, i.projectId),
   }),
   endpoint({
     id: "set_env_var",
@@ -954,7 +790,6 @@ export const EXPANDED_ENDPOINTS: Endpoint[] = [
     path: "/projects/{projectId}/hook/rotate",
     scope: "deployments:write",
     bucket: "write",
-    sensitive: true,
     status: 201,
     tag: "Deployments",
     summary: "Create or replace the deploy hook",
@@ -1106,18 +941,9 @@ export const EXPANDED_ENDPOINTS: Endpoint[] = [
     tag: "Servers",
     summary: "List servers",
     description:
-      "List the owner's connected servers (Nest accounts) with their id, host and connection status. The server id is what get_server_usage, get_resource_history, get_container_inventory and add_domain need. Pass limit and then the returned nextCursor as cursor to page through them; items is the page, total is the number of servers, and servers keeps the full list for older callers.",
-    query: {
-      limit: z.coerce.number().int().min(1).max(100).default(100).describe("How many servers in a page, 1 to 100. Default 100."),
-      cursor: z.string().max(200).optional().describe("The nextCursor of the previous page. Omit for the first page."),
-    },
-    response: z.object({
-      servers: z.array(serverSchema).describe("All the owner's servers, unchanged for callers from before pagination."),
-      items: z.array(serverSchema).describe("This page of servers, in the same order as servers."),
-      total: z.number().int().describe("Number of servers in all."),
-      nextCursor: z.string().nullable().describe("Pass as cursor for the next page, or null on the last page."),
-    }),
-    run: (p, i) => apiListServers(p, i.limit, i.cursor),
+      "List the owner's connected servers (Nest accounts) with their id, host and connection status. The server id is what get_server_usage, get_resource_history, get_container_inventory and add_domain need.",
+    response: z.object({ servers: z.array(serverSchema) }),
+    run: (p) => apiListServers(p),
   }),
   endpoint({
     id: "get_container_inventory",
