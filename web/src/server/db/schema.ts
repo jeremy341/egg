@@ -794,7 +794,7 @@ export const projectSamples = sqliteTable(
   (t) => [index("project_samples_idx").on(t.projectId, t.at)]
 );
 
-export const ALERT_RULE_METRICS = ["cpu_percent", "memory_mb", "latency_ms", "restarts"] as const;
+export const ALERT_RULE_METRICS = ["cpu_percent", "memory_mb", "latency_ms"] as const;
 export type AlertRuleMetric = (typeof ALERT_RULE_METRICS)[number];
 export const ALERT_RULE_STATUSES = ["ok", "over", "firing", "recovering", "no_data"] as const;
 export type AlertRuleStatus = (typeof ALERT_RULE_STATUSES)[number];

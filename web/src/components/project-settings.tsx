@@ -24,6 +24,7 @@ import { PixelAvatar } from "@/components/ui/pixel-avatar";
 import type { ProjectView } from "@/server/queries";
 import { cn } from "@/lib/utils";
 import { CleanupCard } from "@/components/cleanup-card";
+import { AlertRulesCard } from "@/components/alert-rules-card";
 import { HostingOptions, StartCommandHelp, runtimeHint, type TargetCapabilities } from "@/components/hosting-options";
 import { ContainerDeploymentFields, containerConfigurationError, containerDeploymentBody, defaultContainerForm } from "@/components/container-deployment-fields";
 
@@ -473,6 +474,7 @@ export function ProjectSettings({
             <Advanced open={autoOpen} onOpenChange={setAutoOpen}>
               <div className="space-y-6">
                 <AlertsCard project={project} />
+                <AlertRulesCard project={project} />
                 <StatusPageCard project={project} />
                 <HomepageFeedCard project={project} />
               </div>
