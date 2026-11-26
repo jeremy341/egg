@@ -114,6 +114,7 @@ describe("crash report capture and reads", () => {
 
   it("checks logs:read before looking up a project", async () => {
     await expect(apiListCrashReports(unscoped, "not-owned", 20)).rejects.toMatchObject({ status: 403 });
+    await expect(apiGetCrashReport(unscoped, "not-owned")).rejects.toMatchObject({ status: 403 });
   });
 
   it("returns 404 for reports and projects the caller does not own", async () => {
