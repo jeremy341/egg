@@ -11,6 +11,7 @@ import {
   CubeFocusIcon,
   CodeIcon,
   GlobeSimpleIcon,
+  UsersThreeIcon,
   HardDrivesIcon,
   HouseLineIcon,
   ListDashesIcon,
@@ -85,6 +86,12 @@ const TEAM_ITEMS: NavItem[] = [
     active: (p) => p.startsWith("/domains"),
   },
   {
+    href: "/organizations",
+    label: "Organizations",
+    icon: UsersThreeIcon,
+    active: (p) => p.startsWith("/organizations"),
+  },
+  {
     href: "/activity",
     label: "Activity",
     icon: ClockCounterClockwiseIcon,
@@ -116,6 +123,7 @@ const TEAM_TITLES: Record<string, string> = {
   "/logs": "Logs",
   "/resources": "Resources",
   "/domains": "Domains",
+  "/organizations": "Organizations",
   "/activity": "Activity",
   "/container": "Container",
   "/developer": "Developer",

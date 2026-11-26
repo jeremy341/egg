@@ -61,7 +61,7 @@ const API_CORS = {
  * Dashboard routes. Signed-out visitors are sent to sign-in only for these, so a
  * mistyped public address reaches the not-found page instead of the login page.
  */
-const DASHBOARD = new RegExp("^/(account|activity|admin|connect|container|deployments|developer|docs|domains|logs|projects|resources|new)(/|$)");
+const DASHBOARD = new RegExp("^/(account|activity|admin|connect|container|deployments|developer|docs|domains|invite|logs|organizations|projects|resources|new)(/|$)");
 
 /** The 429 for a refused request: a short plain body and Retry-After, never a redirect. */
 function refused(admission: Extract<Admission, { refused: true }>, pathname: string) {
