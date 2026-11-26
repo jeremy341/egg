@@ -2,7 +2,7 @@
 
 Generated from the Orchard parity manifest (`orchard-parity.json`). Our side: `ENDPOINTS` in `web/src/server/api-v1*.ts`, plus the compact server's three tools in `web/src/server/mcp-compact.ts`. Test-only names are excluded.
 
-Totals: 217 Orchard product tools. Present: 126. Partial: 10. Missing: 0. Not applicable: 81. Ours only: 33.
+Totals: 217 Orchard product tools. Present: 126. Partial: 10. Missing: 0. Not applicable: 81. Ours only: 34.
 
 `present` means an equivalent endpoint exists with the same job. `partial` means it covers part of the job. `missing` means no equivalent yet.
 
@@ -300,7 +300,7 @@ Totals: 217 Orchard product tools. Present: 126. Partial: 10. Missing: 0. Not ap
 
 ## Ours only (no Orchard equivalent)
 
-`delete_env_var`, `delete_file`, `download_file`, `get_analytics`, `get_container_inventory`, `get_crash_report`, `get_logs`, `get_notification_channel`, `get_notifications`, `get_organization`, `get_project_resources`, `get_resource_history`, `get_server_usage`, `get_status_page`, `list_compose_releases`, `list_crash_reports`, `list_env_vars`, `list_files`, `list_servers`, `make_folder`, `read_file`, `rename_file`, `restart_service`, `set_env_var`, `set_env_var_secret`, `terminal_close`, `terminal_open`, `terminal_read`, `terminal_resize`, `terminal_send`, `terminal_status`, `test_notification`, `write_file`
+`delete_env_var`, `delete_file`, `deploy_branch`, `download_file`, `get_analytics`, `get_container_inventory`, `get_crash_report`, `get_logs`, `get_notification_channel`, `get_notifications`, `get_organization`, `get_project_resources`, `get_resource_history`, `get_server_usage`, `get_status_page`, `list_compose_releases`, `list_crash_reports`, `list_env_vars`, `list_files`, `list_servers`, `make_folder`, `read_file`, `rename_file`, `restart_service`, `set_env_var`, `set_env_var_secret`, `terminal_close`, `terminal_open`, `terminal_read`, `terminal_resize`, `terminal_send`, `terminal_status`, `test_notification`, `write_file`
 
 ## Not in the MCP list (ported or not, tracked separately)
 

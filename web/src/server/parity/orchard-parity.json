@@ -1400,6 +1400,7 @@
   "ours_only": [
     "delete_env_var",
     "delete_file",
+    "deploy_branch",
     "download_file",
     "get_analytics",
     "get_container_inventory",
