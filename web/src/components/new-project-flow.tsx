@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  CaretRightIcon,
   GitBranchIcon,
   GithubLogoIcon,
   HardDrivesIcon,
@@ -12,6 +13,8 @@ import {
 import { api } from "@/components/api";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { BuildLocationChoice } from "@/components/build-location-choice";
+import type { BuildLocation } from "@/server/db/schema";
 import { Button } from "@/components/ui/button";
 import {
   DetectedSummary,
@@ -23,6 +26,7 @@ import { ProjectConflicts } from "@/components/project-conflicts";
 import type { Conflict } from "@/server/adoption";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import { NativeSelect } from "@/components/ui/native-select";
 import {
   LoadingRegion,
@@ -71,6 +75,35 @@ function Label({ htmlFor, children }: { htmlFor: string; children: React.ReactNo
     <label htmlFor={htmlFor} className="mb-1.5 block text-label text-muted-foreground">
       {children}
     </label>
+  );
+}
+
+/** A native disclosure for the rarely used settings. Its fields stay mounted, so a closed group keeps its values. */
+function Advanced({
+  label,
+  open,
+  onOpenChange,
+  className,
+  children,
+}: {
+  label: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <details
+      className={cn("disclosure", className)}
+      open={open}
+      onToggle={(e) => onOpenChange(e.currentTarget.open)}
+    >
+      <summary className="touch-target -mx-1 w-fit items-center gap-1.5 rounded-sm px-1 py-1.5 text-label font-medium max-sm:min-h-10">
+        <CaretRightIcon aria-hidden="true" className="disclosure-caret size-4" />
+        {label}
+      </summary>
+      <div className="mt-3">{children}</div>
+    </details>
   );
 }
 
@@ -142,7 +175,7 @@ function useConflictCheck(args: {
   return loaded.result;
 }
 
-function Configure({
+export function Configure({
   source,
   servers,
   onBack,
@@ -165,11 +198,19 @@ function Configure({
   const [outputDir, setOutputDir] = useState("");
   const [envValues, setEnvValues] = useState<Record<string, string>>({});
   const [adopted, setAdopted] = useState(false);
+  // Closed by default. Native <details> keeps the fields mounted, so values set here survive a close.
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  // Only a project linked through the GitHub app can build on GitHub: the app opens the pull request and receives
+  // the release. A pasted public URL has no link, so it keeps building on the container and sends no choice.
+  const canChooseBuild = source.installationId !== null;
+  const [buildLocation, setBuildLocation] = useState<BuildLocation>("github");
+  const buildsOnGithub = canChooseBuild && buildLocation === "github";
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   // Set once the project exists, so a retry after a failed env save does not create it twice.
   const createdRef = useRef<{ id: string; slug: string } | null>(null);
+  const portRef = useRef<HTMLInputElement>(null);
 
   // Detect from the repository: what it is, and the env names it asks for.
   const repoForDetect =
@@ -190,6 +231,8 @@ function Configure({
     setBuildCommand(detection.commands.build ?? "");
     setStartCommand(detection.commands.start ?? "");
     setOutputDir(detection.outputDir ?? "");
+    // A static site needs its output directory, which lives in Advanced.
+    if (detection.runtime === "static") setAdvancedOpen(true);
   }
 
   // The button that opened this step is gone; focus belongs to the new step.
@@ -197,11 +240,18 @@ function Configure({
     headingRef.current?.focus({ preventScroll: true });
   }, []);
 
-  const nameOk = /^[a-z0-9][a-z0-9-]{0,38}[a-z0-9]?$/.test(name);
+  // The same rule as the server's isValidSlug (server/deploy/layout.ts): it must end with a letter or digit.
+  const nameOk = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/.test(name);
   const hint = RUNTIMES.find((r) => r.value === runtime)?.hint ?? "";
 
   const portNumber = Number(port);
-  const portOk = port.trim() !== "" && Number.isInteger(portNumber) && portNumber >= 1 && portNumber <= 65535;
+  // The server's rule (server/projects.ts): 1024 to 65535, except the preview range 20000 to 29999.
+  const portOk =
+    port.trim() !== "" &&
+    Number.isInteger(portNumber) &&
+    portNumber >= 1024 &&
+    portNumber <= 65535 &&
+    (portNumber < 20000 || portNumber > 29999);
   const check = useConflictCheck({
     serverId,
     slug: name,
@@ -212,6 +262,12 @@ function Configure({
   const blocking = check.status === "ok" ? check.conflicts.filter((c) => c.blocking) : [];
 
   async function submit() {
+    // The port lives in Advanced. Open it and mark the field rather than send a port the server refuses.
+    if (!portOk) {
+      setAdvancedOpen(true);
+      window.requestAnimationFrame(() => portRef.current?.focus());
+      return;
+    }
     setError(null);
     setBusy(true);
     try {
@@ -234,6 +290,7 @@ function Configure({
             port: Number(port),
             // The server turns automatic deploys off for an adopted project.
             adopted,
+            ...(canChooseBuild ? { buildLocation } : {}),
           },
         });
         createdRef.current = created.project;
@@ -247,9 +304,17 @@ function Configure({
           await api(`/api/projects/${project.id}/env`, { body: { key: e.name, value, target: "all" } });
         } catch (err) {
           throw new Error(
-            `The project was created, but ${e.name} was not saved: ${err instanceof Error ? err.message : "error"}. Press Deploy to try again.`
+            `The project was created, but ${e.name} was not saved: ${err instanceof Error ? err.message : "error"}. ${
+              buildsOnGithub ? "Add it in the project settings." : "Press Deploy to try again."
+            }`
           );
         }
+      }
+      if (buildsOnGithub) {
+        // A GitHub Actions build waits for a release that only the workflow can send, and the workflow is not
+        // there yet. Go to the guided setup instead of starting a deployment that would wait for nothing.
+        router.push(`/projects/${project.slug}/settings#builds-heading`);
+        return;
       }
       const dep = await api<{ deployment: { id: string } }>(
         `/api/projects/${project.id}/deploy`,
@@ -286,7 +351,7 @@ function Configure({
         tabIndex={-1}
         className="text-title-2 focus:outline-none focus-visible:outline-none"
       >
-        New Project
+        New project
       </h1>
 
       <div className="mt-5 rounded-md bg-[var(--ds-gray-100)] px-3 py-2.5">
@@ -312,7 +377,14 @@ function Configure({
       </div>
       {detection ? (
         <>
-          <DetectedSummary detection={detection} onUse={applyDetected} onPickRoot={setRootDir} />
+          <DetectedSummary
+            detection={detection}
+            onUse={applyDetected}
+            onPickRoot={(dir) => {
+              setRootDir(dir);
+              setAdvancedOpen(true);
+            }}
+          />
           <DetectionWarnings warnings={detection.warnings} />
         </>
       ) : null}
@@ -341,54 +413,80 @@ function Configure({
           />
           {!nameOk ? (
             <p id="np-name-error" className="mt-1.5 text-label text-destructive">
-              Use lowercase letters, numbers and hyphens.
+              Use lowercase letters, numbers and hyphens. Start and end with a letter or number, up to 40 characters.
             </p>
           ) : null}
-        </div>
-        <div>
-          <Label htmlFor="np-runtime">Application preset</Label>
-          <NativeSelect
-            id="np-runtime"
-            value={runtime}
-            onChange={(e) => setRuntime(e.target.value as typeof runtime)}
-          >
-            {RUNTIMES.map((r) => (
-              <option key={r.value} value={r.value}>
-                {r.label}
-              </option>
-            ))}
-          </NativeSelect>
         </div>
         <div>
           <Label htmlFor="np-branch">Production branch</Label>
           <Input id="np-branch" value={branch} onChange={(e) => setBranch(e.target.value)} className="font-mono" />
         </div>
-        <div>
-          <Label htmlFor="np-root">Root directory</Label>
-          <Input id="np-root" value={rootDir} onChange={(e) => setRootDir(e.target.value)} className="font-mono" />
-        </div>
-        <div>
-          <Label htmlFor="np-port">Port your app listens on</Label>
-          <Input id="np-port" inputMode="numeric" value={port} onChange={(e) => setPort(e.target.value)} className="font-mono" />
-        </div>
-        <div className="sm:col-span-2">
-          <Label htmlFor="np-install">Install command (optional)</Label>
-          <Input id="np-install" value={installCommand} onChange={(e) => setInstallCommand(e.target.value)} placeholder="detected from your lockfile" className="font-mono" />
-        </div>
         <div className="sm:col-span-2">
           <Label htmlFor="np-start">Start command (optional)</Label>
           <Input id="np-start" value={startCommand} onChange={(e) => setStartCommand(e.target.value)} placeholder={hint} className="font-mono" />
         </div>
-        <div className={runtime === "static" ? "" : "sm:col-span-2"}>
-          <Label htmlFor="np-build">Build command (optional)</Label>
-          <Input id="np-build" value={buildCommand} onChange={(e) => setBuildCommand(e.target.value)} placeholder="detected from package.json" className="font-mono" />
-        </div>
-        {runtime === "static" ? (
-          <div>
-            <Label htmlFor="np-out">Output directory</Label>
-            <Input id="np-out" value={outputDir} onChange={(e) => setOutputDir(e.target.value)} placeholder="dist" className="font-mono" />
+        <Advanced
+          className="sm:col-span-2"
+          label="Show advanced settings"
+          open={advancedOpen}
+          onOpenChange={setAdvancedOpen}
+        >
+          <p className="mb-3 text-label text-muted-foreground">
+            The defaults work for most projects. Change these only if yours is different.
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="np-runtime">Application preset</Label>
+              <NativeSelect
+                id="np-runtime"
+                value={runtime}
+                onChange={(e) => setRuntime(e.target.value as typeof runtime)}
+              >
+                {RUNTIMES.map((r) => (
+                  <option key={r.value} value={r.value}>
+                    {r.label}
+                  </option>
+                ))}
+              </NativeSelect>
+            </div>
+            <div>
+              <Label htmlFor="np-root">Root directory</Label>
+              <Input id="np-root" value={rootDir} onChange={(e) => setRootDir(e.target.value)} className="font-mono" />
+            </div>
+            <div>
+              <Label htmlFor="np-port">Port your app listens on</Label>
+              <Input
+                ref={portRef}
+                id="np-port"
+                inputMode="numeric"
+                value={port}
+                onChange={(e) => setPort(e.target.value)}
+                aria-invalid={!portOk}
+                aria-describedby={portOk ? undefined : "np-port-error"}
+                className="font-mono"
+              />
+              {!portOk ? (
+                <p id="np-port-error" className="mt-1.5 text-label text-destructive">
+                  Use a port from 1024 to 19999 or 30000 to 65535. Ports 20000 to 29999 are for previews.
+                </p>
+              ) : null}
+            </div>
+            <div className="sm:col-span-2">
+              <Label htmlFor="np-install">Install command (optional)</Label>
+              <Input id="np-install" value={installCommand} onChange={(e) => setInstallCommand(e.target.value)} placeholder="detected from your lockfile" className="font-mono" />
+            </div>
+            <div className={runtime === "static" ? "" : "sm:col-span-2"}>
+              <Label htmlFor="np-build">Build command (optional)</Label>
+              <Input id="np-build" value={buildCommand} onChange={(e) => setBuildCommand(e.target.value)} placeholder="detected from package.json" className="font-mono" />
+            </div>
+            {runtime === "static" ? (
+              <div>
+                <Label htmlFor="np-out">Output directory</Label>
+                <Input id="np-out" value={outputDir} onChange={(e) => setOutputDir(e.target.value)} placeholder="dist" className="font-mono" />
+              </div>
+            ) : null}
           </div>
-        ) : null}
+        </Advanced>
       </div>
 
       {detection ? (
@@ -397,6 +495,24 @@ function Configure({
           values={envValues}
           onChange={(name, value) => setEnvValues((v) => ({ ...v, [name]: value }))}
         />
+      ) : null}
+
+      {canChooseBuild ? (
+        <div className="mt-5">
+          <BuildLocationChoice
+            name="np-build-location"
+            legend="How should Egg build it?"
+            showLegend
+            value={buildLocation}
+            onChange={setBuildLocation}
+            describedBy="np-build-note"
+          />
+          <p id="np-build-note" className="mt-1.5 text-label text-muted-foreground">
+            {buildsOnGithub
+              ? "Next you make the build credentials and add the workflow file. The first build runs after that."
+              : "Egg builds on your container and deploys when the build finishes."}
+          </p>
+        </div>
       ) : null}
 
       <div className="mt-5">
@@ -410,7 +526,7 @@ function Configure({
             className="mt-1 size-4 shrink-0"
             checked={adopted}
             onChange={(e) => setAdopted(e.target.checked)}
-            aria-describedby="np-adopt-note"
+            aria-describedby={adopted ? "np-adopt-note" : undefined}
           />
           <span className="min-w-0">
             <span className="block font-medium">Start with automatic deploys off</span>
@@ -419,11 +535,14 @@ function Configure({
             </span>
           </span>
         </label>
-        <p id="np-adopt-note" className="mt-1.5 text-label text-muted-foreground">
-          {adopted
-            ? "The first deploy is manual, and automatic deploys start only after you confirm that first deploy works. Egg changes nothing it did not create, so stop your old process yourself if it holds the port."
-            : "Tick this if you already run this repository here by hand. Otherwise automatic deploys stay on."}
-        </p>
+        {adopted ? (
+          <p id="np-adopt-note" className="mt-1.5 text-label text-muted-foreground">
+            The first deploy is manual. Automatic deploys start after you confirm it works.{" "}
+            <Link href="/docs/container#container-adopt" className="link font-medium">
+              Learn more
+            </Link>
+          </p>
+        ) : null}
       </div>
 
       <div className="mt-5">
@@ -461,7 +580,10 @@ function Configure({
 
       <p className="mt-4 text-label text-muted-foreground">
         Your app must listen on the <code className="font-mono">PORT</code> environment variable on{" "}
-        <code className="font-mono">0.0.0.0</code>. Environment variables can be added in the project settings.
+        <code className="font-mono">0.0.0.0</code>.{" "}
+        <Link href="/docs/projects#projects-guarantees" className="link font-medium">
+          Learn more
+        </Link>
       </p>
 
       {error ? (
@@ -478,7 +600,7 @@ function Configure({
         disabled={!nameOk || !serverId || blocking.length > 0}
         aria-describedby={blocking.length > 0 ? "np-blocked" : undefined}
       >
-        {busy ? "Starting deployment…" : "Deploy"}
+        {buildsOnGithub ? (busy ? "Creating project…" : "Create and set up builds") : busy ? "Starting deployment…" : "Deploy"}
       </Button>
       <Button
         type="button"
@@ -666,7 +788,7 @@ export function NewProjectFlow({
 
       <section aria-labelledby="import-heading" className="mt-8">
         <h2 id="import-heading" className="mb-3 text-title-2">
-          Import Git Repository
+          Choose a repository
         </h2>
 
         {hasInstall ? (

@@ -24,7 +24,7 @@ Egg is made by a Hack Club member. It is not an official Hack Club product, and 
 - Sign in with Hack Club Auth, or with a local password when you run your own copy
 - Connect one or more Nest servers with a dedicated SSH key, added in the Nest dashboard
 - Import GitHub repositories; deploy on push, from a deploy hook, or by hand
-- Builds run on your own container under a memory and CPU cap. If you prefer, GitHub Actions can build and hand a finished release to Egg with a scoped build credential
+- Builds run in GitHub Actions by default (recommended): Egg opens a pull request that adds the workflow, and the finished release is sent to Egg with a scoped build credential. Or build on your own Nest container under a memory and CPU cap
 - Branch previews, health-checked deploys with automatic revert, and rollback to the last five releases
 - Pull-request previews: a same-repository pull request links to its preview, gets one updated comment, and is cleaned up when it closes (forks are never built)
 - Build and runtime logs (runtime logs are searchable), environment variables, custom domains, and a restart without redeploying
@@ -35,6 +35,7 @@ Egg is made by a Hack Club member. It is not an official Hack Club product, and 
 - A public status page per project, and a public status page for Nest and Egg themselves
 - A file manager and terminal for each project, an Activity page, and an account page with signed-in browsers and account deletion
 - A guided first-project tour for new users
+- A Team page for each project: invite people by email as viewers (read) or developers (also deploy, roll back and restart), change or remove a role, and take back an open invitation. Egg sends no email, so you pass the one-time link on yourself
 - A REST API (v1), an SDK and a command-line tool
 - Themes: several built in, a custom theme editor and VS Code theme import
 
@@ -55,7 +56,6 @@ pnpm dev         # http://localhost:3000, deployment worker included
 
 ## Not built yet
 
-- Team access screens. The API has project members and invitations (viewer and developer roles), but the dashboard has no screen for them yet
 - Request counts and latency (analytics counts page views reported by the script, not server requests)
 - Alert channels other than a Discord or Slack webhook, and per-project disk use
 

@@ -9,6 +9,7 @@ import { Card, Label } from "@/components/settings-ui";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { toast } from "@/components/ui/toast";
@@ -61,6 +62,7 @@ export function DeployHookCard({ project }: { project: ProjectView }) {
       description="A private URL that starts a deployment when something sends it a POST. Use it from CI, a cron job or a script."
       docsHref="/docs/hooks"
       docsTopic="deploy hooks"
+      docsLabel="Learn more"
     >
       {url ? (
         <div className="motion-enter space-y-3">
@@ -85,36 +87,47 @@ export function DeployHookCard({ project }: { project: ProjectView }) {
       ) : (
         <p className="text-muted-foreground">No hook yet. Create one to get a URL you can call from CI.</p>
       )}
-      <p className="mt-3 text-label text-muted-foreground">
-        An optional body of <code className="font-mono">{`{ "branch": "my-branch" }`}</code> builds
-        that branch as a preview. One deployment runs at a time: a second call while one is running
-        gets a 409.
-      </p>
       {error ? (
         <Alert tone="error" role="alert" className="mt-3">
           {error}
         </Alert>
       ) : null}
       <div className="mt-4 flex flex-wrap gap-2">
-        <Button
-          type="button"
-          onClick={() => void create()}
-          loading={busy === "create"}
-          disabled={busy !== null}
-        >
-          {busy === "create" ? (active ? "Making…" : "Creating…") : active ? "Make a new URL" : "Create hook"}
-        </Button>
+        {/* Replacing or revoking a live URL breaks every CI job that calls it, so both ask first. */}
         {active ? (
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => void revoke()}
-            loading={busy === "revoke"}
-            disabled={busy !== null}
-          >
-            {busy === "revoke" ? "Revoking…" : "Revoke"}
+          <>
+            <ConfirmDialog
+              trigger={
+                <Button type="button" disabled={busy !== null} loading={busy === "create"}>
+                  Make a new URL
+                </Button>
+              }
+              tone="destructive"
+              title="Make a new URL?"
+              description="The current URL stops working at once. Update every CI job that calls it."
+              confirmLabel="Make a new URL"
+              pendingLabel="Making…"
+              onConfirm={() => create()}
+            />
+            <ConfirmDialog
+              trigger={
+                <Button type="button" variant="outline" disabled={busy !== null} loading={busy === "revoke"}>
+                  Revoke
+                </Button>
+              }
+              tone="destructive"
+              title="Revoke this hook?"
+              description="Calls to the current URL stop working at once. You can create a new hook later."
+              confirmLabel="Revoke"
+              pendingLabel="Revoking…"
+              onConfirm={() => revoke()}
+            />
+          </>
+        ) : (
+          <Button type="button" onClick={() => void create()} loading={busy === "create"} disabled={busy !== null}>
+            {busy === "create" ? "Creating…" : "Create hook"}
           </Button>
-        ) : null}
+        )}
       </div>
     </Card>
   );
@@ -292,18 +305,16 @@ export function StatusPageCard({ project }: { project: ProjectView }) {
     <Card
       id="status-page-heading"
       title="Public Status Page"
-      description="A page anyone with the link can open to see whether this app is answering. It shows the name, the current state and recent outages, and nothing else."
+      description="A public page that shows whether this app is answering."
       docsHref="/docs/status-page"
       docsTopic="the public status page"
+      docsLabel="Learn more"
     >
       {url ? (
         <CopyField value={url} label="Status page URL" />
       ) : (
         <p className="text-muted-foreground">Not published.</p>
       )}
-      <p className="mt-3 text-label text-muted-foreground">
-        It reflects the worker&apos;s checks, which run every few minutes. Unpublishing makes the old link stop working.
-      </p>
       {error ? (
         <Alert tone="error" role="alert" className="mt-3">
           {error}
@@ -521,9 +532,10 @@ export function AlertsCard({ project }: { project: ProjectView }) {
     <Card
       id="alerts-heading"
       title="Alerts"
-      description="Choose what counts as a problem, which problems reach your webhook, and when to stay quiet. Every alert is kept in the history below, even when it is not sent."
+      description="Choose what counts as a problem and when to stay quiet."
       docsHref="/docs/notifications"
       docsTopic="alerts"
+      docsLabel="Learn more"
       footer={
         settings ? (
           <>

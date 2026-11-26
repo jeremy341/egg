@@ -1,5 +1,6 @@
 import { authed, handle, ok } from "@/server/http";
 import { getInventory } from "@/server/inventory";
+import { enforceRateLimit } from "@/server/rate-limit";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -10,6 +11,7 @@ type Ctx = { params: Promise<{ id: string }> };
  */
 export const GET = handle<Ctx>(async (_req, { params }) => {
   const user = await authed();
+  enforceRateLimit("sshSession", user.id);
   const { id } = await params;
   return ok({ inventory: await getInventory(user.id, id) });
 });
