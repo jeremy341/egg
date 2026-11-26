@@ -24,7 +24,7 @@
     "egg": null,
     "endpoint": null,
     "orchardTool": null,
-    "reason": "Egg has no metric catalogue endpoint or CLI command for the metrics available to alert rules.",
+    "reason": "needs SDK method listAlertMetrics",
     "spec": {
       "summary": "Show supported alert metrics with their labels, units, comparisons, defaults, and any traffic requirement.",
       "args": [],
@@ -54,7 +54,7 @@
     "egg": null,
     "endpoint": null,
     "orchardTool": null,
-    "reason": "Egg has no endpoint for creating threshold-based metric alert rules; notification rules only choose which events a channel receives.",
+    "reason": "needs SDK method createMetricAlert",
     "spec": {
       "summary": "Create a metric threshold rule at organization, project, or deployment scope, with an optional minimum traffic rate.",
       "args": [],
@@ -77,7 +77,7 @@
     "egg": null,
     "endpoint": null,
     "orchardTool": null,
-    "reason": "Egg has no endpoint for changing a metric alert rule; its notification-rule updates affect event routing instead.",
+    "reason": "needs SDK method updateMetricAlert",
     "spec": {
       "summary": "Change a metric rule's threshold, evaluation window, traffic floor, or enabled state.",
       "args": ["ruleId"],
@@ -98,7 +98,7 @@
     "egg": null,
     "endpoint": null,
     "orchardTool": null,
-    "reason": "Egg has no metric alert rule deletion endpoint, and the notification-rule deletion endpoint targets a different resource.",
+    "reason": "needs SDK method deleteMetricAlert",
     "spec": {
       "summary": "Delete one metric alert rule after confirming the exact rule identifier.",
       "args": ["ruleId"],
@@ -127,11 +127,11 @@
   {
     "orchard": "notify channel create",
     "source": "notify.go",
-    "status": "missing",
-    "egg": null,
+    "status": "partial",
+    "egg": "notify channels create",
     "endpoint": "create_notification_channel",
     "orchardTool": "create_notification_channel",
-    "reason": "The channel creation endpoint exists, but Egg has no CLI command to configure a channel and its event rules.",
+    "reason": "Egg can create signed HTTPS webhook channels with events and one project scope, but cannot select Discord, Slack, or email delivery, store a display name, or configure email recipients. The CLI's global --url option is reserved for the Egg server, so the command uses --webhook-url for its destination.",
     "spec": {
       "summary": "Create a channel for Discord, Slack, webhook, or email delivery, set its events and optional project scope, and show a webhook signing secret only once at creation.",
       "args": [],
@@ -149,11 +149,11 @@
   {
     "orchard": "notify channel update",
     "source": "notify.go",
-    "status": "missing",
-    "egg": null,
+    "status": "partial",
+    "egg": "notify channels update",
     "endpoint": "update_notification_channel",
     "orchardTool": "update_notification_channel",
-    "reason": "The update endpoint exists, but Egg has no CLI command for changing channel settings, events, or scope.",
+    "reason": "Egg's update endpoint only changes the webhook URL, event filter, and active state; it cannot change a display name, email recipients, or project scope. The shared CLI uses --webhook-url for the destination because --url is global, and requires --enabled true|false because --enabled is already value-typed for another command.",
     "spec": {
       "summary": "Update only the supplied channel fields, including its name, destination, events, project scope, and enabled state; channel type stays fixed.",
       "args": ["channelId"],
@@ -173,11 +173,11 @@
   {
     "orchard": "notify channel delete",
     "source": "notify.go",
-    "status": "missing",
-    "egg": null,
+    "status": "present",
+    "egg": "notify channels delete",
     "endpoint": "delete_notification_channel",
     "orchardTool": "delete_notification_channel",
-    "reason": "The deletion endpoint exists, but the CLI must pass the exact channel host as confirmName before deleting its history and rules.",
+    "reason": null,
     "spec": {
       "summary": "Delete a notification channel and its delivery history after confirming its exact host.",
       "args": ["channelId"],
@@ -206,11 +206,11 @@
   {
     "orchard": "notify deliveries",
     "source": "notify.go",
-    "status": "missing",
-    "egg": null,
+    "status": "present",
+    "egg": "notify deliveries",
     "endpoint": "list_notification_deliveries",
     "orchardTool": "list_notification_deliveries",
-    "reason": "The delivery-history endpoint exists, but Egg has no CLI command to list recent attempts for a channel.",
+    "reason": null,
     "spec": {
       "summary": "List recent delivery attempts for a channel, newest first, retaining at most 30 days of history and showing no more than 30 records.",
       "args": ["channelId"],
@@ -227,7 +227,7 @@
     "egg": null,
     "endpoint": null,
     "orchardTool": null,
-    "reason": "Egg can create authenticated deployments but has no endpoint that accepts a standalone hook token to restart or switch an image.",
+    "reason": "needs SDK method deployWebhook",
     "spec": {
       "summary": "Trigger a deployment using the supplied hook token without signing in; restart by default or optionally select an image and tag.",
       "args": ["token"],

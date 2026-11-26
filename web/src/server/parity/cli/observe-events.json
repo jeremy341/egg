@@ -6,7 +6,7 @@
     "egg": null,
     "endpoint": null,
     "orchardTool": null,
-    "reason": "Egg has pageview statistics but no endpoint for a combined deployment health and runtime summary, and no matching CLI command.",
+    "reason": "needs SDK method getDeploymentOverview",
     "spec": {
       "summary": "Show a deployment snapshot with age, pod and restart counts, resource use, request volume, errors, and latency.",
       "args": [
@@ -21,10 +21,10 @@
     "orchard": "observe logs",
     "source": "observe.go",
     "status": "partial",
-    "egg": "logs",
+    "egg": "observe logs",
     "endpoint": "get_deployment_logs",
     "orchardTool": "get_deployment_logs",
-    "reason": "Egg's logs command can follow deployment build output, but it does not provide the filtered structured runtime log stream this command reads.",
+    "reason": "Egg's getDeploymentLogs method provides structured deployment build output, not the requested runtime log stream.",
     "spec": {
       "summary": "Read recent structured runtime entries for a deployment, with optional severity and text filters, and optionally keep emitting new entries.",
       "args": [
@@ -43,11 +43,11 @@
   {
     "orchard": "observe http",
     "source": "observe.go",
-    "status": "missing",
-    "egg": null,
+    "status": "partial",
+    "egg": "observe http",
     "endpoint": "get_deployment_http_metrics",
     "orchardTool": "get_deployment_http_metrics",
-    "reason": "Egg has this endpoint but it reports pageview counts rather than request errors and latency, and the CLI has no matching command.",
+    "reason": "Egg's HTTP metrics endpoint reports pageview counts rather than request rate, error rate, or latency.",
     "spec": {
       "summary": "Show a deployment's recent request rate, error rate, and average and maximum latency for the last hour.",
       "args": [
@@ -61,11 +61,11 @@
   {
     "orchard": "observe errors",
     "source": "observe.go",
-    "status": "missing",
-    "egg": null,
+    "status": "partial",
+    "egg": "observe errors",
     "endpoint": "get_anomalies",
     "orchardTool": "list_deployment_errors",
-    "reason": "Egg exposes client-error and resource anomaly summaries, but the CLI lacks this command and grouped deployment runtime errors with time-window trends.",
+    "reason": "Egg's anomaly endpoint is project-scoped and has no server-side window filter; it does not return grouped deployment errors or recent trends.",
     "spec": {
       "summary": "List grouped deployment errors with counts, recent trends, last-seen times, and representative messages.",
       "args": [
@@ -85,7 +85,7 @@
     "egg": null,
     "endpoint": null,
     "orchardTool": null,
-    "reason": "Egg has no endpoint or CLI command that identifies a deployment's detected language, framework, and version.",
+    "reason": "needs SDK method getDeploymentRuntime",
     "spec": {
       "summary": "Show the detected runtime language, framework, version, confidence, and evidence source for a deployment.",
       "args": [
@@ -103,7 +103,7 @@
     "egg": null,
     "endpoint": null,
     "orchardTool": null,
-    "reason": "Egg has no endpoint or CLI command that reports which observability signals are available for a deployment.",
+    "reason": "needs SDK method getDeploymentCapabilities",
     "spec": {
       "summary": "Report whether logs, container and HTTP metrics, access logs, custom metrics, traces, and runtime details are available.",
       "args": [
@@ -117,11 +117,11 @@
   {
     "orchard": "observe activity",
     "source": "observe.go",
-    "status": "missing",
-    "egg": null,
+    "status": "partial",
+    "egg": "observe activity",
     "endpoint": "get_activity",
     "orchardTool": "get_timeline",
-    "reason": "Egg's activity endpoint exists, but the CLI has no deployment-scoped feed command or its category and pagination filters.",
+    "reason": "Egg's activity feed is account-wide and typed items do not identify their deployment reliably; the CLI keeps only rows whose visible fields mention the requested deployment id.",
     "spec": {
       "summary": "List the newest audit, build, release, pod, and error entries for one deployment, with cursor-based paging.",
       "args": [
@@ -140,11 +140,11 @@
   {
     "orchard": "events tail",
     "source": "events.go",
-    "status": "missing",
-    "egg": null,
+    "status": "partial",
+    "egg": "events tail",
     "endpoint": "get_changes",
     "orchardTool": null,
-    "reason": "Egg exposes a paged project changes feed, but has no CLI command or endpoint for organization-wide live event delivery and replay.",
+    "reason": "Egg only exposes paged project change feeds; the CLI aggregates and polls them, so --since-id is a project cursor and delivery lacks organization-wide event ids.",
     "spec": {
       "summary": "Continuously emit organization events, optionally filter by type, and resume after reconnecting from a supplied event identifier.",
       "args": [],
@@ -159,11 +159,10 @@
   {
     "orchard": "audit list",
     "source": "audit.go",
-    "status": "missing",
-    "egg": null,
+    "status": "present",
+    "egg": "audit list",
     "endpoint": "get_audit_log",
     "orchardTool": "get_audit_log",
-    "reason": "Egg's audit endpoint exists, but the CLI lacks a command and the endpoint still needs organization and deployment scope alignment.",
     "spec": {
       "summary": "List newest organization audit entries, optionally scoped to a deployment or filtered by action, with cursor-based paging.",
       "args": [],

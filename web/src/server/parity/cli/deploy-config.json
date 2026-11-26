@@ -3,10 +3,10 @@
     "orchard": "deploy env get",
     "source": "deploy_config.go",
     "status": "partial",
-    "egg": "env list",
+    "egg": "deploy env get",
     "endpoint": "get_env_vars",
     "orchardTool": "get_env_vars",
-    "reason": "Egg lists variable names and targets, but its CLI does not display the readable non-secret values returned by this endpoint.",
+    "reason": "The SDK endpoint is project-scoped and accepts a project id, while the spec requires a deployment id.",
     "spec": {
       "summary": "Show a deployment's environment variables, hiding values stored as secrets.",
       "args": [
@@ -21,10 +21,10 @@
     "orchard": "deploy env set",
     "source": "deploy_config.go",
     "status": "partial",
-    "egg": "env set",
+    "egg": "deploy env set",
     "endpoint": "set_env_var",
     "orchardTool": "add_env_vars",
-    "reason": "Egg can set one variable at a time, while this command accepts multiple assignments or a file and can store them as secrets.",
+    "reason": "The SDK writes one project variable per call; the CLI parser cannot accept zero or multiple positional assignments, and the endpoint applies changes on the next deploy rather than restarting immediately.",
     "spec": {
       "summary": "Add or update selected variables without changing other variables; the deployment restarts to apply them.",
       "args": [
@@ -43,10 +43,10 @@
     "orchard": "deploy env unset",
     "source": "deploy_config.go",
     "status": "partial",
-    "egg": "env unset",
+    "egg": "deploy env unset",
     "endpoint": "delete_env_var",
     "orchardTool": "delete_env_vars",
-    "reason": "Egg removes only one key per call; this command accepts several keys and requires an explicit confirmation value for each exact key.",
+    "reason": "The SDK removes one project variable per call and the CLI parser retains only the last repeated --confirm-key, so multi-key confirmation cannot be represented safely.",
     "spec": {
       "summary": "Remove the named variables from a deployment; the deployment restarts afterward.",
       "args": [
@@ -67,7 +67,7 @@
     "egg": null,
     "endpoint": null,
     "orchardTool": "get_deployment",
-    "reason": "Egg has no endpoint or CLI command that reads configured CPU requests and memory requests; add a read endpoint and CLI command.",
+    "reason": "needs SDK method getDeploymentResources",
     "spec": {
       "summary": "Show the deployment's CPU and memory requests, including when either uses the organization default.",
       "args": [
@@ -82,10 +82,10 @@
     "orchard": "deploy resources set",
     "source": "deploy_config.go",
     "status": "partial",
-    "egg": "ops scale",
+    "egg": "deploy resources set",
     "endpoint": "update_deployment_resources",
     "orchardTool": "update_deployment_resources",
-    "reason": "Egg changes live service CPU and memory limits, while this command sets per-pod requests and can clear either field to its default.",
+    "reason": "Egg's resource endpoint changes live service CPU and memory limits, while this spec requires per-pod requests.",
     "spec": {
       "summary": "Change only the supplied CPU or memory request; zero clears that request to its organization default and pods restart.",
       "args": [
@@ -102,11 +102,10 @@
   {
     "orchard": "deploy volumes get",
     "source": "deploy_config.go",
-    "status": "partial",
-    "egg": "ops volumes",
+    "status": "present",
+    "egg": "deploy volumes get",
     "endpoint": "get_volumes",
     "orchardTool": "get_deployment_volumes",
-    "reason": "Egg lists Docker volume names, but does not show the deployment's configured mount paths, types, sizes, or read-only settings.",
     "spec": {
       "summary": "Show each attached volume and its mount configuration.",
       "args": [
@@ -120,11 +119,11 @@
   {
     "orchard": "deploy volumes set",
     "source": "deploy_config.go",
-    "status": "missing",
-    "egg": null,
+    "status": "partial",
+    "egg": "deploy volumes set",
     "endpoint": "update_deployment_volumes",
     "orchardTool": "update_deployment_volumes",
-    "reason": "Egg has no CLI command and its volume endpoint currently rejects edits because mounts must be changed in the Compose file.",
+    "reason": "The endpoint rejects volume edits because mounts must be changed in the Compose file; the CLI parser also retains only the last repeated --volume flag, so only one mount can be submitted.",
     "spec": {
       "summary": "Replace the deployment's complete volume list with the supplied mounts; an empty list removes every mount.",
       "args": [
@@ -141,11 +140,10 @@
   {
     "orchard": "deploy strategy set",
     "source": "deploy_config.go",
-    "status": "missing",
-    "egg": null,
+    "status": "present",
+    "egg": "deploy strategy set",
     "endpoint": "update_deployment_strategy",
     "orchardTool": "update_deployment_strategy",
-    "reason": "Egg has the strategy endpoint but no CLI command to select rolling, recreate, or blue-green updates.",
     "spec": {
       "summary": "Choose how replacement pods are introduced during deployment updates.",
       "args": [
@@ -161,11 +159,10 @@
   {
     "orchard": "deploy pull-policy set",
     "source": "deploy_config.go",
-    "status": "missing",
-    "egg": null,
+    "status": "present",
+    "egg": "deploy pull-policy set",
     "endpoint": "update_deployment_pull_policy",
     "orchardTool": "update_deployment_pull_policy",
-    "reason": "Egg has the image pull-policy endpoint but no CLI command to set a fixed policy or return to tag-based behavior.",
     "spec": {
       "summary": "Pin when the image is downloaded for pod starts, or restore automatic behavior based on its tag.",
       "args": [
@@ -182,10 +179,10 @@
     "orchard": "deploy health-check set",
     "source": "deploy_config.go",
     "status": "partial",
-    "egg": "projects update",
+    "egg": "deploy health-check set",
     "endpoint": "update_deployment_health_check",
     "orchardTool": "update_deployment_health_check",
-    "reason": "Egg can change the health path, but the CLI and endpoint lack probe type, enablement, timing, and liveness, readiness, and startup controls.",
+    "reason": "Egg supports only the health path; the endpoint and CLI lack probe type, enablement, timing, and liveness, readiness, and startup controls.",
     "spec": {
       "summary": "Update selected health-probe settings while retaining every setting whose flag was omitted.",
       "args": [
@@ -213,10 +210,10 @@
     "orchard": "deploy build-root set",
     "source": "deploy_config.go",
     "status": "partial",
-    "egg": "projects update",
+    "egg": "deploy build-root set",
     "endpoint": "update_deployment_build_config",
     "orchardTool": "update_deployment_build_config",
-    "reason": "Egg can set an application subdirectory but cannot switch the Docker build context to the repository root or configure these build accelerators.",
+    "reason": "The SDK can set an application subdirectory but cannot switch the Docker build context to the repository root or configure these build accelerators.",
     "spec": {
       "summary": "Choose whether a GitHub deployment builds from the repository root or the Dockerfile directory, with optional build-service settings.",
       "args": [
@@ -235,10 +232,10 @@
     "orchard": "deploy build-config set",
     "source": "deploy_config.go",
     "status": "partial",
-    "egg": "projects update",
+    "egg": "deploy build-config set",
     "endpoint": "update_deployment_build_config",
     "orchardTool": "update_deployment_build_config",
-    "reason": "Egg supports root, install, build, start, and output settings, but lacks build type, Dockerfile path and target, and builder selection.",
+    "reason": "Egg supports root, install, build, start, and output settings, but lacks build type, Dockerfile path and target, and builder selection; the CLI parser also rejects empty values needed to clear settings.",
     "spec": {
       "summary": "Change only the supplied build settings; an empty value clears a setting, and changes apply on the next build except the start command.",
       "args": [
