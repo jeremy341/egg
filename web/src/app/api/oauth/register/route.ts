@@ -40,7 +40,7 @@ export const POST = handle(async (req) => {
       client_id_issued_at: Math.floor(new Date(client.createdAt).getTime() / 1000),
       client_secret_expires_at: 0,
       token_endpoint_auth_method: "client_secret_post",
-      grant_types: ["authorization_code"],
+      grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],
     },
     { status: 201, headers: NO_STORE }

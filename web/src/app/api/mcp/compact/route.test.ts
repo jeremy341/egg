@@ -66,7 +66,7 @@ describe("bearer auth", () => {
     for (const secret of [null, "egg_unknown", "sk_wrong_prefix"]) {
       const res = await send("{{{ not json", secret);
       expect(res.status, String(secret)).toBe(401);
-      expect(res.headers.get("www-authenticate")).toBe("Bearer");
+      expect(res.headers.get("www-authenticate")).toMatch(/^Bearer resource_metadata="https?:\/\/[^"]+\/\.well-known\/oauth-protected-resource\/api\/mcp"$/);
       const body = await res.json();
       expect(body.error.code).toBe("unauthorized");
       expect(body.jsonrpc).toBeUndefined();
