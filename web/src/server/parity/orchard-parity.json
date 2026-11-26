@@ -58,9 +58,9 @@
     {
       "name": "create_checkpoint",
       "source": "apps/server/src/mcp/tools/database-recovery.ts",
-      "status": "missing",
+      "status": "not_applicable",
       "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "reason": "Managed PostgreSQL checkpoints. Egg has no managed database service, so there is nothing to checkpoint (decision recorded in docs/design/orchard-comparison.md)."
     },
     {
       "name": "create_database",
@@ -775,9 +775,9 @@
     {
       "name": "list_checkpoints",
       "source": "apps/server/src/mcp/tools/database-recovery.ts",
-      "status": "missing",
+      "status": "not_applicable",
       "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "reason": "Managed PostgreSQL checkpoints. Egg has no managed database service, so there is nothing to checkpoint (decision recorded in docs/design/orchard-comparison.md)."
     },
     {
       "name": "list_compose_stacks",
@@ -1068,9 +1068,9 @@
     {
       "name": "restore_checkpoint",
       "source": "apps/server/src/mcp/tools/dangerous.ts",
-      "status": "missing",
+      "status": "not_applicable",
       "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "reason": "Managed PostgreSQL checkpoints. Egg has no managed database service, so there is nothing to checkpoint (decision recorded in docs/design/orchard-comparison.md)."
     },
     {
       "name": "restore_database",
@@ -1447,6 +1447,6 @@
     "test_notification",
     "write_file"
   ],
-  "baseline_missing": 21,
-  "baseline_not_applicable": 79
+  "baseline_missing": 18,
+  "baseline_not_applicable": 82
 }

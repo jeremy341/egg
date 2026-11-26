@@ -2,7 +2,7 @@
 
 Generated from the Orchard parity manifest (`orchard-parity.json`). Our side: `ENDPOINTS` in `web/src/server/api-v1*.ts`. Test-only names are excluded.
 
-Totals: 217 Orchard product tools. Present: 107. Partial: 10. Missing: 21. Not applicable: 79. Ours only: 29.
+Totals: 217 Orchard product tools. Present: 107. Partial: 10. Missing: 18. Not applicable: 82. Ours only: 29.
 
 `present` means an equivalent endpoint exists with the same job. `partial` means it covers part of the job. `missing` means no equivalent yet.
 
@@ -133,7 +133,7 @@ Totals: 217 Orchard product tools. Present: 107. Partial: 10. Missing: 21. Not a
 | Orchard tool | Status | Our endpoint |
 |---|---|---|
 | [-] `cancel_database_operation` | not applicable | - |
-| [ ] `create_checkpoint` | missing | - |
+| [-] `create_checkpoint` | not applicable | - |
 | [-] `create_database_user` | not applicable | - |
 | [-] `delete_database_user` | not applicable | - |
 | [-] `diagnose_database` | not applicable | - |
@@ -145,7 +145,7 @@ Totals: 217 Orchard product tools. Present: 107. Partial: 10. Missing: 21. Not a
 | [-] `get_database_replication` | not applicable | - |
 | [-] `get_database_security` | not applicable | - |
 | [-] `get_project_database_security` | not applicable | - |
-| [ ] `list_checkpoints` | missing | - |
+| [-] `list_checkpoints` | not applicable | - |
 | [-] `list_database_operations` | not applicable | - |
 | [-] `list_database_restore_tests` | not applicable | - |
 | [-] `list_database_users` | not applicable | - |
@@ -250,7 +250,7 @@ Totals: 217 Orchard product tools. Present: 107. Partial: 10. Missing: 21. Not a
 | [x] `delete_service` | present | `delete_service` |
 | [-] `delete_template_instance` | not applicable | - |
 | [-] `disable_database_deletion_protection` | not applicable | - |
-| [ ] `restore_checkpoint` | missing | - |
+| [-] `restore_checkpoint` | not applicable | - |
 | [-] `restore_database` | not applicable | - |
 | [-] `undo_database_restore` | not applicable | - |
 | [-] `upgrade_database` | not applicable | - |
@@ -300,15 +300,15 @@ Totals: 217 Orchard product tools. Present: 107. Partial: 10. Missing: 21. Not a
 
 ## Ours only (no Orchard equivalent)
 
-`delete_file`, `download_file`, `get_analytics`, `get_container_inventory`, `get_deployment_logs`, `get_server_usage`, `get_status_page`, `list_env_vars`, `list_files`, `list_servers`, `make_folder`, `read_file`, `rename_file`, `revoke_deploy_hook`, `terminal_close`, `terminal_open`, `terminal_read`, `terminal_resize`, `terminal_status`, `write_file`
+`delete_env_var`, `delete_file`, `download_file`, `get_analytics`, `get_container_inventory`, `get_logs`, `get_notification_channel`, `get_notifications`, `get_organization`, `get_server_usage`, `get_status_page`, `list_compose_releases`, `list_env_vars`, `list_files`, `list_servers`, `make_folder`, `read_file`, `rename_file`, `restart_service`, `revoke_deploy_hook`, `set_env_var`, `terminal_close`, `terminal_open`, `terminal_read`, `terminal_resize`, `terminal_send`, `terminal_status`, `test_notification`, `write_file`
 
 ## Not in the MCP list (ported or not, tracked separately)
 
-- CLI: Orchard has about 421 commands in Go (`apps/cli`). Egg has 5 read-only commands in `web/scripts/egg-cli.mjs`.
+- CLI: Orchard has 421 command definitions in Go (`apps/cli/cmd`, cobra `Use:` strings, including group nodes and subcommands). Egg has 29 commands in `web/scripts/egg-cli.mjs`, including the bearer API commands.
 - API routes: Orchard has 73 controllers. Egg has 171 route files under `web/src/app/api`.
 - Database migrations: Orchard has 145 SQL files. Egg has 56.
 - Grafts (extension system): Orchard has 3 (greenhouse, forum, announcements). Egg has none. Greenhouse is Phase 6.
 - Managed Postgres (backups, checkpoints, replicas, pooler, extensions, users): Orchard has about 42 database tools. Egg has none, by decision (Phase 5 reduced to `pg_dump` backups).
 - Templates registry and template instances: Orchard has 6 tools. Egg has none.
 - Infrastructure (Kubernetes, Helm, Terraform, Tailscale, Firecracker builds, gateway, S3 gateway): not ported. Out of scope for one Nest container, by decision.
-- OAuth for MCP clients: not built.
+- OAuth for MCP clients: built. Consent page at `web/src/app/(app)/oauth/consent`, authorization-server metadata at `web/src/app/.well-known/oauth-authorization-server`, protected-resource metadata at `web/src/app/.well-known/oauth-protected-resource`.
