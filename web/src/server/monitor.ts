@@ -273,7 +273,8 @@ async function checkServer(server: typeof schema.servers.$inferSelect, now: Date
     await checkResources(p, usage, now);
     const status = results.get(p.id);
     if (!status) continue; // could not read it; that says nothing about the app
-    if (status.state === "running") {
+    // A service that is not running still gets a row when its last exit was a crash, so the crash is kept.
+    if (status.state === "running" || status.lastExit) {
       const prev = await db
         .select({ at: schema.projectSamples.at, cpuNs: schema.projectSamples.cpuNs })
         .from(schema.projectSamples)
@@ -288,6 +289,8 @@ async function checkServer(server: typeof schema.servers.$inferSelect, now: Date
         cpuNs: status.cpuNs,
         cpuPercent: cpuPercentBetween(prev, { at: now, cpuNs: status.cpuNs }),
         restarts: status.restarts,
+        exitCode: status.lastExit?.code ?? null,
+        exitReason: status.lastExit?.reason ?? null,
       });
     }
     const next = nextMonitorState(

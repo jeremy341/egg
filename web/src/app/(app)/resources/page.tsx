@@ -13,15 +13,13 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { requireUser } from "@/server/auth/current";
 import { projectResources, serverViews, usageHistory } from "@/server/queries";
 import { cn } from "@/lib/utils";
+import { METRIC_RANGES, metricRange, metricRangeHours, parseMetricRange } from "@/lib/metric-range";
 
 export const metadata = { title: "Resources" };
 
 type Props = { searchParams: Promise<{ range?: string; server?: string }> };
 
-const RANGES = [
-  { value: "24h", label: "24 hours", hours: 24 },
-  { value: "7d", label: "7 days", hours: 168 },
-] as const;
+const RANGES = METRIC_RANGES;
 
 export default function ResourcesPage({ searchParams }: Props) {
   return (
@@ -49,7 +47,7 @@ const gb = (mb: number) => (mb / 1024).toFixed(1);
 async function ResourcesContent({ searchParams }: Props) {
   const user = await requireUser();
   const { range: rawRange, server: serverId } = await searchParams;
-  const range = RANGES.find((r) => r.value === rawRange) ?? RANGES[0];
+  const range = metricRange(parseMetricRange(rawRange));
   const servers = await serverViews(user.id);
   const server = servers.find((s) => s.id === serverId) ?? servers[0];
 
@@ -72,8 +70,8 @@ async function ResourcesContent({ searchParams }: Props) {
   }
 
   const [history, allProjects] = await Promise.all([
-    usageHistory(user.id, server.id, range.hours),
-    projectResources(user.id, range.hours),
+    usageHistory(user.id, server.id, metricRangeHours(range.value)),
+    projectResources(user.id, metricRangeHours(range.value), range.value),
   ]);
   const projects = allProjects.filter((p) => p.serverId === server.id);
   const u = server.usage;

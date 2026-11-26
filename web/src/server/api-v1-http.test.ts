@@ -133,3 +133,25 @@ describe("readBodyFields", () => {
     expect(array?.message).toBe("Request body must be a JSON object");
   });
 });
+
+describe("per-token rate limit", () => {
+  it("lets one token make 600 requests a minute, then answers 429 with Retry-After", async () => {
+    const owner = await upsertUser({ id: "http-1", name: "Sam", email: null, slackId: null });
+    const own = (await createApiToken(owner.id, { name: "burst", scopes: ["projects:read"] })).secret;
+    const other = (await createApiToken(owner.id, { name: "calm", scopes: ["projects:read"] })).secret;
+    expect(RATE_LIMITS.apiToken.limit).toBe(600);
+    for (let i = 0; i < RATE_LIMITS.apiToken.limit; i++) {
+      await authenticate(new Request("http://localhost:3000/api/v1/me", { headers: { authorization: `Bearer ${own}` } }));
+    }
+    const blocked = await failure(
+      authenticate(new Request("http://localhost:3000/api/v1/me", { headers: { authorization: `Bearer ${own}` } }))
+    );
+    expect(blocked?.status).toBe(429);
+    expect(blocked?.code).toBe("rate_limited");
+    expect(Number(blocked?.headers?.["Retry-After"])).toBeGreaterThanOrEqual(1);
+    // Another token of the same owner has its own 600.
+    await expect(
+      authenticate(new Request("http://localhost:3000/api/v1/me", { headers: { authorization: `Bearer ${other}` } }))
+    ).resolves.toMatchObject({ scopes: ["projects:read"] });
+  });
+});
