@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
 import { cleanLabel, clicksSummary, optedOut, recordHit, summariseTime, timeSummary } from "@/server/analytics-events";
-import { PROJECT_WRITE_LIMIT, enableAnalytics, recordPageview, prunePageviews, UNKNOWN_IP } from "@/server/analytics";
+import { enableAnalytics, prunePageviews } from "@/server/analytics";
 import { updateFeatures } from "@/server/analytics-config";
 import { upsertUser } from "@/server/auth/session";
 import { getDb, schema } from "@/server/db";
@@ -220,67 +219,5 @@ describe("time events", () => {
   it("leaves out days before the window", async () => {
     const s = await timeSummary(userId, projectId, 1, new Date("2026-11-06T09:00:00Z"));
     expect(s.total).toBe(0);
-  });
-});
-
-describe("per-project write cap", () => {
-  let ctx: Awaited<ReturnType<typeof useFreshDb>>;
-  let userId: string;
-  let projectId: string;
-  let key: string;
-  const now = new Date("2026-11-04T12:00:00Z");
-  const who = (ip: string) => ({ ip, ua: "Mozilla/5.0 Firefox" });
-  const pageviewRows = async () =>
-    (await getDb()).select().from(schema.pageviews).where(eq(schema.pageviews.projectId, projectId));
-  const clickRows = async () =>
-    (await getDb()).select().from(schema.analyticsEvents).where(eq(schema.analyticsEvents.projectId, projectId));
-
-  beforeAll(async () => {
-    ctx = await useFreshDb();
-    userId = (await upsertUser({ id: "u1", name: "Sam", email: null, slackId: null })).id;
-    const serverId = (await createServer(userId, "sam-r")).id;
-    projectId = (
-      await createProject(userId, {
-        serverId,
-        repoUrl: "https://github.com/sam/app.git",
-        runtime: "node" as const,
-        port: 3000,
-        name: "App",
-        slug: "app",
-      })
-    ).id;
-    key = (await enableAnalytics(userId, projectId)).key;
-    await updateFeatures(userId, projectId, { clicks: true });
-  });
-  afterAll(async () => {
-    await ctx.cleanup();
-  });
-
-  it("caps one project's page views in a minute whatever the addresses they come from", async () => {
-    let kept = 0;
-    for (let i = 0; i < PROJECT_WRITE_LIMIT + 40; i++) {
-      // A fresh address for most sends, and the shared unknown one every tenth,
-      // as when TRUST_PROXY is off and every visitor counts as one address.
-      const sender =
-        i % 10 === 9 ? { ip: UNKNOWN_IP, ua: "Mozilla/5.0 Firefox" } : { ip: `9.3.${Math.floor(i / 250)}.${i % 250 + 1}`, ua: "Mozilla/5.0 Firefox" };
-      if (await recordPageview(key, { p: "/", pt: 1 }, sender, now)) kept += 1;
-    }
-    expect(kept).toBe(PROJECT_WRITE_LIMIT);
-    expect(await pageviewRows()).toHaveLength(PROJECT_WRITE_LIMIT);
-  });
-
-  it("opens the window again in the next minute, for any address", async () => {
-    expect(await recordPageview(key, { p: "/", pt: 1 }, who("7.7.7.7"), new Date(now.getTime() + 61_000))).toBe(true);
-    expect(await pageviewRows()).toHaveLength(PROJECT_WRITE_LIMIT + 1);
-  });
-
-  it("counts events toward the same cap, even with a fresh address for every report", async () => {
-    const minute = new Date(now.getTime() + 130_000);
-    let kept = 0;
-    for (let i = 0; i < PROJECT_WRITE_LIMIT + 10; i++) {
-      if (await recordHit(key, { e: "click", l: "Buy" }, who(`9.2.${Math.floor(i / 250)}.${i % 250 + 1}`), minute)) kept += 1;
-    }
-    expect(kept).toBe(PROJECT_WRITE_LIMIT);
-    expect(await clickRows()).toHaveLength(PROJECT_WRITE_LIMIT);
   });
 });

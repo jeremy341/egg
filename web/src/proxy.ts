@@ -116,10 +116,7 @@ export const config = {
   //   - api/security-reports : up to about 4.3 MB, public here anyway (the exact path only).
   //   - api/projects/<id>/files/write : a file of up to 50 MB; the handler checks the session first.
   // Each is also capped in deploy/Caddyfile. Do not add a route that takes a large body without skipping it here.
-  // The static-asset exemption is for asset URLs only: an API path that merely ends
-  // in an image extension (a tracker pixel, a junk id) still passes the proxy, so
-  // the ingress limits and bans apply to it.
   matcher: [
-    "/((?!_next/static|_next/image|favicon\\.ico|api/builds/upload$|api/webhooks/github$|api/security-reports$|api/projects/[^/]+/files/write$|(?!api/).*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    "/((?!_next/static|_next/image|favicon\\.ico|api/builds/upload$|api/webhooks/github$|api/security-reports$|api/projects/[^/]+/files/write$|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };

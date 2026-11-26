@@ -5,7 +5,7 @@ import { maintenanceState } from "@/server/maintenance";
 import { HttpError } from "@/server/http";
 
 export async function adminOverview(userId: string) {
-  if (!(await isInstanceAdmin(userId))) throw new HttpError(403, "Only an instance administrator can open this dashboard.", "forbidden");
+  if (!isInstanceAdmin(userId)) throw new HttpError(403, "Only the configured instance administrator can open this dashboard.", "forbidden");
   const db = await getDb();
   const [users, projects, servers, jobs, reports, cleanup, events, maintenance] = await Promise.all([
     db.select({ count: count() }).from(schema.users).get(),

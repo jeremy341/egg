@@ -1,1 +1,0 @@
-ALTER TABLE `deployments` ADD `activation_started_at` integer;

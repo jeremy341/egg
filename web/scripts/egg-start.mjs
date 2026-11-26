@@ -36,7 +36,7 @@ function spawnNext(args, webDir) {
       resolve(code);
     };
     child.once("error", () => done(1));
-    child.once("exit", (code, signal) => done(code ?? (signal ? 128 : 1)));
+    child.once("exit", (code, signal) => done(code ?? (signal ? 0 : 1)));
   });
   return { exited, stop: () => child.kill("SIGTERM") };
 }

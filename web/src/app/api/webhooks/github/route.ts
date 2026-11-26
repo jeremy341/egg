@@ -1,9 +1,8 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
-import { InFlightLimit, KeyedInFlight, readBytesLimited, webhookBodyReads } from "@/server/body-limit";
+import { readBytesLimited, webhookBodyReads } from "@/server/body-limit";
 import { config, trustProxyEnabled } from "@/server/config";
-import { clientIp } from "@/server/rate-limit";
-import { admitRequest, rateLimiter } from "@/server/rate-limit-core";
+import { admitRequest } from "@/server/rate-limit-core";
 import { claimDelivery, handleGithubEvent, matchesWebhookEventShape, releaseDelivery } from "@/server/github/webhook";
 import { HttpError } from "@/server/http";
 import { maintenanceState } from "@/server/maintenance";
@@ -27,54 +26,6 @@ const BODY_IDLE_TIMEOUT_MS = 15_000;
  */
 const BODY_DEADLINE_MS = 30_000;
 const SIGNATURE_FORMAT = /^sha256=[0-9a-f]{64}$/;
-/**
- * A global ceiling on verified deliveries, even when no client address is known
- * (TRUST_PROXY off). It is counted only AFTER the HMAC has been verified: a
- * flood of well-formed but wrong signatures cannot burn the shared budget and
- * 429 genuine GitHub deliveries, and without the secret a flood has to hold one
- * of the few body-read slots to cost anything at all. Set above any real GitHub
- * delivery rate so legitimate events are never lost.
- */
-const GLOBAL_WEBHOOK_LIMIT = 120;
-const GLOBAL_WEBHOOK_WINDOW_MS = 60_000;
-const GLOBAL_WEBHOOK_KEY = "webhook-global";
-
-/**
- * PRE-READ admission. HMAC can only be checked after the whole body arrives, so
- * an attacker can send a well-formed signature header and trickle bytes to hold
- * a body-read slot. Two cheap gates run before the read:
- *
- * - a global in-flight counter capped at one LESS than the body-read pool, so at
- *   least one read slot is always reserved for a verified/known source;
- * - a per-source concurrency cap, so one address cannot even fill that smaller
- *   counter (when no address is trusted there is no key to cap, but the global
- *   counter and the read deadlines still bound the damage).
- *
- * A source that has delivered one verified event is remembered and skips both
- * gates. That is the "never ban GitHub" property: a real delivery from a known
- * address can always use the reserved slot, and nothing here ever bans an
- * address (see admitRequest, whose webhook bucket is also ban-free).
- */
-export const webhookPreReads = new InFlightLimit(webhookBodyReads.max - 1);
-export const webhookPreReadsBySource = new KeyedInFlight(1);
-const MAX_KNOWN_SOURCES = 512;
-const knownSources = new Set<string>();
-
-function rememberVerifiedSource(source: string | null): void {
-  if (!source || knownSources.has(source)) return;
-  if (knownSources.size >= MAX_KNOWN_SOURCES) {
-    const oldest = knownSources.values().next();
-    if (!oldest.done) knownSources.delete(oldest.value);
-  }
-  knownSources.add(source);
-}
-
-/** Test hook: forget in-flight admissions and learned addresses between cases. */
-export function resetWebhookAdmissionForTests(): void {
-  webhookPreReads.reset();
-  webhookPreReadsBySource.reset();
-  knownSources.clear();
-}
 
 function maintenanceResponse() {
   return NextResponse.json({ error: { code: "maintenance", message: "GitHub events are paused during maintenance. Redeliver this event from GitHub after the window ends; Egg has not recorded it as handled." } }, { status: 503, headers: { "Retry-After": "60" } });
@@ -134,31 +85,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Cheap PRE-READ admission. HMAC cannot be checked until the body is in, so
-  // the unverified starts are bounded here instead: one global counter with a
-  // slot held back for known sources, plus a per-address cap. No address means
-  // no key to cap (GitHub is anonymous then too), so only the global counter
-  // applies - never a ban or a shared-key refusal that could block GitHub.
-  const source = clientIp(req.headers);
-  const known = source !== null && knownSources.has(source);
-  const releasePre = known ? null : webhookPreReads.acquire();
-  const releaseSource = known || source === null ? null : webhookPreReadsBySource.acquire(source);
-  // No address means no key to cap, so a null per-source handle is expected
-  // there (and for known sources); only a failed acquire is a refusal.
-  const refused = (!known && releasePre === null) || (!known && source !== null && releaseSource === null);
-  if (refused) {
-    releasePre?.();
-    releaseSource?.();
-    return NextResponse.json(
-      { error: "too many unverified webhook bodies are being received; redeliver shortly" },
-      { status: 503, headers: { "Retry-After": "5" } }
-    );
-  }
-
-  const releaseBody = webhookBodyReads.acquire();
-  if (!releaseBody) {
-    releasePre?.();
-    releaseSource?.();
+  const release = webhookBodyReads.acquire();
+  if (!release) {
     return NextResponse.json(
       { error: "too many webhook deliveries are being received; redeliver shortly" },
       { status: 503, headers: { "Retry-After": "5" } }
@@ -171,23 +99,9 @@ export async function POST(req: NextRequest) {
     if (err instanceof HttpError) return NextResponse.json({ error: err.message }, { status: err.status });
     throw err;
   } finally {
-    releaseBody();
-    releasePre?.();
-    releaseSource?.();
+    release();
   }
   if (!body) return NextResponse.json({ error: "bad signature" }, { status: 401 });
-  // A source that signed one delivery correctly is known from then on and uses
-  // the reserved read slot, so a trickle flood cannot shut out its redeliveries.
-  rememberVerifiedSource(source);
-  // Only now, on a verified delivery, does the shared global ceiling count: wrong
-  // signatures were refused without ever touching it (see GLOBAL_WEBHOOK_LIMIT).
-  const global = rateLimiter().check(GLOBAL_WEBHOOK_KEY, GLOBAL_WEBHOOK_LIMIT, GLOBAL_WEBHOOK_WINDOW_MS);
-  if (!global.allowed) {
-    return NextResponse.json(
-      { error: "too many webhook deliveries; redeliver shortly" },
-      { status: 429, headers: { "Retry-After": String(global.retryAfterSeconds) } }
-    );
-  }
   const raw = body.toString("utf8");
 
   let payload: unknown;

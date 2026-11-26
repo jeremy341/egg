@@ -1,15 +1,12 @@
 # Public API and agent expansion
 
-This plan was written when the API covered projects (read), deployments (read, deploy, redeploy, cancel, rollback), runtime logs, domains (read) and server usage. **Revised 2026-11-22:** the "Added" and "Developer toolkit" sections below were built, and some of the exclusions were later reversed. The current endpoint and scope list is in `docs/design/feature-inventory.md` under "The REST API and the OpenAPI document".
+Today the API covers projects (read), deployments (read, deploy, redeploy, cancel, rollback), runtime logs, domains (read) and server usage. The dashboard can do much more. This plan adds what an AI agent or script plausibly needs, and keeps the exclusions that protect the container.
 
-## Original exclusions (browser only)
-
-Historical, as written:
-
-- Terminal and file changes (the shell and writes into the app) — **later added** with the `terminal:use` and `files:write` scopes, 7-day token limit and the matching container switches.
-- Removing leftovers on the container — still excluded.
-- Container permission switches — still excluded.
-- Token management, sessions, account deletion — still excluded.
+## Stays excluded (browser only)
+- Terminal and file changes (the shell and writes into the app).
+- Removing leftovers on the container.
+- Container permission switches.
+- Token management, sessions, account deletion.
 
 ## Added
 
@@ -57,6 +54,6 @@ Goal: people can build their own dashboards, scripts and agents without reading 
 
 Scopes: no new scope was needed. The status page reads under `projects:read`, the activity log under `activity:read`, and `get_me` needs none.
 
-~~Not built yet: outbound webhooks.~~ **Built (checked 2026-11-22).** They are account-level hooks, not project-level: `components/webhooks-card.tsx`, `server/webhooks.ts` and `server/webhook-sign.ts`. Each request is signed with `X-Egg-Signature: t=<unix>,v1=<hex HMAC-SHA256>`; the secret is shown once, sealed at rest and rotatable. The SSRF decision described here was implemented: https only, public-address check after DNS resolution, redirects refused, 5 s timeout, per-delivery status. Events: `deployment.started`, `deployment.succeeded`, `deployment.failed`, `webhook.test`. See `docs/design/feature-inventory.md`, "Signed outbound webhooks (Account page)".
+Not built yet: outbound webhooks. They make the server send requests to an address the user chose, which needs a decision on SSRF first: allowed schemes and ports, a blocklist for private, loopback and link-local ranges checked after DNS resolution (and again on redirects), no redirects followed, a short timeout and a response size cap, and signed payloads.
 
-~~Open: a browser page on another origin can only call the API if `/api/v1` answers CORS.~~ **Built (checked 2026-11-22):** `web/src/proxy.ts` sets `Access-Control-Allow-Origin: *`, allows `GET, POST, PATCH, PUT, DELETE, OPTIONS` and the `Authorization, Content-Type` headers, exposes `Retry-After`, and answers `OPTIONS` with 204 for `/api/v1/*`. Credentials are not allowed, so a wildcard origin does not read cookies. The decision to allow it was made; the static dashboard no longer needs a same-origin proxy.
+Open: a browser page on another origin can only call the API if `/api/v1` answers CORS (a preflight for `Authorization`). Today it does not, so the static dashboard needs a same-origin proxy until a decision is made. A read-only `GET, OPTIONS` allowance with `Access-Control-Allow-Origin: *` is safe for a bearer-only API (no cookies are read), but it also makes it easier to use a stolen token from a web page, so it is left to the owner.

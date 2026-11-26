@@ -5,7 +5,7 @@ import { z } from "zod";
 import { audit } from "@/server/audit";
 import { runAppCheck, type AppCheckReport, type Probe } from "@/server/app-check";
 import { newId } from "@/server/crypto";
-import { getDb, schema, withLockRetry, type Db } from "@/server/db";
+import { getDb, schema, type Db } from "@/server/db";
 import { HttpError, notFound } from "@/server/http";
 import { checkDomainPolicy, isNestName, ownedParentOf } from "@/server/domain-policy";
 import { getServerForUser } from "@/server/servers";
@@ -18,13 +18,6 @@ import { getServerForUser } from "@/server/servers";
 
 const HOSTNAME =
   /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
-
-/**
- * Hard TTL for an unverified domain claim. It runs from `createdAt`, never from the last
- * action: a squatter can refresh `updatedAt` as often as they like (by pressing Check or
- * re-pointing the domain) and still must not keep a name they never proved they own.
- */
-export const PENDING_CLAIM_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 export function normalizeDomain(input: string): string {
   const d = input.trim().toLowerCase().replace(/\.$/, "");
@@ -42,7 +35,7 @@ export const domainInput = z.object({
   serverId: z.string().min(1),
   domain: z.string().min(1).max(253),
   port: z.number().int().min(1).max(65535),
-  projectId: z.string().min(1).nullable().optional(),
+  projectId: z.string().nullable().optional(),
 });
 
 /** The name a custom domain should point at (CNAME). */
@@ -94,18 +87,10 @@ function isUniqueViolation(err: unknown): boolean {
 export async function addDomain(userId: string, raw: unknown) {
   const input = domainInput.parse(raw);
   const server = await getServerForUser(userId, input.serverId);
-  const db = await getDb();
-  // The user's own rows are the carve-out for protected suffixes and decide whether a new
-  // subdomain rides on a verified parent. Load them before the policy check.
-  const mine = await db
-    .select()
-    .from(schema.domains)
-    .where(and(eq(schema.domains.userId, userId), eq(schema.domains.serverId, server.id)));
-  // Run the policy before normalization so a bare reserved word reaches its clear message
-  // (normalizeDomain would otherwise reject it only as "not a domain name").
-  const policy = checkDomainPolicy(input.domain, server.nestUsername, mine);
-  if (!policy.allowed) throw new HttpError(400, policy.message, "validation");
   const domain = normalizeDomain(input.domain);
+  const policy = checkDomainPolicy(domain, server.nestUsername);
+  if (!policy.allowed) throw new HttpError(400, policy.message, "validation");
+  const db = await getDb();
 
   if (input.projectId) {
     const project = await db
@@ -114,47 +99,35 @@ export async function addDomain(userId: string, raw: unknown) {
       .where(and(eq(schema.projects.id, input.projectId), eq(schema.projects.userId, userId)))
       .get();
     if (!project || project.serverId !== server.id) throw notFound("Project not found");
-    if (project.workloadKind === "worker" && !project.listenPort) throw new HttpError(400, "This worker exposes no port. Give it a listen port in Settings first.", "validation");
   }
+  // One answer whether the domain is yours already or on someone else's server: it is taken.
+  if (await db.select().from(schema.domains).where(eq(schema.domains.domain, domain)).get()) {
+    throw new HttpError(409, `${domain} is already added.`, "conflict");
+  }
+
   // Nest names need no check, and neither does a subdomain of a domain already verified on this server.
+  const mine = await db
+    .select()
+    .from(schema.domains)
+    .where(and(eq(schema.domains.userId, userId), eq(schema.domains.serverId, server.id)));
   const verifiedBy: VerifiedBy = isNestName(domain, server.nestUsername)
     ? "nest"
     : ownedParentOf(domain, mine)
       ? "parent"
       : "dns";
-  // A Nest name is accepted without DNS, so it must first be proven: a connection to this server shows the
-  // owner controls that Nest account. Without this, anyone could claim someone else's name before its owner does.
-  if (verifiedBy === "nest" && (server.status !== "connected" || !server.hostKeyFingerprint)) {
-    throw new HttpError(400, "Connect this server before adding its Nest name.", "validation");
-  }
 
   const id = newId();
-  const staleBefore = new Date(Date.now() - PENDING_CLAIM_MAX_AGE_MS);
   try {
-    await withLockRetry(() => db.transaction(async (tx) => {
-      const existing = await tx.select().from(schema.domains).where(eq(schema.domains.domain, domain)).get();
-      if (existing) {
-        // A pending claim nobody ever verified must not reserve the name forever. The clock
-        // starts at creation and cannot be pushed forward by re-pointing or pressing Check:
-        // `updatedAt` is intentionally ignored here. Valid, invalid and fresh pending rows
-        // keep the normal 409. The owner may reclaim their own stale row too — that is how a
-        // forgotten claim gets a fresh port/project without asking an administrator.
-        const stale = existing.status === "pending" && existing.createdAt < staleBefore;
-        if (!stale) throw new HttpError(409, `${domain} is already added.`, "conflict");
-        await tx.delete(schema.domains).where(eq(schema.domains.id, existing.id));
-      }
-      await tx.insert(schema.domains).values({
-        id,
-        userId,
-        serverId: server.id,
-        projectId: input.projectId ?? null,
-        domain,
-        port: input.port,
-        status: verifiedBy === "dns" ? "pending" : "valid",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-    }));
+    await db.insert(schema.domains).values({
+      id,
+      userId,
+      serverId: server.id,
+      projectId: input.projectId ?? null,
+      domain,
+      port: input.port,
+      status: verifiedBy === "dns" ? "pending" : "valid",
+      createdAt: new Date(),
+    });
   } catch (err) {
     if (isUniqueViolation(err)) throw new HttpError(409, `${domain} is already added.`, "conflict");
     throw err;
@@ -220,7 +193,6 @@ export async function updateDomain(userId: string, domainId: string, raw: unknow
         .where(and(eq(schema.projects.id, input.projectId), eq(schema.projects.userId, userId)))
         .get();
       if (!project || project.serverId !== row.serverId) throw notFound("Project not found");
-      if (project.workloadKind === "worker" && !project.listenPort) throw new HttpError(400, "This worker exposes no port. Give it a listen port in Settings first.", "validation");
       projectId = project.id;
       // Moving to a project without naming a port means "use that project's port".
       if (input.port === undefined) port = project.port;
@@ -230,12 +202,7 @@ export async function updateDomain(userId: string, domainId: string, raw: unknow
   const portChanged = port !== row.port;
   await db
     .update(schema.domains)
-    .set({
-      projectId,
-      port,
-      updatedAt: new Date(),
-      ...(portChanged ? { status: "pending" as const, lastCheckedAt: null } : {}),
-    })
+    .set({ projectId, port, ...(portChanged ? { status: "pending" as const, lastCheckedAt: null } : {}) })
     .where(eq(schema.domains.id, row.id));
   await audit(userId, "domain.update", projectId, { domain: row.domain, port });
 
@@ -255,7 +222,7 @@ export async function updateDomain(userId: string, domainId: string, raw: unknow
 export async function moveDomainsToPort(db: Pick<Db, "update">, projectId: string, port: number) {
   await db
     .update(schema.domains)
-    .set({ port, status: "pending", lastCheckedAt: null, updatedAt: new Date() })
+    .set({ port, status: "pending", lastCheckedAt: null })
     .where(eq(schema.domains.projectId, projectId));
 }
 
@@ -338,14 +305,13 @@ export function clearDnsCache() {
 /**
  * Check DNS and the stored status together. A verified domain whose record is gone
  * becomes "invalid" (never deleted); a domain still waiting stays "pending"; a failed
- * lookup changes nothing and is reported as it is, so it is never mistaken for a
- * verdict about the record.
+ * lookup changes nothing.
  */
 export async function verifyDomain(
   userId: string,
   domainId: string,
   resolver: Resolver = dns
-): Promise<{ status: "valid" | "invalid" | "unknown"; reason: string | null }> {
+): Promise<{ status: "valid" | "invalid"; reason: string | null }> {
   const db = await getDb();
   const row = await db
     .select()
@@ -377,27 +343,9 @@ export async function verifyDomain(
     // verified domain keeps its status when the lookup fails; the reason is still shown.
     const lost = result.state === "missing" && row.status === "valid" && !nest;
     const status = result.state === "ok" ? "valid" : lost ? "invalid" : row.status;
-    await db
-      .update(schema.domains)
-      .set({
-        status,
-        lastCheckedAt: new Date(),
-        // Only a successful verification counts as an owner action. A missing or failed
-        // lookup records when we looked, but must not refresh the stale-claim clock.
-        ...(result.state === "ok" ? { updatedAt: new Date() } : {}),
-      })
-      .where(eq(schema.domains.id, row.id));
+    await db.update(schema.domains).set({ status, lastCheckedAt: new Date() }).where(eq(schema.domains.id, row.id));
   }
-  // A Nest name is authoritative in the database (it needed a connected server to be
-  // added) and a child of a verified parent needs no DNS at all. DNS cannot overrule
-  // them, so report the status we actually stored instead of a verdict the UI cannot act on.
-  // A stored "pending" means the owner still has to update the Nest dashboard: report it as
-  // "unknown" (no verdict), which is the only form the verify API can express.
-  const stored = row.status === "valid" || row.status === "invalid" ? row.status : "unknown";
-  const status = nest || parent
-    ? (result.state === "ok" ? "valid" : stored)
-    : result.state === "ok" ? "valid" : result.state === "missing" ? "invalid" : "unknown";
-  return { status, reason: result.reason };
+  return { status: result.state === "ok" ? "valid" : "invalid", reason: result.reason };
 }
 
 type ActiveRow = { id: string; domain: string; status: string; nestUsername: string };
@@ -472,7 +420,7 @@ export type DomainAppCheck =
 export async function checkDomainApp(
   userId: string,
   domainId: string,
-  dnsStatus: "valid" | "invalid" | "unknown",
+  dnsStatus: "valid" | "invalid",
   probe?: Probe
 ): Promise<DomainAppCheck> {
   const db = await getDb();

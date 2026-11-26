@@ -1,6 +1,6 @@
 import { shellQuote } from "@/server/ssh/connection";
 import { toOnCalendar, type Schedule } from "@/lib/cron-schedule";
-import { SH_MARKER_HELPERS, UNIT_MARKER, UNIT_PREFIX, currentEnvLink, currentLink, scopedSlug } from "@/server/deploy/layout";
+import { SH_MARKER_HELPERS, UNIT_MARKER, UNIT_PREFIX, currentEnvLink, currentLink } from "@/server/deploy/layout";
 import { NOT_OURS_EXIT, SH_ENV_HELPERS, journalTail, migrateEnvCall, removeOwnUnit, systemdEscape } from "@/server/deploy/remote";
 
 /**
@@ -16,33 +16,6 @@ import { NOT_OURS_EXIT, SH_ENV_HELPERS, journalTail, migrateEnvCall, removeOwnUn
 
 const HEAD = "set -euo pipefail\n";
 
-/**
- * Unit names use the first eight hex characters of the job id, so two jobs can
- * collide on a name. The full job id in the marker decides which job owns the
- * file. Install refuses a unit owned by another job of this project; it may
- * still rewrite a unit we marked before jobs carried a `job=`, as before, so a
- * pre-upgrade job upgrades to the owning marker on its next save. Removal and
- * running require an exact `job=` match (a pre-upgrade project-marked unit
- * counts as this project's), so one job can never stop, delete or start
- * another job's units under a colliding name. A file with more than one
- * marker line belongs to no one and is always refused; trailing whitespace
- * after the id does not break a reinstall.
- */
-const JOB_OWNERSHIP_HELPER =
-  `egg_job_markers() { local f="$1"; grep -cE "^${UNIT_MARKER} " -- "$f" 2>/dev/null || return 0; }\n` +
-  `egg_unit_is_job() { local f="$1" slug="$2" id="$3" scope="\${4-}" line ms; ` +
-  `[ "$(egg_job_markers "$f")" -le 1 ] || return 1; ` +
-  `line=$(grep -m1 '^${UNIT_MARKER} project=' -- "$f" 2>/dev/null) || return 1; ` +
-  `printf '%s\\n' "$line" | grep -qE "^${UNIT_MARKER} project="$slug" job="$id"( |\\$)" && return 0; ` +
-  // A pre-job unit carries only project=, with no job= field at all. A marker
-  // naming a different job must never be treated as this project's.
-  `printf '%s\\n' "$line" | grep -qE "^${UNIT_MARKER} project="$slug"[[:space:]]*\\$" || return 1; ` +
-  `if [ -n "$scope" ]; then ms=$(printf '%s\\n' "$line" | sed -nE 's/.* scope=([^ ]+).*/\\1/p'); [ "$ms" = "$scope" ] || return 1; fi; ` +
-  `return 0; }\n` +
-  `egg_job_unit_free() { local f="$1" slug="$2" id="$3" scope="\${4-}"; ` +
-  `grep -qE "^${UNIT_MARKER} project="$slug" job=" -- "$f" 2>/dev/null || return 0; ` +
-  `egg_unit_is_job "$f" "$slug" "$id" "$scope"; }\n`;
-
 /** Exit code when the project has no release yet, so there is nothing to run a job in. */
 export const NO_RELEASE_EXIT = 31;
 /** Exit code when the job's service is not installed on the container. */
@@ -54,24 +27,14 @@ export const JOB_TIMEOUT_SECONDS = 30 * 60;
 export const JOB_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /** The two unit names for a job. The short id keeps them readable and the marker keeps them safe. */
-export function jobUnits(slug: string, jobId: string, scope?: string) {
+export function jobUnits(slug: string, jobId: string) {
   if (!JOB_ID.test(jobId)) throw new Error("Not a job id.");
-  const base = `${UNIT_PREFIX}${scopedSlug(slug, scope)}-job-${jobId.slice(0, 8)}`;
+  const base = `${UNIT_PREFIX}${slug}-job-${jobId.slice(0, 8)}`;
   return { service: `${base}.service`, timer: `${base}.timer` };
 }
 
 /** A name that is safe to put in a unit's description. */
 export const JOB_NAME = /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,59}$/;
-
-/**
- * A job of a container project runs inside its running container. The command
- * is quoted for the unit's login shell, so nothing in it is expanded before
- * `sh -lc` reads it inside the container: variables and command substitution
- * are the container's own, not the container host's.
- */
-export function dockerJobCommand(args: { slug: string; containerPort: number; command: string; scope?: string }) {
-  return `docker exec -e PORT=${Number(args.containerPort)} ${shellQuote(`egg-${scopedSlug(args.slug, args.scope)}`)} sh -lc ${shellQuote(args.command)}`;
-}
 
 export function jobServiceFile(args: {
   slug: string;
@@ -81,17 +44,14 @@ export function jobServiceFile(args: {
   command: string;
   /** Extra PATH entries, such as the Python venv. */
   pathPrefix?: string;
-  /** Short hash of the server id; isolates same-slug projects from other accounts. */
-  scope?: string;
 }) {
   const link = currentLink(args.home, args.slug);
   const envFile = currentEnvLink(args.home, args.slug);
   const path = args.pathPrefix
     ? `Environment=PATH=${args.pathPrefix}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n`
     : "";
-  const marker = `${UNIT_MARKER} project=${args.slug} job=${args.jobId}${args.scope ? ` scope=${args.scope}` : ""}\n`;
   return (
-    marker +
+    `${UNIT_MARKER} project=${args.slug} job=${args.jobId}\n` +
     `[Unit]\nDescription=Egg job: ${args.name} (${args.slug})\nAfter=network.target\n\n` +
     `[Service]\nType=oneshot\nWorkingDirectory=${link}\n` +
     // The same variables the app runs with. The dash keeps a missing file from failing the job.
@@ -104,11 +64,10 @@ export function jobServiceFile(args: {
   );
 }
 
-export function jobTimerFile(args: { slug: string; jobId: string; name: string; schedule: Schedule; scope?: string }) {
-  const { service } = jobUnits(args.slug, args.jobId, args.scope);
-  const marker = `${UNIT_MARKER} project=${args.slug} job=${args.jobId}${args.scope ? ` scope=${args.scope}` : ""}\n`;
+export function jobTimerFile(args: { slug: string; jobId: string; name: string; schedule: Schedule }) {
+  const { service } = jobUnits(args.slug, args.jobId);
   return (
-    marker +
+    `${UNIT_MARKER} project=${args.slug} job=${args.jobId}\n` +
     `[Unit]\nDescription=Egg schedule: ${args.name} (${args.slug})\n\n` +
     // Persistent=false: after downtime the job waits for its next time instead of running a backlog.
     `[Timer]\nOnCalendar=${toOnCalendar(args.schedule)}\nPersistent=false\nAccuracySec=10s\nUnit=${service}\n\n` +
@@ -129,22 +88,16 @@ export function installJob(args: {
   serviceFile: string;
   timerFile: string;
   enabled: boolean;
-  scope?: string;
 }) {
-  const { service, timer } = jobUnits(args.slug, args.jobId, args.scope);
-  const scopeArg = args.scope === undefined ? "" : ` ${shellQuote(args.scope)}`;
+  const { service, timer } = jobUnits(args.slug, args.jobId);
   const guard = (unit: string) => {
     const f = shellQuote(`${args.unitDir}/${unit}`);
-    return (
-      `if { [ -e ${f} ] || [ -L ${f} ]; } && ! egg_unit_ours ${f} ${shellQuote(args.slug)}${scopeArg}; then if egg_unit_marked ${f}; then echo ${shellQuote(`${unit} was created by Egg for another project, so it was left alone.`)} >&2; else echo ${shellQuote(`${unit} already exists and was not created by Egg, so it was left alone.`)} >&2; fi; exit ${NOT_OURS_EXIT}; fi\n` +
-      `if { [ -e ${f} ] || [ -L ${f} ]; } && ! egg_job_unit_free ${f} ${shellQuote(args.slug)} ${shellQuote(args.jobId)}${scopeArg}; then echo ${shellQuote(`${unit} was created for another job, so it was left alone.`)} >&2; exit ${NOT_OURS_EXIT}; fi\n`
-    );
+    return `if { [ -e ${f} ] || [ -L ${f} ]; } && ! egg_unit_marked ${f}; then echo ${shellQuote(`${unit} already exists and was not created by Egg, so it was left alone.`)} >&2; exit ${NOT_OURS_EXIT}; fi\n`;
   };
   const link = shellQuote(currentLink(args.home, args.slug));
   return (
     HEAD +
     SH_MARKER_HELPERS +
-    JOB_OWNERSHIP_HELPER +
     SH_ENV_HELPERS +
     `[ -d ${link} ] || { echo "Deploy the project once before adding a job: there is nothing to run it in yet." >&2; exit ${NO_RELEASE_EXIT}; }\n` +
     // A project deployed before the variables files moved is brought to the new layout first, so the job sees them.
@@ -161,46 +114,32 @@ export function installJob(args: {
   );
 }
 
-/** Stop and delete both units, but only ones this job owns exactly. */
-export function removeJob(args: { slug: string; jobId: string; unitDir: string; scope?: string }) {
-  const { service, timer } = jobUnits(args.slug, args.jobId, args.scope);
-  const scopeArg = args.scope === undefined ? "" : ` ${shellQuote(args.scope)}`;
-  const guard = (unit: string) => {
-    const f = shellQuote(`${args.unitDir}/${unit}`);
-    return (
-      `if { [ -e ${f} ] || [ -L ${f} ]; } && ! egg_unit_is_job ${f} ${shellQuote(args.slug)} ${shellQuote(args.jobId)}${scopeArg}; then ` +
-      `echo ${shellQuote(`${unit} was created for another job (or before jobs carried their id), so it was left alone.`)} >&2; exit ${NOT_OURS_EXIT}; fi\n`
-    );
-  };
+/** Stop and delete both units, but only ones that carry our marker. */
+export function removeJob(args: { slug: string; jobId: string; unitDir: string }) {
+  const { service, timer } = jobUnits(args.slug, args.jobId);
   return (
     SH_MARKER_HELPERS +
-    JOB_OWNERSHIP_HELPER +
-    guard(timer) +
-    guard(service) +
     // The timer first, so nothing starts the service again while it is being removed.
-    removeOwnUnit(args.unitDir, timer, args.slug, args.scope) +
-    removeOwnUnit(args.unitDir, service, args.slug, args.scope) +
+    removeOwnUnit(args.unitDir, timer) +
+    removeOwnUnit(args.unitDir, service) +
     `true\n`
   );
 }
 
 /** Stop and delete these units, but only ones that carry our marker. Pass timers before their services. */
-export function removeUnits(unitDir: string, units: string[], project?: string, scope?: string) {
-  return SH_MARKER_HELPERS + units.map((u) => removeOwnUnit(unitDir, u, project, scope)).join("") + `true
+export function removeUnits(unitDir: string, units: string[]) {
+  return SH_MARKER_HELPERS + units.map((u) => removeOwnUnit(unitDir, u)).join("") + `true
 `;
 }
 
 /** Start the job once now, without waiting for it to finish. */
-export function runJobNow(args: { slug: string; jobId: string; unitDir: string; scope?: string }) {
-  const { service } = jobUnits(args.slug, args.jobId, args.scope);
+export function runJobNow(args: { slug: string; jobId: string; unitDir: string }) {
+  const { service } = jobUnits(args.slug, args.jobId);
   const f = shellQuote(`${args.unitDir}/${service}`);
   return (
     HEAD +
     SH_MARKER_HELPERS +
-    JOB_OWNERSHIP_HELPER +
-    // The exact job id decides ownership here too: a colliding 8-hex name must
-    // not let one job start another job's service.
-    `if ! egg_unit_is_job ${f} ${shellQuote(args.slug)} ${shellQuote(args.jobId)}${args.scope === undefined ? "" : ` ${shellQuote(args.scope)}`}; then echo "That job is not installed on the container." >&2; exit ${NOT_INSTALLED_EXIT}; fi\n` +
+    `egg_unit_marked ${f} || { echo "That job is not installed on the container." >&2; exit ${NOT_INSTALLED_EXIT}; }\n` +
     `systemctl start ${shellQuote(service)} --no-block\n` +
     `echo "Started ${service}"\n`
   );
@@ -211,11 +150,11 @@ export function runJobNow(args: { slug: string; jobId: string; unitDir: string; 
  * position in `jobs`. Reads only. The last run's end time comes out as epoch
  * seconds (J<n>_LastEnd) so the app does not have to parse systemd's date text.
  */
-export function jobStatus(args: { slug: string; jobIds: string[]; scope?: string }) {
+export function jobStatus(args: { slug: string; jobIds: string[] }) {
   return (
     args.jobIds
       .map((jobId, n) => {
-        const { service, timer } = jobUnits(args.slug, jobId, args.scope);
+        const { service, timer } = jobUnits(args.slug, jobId);
         const s = shellQuote(service);
         const t = shellQuote(timer);
         return (
@@ -230,6 +169,6 @@ export function jobStatus(args: { slug: string; jobIds: string[]; scope?: string
 }
 
 /** The job's recent output from the journal. */
-export function jobLogs(args: { slug: string; jobId: string; lines: number; scope?: string }) {
-  return journalTail(jobUnits(args.slug, args.jobId, args.scope).service, Math.max(1, Math.min(args.lines, 500)));
+export function jobLogs(args: { slug: string; jobId: string; lines: number }) {
+  return journalTail(jobUnits(args.slug, args.jobId).service, Math.max(1, Math.min(args.lines, 500)));
 }

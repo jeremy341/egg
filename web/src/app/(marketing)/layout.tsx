@@ -4,6 +4,7 @@ import { MobileMenu } from "@/components/marketing/mobile-menu";
 import { SiteHeader } from "@/components/marketing/site-header";
 import { NestMark } from "@/components/nest-mark";
 import { FooterSwitch } from "@/components/marketing/footer-switch";
+import { ChickenFieldLoader } from "@/components/marketing/chicken-field-loader";
 import { PixelField } from "@/components/pixel-field";
 import { ThemeButton } from "@/components/theme-button";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -35,6 +36,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
         style={{ backgroundSize: `${GRID_CELL}px ${GRID_CELL}px` }}
       />
       <PixelField fixed tone="mono" cell={GRID_CELL} />
+      <ChickenFieldLoader />
       <a
         href="#top"
         className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-(--z-skip) focus:rounded-md focus:bg-background focus:px-3 focus:py-2 focus:shadow-menu"
@@ -44,7 +46,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
 
       {/* 60px tall: two grid cells, so the bar sits on the grid. */}
       <SiteHeader>
-        <div className="board-col flex h-15 items-center gap-3 md:gap-6 lg:gap-8">
+        <div className="mx-auto flex h-15 max-w-[1400px] items-center gap-3 px-6 md:gap-6 lg:gap-8">
           <Link href="/" aria-label="Egg, home" className="touch-target flex shrink-0 items-center gap-2 rounded-md outline-offset-4">
             <NestMark className="size-6" />
             <span className="font-pixel text-[21px] leading-none font-semibold whitespace-nowrap">Egg</span>
@@ -75,8 +77,8 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
       <FooterSwitch
         full={
           <footer>
-            <div className="board-col grid gap-12 py-16 md:grid-cols-[1.5fr_1fr_1fr_1fr] max-md:grid-cols-2 max-md:gap-x-6 max-md:gap-y-10">
-              <div className="max-md:col-span-2">
+            <div className="mx-auto grid max-w-[1400px] gap-12 px-6 py-16 md:grid-cols-[1.5fr_1fr_1fr_1fr]">
+              <div>
                 <Link href="/" className="touch-target flex w-fit items-center gap-2 rounded-md">
                   <NestMark className="size-6" />
                   <span className="font-pixel text-[21px] leading-none font-semibold">Egg</span>
@@ -94,7 +96,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
                   </a>
                 ))}
               </nav>
-              <nav aria-label="Resources" className="flex flex-col text-[14px] max-md:col-span-2 max-md:order-last">
+              <nav aria-label="Resources" className="flex flex-col text-[14px]">
                 <p className="mb-2 font-medium">Resources</p>
                 <Link href="/security" className={footerLink}>
                   How Egg protects your container

@@ -3,9 +3,8 @@ import { getDb, schema } from "@/server/db";
 import { newId, randomToken, sha256Hex } from "@/server/crypto";
 
 export const SESSION_COOKIE = "egg_session";
+export const OAUTH_COOKIE = "egg_oauth";
 export const SESSION_DAYS = 30;
-// OAuth state cookie names live in `@/server/auth/oauth-cookie`: they depend on
-// whether APP_URL is HTTPS (__Host- prefix) and this module must not own them.
 
 export type SessionUser = {
   id: string;
@@ -23,48 +22,36 @@ export async function upsertUser(profile: {
   emailVerified?: boolean;
 }): Promise<SessionUser> {
   const db = await getDb();
-  // Store the email the way sign-in lookups normalize it (normalizeEmail):
-  // a stored form with surrounding spaces or non-ASCII case could never match.
-  const email = profile.email?.trim().toLowerCase().slice(0, 254) ?? null;
-  const refresh = async (userId: string, hackClubId: string): Promise<SessionUser> => {
-    await db
-      .update(schema.users)
-      .set({ name: profile.name, email, emailVerified: profile.emailVerified === true, slackId: profile.slackId })
-      .where(eq(schema.users.id, userId));
-    return { id: userId, name: profile.name, email, hackClubId };
-  };
   const existing = await db
     .select()
     .from(schema.users)
     .where(eq(schema.users.hackClubId, profile.id))
     .get();
 
-  if (existing) return refresh(existing.id, existing.hackClubId);
+  if (existing) {
+    await db
+      .update(schema.users)
+      .set({ name: profile.name, email: profile.email, emailVerified: profile.emailVerified === true, slackId: profile.slackId })
+      .where(eq(schema.users.id, existing.id));
+    return {
+      id: existing.id,
+      name: profile.name,
+      email: profile.email,
+      hackClubId: existing.hackClubId,
+    };
+  }
 
   const id = newId();
-  const inserted = await db
-    .insert(schema.users)
-    .values({
-      id,
-      hackClubId: profile.id,
-      name: profile.name,
-      email,
-      slackId: profile.slackId,
-      emailVerified: profile.emailVerified === true,
-      createdAt: new Date(),
-    })
-    .onConflictDoNothing()
-    .returning({ id: schema.users.id });
-  if (inserted.length === 0) {
-    // Another first sign-in created this identity between our select and insert.
-    const raced = await db
-      .select()
-      .from(schema.users)
-      .where(eq(schema.users.hackClubId, profile.id))
-      .get();
-    if (raced) return refresh(raced.id, raced.hackClubId);
-  }
-  return { id, name: profile.name, email, hackClubId: profile.id };
+  await db.insert(schema.users).values({
+    id,
+    hackClubId: profile.id,
+    name: profile.name,
+    email: profile.email,
+    slackId: profile.slackId,
+    emailVerified: profile.emailVerified === true,
+    createdAt: new Date(),
+  });
+  return { id, name: profile.name, email: profile.email, hackClubId: profile.id };
 }
 
 /**
@@ -147,27 +134,14 @@ export async function markFreshAuth(token: string, now = new Date()): Promise<vo
     .where(eq(schema.sessions.id, sha256Hex(token)));
 }
 
-/**
- * True when this session confirmed with Hack Club within the window.
- * Pass `userId` at every authorization call site so a fresh session belonging
- * to another account can never satisfy someone else's step-up check.
- */
-export async function isFreshAuth(
-  token: string | undefined,
-  now = Date.now(),
-  userId?: string
-): Promise<boolean> {
+/** True when this session confirmed with Hack Club within the window. */
+export async function isFreshAuth(token: string | undefined, now = Date.now()): Promise<boolean> {
   if (!token) return false;
   const db = await getDb();
   const row = await db
     .select({ freshAuthAt: schema.sessions.freshAuthAt })
     .from(schema.sessions)
-    .where(
-      and(
-        eq(schema.sessions.id, sha256Hex(token)),
-        ...(userId ? [eq(schema.sessions.userId, userId)] : [])
-      )
-    )
+    .where(eq(schema.sessions.id, sha256Hex(token)))
     .get();
   return !!row?.freshAuthAt && now - row.freshAuthAt.getTime() <= REAUTH_WINDOW_MS;
 }

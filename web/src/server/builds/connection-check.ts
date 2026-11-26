@@ -118,17 +118,8 @@ export async function checkGithubConnection(userId: string, projectId: string, d
       token = await installationToken(project.installationId, fetchImpl);
       checks.push(result("installation", INSTALL, "pass", "The Egg GitHub app is installed and Egg can use it."));
     } catch (err) {
-      if (err instanceof HttpError) throw err;
-      // A network failure is a failed check, not a 500 (the project-not-found
-      // throw above is the only one).
-      checks.push(
-        result(
-          "installation",
-          INSTALL,
-          "fail",
-          err instanceof GithubError ? installationAdvice(err) : "Egg could not reach GitHub to check the app. Try again in a minute."
-        )
-      );
+      if (!(err instanceof GithubError)) throw err;
+      checks.push(result("installation", INSTALL, "fail", installationAdvice(err)));
     }
   }
 
@@ -150,7 +141,7 @@ export async function checkGithubConnection(userId: string, projectId: string, d
         checks.push(result("repository", REPO, "fail", `The GitHub app cannot see ${repo}. On GitHub, open the app's settings and add this repository to its access.`));
       }
     } catch (err) {
-      if (err instanceof HttpError) throw err;
+      if (!(err instanceof GithubError)) throw err;
       checks.push(result("repository", REPO, "fail", "GitHub did not list the app's repositories. Try again in a minute."));
     }
   }

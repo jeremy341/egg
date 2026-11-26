@@ -47,13 +47,7 @@ export function FindProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (isTyping(e.target) || e.altKey) return;
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        setState({ instant: true });
-        return;
-      }
-      if (e.metaKey || e.ctrlKey) return;
+      if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
       if (e.key === "f" || e.key === "F") {
         e.preventDefault();
         setState({ instant: true });

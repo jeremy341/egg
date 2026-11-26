@@ -114,10 +114,4 @@ describe("makeProbe", () => {
     const r = await probe("internal.example.com", "/");
     expect(r.kind).toBe("refused");
   });
-
-  it("times out a DNS lookup that never resolves", async () => {
-    const probe = makeProbe(() => new Promise<never>(() => {}), 20);
-    const r = await probe("slow.example.com", "/");
-    expect(r).toEqual({ kind: "unreachable", detail: "No answer within 5 seconds." });
-  });
 });

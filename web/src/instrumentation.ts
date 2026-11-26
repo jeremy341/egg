@@ -3,16 +3,6 @@
  * also works through the deployment queue, so one process is enough to host
  * everything. Set RUN_WORKER=0 and use `pnpm worker` to run builds elsewhere.
  */
-/** An empty or non-numeric WORKER_CONCURRENCY would otherwise be 0 or NaN and silently disable the worker. */
-function workerConcurrency(): number {
-  const raw = process.env.WORKER_CONCURRENCY;
-  if (raw === undefined || raw.trim() === "") return 2;
-  const parsed = Number(raw);
-  if (Number.isInteger(parsed) && parsed >= 1) return parsed;
-  console.warn("invalid WORKER_CONCURRENCY, using 2:", raw);
-  return 2;
-}
-
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
 
@@ -57,7 +47,7 @@ export async function register() {
 
   const { startWorker } = await import("@/server/jobs");
   g.__eggWorker = startWorker({
-    concurrency: workerConcurrency(),
+    concurrency: Number(process.env.WORKER_CONCURRENCY ?? 2),
     onError: (err) => console.error("worker error", err),
   });
 }

@@ -325,10 +325,7 @@ export function FileManager({ projectId, slug, projectName, initialPath, fileWri
         from: joinPath(path, dialog.entry.name),
         to: joinPath(path, name),
       });
-      const from = joinPath(path, dialog.entry.name);
       if (selectedName === dialog.entry.name) setSelectedName(name);
-      // An open editor still holds the old path, and a Save would write there. Close it, as delete does.
-      setEdit((cur) => (cur?.path === from ? null : cur));
       setActiveName(name);
       toast.success("Renamed", name);
     } else {

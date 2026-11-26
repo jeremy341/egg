@@ -23,28 +23,15 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 KEEP=${BACKUP_KEEP:-14}
 BACKUP_DIR=${BACKUP_DIR:-$ROOT/backups}
 
-# Compose's dotenv parser drops a trailing CR and one matching pair of quotes.
-# Mirror that here, otherwise EGG_DATA_DIR="/srv/egg/data" is taken literally.
-strip_value() {
-  _v=$(printf '%s' "$1" | tr -d '\r')
-  case "$_v" in
-    \"*\") _v=${_v#\"}; _v=${_v%\"} ;;
-    "'"*"'") _v=${_v#"'"}; _v=${_v%"'"} ;;
-  esac
-  printf '%s' "$_v"
-}
-
 # Read one value from the repository .env without running it as a script.
 env_value() {
   [ -f "$ROOT/.env" ] || return 0
-  _raw=$(sed -n "s/^$1=//p" "$ROOT/.env" | tail -n 1)
-  strip_value "$_raw"
+  sed -n "s/^$1=//p" "$ROOT/.env" | tail -n 1
 }
 
 local_env_value() {
   [ -f "$ROOT/web/.env.local" ] || return 0
-  _raw=$(sed -n "s/^$1=//p" "$ROOT/web/.env.local" | tail -n 1)
-  strip_value "$_raw"
+  sed -n "s/^$1=//p" "$ROOT/web/.env.local" | tail -n 1
 }
 
 if [ -z "${EGG_DB:-}" ]; then
@@ -92,50 +79,11 @@ esac
 mkdir -p "$BACKUP_DIR"
 chmod 700 "$BACKUP_DIR" 2>/dev/null || true
 
-# cron, a manual run and upgrade.sh can overlap. Hold one exclusive lock for the
-# whole run so nobody else touches our temp files, and give each run a unique id
-# so even a leftover from a crashed run cannot be picked up.
-if command -v flock >/dev/null 2>&1; then
-  exec 9>>"$BACKUP_DIR/.backup.lock"
-  flock -x 9
-else
-  echo "Warning: flock is unavailable; overlapping backups may collide." >&2
-fi
-
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
-nanos=$(date -u +%N 2>/dev/null | tr -cd '0-9' || true)
-[ -n "$nanos" ] || nanos=000000000
-runid=$stamp-$$-$nanos
-
-base=$BACKUP_DIR/egg-$runid.db
-final=$base.gz
-tmp=$base.partial
-tmpgz=$tmp.gz
-in_tmp=
-
-# Create a temp file only when it does not already exist (noclobber / O_EXCL),
-# never silently reuse or truncate one.
-exclusive_create() {
-  ( set -C; : > "$1" ) || {
-    echo "Refusing to reuse existing temporary file $1" >&2
-    exit 1
-  }
-}
-
-# Runs on success, failure and signals. The in-container VACUUM output lives on
-# the shared data volume, so it must go away on every exit path, not just on
-# success (otherwise a retry fails with "output file already exists").
-cleanup() {
-  rm -f "$tmp" "$tmpgz"
-  if [ -n "$in_tmp" ]; then
-    (cd "$ROOT" && docker compose exec -T app rm -f "$in_tmp") 2>/dev/null || true
-  fi
-  return 0
-}
-trap cleanup EXIT INT TERM
-
-exclusive_create "$tmp"
-exclusive_create "$tmpgz"
+final=$BACKUP_DIR/egg-$stamp.db
+tmp=$final.partial
+rm -f "$tmp"
+trap 'rm -f "$tmp" "$tmp.gz"' EXIT INT TERM
 
 node_vacuum='const {createClient}=require("@libsql/client");const c=createClient({url:"file:"+process.argv[1]});c.execute("VACUUM INTO \x27"+process.argv[2]+"\x27").then(()=>{c.close()},e=>{console.error(e.message);process.exit(1)})'
 
@@ -149,15 +97,10 @@ elif command -v docker >/dev/null 2>&1 \
   # The copy is written into the data folder (which the app container can write to),
   # compressed from there, and removed again by the container.
   echo "Backing up with VACUUM INTO inside the app container"
-  in_tmp=/data/.backup-$runid.tmp
-  raw=${EGG_DATA_MOUNT:-$(dirname "$EGG_DB")}/.backup-$runid.tmp
-  (cd "$ROOT" && docker compose exec -T app node -e "$node_vacuum" "${EGG_CONTAINER_DB:-/data/egg.db}" "$in_tmp")
-  # SQLite leaves this world-readable (0644) on the shared volume, which also
-  # holds sealed keys. Tighten it before compressing it into our private temp.
-  (cd "$ROOT" && docker compose exec -T app chmod 600 "$in_tmp")
-  gzip -c "$raw" > "$tmpgz"
-  (cd "$ROOT" && docker compose exec -T app rm -f "$in_tmp")
-  in_tmp=
+  raw=${EGG_DATA_MOUNT:-$(dirname "$EGG_DB")}/.backup-$stamp.tmp
+  (cd "$ROOT" && docker compose exec -T app node -e "$node_vacuum" "${EGG_CONTAINER_DB:-/data/egg.db}" "/data/.backup-$stamp.tmp")
+  gzip -c "$raw" > "$tmp.gz" || { (cd "$ROOT" && docker compose exec -T app rm -f "/data/.backup-$stamp.tmp"); exit 1; }
+  (cd "$ROOT" && docker compose exec -T app rm -f "/data/.backup-$stamp.tmp")
 elif command -v node >/dev/null 2>&1 && [ -d "$ROOT/web/node_modules/@libsql" ]; then
   echo "Backing up with VACUUM INTO using node"
   (cd "$ROOT/web" && node -e "$node_vacuum" "$EGG_DB" "$tmp")
@@ -166,29 +109,21 @@ else
   exit 1
 fi
 
-if [ ! -s "$tmp" ] && [ ! -s "$tmpgz" ]; then
+if [ ! -s "$tmp" ] && [ ! -s "$tmp.gz" ]; then
   echo "The backup came out empty, so it was not kept." >&2
   exit 1
 fi
 
 if [ -s "$tmp" ]; then
-  gzip -c "$tmp" > "$tmpgz"
+  gzip -c "$tmp" > "$tmp.gz"
   rm -f "$tmp"
 fi
+mv "$tmp.gz" "$final.gz"
+echo "Saved $final.gz"
 
-# The run id makes this unique, but never overwrite an existing backup silently.
-if [ -e "$final" ]; then
-  echo "Backup target already exists: $final" >&2
-  exit 1
-fi
-mv "$tmpgz" "$final"
-echo "Saved $final"
-
-# Keep the newest $KEEP copies. The timestamp (then pid/nanoseconds) in the name
-# sorts oldest to newest. Names are egg-<UTCstamp>-<pid>-<nanos>.db.gz; the
-# optional suffix still matches backups made by older versions of this script.
+# Keep the newest $KEEP copies. The timestamp in the name sorts oldest to newest.
 count=0
-ls -1 "$BACKUP_DIR" | grep -E '^egg-[0-9]{8}T[0-9]{6}Z(-[0-9]+-[0-9]+)?\.db\.gz$' | sort -r | while IFS= read -r name; do
+ls -1 "$BACKUP_DIR" | grep '^egg-[0-9T]*Z\.db\.gz$' | sort -r | while IFS= read -r name; do
   count=$((count + 1))
   if [ "$count" -gt "$KEEP" ]; then
     rm -f "$BACKUP_DIR/$name"

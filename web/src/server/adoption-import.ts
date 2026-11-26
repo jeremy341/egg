@@ -7,7 +7,7 @@ import { open, seal, newId } from "@/server/crypto";
 import { getDb, schema } from "@/server/db";
 import { envForDeployment } from "@/server/deploy/pipeline";
 import { activateProduction, healthCheck, unitFile } from "@/server/deploy/remote";
-import { currentEnvLink, currentLink, envFileOf, projectDir, releaseDir, serverDiscriminator, unitName, RELEASE_ID } from "@/server/deploy/layout";
+import { currentEnvLink, currentLink, envFileOf, projectDir, releaseDir, unitName, RELEASE_ID } from "@/server/deploy/layout";
 import { HttpError } from "@/server/http";
 import { isFreshAuth, userForSessionToken } from "@/server/auth/session";
 import { config } from "@/server/config";
@@ -45,9 +45,8 @@ case "$work$HOME$group" in *$'\\n'*|*$'\\t'*) exit 35;; esac
 [ -d "$work/.git" ] && [ ! -L "$work/.git" ] || exit 36
 [ -z "$(systemctl show "$unit" -p EnvironmentFiles --value)" ] || exit 37
 [ -z "$(git -C "$work" status --porcelain --untracked-files=normal)" ] || exit 38
-repo_l=$(printf '%s' "$repo" | tr 'A-Z' 'a-z')
-url=$(git -C "$work" config --get remote.origin.url | tr 'A-Z' 'a-z')
-case "$url" in "https://github.com/$repo_l"|"https://github.com/$repo_l.git"|"git@github.com:$repo_l"|"git@github.com:$repo_l.git") ;; *) exit 39;; esac
+url=$(git -C "$work" config --get remote.origin.url)
+case "$url" in "https://github.com/$repo"|"https://github.com/$repo.git"|"git@github.com:$repo"|"git@github.com:$repo.git") ;; *) exit 39;; esac
 sha=$(git -C "$work" rev-parse --verify HEAD)
 hash=$(systemctl cat "$unit" | sha256sum | cut -d ' ' -f1)
 printf 'ENABLED\\t%s\\n' "$enabled"
@@ -101,16 +100,15 @@ export async function planImport(userId: string, projectId: string, raw: unknown
   if (!repo) throw fail("This import requires a GitHub repository with a clean checkout.");
   const db = await getDb();
   const candidate = await db.select().from(schema.deployments).where(and(eq(schema.deployments.id, input.candidateId), eq(schema.deployments.projectId, projectId), eq(schema.deployments.env, "preview"), eq(schema.deployments.state, "ready"))).get();
-  if (project.workloadKind === "worker") throw fail("Importing an existing worker is not supported; create a new worker deployment instead.");
   if (!candidate?.commitSha || candidate.port === project.port || candidate.cleanedUp) throw fail("Choose a ready preview on a separate port with a known commit.");
   const server = await getServerForUser(userId, project.serverId);
   const session = await connect(server);
   try {
     const probe = await inspect(session, input.unit, repo, project.port);
     if (probe.sha !== candidate.commitSha) throw fail("The checkout commit does not match the ready preview commit.");
-    const health = await session.script(healthCheck({ unit: unitName(project.slug, { releaseId: candidate.releaseId }, serverDiscriminator(server.id)), port: candidate.port, path: project.healthPath, timeoutSeconds: 10 }), { timeoutMs: 25_000 });
+    const health = await session.script(healthCheck({ unit: unitName(project.slug, { releaseId: candidate.releaseId }), port: candidate.port, path: project.healthPath, timeoutSeconds: 10 }), { timeoutMs: 25_000 });
     if (health.code !== 0) throw fail("The candidate preview is not healthy.");
-    const serving = await session.script(servicePortScript(unitName(project.slug, { releaseId: candidate.releaseId }, serverDiscriminator(server.id)), candidate.port), { timeoutMs: 15_000 });
+    const serving = await session.script(servicePortScript(unitName(project.slug, { releaseId: candidate.releaseId }), candidate.port), { timeoutMs: 15_000 });
     if (serving.code !== 0) throw fail("The candidate preview does not own its listening port.");
     const id = newId();
     const now = new Date();
@@ -211,7 +209,7 @@ if [ -L "$dst" ]; then rm -f -- "$dst"; elif [ -e "$dst" ]; then rm -rf -- "$dst
 export async function confirmImport(userId: string, projectId: string, planId: string, raw: unknown, token: string | undefined,
   connect: (server: ServerRow) => Promise<NestSession> = server => connectToServer(server, { adoptionExecutor: true })): Promise<void> {
   z.object({ confirm: z.literal(true) }).strict().parse(raw);
-  if ((await userForSessionToken(token))?.id !== userId || !(await isFreshAuth(token, Date.now(), userId))) throw new HttpError(403, "Confirm a fresh Hack Club sign-in before cutover.", "reauth_required");
+  if ((await userForSessionToken(token))?.id !== userId || !(await isFreshAuth(token))) throw new HttpError(403, "Confirm a fresh Hack Club sign-in before cutover.", "reauth_required");
   const project = await getProjectForUser(userId, projectId);
   if (project.runtime === "python") throw fail("Python virtual environments cannot safely be copied; use a supported Node, static or command project.");
   const server = await getServerForUser(userId, project.serverId);
@@ -225,7 +223,7 @@ export async function confirmImport(userId: string, projectId: string, planId: s
   let foreignMayBeStopped = false;
   let resolved = false;
   let generatedUnit = "";
-  const prodUnit = unitName(project.slug, undefined, serverDiscriminator(server.id));
+  const prodUnit = unitName(project.slug);
   const unitDir = config().UNIT_DIR;
   await audit(userId, "adoption.confirm_attempt", projectId, { planId });
   try {
@@ -257,9 +255,9 @@ export async function confirmImport(userId: string, projectId: string, planId: s
     session = await connect(server);
     const found = await inspect(session, plan.unit, repo, project.port);
     if (JSON.stringify(found) !== JSON.stringify(plan.probe)) throw fail("The original service or checkout changed; create a new plan.");
-    const health = await session.script(healthCheck({ unit: unitName(project.slug, { releaseId: plan.candidateRelease }, serverDiscriminator(server.id)), port: plan.candidatePort, path: project.healthPath, timeoutSeconds: 10 }), { timeoutMs: 25_000 });
+    const health = await session.script(healthCheck({ unit: unitName(project.slug, { releaseId: plan.candidateRelease }), port: plan.candidatePort, path: project.healthPath, timeoutSeconds: 10 }), { timeoutMs: 25_000 });
     if (health.code !== 0) throw fail("The candidate preview is no longer healthy.");
-    const serving = await session.script(servicePortScript(unitName(project.slug, { releaseId: plan.candidateRelease }, serverDiscriminator(server.id)), plan.candidatePort), { timeoutMs: 15_000 });
+    const serving = await session.script(servicePortScript(unitName(project.slug, { releaseId: plan.candidateRelease }), plan.candidatePort), { timeoutMs: 15_000 });
     if (serving.code !== 0) throw fail("The candidate preview no longer owns its port.");
     const src = releaseDir(found.home, project.slug, plan.candidateRelease);
     const dst = releaseDir(found.home, project.slug, release);
@@ -332,18 +330,13 @@ ${boundedImportCopy(src, dst, base, IMPORT_MAX_COPY_MB * 1024 * 1024, MIN_FREE_D
       const unitPath = `${unitDir}/${prodUnit}`;
       const link = currentLink(plan.probe.home, project.slug);
       const dst = releaseDir(plan.probe.home, project.slug, release);
-      const base = projectDir(plan.probe.home, project.slug);
       const rollback = `set -euo pipefail\nf=${shellQuote(unitPath)}\n[ -f "$f" ] && [ ! -L "$f" ] && [ "$(sha256sum "$f" | cut -d ' ' -f1)" = ${shellQuote(hash)} ]\nsystemctl stop ${shellQuote(prodUnit)} || true\ns=$(systemctl show ${shellQuote(prodUnit)} -p ActiveState --value)\n[ "$s" = inactive ] || [ "$s" = failed ]\nsystemctl disable ${shellQuote(prodUnit)} >/dev/null 2>&1 || true\nrm -f -- "$f"\nif [ -L ${shellQuote(link)} ]; then [ "$(readlink ${shellQuote(link)})" = ${shellQuote(dst)} ] || exit 1; rm -- ${shellQuote(link)}; elif [ -e ${shellQuote(link)} ]; then exit 1; fi\nsystemctl daemon-reload\n[ "$(systemctl cat ${shellQuote(plan.unit)} | sha256sum | cut -d ' ' -f1)" = ${shellQuote(plan.probe.unitHash)} ]\nsystemctl start ${shellQuote(plan.unit)}\n`;
       try {
         const restoreBoot = plan.probe.enabled === "enabled" ? `systemctl enable ${shellQuote(plan.unit)}\n` : "";
         const runtimeEnv = envFileOf(plan.probe.home, project.slug, release);
         const runtimeLink = currentEnvLink(plan.probe.home, project.slug);
         const removeRuntimeEnv = `if [ -L ${shellQuote(runtimeLink)} ]; then [ "$(readlink ${shellQuote(runtimeLink)})" = ${shellQuote(runtimeEnv)} ] || exit 1; rm -f -- ${shellQuote(runtimeLink)}; elif [ -e ${shellQuote(runtimeLink)} ]; then exit 1; fi\n[ ! -L ${shellQuote(`${projectDir(plan.probe.home, project.slug)}/env`)} ] || exit 1\nrm -f -- ${shellQuote(runtimeEnv)}\n`;
-        // The copied production release is unreferenced once the original is back and its links are
-        // gone. Remove it within the rollback so the guard is released only when cleanup is confirmed:
-        // otherwise a failed cutover leaks a release of up to 2GB until manual cleanup.
-        const removeCopy = removePartialCopyScript(base, dst);
-        const back = await session.script(rollback + removeRuntimeEnv + removeCopy + restoreBoot, { timeoutMs: 120_000 });
+        const back = await session.script(rollback + removeRuntimeEnv + restoreBoot, { timeoutMs: 120_000 });
         const health = back.code === 0 ? await session.script(healthCheck({ unit: plan.unit, port: project.port, path: project.healthPath, timeoutSeconds: 45 }), { timeoutMs: 60_000 }) : null;
         const originalServing = back.code === 0 && health?.code === 0 ? await session.script(servicePortScript(plan.unit, project.port), { timeoutMs: 15_000 }) : null;
         if (back.code === 0 && health?.code === 0 && originalServing?.code === 0) resolved = true;

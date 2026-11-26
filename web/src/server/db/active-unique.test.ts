@@ -57,13 +57,12 @@ describe("unique indexes that close the deploy dedupe races", () => {
     }
   });
 
-  // Four competing writes can each wait through SQLite's busy timeout before retrying.
   it("reserves different ports for concurrent preview deployments", async () => {
     const results = await Promise.all(Array.from({ length: 4 }, (_, i) =>
       enqueueDeployment(project, { env: "preview", source: "manual", branch: `preview-${i}` })
     ));
     expect(new Set(results.map((row) => row.port)).size).toBe(results.length);
-  }, 60_000);
+  });
   it("refuses project deletion while a canceled deployment's worker is still running", async () => {
     const user = await upsertUser({ id: "cancel-delete", name: "A", email: null, slackId: null });
     const server = await createServer(user.id, "cancel-delete");

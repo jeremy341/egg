@@ -28,15 +28,15 @@ export const API_LIMITS: Record<Bucket, { limit: number; windowMs: number }> = {
   input: { limit: 300, windowMs: 60_000 },
 };
 
-/** Count one request for the token's owner in this bucket, or throw 429 with Retry-After. */
+/** Count one request for this token in this bucket, or throw 429 with Retry-After. */
 export function enforceApiRate(p: Principal, bucket: Bucket): void {
   const { limit, windowMs } = API_LIMITS[bucket];
-  const result = rateLimiter().check(`api:${bucket}:${p.userId}`, limit, windowMs);
+  const result = rateLimiter().check(`api:${bucket}:${p.tokenId}`, limit, windowMs);
   if (result.allowed) return;
   const seconds = result.retryAfterSeconds;
   throw new HttpError(
     429,
-    `Too many requests. All of your tokens share one budget, so switching tokens will not reset it. Wait ${seconds} second${seconds === 1 ? "" : "s"} and try again.`,
+    `Too many requests for this token. Wait ${seconds} second${seconds === 1 ? "" : "s"} and try again.`,
     "rate_limited",
     { "Retry-After": String(seconds) }
   );
@@ -89,12 +89,6 @@ export type Endpoint = {
   destructive: boolean;
   /** Largest JSON request body, in bytes. */
   maxBodyBytes: number;
-  /** MCP wraps everything this tool returns — success AND errors — in a
-   *  nonce-delimited untrusted frame, so remote bytes cannot pose as trusted
-   *  text. Defaults to true. Opt out with `untrusted: false` only when both the
-   *  payload and every error are static or strictly validated, with no
-   *  container, repository, DNS or other remote bytes. */
-  untrusted: boolean;
   run: (p: Principal, input: never) => Promise<unknown>;
 };
 
@@ -116,8 +110,6 @@ export function endpoint<P extends Shape = Empty, Q extends Shape = Empty, B ext
   response: z.ZodType;
   errors?: number[];
   destructive?: boolean;
-  /** Set to false to opt out of the default untrusted framing. See `Endpoint`. */
-  untrusted?: boolean;
   maxBodyBytes?: number;
   run: (p: Principal, input: z.output<z.ZodObject<P & Q & B>>) => Promise<unknown>;
 }): Endpoint {
@@ -143,7 +135,6 @@ export function endpoint<P extends Shape = Empty, Q extends Shape = Empty, B ext
     readOnly: def.method === "GET",
     destructive: def.destructive ?? false,
     maxBodyBytes: def.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES,
-    untrusted: def.untrusted ?? true,
     run: def.run as Endpoint["run"],
   };
 }

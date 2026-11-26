@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/components/api";
 import { Card, Label } from "@/components/settings-ui";
@@ -23,8 +23,6 @@ export function CleanupCard({ name, projectId }: { name: string; projectId?: str
   const [confirmIdle, setConfirmIdle] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  // Set when a status poll fails, so only that error is cleared by the next good poll (not a retry or cancel error).
-  const pollFailed = useRef(false);
   const cleanupId = status?.id;
   const cleanupState = status?.state;
   useEffect(() => {
@@ -41,12 +39,9 @@ export function CleanupCard({ name, projectId }: { name: string; projectId?: str
         if (response.status === 401 && !projectId) { router.push("/login"); router.refresh(); return; }
         const result = await response.json();
         if (!response.ok) throw new Error(result.error?.message ?? "Could not refresh cleanup status.");
-        if (alive) {
-          if (pollFailed.current) { pollFailed.current = false; setError(null); }
-          setStatus(result.cleanup);
-        }
+        if (alive) setStatus(result.cleanup);
         if (result.cleanup.state === "done" && projectId) { router.push("/projects"); router.refresh(); }
-      } catch (err) { if (alive) { pollFailed.current = true; setError(err instanceof Error ? err.message : "Could not refresh cleanup status."); } }
+      } catch (err) { if (alive) setError(err instanceof Error ? err.message : "Could not refresh cleanup status."); }
     };
     const timer = setInterval(() => void poll(), 5_000);
     return () => { alive = false; clearInterval(timer); };
@@ -61,21 +56,11 @@ export function CleanupCard({ name, projectId }: { name: string; projectId?: str
     catch (err) { setError(err instanceof Error ? err.message : "Could not retry cleanup."); }
     finally { setBusy(false); }
   }
-  async function cancel(acknowledge = false) {
-    if (!status) return;
+  async function cancel() {
     setBusy(true); setError(null);
-    try {
-      await api(`/api/cleanup/${status.id}${acknowledge ? "?acknowledgeOrphans=true" : ""}`, { method: "DELETE" });
-      setStatus(null); router.refresh();
-    } catch (err) {
-      const code = (err as { code?: string }).code;
-      if (code === "confirm_orphans" && window.confirm(err instanceof Error ? err.message : "")) {
-        setBusy(false);
-        await cancel(true);
-        return;
-      }
-      setError(err instanceof Error ? err.message : "Could not cancel cleanup.");
-    } finally { setBusy(false); }
+    try { await api(`/api/cleanup/${status!.id}`, { method: "DELETE" }); setStatus(null); router.refresh(); }
+    catch (err) { setError(err instanceof Error ? err.message : "Could not cancel cleanup."); }
+    finally { setBusy(false); }
   }
   return <Card id={projectId ? "cleanup-project-heading" : "cleanup-account-heading"} title={projectId ? "Clean up this project" : "Clean up and delete account"} tone="danger" description="Pause new work, drain for five minutes, then remove verified Egg-managed services and deployed code. Account records are kept if a remote step fails.">
     <div className="space-y-4 text-sm">
@@ -89,7 +74,7 @@ export function CleanupCard({ name, projectId }: { name: string; projectId?: str
         {status.recoveryRequired ? <Alert tone="error">The prior worker did not confirm completion. Do not retry until you have verified that it and its remote commands have stopped.</Alert> : null}
         {(status.state === "failed" || status.recoveryRequired) ? <><label className="flex items-start gap-2"><input type="checkbox" checked={confirmIdle} onChange={(e) => setConfirmIdle(e.target.checked)} className="mt-1" /><span>I checked the affected server and confirmed that no prior Egg cleanup command or remote session is still running.</span></label><Button variant="outline" disabled={busy || (status.recoveryRequired && !confirmIdle)} onClick={() => void retry()}>Retry after another five-minute drain</Button></> : null}
         {status.canCancel ? <Button variant="outline" disabled={busy} onClick={() => void cancel()}>Cancel cleanup before removal starts</Button> : null}
-      </div> : <><Label htmlFor={`cleanup-confirm-${projectId ?? "account"}`}>Type <span className="font-mono">{name}</span> to confirm</Label><Input id={`cleanup-confirm-${projectId ?? "account"}`} value={confirmation} onChange={(e) => setConfirmation(e.target.value)} autoComplete="off" /><ConfirmDialog trigger={<Button variant="destructive" disabled={confirmation !== name}>Review full cleanup</Button>} title={projectId ? "Schedule project cleanup?" : "Schedule account cleanup and deletion?"} description="This blocks new work immediately. After five minutes, Egg removes only resources it can verify it created; shared data, GitHub repositories and the Nest dashboard SSH key stay for you to manage." confirmLabel="Start five-minute drain" pendingLabel="Scheduling…" tone="destructive" onConfirm={request} /></>}
+      </div> : <><Label htmlFor={`cleanup-confirm-${projectId ?? "account"}`}>Type <span className="font-mono">{name}</span> to confirm</Label><Input id={`cleanup-confirm-${projectId ?? "account"}`} value={confirmation} onChange={(e) => setConfirmation(e.target.value)} autoComplete="off" /><ConfirmDialog trigger={<Button variant="destructive" disabled={confirmation !== name}>Review full cleanup</Button>} title={projectId ? "Schedule project cleanup?" : "Schedule account cleanup and deletion?"} description="This blocks new work immediately. After five minutes and after active work has stopped, Egg will remove only resources it can verify that it created. Shared data, GitHub repositories, shared App installations and the Nest dashboard SSH key remain for you to manage." confirmLabel="Start five-minute drain" pendingLabel="Scheduling…" tone="destructive" onConfirm={request} /></>}
       {error ? <Alert role="alert" tone="error">{error}</Alert> : null}
     </div>
   </Card>;

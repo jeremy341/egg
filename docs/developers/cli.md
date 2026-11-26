@@ -11,8 +11,6 @@ export EGG_TOKEN=egg_...                       # never commit this
 export EGG_URL=https://deploy.example.com      # your Egg address
 ```
 
-The CLI reads `EGG_TOKEN` and `EGG_URL` only. The snippets on the Developer page and the bundled examples use the older `NEST_TOKEN` and `NEST_URL` names for the same token and address; the CLI will not read those, so export the values under the `EGG_*` names. The two local commands below need no token at all.
-
 Run the CLI from the `web/` folder:
 
 ```sh
@@ -21,20 +19,7 @@ node scripts/egg-cli.mjs whoami
 
 On Node 22.18 or newer this works as it is. On Node 20 or an older Node 22, run it through tsx: `npx tsx scripts/egg-cli.mjs whoami`. To get an `egg` command on your path, run `npm link` in `web/` (the `bin` entry in `web/package.json` points at the script).
 
-From a checkout, `pnpm audit:prod` checks the production dependencies for high-severity advisories. CI runs the same check on Linux and macOS: a finding fails the Linux job, while the macOS job only reports it.
-
 ## Commands
-
-### On this computer, no token needed
-
-| Command | What it does |
-| --- | --- |
-| `egg start [--dev]` | Set up if needed, check this computer, start Egg and open the browser. `--dev` runs the development server instead of a production build. |
-| `egg doctor` | Check that this computer can run Egg and print one `Fix:` line per problem. It starts nothing. |
-
-These are the same commands as `pnpm egg start` and `pnpm run doctor` from `web/`; the [self-hosting guide](../selfhost/README.md) describes what they check.
-
-### Against a running Egg, needs `EGG_TOKEN` and `EGG_URL`
 
 | Command | What it does | Token scopes |
 | --- | --- | --- |
@@ -59,13 +44,13 @@ Output is plain text by default. Add `--json` for machine output: the command pr
 | --- | --- |
 | 0 | Done |
 | 1 | Failed: the server refused, the network failed, the project was not found, a followed deployment ended in `error` or `canceled`, or a server could not be measured |
-| 2 | Wrong use: unknown command or option, a missing argument, or `EGG_TOKEN` or `EGG_URL` not set for a remote command |
+| 2 | Wrong use: unknown command or option, a missing argument, or `EGG_TOKEN` or `EGG_URL` not set |
 
 Results go to stdout and errors to stderr, so `egg projects list --json | jq` stays clean.
 
 ## The token
 
-For remote commands the token is read from `EGG_TOKEN` only (not `NEST_TOKEN`), sent only as the `Authorization` header and never printed. If a server ever echoes it back, the CLI replaces it with `[hidden]`. Build log text from the server is shown with its terminal control characters removed.
+The token is read from `EGG_TOKEN` only, sent only as the `Authorization` header and never printed. If a server ever echoes it back, the CLI replaces it with `[hidden]`. Build log text from the server is shown with its terminal control characters removed.
 
 ## Examples
 
@@ -93,6 +78,5 @@ The same client is available to your own scripts. It has a method for every endp
 import { Egg } from "./egg";
 
 const egg = new Egg({ token: process.env.EGG_TOKEN!, baseUrl: process.env.EGG_URL! });
-// The Developer page names these NEST_TOKEN/NEST_URL; pass whichever your script uses.
 const { projects } = await egg.listProjects();
 ```

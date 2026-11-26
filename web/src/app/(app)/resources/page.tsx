@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import Link from "next/link";
-import { CaretRightIcon, HardDrivesIcon } from "@phosphor-icons/react/dist/ssr";
+import { HardDrivesIcon } from "@phosphor-icons/react/dist/ssr";
 import { PageHeader } from "@/components/page-header";
 import { FactLine } from "@/components/pixel-kit";
 import { ResourceChart } from "@/components/resource-chart";
@@ -31,19 +31,6 @@ export default function ResourcesPage({ searchParams }: Props) {
   );
 }
 
-/** A native disclosure for the rarely read explanations of a group. */
-function Advanced({ label = "Advanced", children }: { label?: string; children: React.ReactNode }) {
-  return (
-    <details className="disclosure">
-      <summary className="touch-target -mx-1 w-fit items-center gap-1.5 rounded-sm px-1 py-1.5 text-label font-medium max-sm:min-h-10">
-        <CaretRightIcon aria-hidden="true" className="disclosure-caret size-4" />
-        {label}
-      </summary>
-      <div className="mt-3 max-w-[68ch] space-y-2 text-label text-muted-foreground">{children}</div>
-    </details>
-  );
-}
-
 const gb = (mb: number) => (mb / 1024).toFixed(1);
 
 async function ResourcesContent({ searchParams }: Props) {
@@ -56,11 +43,11 @@ async function ResourcesContent({ searchParams }: Props) {
   if (!server) {
     return (
       <div className="motion-enter">
-        <PageHeader title="Resources" description="CPU, memory and disk of your Nest container." />
+        <PageHeader title="Resources" description="How much of your Nest container is in use, now and over time." />
         <EmptyState
           icon={<HardDrivesIcon />}
           title="Connect a server first"
-          description="Once a server is connected, its CPU, memory and disk show here."
+          description="Once a server is connected, its CPU, memory and disk are sampled every few minutes and shown here."
           action={
             <Link href="/connect" className={cn(buttonVariants({ variant: "default" }), "px-3")}>
               Connect a server
@@ -97,10 +84,12 @@ async function ResourcesContent({ searchParams }: Props) {
               <FactLine>
                 {busiest.label} is the busiest, at {Math.round(busiest.pct)}%.
               </FactLine>
-              <span className="mt-0.5 block">{server.nestUsername}.hackclub.app</span>
+              <span className="mt-0.5 block">
+                {server.nestUsername}.hackclub.app, now and over the last {range.label}.
+              </span>
             </>
           ) : (
-            `CPU, memory and disk of ${server.nestUsername}.hackclub.app.`
+            `CPU, memory and disk of ${server.nestUsername}.hackclub.app, now and over time.`
           )
         }
         actions={<DocsLink href="/docs/monitoring" topic="monitoring" className="max-sm:hidden" />}
@@ -143,10 +132,6 @@ async function ResourcesContent({ searchParams }: Props) {
         ) : null}
       </div>
 
-      <section aria-labelledby="container-now" className="space-y-3">
-      <h2 id="container-now" className="text-sm font-medium">
-        Container
-      </h2>
       <div className="grid gap-4 lg:grid-cols-3">
         <ResourceChart
           title="CPU load"
@@ -158,30 +143,29 @@ async function ResourcesContent({ searchParams }: Props) {
         <ResourceChart
           title="Memory"
           now={u?.memUsedMb !== null && u?.memTotalMb ? `${gb(u.memUsedMb!)} / ${gb(u.memTotalMb)} GB` : null}
-          detail={u?.memTotalMb ? `${gb(u.memTotalMb)} GB total` : undefined}
+          detail={u?.memTotalMb ? `${gb(u.memTotalMb)} GB available to your container` : undefined}
           points={history.map((p) => ({ at: p.at, value: p.mem }))}
           rangeLabel={range.label}
         />
         <ResourceChart
           title="Disk"
           now={u?.diskUsedMb !== null && u?.diskTotalMb ? `${gb(u.diskUsedMb!)} / ${gb(u.diskTotalMb)} GB` : null}
-          detail={u?.diskTotalMb ? `${gb(u.diskTotalMb)} GB total` : undefined}
+          detail={u?.diskTotalMb ? `${gb(u.diskTotalMb)} GB for releases, logs and data` : undefined}
           points={history.map((p) => ({ at: p.at, value: p.disk }))}
           rangeLabel={range.label}
         />
       </div>
-      </section>
 
-      <section aria-labelledby="by-project" className="space-y-3">
-      <div>
-        <h2 id="by-project" className="text-sm font-medium">
-          By project
-        </h2>
-        <p className="mt-0.5 text-label text-muted-foreground">
-          Each service on its own over the last {range.label}.
-        </p>
-      </div>
-      <div className="overflow-hidden rounded-lg bg-card shadow-border-small">
+      <section aria-labelledby="by-project" className="overflow-hidden rounded-lg bg-card shadow-border-small">
+        <div className="border-b px-4 py-3">
+          <h2 id="by-project" className="text-title-3">
+            By project
+          </h2>
+          <p className="mt-0.5 text-label text-muted-foreground">
+            What each service used on its own over the last {range.label}. CPU is a share of one core, so it can pass
+            100%.
+          </p>
+        </div>
         {projects.length === 0 ? (
           <p className="px-4 py-5 text-muted-foreground">No projects on this server yet.</p>
         ) : (
@@ -321,13 +305,12 @@ async function ResourcesContent({ searchParams }: Props) {
           </div>
           </>
         )}
-      </div>
       </section>
 
-      <Advanced label="About these figures">
-        <p>CPU is a share of one core, so a project can pass 100%.</p>
-        <p>Readings are taken every five minutes. A gap in a line means none was taken then.</p>
-      </Advanced>
+      <p className="max-w-[68ch] text-label text-muted-foreground">
+        The worker reads these every five minutes. The container figures cover everything running in your Nest
+        container; the project figures are that one service. A gap in a line means no reading was taken then.
+      </p>
     </div>
   );
 }

@@ -192,11 +192,9 @@ export function navFor(pathname: string): NavContext {
       backHref = `/projects/${slug}`;
     } else if (rest.startsWith("/files")) {
       title = "Files";
-      crumb = "Files";
       backHref = `/projects/${slug}`;
     } else if (rest.startsWith("/terminal")) {
       title = "Terminal";
-      crumb = "Terminal";
       backHref = `/projects/${slug}`;
     } else if (rest.startsWith("/settings")) {
       title = "Project settings";

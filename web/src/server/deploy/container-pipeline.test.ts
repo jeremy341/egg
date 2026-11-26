@@ -4,7 +4,6 @@ import { upsertUser } from "@/server/auth/session";
 import { schema } from "@/server/db";
 import { runDeployJob, type PipelineDeps } from "@/server/deploy/pipeline";
 import { diskWatchdogEndScript, diskWatchdogStartScript } from "@/server/deploy/container-build";
-import { serverDiscriminator, unitName } from "@/server/deploy/layout";
 import type { PreflightFacts } from "@/server/deploy/container-probe";
 import {
   cancelDeployment,
@@ -26,7 +25,7 @@ import {
   type FixtureFiles,
 } from "@/server/test/fake-nest";
 import { useFreshDb } from "@/server/test/db";
-import { linuxTestHostAvailable, startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
+import { startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
 
 /**
  * A deploy that builds on the container, against the fake Nest. systemd-run and timeout are
@@ -38,7 +37,6 @@ let ctx: Awaited<ReturnType<typeof useFreshDb>>;
 let mock: MockSsh;
 let userId: string;
 let server: ServerRow;
-let scope = "";
 let deps: PipelineDeps;
 let files: FixtureFiles = nodeApp("v1");
 let home = "";
@@ -94,7 +92,6 @@ beforeAll(async () => {
   installFakeContainerBuild(mock);
   await ctx.db.update(schema.servers).set({ port: mock.port, hostKeyFingerprint: mock.hostKeyFingerprint }).where(eq(schema.servers.id, server.id));
   server = await getServerForUser(userId, server.id);
-  scope = serverDiscriminator(server.id);
   home = mock.home.replace(/\\/g, "/");
 
   deps = {
@@ -124,7 +121,7 @@ afterAll(async () => {
 
 const LOOP_TIMEOUT = 120_000;
 
-describe.skipIf(!linuxTestHostAvailable())("a container project", () => {
+describe("a container project", () => {
   let app: ProjectRow;
   let v1: typeof schema.deployments.$inferSelect;
 
@@ -160,7 +157,7 @@ describe.skipIf(!linuxTestHostAvailable())("a container project", () => {
     // Nothing was left behind to be uploaded or sourced.
     expect(await sh(`ls ${home}/.egg/box-app/incoming`)).toBe("");
     // The app's service carries the lower out-of-memory score.
-    expect(await sh(`cat ${home}/units/${unitName("box-app", undefined, scope)}`)).toContain("OOMScoreAdjust=-500");
+    expect(await sh(`cat ${home}/units/egg-box-app.service`)).toContain("OOMScoreAdjust=-500");
   }, LOOP_TIMEOUT);
 
   it("keeps the app and the link when the build fails, and removes its own folder", async () => {
@@ -230,7 +227,7 @@ describe.skipIf(!linuxTestHostAvailable())("a container project", () => {
   }, LOOP_TIMEOUT);
 });
 
-describe.skipIf(!linuxTestHostAvailable())("the disk watchdog", () => {
+describe("the disk watchdog", () => {
   let app: ProjectRow;
   let live: typeof schema.deployments.$inferSelect;
   const disk = (cmd: string) => sh(`mkdir -p $HOME/.fake-disk && ${cmd}`);
@@ -386,7 +383,7 @@ describe("a container project that cannot build here", () => {
   }, LOOP_TIMEOUT);
 });
 
-describe.skipIf(!linuxTestHostAvailable())("two builds on one container", () => {
+describe("two builds on one container", () => {
   it("run one after the other, preview or production, never together", async () => {
     const a = await makeProject("Lock A", { buildCommand: 'echo "start-a" >> "$HOME/order.log"; sleep 1; echo "end-a" >> "$HOME/order.log"' });
     const b = await makeProject("Lock B", { buildCommand: 'echo "start-b" >> "$HOME/order.log"; sleep 1; echo "end-b" >> "$HOME/order.log"' });

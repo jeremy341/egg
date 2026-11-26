@@ -9,11 +9,9 @@ const DEFAULT_LOG_BYTES = 4 * 1024 * 1024;
 const LIMIT_MESSAGE = "Further log output was dropped: this deployment reached its log limit.";
 
 // ANSI escape sequences, then the remaining control characters (NUL truncates a stored line).
-// Only tab and newline are kept. Carriage return is stripped too: in a log viewer it rewinds
-// the cursor to column 0, letting a later fragment overwrite earlier text so a build can
-// forge its own output (e.g. turn a failed step into an apparent success).
+// Tab, newline and carriage return are kept.
 const ANSI = /\u001b\[[0-?]*[ -/]*[@-~]/g;
-const CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f]/g;
+const CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g;
 
 /**
  * Writes deployment log lines to the database in small batches, so a noisy

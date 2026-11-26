@@ -166,13 +166,6 @@ export function buildEnvFile(home: string, slug: string, releaseId: string) {
   return `${projectDir(home, slug)}/incoming/${releaseId}.buildenv`;
 }
 
-/** The resolved Compose forms Docker itself produced, kept like the build variables files. */
-export function composeConfigFiles(home: string, slug: string, releaseId: string) {
-  if (!RELEASE_ID.test(releaseId)) throw new ContainerBuildError("The release id is not valid.");
-  const base = `${projectDir(home, slug)}/incoming/${releaseId}.compose`;
-  return { canonical: `${base}.yaml`, json: `${base}.json` };
-}
-
 /** Shell lines that export the build variables. Names were checked when they were saved. */
 export function renderBuildEnv(vars: Record<string, string>): string {
   const lines: string[] = [];
@@ -257,7 +250,7 @@ export function buildSteps(spec: {
  * A `df` or `du` that is missing, fails or prints something unreadable is a warning (once), and
  * that check is skipped: the build is never stopped for what the watchdog could not read.
  */
-export function diskWatchdogStartScript(a: { scope: string; cacheRoot?: string; docker?: boolean }): string {
+export function diskWatchdogStartScript(a: { scope: string; cacheRoot?: string }): string {
   if (!/^egg-build-[0-9a-f]{8}$/.test(a.scope)) throw new ContainerBuildError("The build scope name is not valid.");
   const unit = shellQuote(`${a.scope}.scope`);
   const floor = BUILD_DISK_FLOOR_MB;
@@ -265,12 +258,6 @@ export function diskWatchdogStartScript(a: { scope: string; cacheRoot?: string; 
   return [
     `egg_wd_marker="$dir/${DISK_STOP_MARKER}"`,
     `egg_wd_area="\${dir%/*}"`,
-    // Docker keeps images and build cache outside the release area. A build that
-    // fills that daemon storage can still strand the container, so watch it too.
-    `egg_wd_docker_root=""`,
-    ...(a.docker ? [
-      `if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then egg_wd_docker_root=$(docker info -f '{{.DockerRootDir}}' 2>/dev/null || true); fi`,
-    ] : []),
     `egg_wd_parent=$$`,
     `egg_wd_stop() {`,
     `  local n=0 cg p sent`,
@@ -306,11 +293,6 @@ export function diskWatchdogStartScript(a: { scope: string; cacheRoot?: string; 
     `      *)`,
     `        if [ "$free" -lt ${floor} ]; then egg_wd_trip floor "free=\${free}MB limit=${floor}MB"; exit ${EXIT_DISK_FLOOR}; fi;;`,
     `    esac`,
-    `    if [ -n "$egg_wd_docker_root" ] && [ -d "$egg_wd_docker_root" ]; then`,
-    `      dfree=""`,
-    `      if command -v df >/dev/null 2>&1; then dfree=$(df -Pm "$egg_wd_docker_root" 2>/dev/null | awk 'NR==2 {print $4}'); fi`,
-    `      if [[ "$dfree" =~ ^[0-9]+$ ]] && [ "$dfree" -lt ${floor} ]; then egg_wd_trip docker "free=\${dfree}MB limit=${floor}MB"; exit ${EXIT_DISK_FLOOR}; fi`,
-    `    fi`,
     `    if [ $((tick % ${DISK_SIZE_EVERY_TICKS})) -eq 0 ]; then`,
     `      used=""`,
     `      if command -v du >/dev/null 2>&1; then used=$(du -sm "$dir" 2>/dev/null | awk 'NR==1 {print $1}'); fi`,
@@ -361,7 +343,6 @@ export function diskWatchdogEndScript(): string {
     `  floor) code=${EXIT_DISK_FLOOR};;`,
     `  budget) code=${EXIT_DISK_BUDGET};;`,
     `  cache) code=${EXIT_DISK_BUDGET};;`,
-    `  docker) code=${EXIT_DISK_FLOOR};;`,
     `  *) disk=""`,
     `     case "$egg_wd_status" in`,
     `       ${EXIT_DISK_FLOOR}) disk=floor; code=${EXIT_DISK_FLOOR};;`,
@@ -389,13 +370,11 @@ export function cappedBuildScript(a: {
   hasEnvFile: boolean;
   cache?: NpmCachePlan | null;
   npmLockHash?: string | null;
-  /** Docker modes: this build composes its own command instead of the runtime preset. */
-  docker?: boolean;
 }) {
   const scope = buildScopeName(a.releaseId);
   const dir = releaseDir(a.home, a.slug, a.releaseId);
   const envFile = buildEnvFile(a.home, a.slug, a.releaseId);
-  const root = safeRelative(a.docker ? "." : a.archiveRoot);
+  const root = safeRelative(a.archiveRoot);
   const cacheRoot = a.cache && a.npmLockHash ? `${projectDir(a.home, a.slug)}/cache/npm/${a.cache.context}` : undefined;
 
   const inner = [
@@ -445,7 +424,7 @@ export function cappedBuildScript(a: {
     `dir=${shellQuote(dir)}\nenvfile=${shellQuote(envFile)}\n` +
     `inner=${shellQuote(inner)}\n` +
     // The disk watchdog runs beside the build, outside its scope, and ends with it.
-    diskWatchdogStartScript({ scope, cacheRoot, docker: a.docker }) +
+    diskWatchdogStartScript({ scope, cacheRoot }) +
     // Also remove the variables file when this script ends however it ends (a hangup, a TERM).
     `trap 'kill "$egg_wd_pid" 2>/dev/null; rm -f "$envfile"' EXIT\n` +
     `${run}\ncode=$?\n` +
@@ -496,11 +475,10 @@ export function discardBuildScript(a: { home: string; slug: string; releaseId: s
   const p = projectDir(a.home, a.slug);
   const dir = releaseDir(a.home, a.slug, a.releaseId);
   const scope = `${buildScopeName(a.releaseId)}.scope`;
-  const compose = composeConfigFiles(a.home, a.slug, a.releaseId);
   return (
     SH_MARKER_HELPERS +
     stopBuildScript(a.releaseId) +
-    `rm -f ${shellQuote(buildEnvFile(a.home, a.slug, a.releaseId))} ${shellQuote(incomingArchive(a.home, a.slug, a.releaseId))} ${shellQuote(compose.canonical)} ${shellQuote(compose.json)}\n` +
+    `rm -f ${shellQuote(buildEnvFile(a.home, a.slug, a.releaseId))} ${shellQuote(incomingArchive(a.home, a.slug, a.releaseId))}\n` +
     `if egg_dir_managed ${shellQuote(p)}; then\n` +
     `  live=$(readlink ${shellQuote(currentLink(a.home, a.slug))} 2>/dev/null || true)\n` +
     `  if [ "$live" != ${shellQuote(dir)} ]; then rm -rf ${shellQuote(dir)} ${shellQuote(`${dir}.out`)} ${shellQuote(envFileOf(a.home, a.slug, a.releaseId))}; fi\n` +
@@ -565,7 +543,7 @@ export function stopAllBuildScopesScript() {
 // ----------------------------------------------------------------- the lifecycle
 
 type BuildLog = { info: (m: string) => void; warn: (m: string) => void; error: (m: string) => void };
-type BuildSession = Pick<NestSession, "script" | "uploadFile" | "writeFile" | "exec">;
+type BuildSession = Pick<NestSession, "script" | "uploadFile" | "writeFile">;
 
 export type ContainerBuildInput = {
   session: BuildSession;
@@ -600,18 +578,6 @@ export type ContainerBuildInput = {
   recordStage?: StageRecorder;
   cache?: NpmCachePlan | null;
   npmLockHash?: string | null;
-  /**
-   * Dockerfile mode: the command that builds the release image, run inside the
-   * capped scope and the disk watchdog instead of the runtime presets.
-   */
-  dockerSteps?: BuildStep[];
-  /**
-   * Compose mode: run after the unpack, under the lock, and return the capped
-   * steps for this release. The script asks Docker on the target to resolve the
-   * Compose file; the JSON it writes is what Egg reads and validates, and the
-   * steps only ever use the resolved output, never the original file.
-   */
-  dockerPrepare?: { label: string; script: string; jsonPath: string; steps: (json: unknown) => BuildStep[] };
 };
 
 /** The pre-upload check. Throws one fix line for the first thing that is missing; changes nothing. */
@@ -703,22 +669,10 @@ export async function verifyStaleBuildHolder(a: {
 export async function runContainerBuild(a: ContainerBuildInput): Promise<{ memoryCapMb: number }> {
   const { session, log, signal } = a;
   const record = a.recordStage ?? (async () => {});
-  const dockerMode = Boolean(a.dockerSteps || a.dockerPrepare);
-  let steps = a.dockerSteps ?? buildSteps(a.built.spec);
-  const buildWork = dockerMode || steps.length > 0;
-  const memoryCapMb = buildWork ? containerMemoryCapMb(a.memoryMb, a.containerMemoryMb, dockerMode || Boolean(a.built.spec.buildCommand)) : 0;
+  const steps = buildSteps(a.built.spec);
+  const buildWork = steps.length > 0;
+  const memoryCapMb = buildWork ? containerMemoryCapMb(a.memoryMb, a.containerMemoryMb, Boolean(a.built.spec.buildCommand)) : 0;
   const cpuPercent = cpuQuotaPercent(a.cpuCores);
-  if (dockerMode) {
-    // The systemd scope below caps the build process tree, but the Docker
-    // daemon does the actual image build and its buildkit workers live outside
-    // that scope. Give `docker build` its own limits so one project cannot eat
-    // the container's memory or CPU while the app keeps serving.
-    const memoryArg = `--memory=${memoryCapMb}m`;
-    const cpusArg = `--cpus=${Math.max(0.1, Number((cpuPercent / 100).toFixed(2)))}`;
-    steps = steps.map((s) => s.command.startsWith("docker build ")
-      ? { ...s, command: s.command.replace(/^docker build /, `docker build ${memoryArg} ${cpusArg} `) }
-      : s);
-  }
 
   /** True once a cleanup has been tried. The cleanup returns true only when the build's scope is confirmed stopped. */
   let discarded = false;
@@ -815,31 +769,6 @@ export async function runContainerBuild(a: ContainerBuildInput): Promise<{ memor
               });
           }
           await measureStage("unpack", unpack, record);
-          if (a.dockerPrepare) {
-            // The Compose file is read by Docker itself on the target, and only the
-            // resolved output Egg validates and later runs. Nothing of the
-            // original file executes here.
-            const prepare = a.dockerPrepare;
-            const json = await measureStage("compose", async () => {
-              const res = await session.script(prepare.script, {
-                timeoutMs: 120_000,
-                signal: runSignal,
-                outputTailBytes: 65536,
-                onLine: (l, s) => (s === "stderr" ? log.warn(l) : log.info(l)),
-              });
-              if (res.code !== 0) throw new ContainerBuildError(`Docker could not read the Compose file on your container. Check the file path and its format.${a.appRunning ? " Your app is still running." : ""}`);
-              const read = await session.exec(`cat ${shellQuote(prepare.jsonPath)}`, { signal: runSignal });
-              if (read.code !== 0 || !read.stdout.trim()) throw new ContainerBuildError(`Docker did not return the Compose configuration. Check the file path and its format.${a.appRunning ? " Your app is still running." : ""}`);
-              return read.stdout;
-            }, record);
-            let parsed: unknown;
-            try {
-              parsed = JSON.parse(json);
-            } catch {
-              throw new ContainerBuildError("Docker returned a Compose configuration that could not be read.");
-            }
-            steps = prepare.steps(parsed);
-          }
           if (!buildWork) {
             if (lock.lost.aborted) throw lockLostMessage();
             return;
@@ -871,9 +800,8 @@ export async function runContainerBuild(a: ContainerBuildInput): Promise<{ memor
                 memoryMb: memoryCapMb,
                 cpuPercent,
                 steps,
-                archiveRoot: dockerMode ? "." : a.built.spec.archiveRoot,
+                archiveRoot: a.built.spec.archiveRoot,
                 hasEnvFile: Object.keys(a.env).length > 0,
-                docker: dockerMode || undefined,
                 cache: a.cache,
                 npmLockHash: a.npmLockHash,
               }),

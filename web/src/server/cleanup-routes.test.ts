@@ -1,7 +1,5 @@
 import { NextRequest } from "next/server";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { eq } from "drizzle-orm";
-import { schema } from "@/server/db";
 import { useFreshDb } from "@/server/test/db";
 import { upsertUser } from "@/server/auth/session";
 import { createServer } from "@/server/servers";
@@ -49,26 +47,5 @@ describe("cleanup route authorization and confirmation", () => {
     vi.mocked(getCurrentUser).mockResolvedValue(owner);
     expect((await request(req("POST", { confirm: "wrong" }), { params: Promise.resolve({ id: project.id }) })).status).toBe(400);
     expect((await retry(req("PATCH", { confirmIdle: "yes" }), ctx())).status).toBe(400);
-  });
-
-  it("drops a failed cleanup only after its possibly-orphaned remote steps are acknowledged", async () => {
-    vi.mocked(getCurrentUser).mockResolvedValue(owner);
-    await db.db.update(schema.cleanupJobs).set({ state: "failed", attempts: 1 }).where(eq(schema.cleanupJobs.id, job.id));
-    const statusRes = await status(req("GET"), ctx());
-    expect(statusRes.status).toBe(200);
-    expect((await statusRes.json()).cleanup.canCancel).toBe(true);
-    // The failed job's not-done project step is named: canceling discards its record.
-    const refused = await cancel(req("DELETE"), ctx());
-    expect(refused.status).toBe(409);
-    const refusal = (await refused.json()).error;
-    expect(refusal.code).toBe("confirm_orphans");
-    expect(refusal.message).toContain("App");
-    // With the explicit acknowledgment the row is dropped and account deletion unblocks.
-    const ackReq = new NextRequest("http://localhost:3000/api/cleanup/test?acknowledgeOrphans=true", {
-      method: "DELETE",
-      headers: { origin: "http://localhost:3000" },
-    });
-    expect((await cancel(ackReq, ctx())).status).toBe(200);
-    expect(await db.db.select().from(schema.cleanupJobs).where(eq(schema.cleanupJobs.id, job.id)).get()).toBeUndefined();
   });
 });

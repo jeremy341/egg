@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { config } from "@/server/config";
 import { getDb, schema } from "@/server/db";
-import { serverDiscriminator, unitName } from "@/server/deploy/layout";
+import { unitName } from "@/server/deploy/layout";
 import { removePreview } from "@/server/deploy/remote";
 import { GithubError, headers, installationToken } from "@/server/github/app";
 import { withServerSession } from "@/server/servers";
@@ -101,7 +101,7 @@ export async function commentDeploymentOnPr(deploymentId: string, fetchImpl: Fet
       .from(schema.projects)
       .where(eq(schema.projects.id, dep.projectId))
       .get();
-    if (!project?.repoFullName || !project.installationId || project.workloadKind === "worker") return;
+    if (!project?.repoFullName || !project.installationId) return;
 
     await upsertPullRequestComment(
       project.installationId,
@@ -177,10 +177,8 @@ async function removeCanceledPreviews(projectId: string, prNumber: number): Prom
               home: probe.home,
               slug: project.slug,
               releaseId: d.releaseId,
-              unit: unitName(project.slug, { releaseId: d.releaseId }, serverDiscriminator(server.id)),
+              unit: unitName(project.slug, { releaseId: d.releaseId }),
               unitDir: config().UNIT_DIR,
-              docker: project.deploymentMode !== "native",
-              scope: serverDiscriminator(server.id),
             }),
             { timeoutMs: 60_000 }
           )

@@ -1,13 +1,12 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { ZodError } from "zod";
 import { upsertUser } from "@/server/auth/session";
 import { resetConfigForTests } from "@/server/config";
-import { newId, open } from "@/server/crypto";
+import { open } from "@/server/crypto";
 import { schema } from "@/server/db";
 import { runDeployJob, type PipelineDeps } from "@/server/deploy/pipeline";
-import { installJob, dockerJobCommand, jobServiceFile, jobTimerFile, jobUnits } from "@/server/deploy/jobs-remote";
-import { serverDiscriminator, unitName } from "@/server/deploy/layout";
+import { installJob, jobServiceFile, jobTimerFile, jobUnits } from "@/server/deploy/jobs-remote";
 import { parseSchedule } from "@/lib/cron-schedule";
 import { createProject, deployBranch, type ProjectRow } from "@/server/projects";
 import { removeProjectFromServer } from "@/server/runtime-info";
@@ -24,10 +23,10 @@ import {
   updateJob,
 } from "@/server/scheduled-jobs";
 import { connectToServer, createServer, getServerForUser, type ServerRow } from "@/server/servers";
-import { NestSession, shellQuote } from "@/server/ssh/connection";
+import { NestSession } from "@/server/ssh/connection";
 import { fakeBuilder, freePort, containerReadyFacts, installFakeContainerBuild, installFakeSystemd, nodeApp } from "@/server/test/fake-nest";
 import { useFreshDb } from "@/server/test/db";
-import { linuxTestHostAvailable, startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
+import { startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
 
 describe("parseJobStatuses", () => {
   const ids = ["a", "b", "c", "d"];
@@ -83,20 +82,6 @@ describe("job unit files", () => {
     expect(file).toContain('ExecStart=/bin/bash -lc "echo \\"$$HOME\\" 100%%"');
   });
 
-  it("runs a container project's job inside the container, without expanding the command before it", () => {
-    const command = 'psql "$POSTGRES_PASSWORD" && echo $(whoami)';
-    const inner = dockerJobCommand({ slug: "demo", containerPort: 8080, command });
-    expect(inner).toBe(`docker exec -e PORT=8080 'egg-demo' sh -lc 'psql "$POSTGRES_PASSWORD" && echo $(whoami)'`);
-    const quoted = dockerJobCommand({ slug: "demo", containerPort: 3000, command: "echo 'done'" });
-    expect(quoted).toBe(`docker exec -e PORT=3000 'egg-demo' sh -lc ${shellQuote("echo 'done'")}`);
-    const file = jobServiceFile({ ...base, command: inner });
-    const line = file.split("\n").find((l) => l.startsWith("ExecStart"));
-    // The unit's login shell hands the command to the container unread: the doubled
-    // dollars are systemd's own escaping of the ones the container's shell will see.
-    const expected = `ExecStart=/bin/bash -lc ${JSON.stringify(`docker exec -e PORT=8080 'egg-demo' sh -lc 'psql "$$POSTGRES_PASSWORD" && echo $$(whoami)'`)}`;
-    expect(line).toBe(expected);
-  });
-
   it("writes a timer in UTC that does not catch up after downtime", () => {
     const file = jobTimerFile({ ...base, schedule: parseSchedule("30 3 * * *") });
     expect(file).toContain("OnCalendar=*-*-* 03:30:00 UTC");
@@ -106,12 +91,11 @@ describe("job unit files", () => {
   });
 });
 
-describe.skipIf(!linuxTestHostAvailable())("scheduled jobs on a mock Nest", () => {
+describe("scheduled jobs on a mock Nest", () => {
   let ctx: Awaited<ReturnType<typeof useFreshDb>>;
   let mock: MockSsh;
   let userId: string;
   let server: ServerRow;
-  let scope = "";
   let project: ProjectRow;
   let idle: ProjectRow;
   let deps: PipelineDeps;
@@ -145,7 +129,6 @@ describe.skipIf(!linuxTestHostAvailable())("scheduled jobs on a mock Nest", () =
     resetConfigForTests();
     await ctx.db.update(schema.servers).set({ port: mock.port, hostKeyFingerprint: mock.hostKeyFingerprint }).where(eq(schema.servers.id, server.id));
     server = await getServerForUser(userId, server.id);
-    scope = serverDiscriminator(server.id);
 
     const base = { serverId: server.id, repoUrl: "https://github.com/example/demo", runtime: "node" as const };
     project = await createProject(userId, { ...base, name: "Jobs App", startCommand: "node server.js", port: await freePort() });
@@ -195,7 +178,7 @@ describe.skipIf(!linuxTestHostAvailable())("scheduled jobs on a mock Nest", () =
     await sh(`mv '${projectDir}/env/${dep.releaseId}.env' '${projectDir}/releases/${dep.releaseId}/.env'
 printf 'LEGACY="kept"\\n' > '${projectDir}/releases/${dep.releaseId}/.env'
 rm '${projectDir}/current.env'
-sed -i 's|EnvironmentFile=${projectDir}/current.env|EnvironmentFile=${projectDir}/current/.env|' '${unitDir}/${unitName(project.slug, undefined, scope)}'`);
+sed -i 's|EnvironmentFile=${projectDir}/current.env|EnvironmentFile=${projectDir}/current/.env|' '${unitDir}/egg-${project.slug}.service'`);
 
     const job = await createJob(userId, project.id, nightly);
     expect(job).toMatchObject({ name: "Nightly report", schedule: "30 3 * * *", description: "Every day at 03:30 UTC", enabled: true });
@@ -203,13 +186,13 @@ sed -i 's|EnvironmentFile=${projectDir}/current.env|EnvironmentFile=${projectDir
     expect(new Date(job.nextRunAt!).getUTCMinutes()).toBe(30);
 
     const files = await unitFiles();
-    const { service, timer } = jobUnits(project.slug, job.id, scope);
+    const { service, timer } = jobUnits(project.slug, job.id);
     expect(files).toEqual(expect.arrayContaining([service, timer]));
     expect(await sh(`cat ${unitDir}/${timer}`)).toContain("OnCalendar=*-*-* 03:30:00 UTC");
     const migrated = await sh(`cat '${projectDir}/env/${dep.releaseId}.env'`);
     expect(migrated).toContain('LEGACY="kept"');
     expect(await sh(`readlink '${projectDir}/current.env'`)).toBe(`${projectDir}/env/${dep.releaseId}.env`);
-    expect(await sh(`test ! -e '${projectDir}/releases/${dep.releaseId}/.env' && grep -F 'EnvironmentFile=${projectDir}/current.env' '${unitDir}/${unitName(project.slug, undefined, scope)}' && grep -F 'EnvironmentFile=-${projectDir}/current.env' '${unitDir}/${service}'`)).toContain("EnvironmentFile");
+    expect(await sh(`test ! -e '${projectDir}/releases/${dep.releaseId}/.env' && grep -F 'EnvironmentFile=${projectDir}/current.env' '${unitDir}/egg-${project.slug}.service' && grep -F 'EnvironmentFile=-${projectDir}/current.env' '${unitDir}/${service}'`)).toContain("EnvironmentFile");
 
     const [status] = await fetchJobStatuses(userId, project.id);
     expect(status).toMatchObject({ id: job.id, state: "never", armed: true, lastEndedAt: null });
@@ -247,7 +230,7 @@ sed -i 's|EnvironmentFile=${projectDir}/current.env|EnvironmentFile=${projectDir
     const edited = await updateJob(userId, project.id, job.id, { enabled: true, schedule: "*/15 * * * *", command: "echo changed" });
     expect(edited).toMatchObject({ enabled: true, description: "Every 15 minutes", command: "echo changed" });
     expect((await fetchJobStatuses(userId, project.id))[0].armed).toBe(true);
-    const { timer } = jobUnits(project.slug, job.id, scope);
+    const { timer } = jobUnits(project.slug, job.id);
     expect(await sh(`grep OnCalendar ${unitDir}/${timer}`)).toContain(":00,15,30,45:00 UTC");
 
     await expect(updateJob(userId, project.id, job.id, { schedule: "* * * * *" })).rejects.toMatchObject({ status: 400 });
@@ -267,7 +250,7 @@ sed -i 's|EnvironmentFile=${projectDir}/current.env|EnvironmentFile=${projectDir
 
   it("leaves a unit it did not write alone", async () => {
     const id = "11111111-2222-3333-4444-555555555555";
-    const { service } = jobUnits(project.slug, id, scope);
+    const { service } = jobUnits(project.slug, id);
     await sh(`printf '[Service]\\nExecStart=/bin/true\\n' > ${unitDir}/${service}`);
     const home = (await sh("echo $HOME")).trim();
     const script = installJob({
@@ -275,7 +258,6 @@ sed -i 's|EnvironmentFile=${projectDir}/current.env|EnvironmentFile=${projectDir
       slug: project.slug,
       jobId: id,
       unitDir,
-      scope,
       serviceFile: "x",
       timerFile: "y",
       enabled: true,
@@ -310,7 +292,7 @@ sed -i 's|EnvironmentFile=${projectDir}/current.env|EnvironmentFile=${projectDir
     const jobs = await listJobs(userId, project.id);
     const gone = jobs[jobs.length - 1];
     await deleteJob(userId, project.id, gone.id);
-    const { service, timer } = jobUnits(project.slug, gone.id, scope);
+    const { service, timer } = jobUnits(project.slug, gone.id);
     expect(await unitFiles()).not.toEqual(expect.arrayContaining([service]));
     expect(await unitFiles()).not.toEqual(expect.arrayContaining([timer]));
     expect((await listJobs(userId, project.id)).map((j) => j.id)).not.toContain(gone.id);
@@ -318,7 +300,7 @@ sed -i 's|EnvironmentFile=${projectDir}/current.env|EnvironmentFile=${projectDir
   });
 
   it("removes every job's units when the project is removed from the server", async () => {
-    const names = await jobUnitNames(project.id, project.slug, scope);
+    const names = await jobUnitNames(project.id, project.slug);
     expect(names.length).toBeGreaterThan(0);
     // Timers come before their services, so no timer can start a job that is being removed.
     expect(names[0]).toMatch(/\.timer$/);
@@ -328,206 +310,5 @@ sed -i 's|EnvironmentFile=${projectDir}/current.env|EnvironmentFile=${projectDir
     await removeProjectFromServer(userId, project.id, { unitDir });
     const left = await unitFiles();
     for (const name of names) expect(left).not.toContain(name);
-  });
-});
-
-/**
- * These exercise the database commit guards without a Linux shell: the mock SSH
- * host answers scripts itself, so an install can be held open while the row is
- * changed underneath it. That is the race which used to strand a live timer with
- * no row to explain it.
- */
-describe("scheduled job commit races", () => {
-  type ScriptResponse = { code: number; stdout: string; stderr: string };
-  let ctx: Awaited<ReturnType<typeof useFreshDb>>;
-  let mock: MockSsh;
-  let userId: string;
-  let project: ProjectRow;
-  let scripts: string[];
-  let hook: ((body: string) => ScriptResponse | Promise<ScriptResponse>) | null;
-  let pendingGates: Array<() => void>;
-
-  // Both scripts define the same helpers and call daemon-reload; these literals are
-  // only printed by the final line of an install and by a removal's ownership guard.
-  const isInstall = (body: string) => body.includes('echo "Installed ');
-  const isRemove = (body: string) => body.includes("or before jobs carried their id");
-
-  function defaultResponse(body: string): ScriptResponse {
-    if (body.includes('echo "uid=$(id -u)"')) {
-      return { code: 0, stdout: "uid=0\nhome=/home/jobs\nsystemd_state=running\n", stderr: "" };
-    }
-    return { code: 0, stdout: "", stderr: "" };
-  }
-
-  async function addJob(name = "Race job") {
-    const now = new Date();
-    const row = {
-      id: newId(),
-      projectId: project.id,
-      name,
-      schedule: "30 3 * * *",
-      command: "true",
-      enabled: true,
-      createdAt: now,
-      updatedAt: now,
-    };
-    await ctx.db.insert(schema.scheduledJobs).values(row);
-    return row;
-  }
-
-  function gatedScript(match: (body: string) => boolean) {
-    let sawScript!: () => void;
-    const seen = new Promise<void>((resolve) => {
-      sawScript = resolve;
-    });
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    pendingGates.push(release);
-    hook = async (body) => {
-      if (match(body)) {
-        sawScript();
-        await gate;
-      }
-      return defaultResponse(body);
-    };
-    return { seen, release };
-  }
-
-  beforeAll(async () => {
-    ctx = await useFreshDb();
-    userId = (await upsertUser({ id: "race-user", name: "Race", email: null, slackId: null })).id;
-    const server = await createServer(userId, "jobs-race", { host: "127.0.0.1", port: 1 });
-    scripts = [];
-    hook = null;
-    pendingGates = [];
-    mock = await startMockSsh({
-      authorizedKeys: [server.publicKey],
-      handler: async (_command, stdin) => {
-        const body = stdin.toString();
-        scripts.push(body);
-        return hook ? hook(body) : defaultResponse(body);
-      },
-    });
-    await ctx.db
-      .update(schema.servers)
-      .set({ port: mock.port, hostKeyFingerprint: mock.hostKeyFingerprint })
-      .where(eq(schema.servers.id, server.id));
-    process.env.UNIT_DIR = "/egg-fake-units";
-    resetConfigForTests();
-    project = await createProject(userId, {
-      serverId: server.id,
-      repoUrl: "https://github.com/example/race",
-      runtime: "node",
-      name: "Race App",
-      startCommand: "node server.js",
-      port: 3210,
-    });
-  });
-
-  beforeEach(() => {
-    scripts = [];
-    hook = null;
-    pendingGates = [];
-  });
-
-  afterEach(async () => {
-    hook = null;
-    // Never strand a gated script: a failed assertion must not keep a session open.
-    for (const release of pendingGates) release();
-    pendingGates = [];
-    await ctx.db.delete(schema.scheduledJobs);
-  });
-
-  afterAll(async () => {
-    delete process.env.UNIT_DIR;
-    resetConfigForTests();
-    await mock.stop();
-    await ctx.cleanup();
-  });
-
-  it("does not commit an update whose row changed during the remote install", async () => {
-    const row = await addJob();
-    const install = gatedScript(isInstall);
-    const updating = updateJob(userId, project.id, row.id, { name: "Renamed" });
-    await install.seen;
-
-    // A competing writer bumps the version while the container call is in flight.
-    await ctx.db
-      .update(schema.scheduledJobs)
-      .set({ updatedAt: new Date(Date.now() + 10_000) })
-      .where(eq(schema.scheduledJobs.id, row.id));
-    install.release();
-
-    await expect(updating).rejects.toMatchObject({ status: 409, code: "conflict" });
-    // The container is put back in step with the row that actually won the race.
-    expect(scripts.filter(isInstall)).toHaveLength(2);
-    const after = await ctx.db.select().from(schema.scheduledJobs).where(eq(schema.scheduledJobs.id, row.id)).get();
-    expect(after?.name).toBe("Race job");
-  });
-
-  it("removes the timer when the row disappeared during a remote install", async () => {
-    const row = await addJob();
-    const install = gatedScript(isInstall);
-    const updating = updateJob(userId, project.id, row.id, { name: "Renamed" });
-    await install.seen;
-
-    await ctx.db.delete(schema.scheduledJobs).where(eq(schema.scheduledJobs.id, row.id));
-    install.release();
-
-    await expect(updating).rejects.toMatchObject({ status: 409, code: "conflict" });
-    expect(scripts.some(isRemove)).toBe(true);
-    expect(await listJobs(userId, project.id)).toEqual([]);
-  });
-
-  it("restores the units when a delete's row changed during the remote removal", async () => {
-    const row = await addJob();
-    const remove = gatedScript(isRemove);
-    const deleting = deleteJob(userId, project.id, row.id);
-    await remove.seen;
-
-    await ctx.db
-      .update(schema.scheduledJobs)
-      .set({ updatedAt: new Date(Date.now() + 10_000), name: "Competing" })
-      .where(eq(schema.scheduledJobs.id, row.id));
-    remove.release();
-
-    await expect(deleting).rejects.toMatchObject({ status: 409, code: "conflict" });
-    expect(scripts.filter(isInstall)).toHaveLength(1);
-    const after = await ctx.db.select().from(schema.scheduledJobs).where(eq(schema.scheduledJobs.id, row.id)).get();
-    expect(after?.name).toBe("Competing");
-  });
-
-  it("serialises an install against a delete of the same job", async () => {
-    const row = await addJob();
-    const install = gatedScript(isInstall);
-    const updating = updateJob(userId, project.id, row.id, { name: "Renamed" });
-    await install.seen;
-
-    const deleting = deleteJob(userId, project.id, row.id);
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    // The delete must not reach the container while the update holds the job lock.
-    expect(scripts.some(isRemove)).toBe(false);
-
-    install.release();
-    await updating;
-    await deleting;
-    expect(scripts.filter(isRemove)).toHaveLength(1);
-    expect(await listJobs(userId, project.id)).toEqual([]);
-  });
-
-  it("rechecks the job cap after a slow install and removes the timer if the last slot was taken", async () => {
-    for (let i = 0; i < MAX_JOBS_PER_PROJECT - 1; i++) await addJob(`Filler ${i}`);
-    const install = gatedScript(isInstall);
-    const creating = createJob(userId, project.id, { name: "Too late", schedule: "0 4 * * *", command: "true" });
-    await install.seen;
-
-    await addJob("Competing last slot");
-    install.release();
-
-    await expect(creating).rejects.toMatchObject({ status: 409, code: "limit" });
-    expect(scripts.some(isRemove)).toBe(true);
-    expect((await listJobs(userId, project.id)).length).toBe(MAX_JOBS_PER_PROJECT);
   });
 });

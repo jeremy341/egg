@@ -9,8 +9,6 @@ ARG NODE_VERSION=22
 FROM node:${NODE_VERSION}-bookworm-slim AS deps
 WORKDIR /app/web
 COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml ./
-# pnpm-workspace.yaml references the geoip-country patch; deps stage needs it before install.
-COPY web/patches/ ./patches/
 # Install the pnpm version that package.json pins, without corepack (older corepack
 # versions cannot verify newer pnpm releases).
 RUN npm install -g "pnpm@$(node -p "require('./package.json').packageManager.split('@')[1].split('+')[0]")"

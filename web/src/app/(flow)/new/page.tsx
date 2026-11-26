@@ -7,7 +7,7 @@ import { userInstallations } from "@/server/github/app";
 import { getPreferences } from "@/server/preferences";
 import { serverViews } from "@/server/queries";
 
-export const metadata = { title: "New project" };
+export const metadata = { title: "New Project" };
 
 const NOTICES: Record<string, string> = {
   connected: "GitHub is connected. Pick a repository below.",
@@ -42,7 +42,7 @@ async function NewProjectContent({ searchParams }: Props) {
       ? `https://github.com/apps/${c.GITHUB_APP_SLUG}/installations/new`
       : null,
     installations: installations.map((i) => ({ id: i.id, account: i.accountLogin, type: i.accountType })),
-    notice: notice && Object.hasOwn(NOTICES, notice) ? NOTICES[notice] : null,
+    notice: notice ? (NOTICES[notice] ?? null) : null,
   };
 
   return (

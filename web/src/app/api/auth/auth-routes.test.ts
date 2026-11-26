@@ -1,9 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { resetConfigForTests } from "@/server/config";
-import { SESSION_COOKIE, createSession, isFreshAuth, upsertUser, userForSessionToken } from "@/server/auth/session";
-import { oauthStateCookieName } from "@/server/auth/oauth-cookie";
-import { sha256Hex } from "@/server/crypto";
+import { OAUTH_COOKIE, SESSION_COOKIE, createSession, isFreshAuth, upsertUser, userForSessionToken } from "@/server/auth/session";
 import { rateLimiter } from "@/server/rate-limit";
 import { useFreshDb } from "@/server/test/db";
 
@@ -52,7 +50,7 @@ afterEach(() => vi.unstubAllEnvs());
 const req = (path: string, headers: Record<string, string> = {}, init: ConstructorParameters<typeof NextRequest>[1] = {}) =>
   new NextRequest(`${APP}${path}`, { headers, ...init });
 const oauth = (value: object | string) =>
-  `${oauthStateCookieName()}=${encodeURIComponent(typeof value === "string" ? value : JSON.stringify(value))}`;
+  `${OAUTH_COOKIE}=${encodeURIComponent(typeof value === "string" ? value : JSON.stringify(value))}`;
 const setCookie = (res: Response, name: string) => res.headers.getSetCookie().find((c) => c.startsWith(`${name}=`)) ?? "";
 const valueOf = (cookie: string) => decodeURIComponent(cookie.split(";")[0].split("=").slice(1).join("="));
 
@@ -68,23 +66,22 @@ describe("open redirects", () => {
   it.each(evil)("reauth drops the next value %j before it is stored", async (next) => {
     const { token } = await signedIn();
     const res = await reauth(req(`/api/auth/reauth?next=${encodeURIComponent(next)}`, { cookie: `${SESSION_COOKIE}=${token}` }));
-    const saved = JSON.parse(valueOf(setCookie(res, oauthStateCookieName())));
+    const saved = JSON.parse(valueOf(setCookie(res, OAUTH_COOKIE)));
     expect(saved.p).toBe("reauth");
     expect(saved.n).toBe("/account");
-    expect(saved.r).toBe(sha256Hex(token));
   });
 
   it("reauth keeps a real local path", async () => {
     const { token } = await signedIn();
     const res = await reauth(req("/api/auth/reauth?next=%2Fprojects%2Fabc", { cookie: `${SESSION_COOKIE}=${token}` }));
-    expect(JSON.parse(valueOf(setCookie(res, oauthStateCookieName()))).n).toBe("/projects/abc");
+    expect(JSON.parse(valueOf(setCookie(res, OAUTH_COOKIE))).n).toBe("/projects/abc");
   });
 
   it.each(evil)("the callback never sends people to %j", async (n) => {
     const { token } = await signedIn("ident!c");
     vi.mocked(completeLogin).mockResolvedValue({ id: "ident!c", name: "Rae", email: null, slackId: null });
     const res = await callback(
-      req("/api/auth/callback?code=c&state=st", { cookie: `${SESSION_COOKIE}=${token}; ${oauth({ s: "st", v: "v", p: "reauth", n, r: sha256Hex(token) })}` })
+      req("/api/auth/callback?code=c&state=st", { cookie: `${SESSION_COOKIE}=${token}; ${oauth({ s: "st", v: "v", p: "reauth", n })}` })
     );
     expect(res.status).toBe(303);
     expect(new URL(res.headers.get("location")!).origin).toBe(APP);
@@ -131,14 +128,6 @@ describe("the callback", () => {
     expect(completeLogin).not.toHaveBeenCalled();
   });
 
-  it("refuses a tossed second sign-in cookie instead of letting it win", async () => {
-    const cookie = `${oauth({ s: "st", v: "v" })}; ${oauth({ s: "attacker", v: "attacker" })}`;
-    const res = await callback(req("/api/auth/callback?code=c&state=attacker", { cookie }));
-    expect(res.headers.get("location")).toContain("error=state_mismatch");
-    expect(setCookie(res, oauthStateCookieName())).toMatch(/Max-Age=0|Expires=/i);
-    expect(completeLogin).not.toHaveBeenCalled();
-  });
-
   it("does not leak why Hack Club refused", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     vi.mocked(completeLogin).mockRejectedValue(new Error("Hack Club Auth rejected the login (token 400) secret-detail"));
@@ -159,12 +148,12 @@ describe("sign-in rate limits", () => {
     expect((await login(req("/api/auth/login", { "x-forwarded-for": "203.0.113.51" }))).headers.get("location")).toContain("auth.hackclub.com");
   });
 
-  it("sets the sign-in state cookie httpOnly and Lax, scoped to the whole site", async () => {
+  it("sets the sign-in state cookie httpOnly and Lax, scoped to /api/auth", async () => {
     const res = await login(req("/api/auth/login"));
-    const cookie = setCookie(res, oauthStateCookieName());
+    const cookie = setCookie(res, OAUTH_COOKIE);
     expect(cookie).toMatch(/HttpOnly/i);
     expect(cookie).toMatch(/SameSite=lax/i);
-    expect(cookie).toMatch(/Path=\/(?:;|$)/i);
+    expect(cookie).toMatch(/Path=\/api\/auth/i);
   });
 });
 
@@ -205,89 +194,5 @@ describe("development sign-in", () => {
     vi.stubEnv("NODE_ENV", "development");
     const res = await post({ origin: "https://evil.example" });
     expect(res.status).toBe(403);
-  });
-});
-
-describe("host-only OAuth state cookie", () => {
-  async function withAppUrl(url: string, run: () => Promise<void>) {
-    const previous = process.env.APP_URL;
-    process.env.APP_URL = url;
-    resetConfigForTests();
-    try {
-      await run();
-    } finally {
-      process.env.APP_URL = previous;
-      resetConfigForTests();
-    }
-  }
-
-  it("sets a __Host- cookie with Secure and no Domain over HTTPS", async () => {
-    const res = await login(req("/api/auth/login"));
-    const cookie = setCookie(res, "__Host-egg_oauth");
-    expect(cookie).toMatch(/^__Host-egg_oauth=/);
-    expect(cookie).toMatch(/HttpOnly/i);
-    expect(cookie).toMatch(/Secure/i);
-    expect(cookie).toMatch(/Path=\/(?:;|$)/i);
-    expect(cookie).not.toMatch(/Domain=/i);
-    expect(setCookie(res, "egg_oauth")).toBe("");
-  });
-
-  it("keeps the plain name on local HTTP", async () => {
-    await withAppUrl("http://localhost:3000", async () => {
-      const res = await login(new NextRequest("http://localhost:3000/api/auth/login"));
-      const cookie = setCookie(res, "egg_oauth");
-      expect(cookie).toMatch(/^egg_oauth=/);
-      expect(cookie).toMatch(/Path=\/(?:;|$)/i);
-      expect(setCookie(res, "__Host-egg_oauth")).toBe("");
-    });
-  });
-
-  it("completes sign-in with the prefixed cookie and expires it with Secure", async () => {
-    vi.mocked(completeLogin).mockResolvedValue({ id: "ident!host", name: "Rae", email: null, slackId: null });
-    const res = await callback(req("/api/auth/callback?code=c&state=st", { cookie: oauth({ s: "st", v: "v" }) }));
-    expect(new URL(res.headers.get("location")!).pathname).toBe("/projects");
-    const cleared = setCookie(res, oauthStateCookieName());
-    expect(cleared).toMatch(/Max-Age=0|Expires=/i);
-    expect(cleared).toMatch(/Secure/i);
-    expect(cleared).toMatch(/Path=\/(?:;|$)/i);
-    expect(cleared).not.toMatch(/Domain=/i);
-  });
-
-  it("still refuses a second planted __Host- cookie", async () => {
-    const cookie = `${oauth({ s: "st", v: "v" })}; ${oauth({ s: "attacker", v: "attacker" })}`;
-    const res = await callback(req("/api/auth/callback?code=c&state=attacker", { cookie }));
-    expect(res.headers.get("location")).toContain("error=state_mismatch");
-    expect(completeLogin).not.toHaveBeenCalled();
-  });
-
-  it("binds a reauth callback to the session that started it", async () => {
-    const { token } = await signedIn("ident!bound");
-    const { token: other } = await signedIn("ident!bound");
-    vi.mocked(completeLogin).mockResolvedValue({ id: "ident!bound", name: "Rae", email: null, slackId: null });
-    const started = JSON.parse(
-      valueOf(setCookie(await reauth(req("/api/auth/reauth?next=/projects", { cookie: `${SESSION_COOKIE}=${token}` })), oauthStateCookieName()))
-    );
-    expect(started.r).toBe(sha256Hex(token));
-
-    // Replaying the callback in a different session must not mark that session fresh.
-    const res = await callback(
-      req("/api/auth/callback?code=c&state=st", { cookie: `${SESSION_COOKIE}=${other}; ${oauth({ ...started, s: "st" })}` })
-    );
-    expect(res.headers.get("location")).toBe(`${APP}/account?reauth=mismatch`);
-    expect(await isFreshAuth(other)).toBe(false);
-    expect(await isFreshAuth(token)).toBe(false);
-  });
-
-  it("marks the originating session fresh when the bound reauth completes", async () => {
-    const { token } = await signedIn("ident!ok");
-    vi.mocked(completeLogin).mockResolvedValue({ id: "ident!ok", name: "Rae", email: null, slackId: null });
-    const started = JSON.parse(
-      valueOf(setCookie(await reauth(req("/api/auth/reauth?next=/projects", { cookie: `${SESSION_COOKIE}=${token}` })), oauthStateCookieName()))
-    );
-    const res = await callback(
-      req("/api/auth/callback?code=c&state=st", { cookie: `${SESSION_COOKIE}=${token}; ${oauth({ ...started, s: "st" })}` })
-    );
-    expect(res.headers.get("location")).toBe(`${APP}/projects`);
-    expect(await isFreshAuth(token)).toBe(true);
   });
 });

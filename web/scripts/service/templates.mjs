@@ -91,8 +91,6 @@ $taskName = ${ps(taskName)}
 
 if ($Remove) {
   if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
-    # Stop the running copy first, so it releases its port. Unregistering alone leaves it running.
-    Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
     Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
     Write-Host "Removed the $taskName scheduled task."
   } else {

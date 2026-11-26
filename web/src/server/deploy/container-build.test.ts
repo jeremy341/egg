@@ -731,9 +731,6 @@ function fakeSession(handler: Handler) {
       async writeFile(path: string, content: string, mode?: string) {
         writes.push({ path, content, mode });
       },
-      async exec() {
-        return { code: 0, stdout: "", stderr: "" };
-      },
     },
   };
 }
@@ -1158,20 +1155,9 @@ describe("a container build's release folder", () => {
     const serverId = await newServer("sam-fresh-wait");
     await tryAcquireBuildLock(serverId, "busy-now");
     setTimeout(() => void releaseBuildLock(serverId, "busy-now"), 60);
-    const deploymentId = randomUUID();
-    const log = logs();
-    // The first remote step that runs under the lock must see this build as the holder: the
-    // busy lock was released and taken over, not ignored.
-    let holderAtUnpack: string | null | undefined;
-    const fake = fakeSession(async (kind) => {
-      if (kind === "unpack") holderAtUnpack = await lockHolder(serverId);
-      return { code: 0 };
-    });
-    await runContainerBuild(await input({ fake, serverId, deploymentId, log }));
+    const fake = fakeSession(() => ({ code: 0 }));
+    await runContainerBuild(await input({ fake, serverId }));
     expect(fake.count("verify")).toBe(0);
-    expect(log.lines).toContain("info: Another build is running on this container. Waiting for it to finish.");
-    expect(fake.count("unpack")).toBe(1);
-    expect(holderAtUnpack).toBe(deploymentId);
   });
 
   it("a cancel while the stale holder is being checked ends the build without taking the lock", async () => {

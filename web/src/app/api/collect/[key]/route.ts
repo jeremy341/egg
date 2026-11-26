@@ -1,5 +1,4 @@
 import { type NextRequest } from "next/server";
-import { UNKNOWN_IP } from "@/server/analytics";
 import { optedOut, recordHit } from "@/server/analytics-events";
 import { handle, HttpError } from "@/server/http";
 import { clientIp } from "@/server/rate-limit";
@@ -22,7 +21,7 @@ export function OPTIONS() {
 
 /** Without TRUST_PROXY there is no trusted address, so every visitor counts as one. */
 function visitorIp(req: NextRequest): string {
-  return clientIp(req.headers) ?? UNKNOWN_IP;
+  return clientIp(req.headers) ?? "0.0.0.0";
 }
 
 export const POST = handle<Ctx>(

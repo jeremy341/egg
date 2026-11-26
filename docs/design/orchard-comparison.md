@@ -39,4 +39,4 @@ They do not compete. Orchard hosts apps on Hack Club's infrastructure for teams 
 ## Not worth copying
 
 - Kubernetes, BuildKit and managed PostgreSQL. They need a cluster, which is the thing Egg exists to avoid.
-- Organisations, SSO, SCIM and project sharing. Nest containers are personal and every Egg project has a single owner.
+- Organisations, SSO and SCIM. Nest containers are personal. Project sharing with a few roles is the most Egg needs.

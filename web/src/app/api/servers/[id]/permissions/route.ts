@@ -34,7 +34,7 @@ export const PUT = handle<Ctx>(async (req, { params }) => {
   const before = await getPermissions(user.id, id);
   // Turning on the terminal or file changes needs a Hack Club sign-in in the last few minutes.
   const turningOn = (changes.terminal === true && !before.terminal) || (changes.fileWrites === true && !before.fileWrites);
-  if (turningOn && !(await isFreshAuth(req.cookies.get(SESSION_COOKIE)?.value, Date.now(), user.id))) {
+  if (turningOn && !(await isFreshAuth(req.cookies.get(SESSION_COOKIE)?.value))) {
     throw new HttpError(
       403,
       `Confirm with Hack Club first. Turning this on needs a sign-in in the last ${Math.round(REAUTH_WINDOW_MS / 60000)} minutes.`,

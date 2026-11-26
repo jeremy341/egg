@@ -25,34 +25,28 @@ jobs:
       run:
         working-directory: web
     steps:
-      # Pin third-party actions to full commit SHAs so a tag cannot be retargeted.
-      # Do not leave the token in .git/config: no step below needs authenticated git.
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          persist-credentials: false
+      - uses: actions/checkout@v4
 
       # package.json has no "engines" field. pnpm 11 needs Node 22.13 or newer.
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@v4
         with:
           node-version: "22.13"
 
-      # Pin pnpm here instead of deriving it from the PR-controlled package.json:
-      # a fork could otherwise set "pnpm@npm:attacker-pkg" and run install scripts
-      # on the runner. Keep this in sync with "packageManager" in web/package.json.
+      # Install the pnpm version that package.json pins (single source of truth).
       - name: Install pnpm
-        run: npm install -g --ignore-scripts pnpm@11.20.0
+        run: npm install -g "pnpm@$(node -p "require('./package.json').packageManager.split('@')[1].split('+')[0]")"
 
       - name: Find the pnpm store
         id: store
         run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
 
       - name: Cache the pnpm store
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache@v4
         with:
           path: ${{ steps.store.outputs.path }}
           key: pnpm-store-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}
-          # Exact key only: a prefix restore-key would let a fork PR's lockfile
-          # poison a store that later main-branch runs restore from.
+          restore-keys: |
+            pnpm-store-${{ runner.os }}-
 
       - name: Install
         run: pnpm install --frozen-lockfile
@@ -71,15 +65,3 @@ jobs:
       - name: Audit production dependencies
         run: pnpm run audit:prod
         continue-on-error: ${{ matrix.os != 'ubuntu-latest' }}
-
-      # deploy/Caddyfile uses the experimental "request_body" directive (Caddy 2.10+).
-      # Validate it in CI so a syntax/version mistake fails here, not in production.
-      # Docker is available on GitHub-hosted Linux runners but not macOS ones, and
-      # config validation is OS-independent, so one matrix leg is sufficient.
-      - name: Validate Caddyfile
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          docker run --rm --entrypoint caddy \
-            -v "${{ github.workspace }}/deploy/Caddyfile:/etc/caddy/Caddyfile:ro" \
-            -e APP_HOST=localhost \
-            caddy:2 validate --config /etc/caddy/Caddyfile --adapter caddyfile

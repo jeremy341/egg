@@ -36,8 +36,8 @@ export function NavList({
   roomy?: boolean;
 }) {
   const pathname = usePathname();
-  const { projects, user } = useAccount();
   const ctx = navFor(pathname);
+  const { projects, user } = useAccount();
   const projectName = ctx.project
     ? (projects.find((p) => p.slug === ctx.project?.slug)?.name ?? ctx.project.name)
     : null;

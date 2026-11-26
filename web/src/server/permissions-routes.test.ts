@@ -90,10 +90,7 @@ function json(path: string, method: string, body?: unknown, headers: Record<stri
  * minutes. This signs the owner in with a freshly confirmed session.
  */
 async function turnOn(body: unknown, id: string) {
-  // The fresh session must belong to the user the route will authorize; a
-  // different account's fresh sign-in no longer satisfies the step-up check.
-  const acting = await getCurrentUser();
-  const s = await createSession(acting!.id, "confirmed browser");
+  const s = await createSession(sam.id, "confirmed browser");
   await markFreshAuth(s.token);
   return putPermissionsRoute(json("/x", "PUT", body, { cookie: `${SESSION_COOKIE}=${s.token}` }), idCtx(id));
 }

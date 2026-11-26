@@ -26,7 +26,7 @@ import { generateServerKey } from "@/server/ssh/keys";
 import { NestSession } from "@/server/ssh/connection";
 import { containerReadyFacts, installFakeContainerBuild, installFakeSystemd } from "@/server/test/fake-nest";
 import { useFreshDb } from "@/server/test/db";
-import { linuxTestHostAvailable, startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
+import { startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
 import { rawTarGz, sha256Of } from "@/server/test/raw-tar";
 
 /**
@@ -80,7 +80,7 @@ const alive = async (pid: number) => (await sh(`kill -0 ${pid} 2>/dev/null && ec
 /** Stand in for systemctl that cannot stop anything, so a scope stays up however it is asked to stop. */
 const STOP_DOES_NOTHING = 'systemctl() { case "$1" in stop|reset-failed) return 0;; *) command systemctl "$@";; esac; }\n';
 
-describe.skipIf(!linuxTestHostAvailable())("the build variables file", () => {
+describe("the build variables file", () => {
   async function prepare(slug: string, releaseId: string, envText: string) {
     await run(prepareDirs(home, slug));
     await sh(`mkdir -p '${home}/.egg/${slug}/releases/${releaseId}'`);
@@ -170,7 +170,7 @@ describe("variables files an interrupted build left behind", () => {
   }, 60_000);
 });
 
-describe.skipIf(!linuxTestHostAvailable())("stopping and confirming a build scope", () => {
+describe("stopping and confirming a build scope", () => {
   it("the scope sweep stops every build scope that is running and confirms they are gone", async () => {
     const [a, b] = await Promise.all([startZombieScope("egg-build-aaaaaaa1"), startZombieScope("egg-build-bbbbbbb2")]);
     const res = await run(stopAllBuildScopesScript());
@@ -233,7 +233,7 @@ describe.skipIf(!linuxTestHostAvailable())("stopping and confirming a build scop
   }, 60_000);
 });
 
-describe.skipIf(!linuxTestHostAvailable())("taking over a stale build lock on the container", () => {
+describe("taking over a stale build lock on the container", () => {
   const needs: PreflightNeeds = { node: true, nodeEngine: null, packageManager: "npm", python: false, buildWork: true };
   const logLines: string[] = [];
   const log = {
@@ -348,7 +348,6 @@ describe.skipIf(!linuxTestHostAvailable())("taking over a stale build lock on th
       script: (body: string, opts?: Parameters<NestSession["script"]>[1]) => session.script(STOP_DOES_NOTHING + body, opts),
       uploadFile: session.uploadFile.bind(session),
       writeFile: session.writeFile.bind(session),
-      exec: session.exec.bind(session),
     };
     await expect(
       runContainerBuild({

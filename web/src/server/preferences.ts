@@ -1,14 +1,9 @@
 import { cache } from "react";
-import { eq, sql, type SQL } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema } from "@/server/db";
 import { HttpError } from "@/server/http";
-import {
-  ANALYTICS_FEATURES,
-  parseAnalyticsDefaults,
-  serializeAnalyticsDefaults,
-  type AnalyticsFeatureKey,
-} from "@/lib/analytics-defaults";
+import { ANALYTICS_FEATURES, parseAnalyticsDefaults, serializeAnalyticsDefaults } from "@/lib/analytics-defaults";
 import {
   AVATAR_IDS,
   DARK_PRESET_IDS,
@@ -169,18 +164,6 @@ async function checkCustomChoices(userId: string, patch: PreferencesPatch) {
   }
 }
 
-/**
- * The stored analytics text as a JSON object, or "{}" when it is not one. Damaged text reads
- * as every switch off, and the next write replaces it. Read inside the update statement
- * below, this is what keeps two quick saves from losing each other's switches.
- */
-const storedDefaults = sql`CASE WHEN json_valid(${schema.userPreferences.analyticsDefaults}) THEN CASE WHEN json_type(${schema.userPreferences.analyticsDefaults}) = 'object' THEN ${schema.userPreferences.analyticsDefaults} ELSE '{}' END ELSE '{}' END`;
-
-/** The columns an update writes; the analytics merge is an SQL expression, not a string. */
-type PreferencesSet = Partial<Omit<typeof schema.userPreferences.$inferInsert, "analyticsDefaults">> & {
-  analyticsDefaults?: string | SQL;
-};
-
 /** Validate a partial update and save it. Returns the full preferences afterwards. */
 export async function updatePreferences(userId: string, raw: unknown): Promise<Preferences> {
   const parsed = preferencesPatch.safeParse(raw);
@@ -191,68 +174,33 @@ export async function updatePreferences(userId: string, raw: unknown): Promise<P
   }
   const patch = parsed.data;
   await checkCustomChoices(userId, patch);
-
-  const db = await getDb();
-  const now = new Date();
-  const current = await db
-    .select({ theme: schema.userPreferences.theme, accent: schema.userPreferences.accent })
-    .from(schema.userPreferences)
-    .where(eq(schema.userPreferences.userId, userId))
-    .get();
-
-  // Only the fields the patch carries are written, so two quick saves of different things
-  // cannot lose each other's. A row from before light and dark themes is converted by this
-  // save: its choice is worked out here and written for every theme slot the patch leaves
-  // alone, so the row reads the same from then on.
-  const legacy = current && current.theme !== CONVERTED ? themeChoiceFromLegacy(current.theme, current.accent) : null;
-  const choice = {
-    matchDevice: patch.matchDevice ?? legacy?.matchDevice ?? DEFAULT_PREFERENCES.matchDevice,
-    lightPreset: patch.lightPreset ?? legacy?.lightPreset ?? DEFAULT_PREFERENCES.lightPreset,
-    darkPreset: patch.darkPreset ?? legacy?.darkPreset ?? DEFAULT_PREFERENCES.darkPreset,
-    preset: patch.preset ?? legacy?.preset ?? DEFAULT_PREFERENCES.preset,
-  };
-
-  const set: PreferencesSet = { theme: CONVERTED, updatedAt: now };
-  if (patch.matchDevice !== undefined || legacy) set.matchDevice = choice.matchDevice;
-  if (patch.lightPreset !== undefined || legacy) set.lightPreset = choice.lightPreset;
-  if (patch.darkPreset !== undefined || legacy) set.darkPreset = choice.darkPreset;
-  if (patch.preset !== undefined || legacy) set.accent = choice.preset;
-  if (patch.density !== undefined) set.density = patch.density;
-  if (patch.reducedMotion !== undefined) set.reducedMotion = patch.reducedMotion;
-  if (patch.defaultBranch !== undefined) set.defaultBranch = patch.defaultBranch;
-  if (patch.displayName !== undefined) set.displayName = patch.displayName;
-  if (patch.avatar !== undefined) set.avatar = patch.avatar;
-  // Switches in the patch are merged over the saved ones inside the statement itself, the
-  // way setMark merges onboarding marks; one left out keeps its value. A switch switched
-  // off is dropped, which is what serializeAnalyticsDefaults stores.
-  const switches = Object.entries(patch.analyticsDefaults ?? {}) as [AnalyticsFeatureKey, boolean][];
-  if (switches.length > 0) {
-    let merged = storedDefaults;
-    for (const [key, on] of switches) {
-      merged = on ? sql`json_set(${merged}, ${`$.${key}`}, json('true'))` : sql`json_remove(${merged}, ${`$.${key}`})`;
-    }
-    set.analyticsDefaults = merged;
+  const next: Preferences = { ...(await load(userId)) };
+  if (patch.matchDevice !== undefined) next.matchDevice = patch.matchDevice;
+  if (patch.lightPreset !== undefined) next.lightPreset = patch.lightPreset;
+  if (patch.darkPreset !== undefined) next.darkPreset = patch.darkPreset;
+  if (patch.preset !== undefined) next.preset = patch.preset;
+  if (patch.density !== undefined) next.density = patch.density;
+  if (patch.reducedMotion !== undefined) next.reducedMotion = patch.reducedMotion;
+  if (patch.defaultBranch !== undefined) next.defaultBranch = patch.defaultBranch;
+  if (patch.displayName !== undefined) next.displayName = patch.displayName;
+  if (patch.avatar !== undefined) next.avatar = patch.avatar;
+  // Switches in the patch are merged over the saved ones; one left out keeps its value.
+  if (patch.analyticsDefaults !== undefined) {
+    next.analyticsDefaults = parseAnalyticsDefaults({ ...next.analyticsDefaults, ...patch.analyticsDefaults });
   }
 
-  // A row that does not exist yet gets the defaults, with the patch on top.
+  const db = await getDb();
+  const { preset, ...rest } = next;
   const values = {
+    ...rest,
     theme: CONVERTED,
-    matchDevice: choice.matchDevice,
-    lightPreset: choice.lightPreset,
-    darkPreset: choice.darkPreset,
-    accent: choice.preset,
-    density: patch.density ?? DEFAULT_PREFERENCES.density,
-    reducedMotion: patch.reducedMotion ?? DEFAULT_PREFERENCES.reducedMotion,
-    defaultBranch: patch.defaultBranch ?? DEFAULT_PREFERENCES.defaultBranch,
-    displayName: patch.displayName ?? DEFAULT_PREFERENCES.displayName,
-    avatar: patch.avatar ?? DEFAULT_PREFERENCES.avatar,
-    analyticsDefaults: serializeAnalyticsDefaults({ ...DEFAULT_PREFERENCES.analyticsDefaults, ...patch.analyticsDefaults }),
-    updatedAt: now,
+    accent: preset,
+    analyticsDefaults: serializeAnalyticsDefaults(next.analyticsDefaults),
+    updatedAt: new Date(),
   };
-  const [row] = await db
+  await db
     .insert(schema.userPreferences)
     .values({ userId, ...values })
-    .onConflictDoUpdate({ target: schema.userPreferences.userId, set })
-    .returning();
-  return fromRow(row, await themeSchemes(userId));
+    .onConflictDoUpdate({ target: schema.userPreferences.userId, set: values });
+  return next;
 }

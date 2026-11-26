@@ -1,7 +1,7 @@
 import { createReadStream, openSync, readSync, closeSync } from "node:fs";
 import * as tar from "tar";
 import { BuildError, resolveInside } from "@/server/deploy/build";
-import { selectLockfile, type ProjectFiles } from "@/server/deploy/runtime";
+import type { ProjectFiles } from "@/server/deploy/runtime";
 
 /**
  * Look inside a finished release that GitHub sent, before anything is unpacked anywhere. Every entry
@@ -159,7 +159,7 @@ export function inspectArchive(file: string, limits: ArchiveLimits = {}): Promis
           throw new ArchiveError("The archive has a hard link that refers to a symbolic link, so it was refused.");
         }
       }
-      let pkg: { engines?: { node?: unknown }; scripts?: { build?: unknown }; packageManager?: unknown } | null = null;
+      let pkg: { engines?: { node?: unknown }; scripts?: { build?: unknown } } | null = null;
       if (packageJson) {
         try {
           pkg = JSON.parse(Buffer.concat(packageJson).toString("utf8"));
@@ -172,16 +172,16 @@ export function inspectArchive(file: string, limits: ArchiveLimits = {}): Promis
         entries: count,
         unpackedBytes: bytes,
         files: {
-          lockfile: selectLockfile((name) => rootFiles.has(name), pkg?.packageManager),
+          lockfile: rootFiles.has("pnpm-lock.yaml")
+            ? "pnpm"
+            : rootFiles.has("yarn.lock")
+              ? "yarn"
+              : rootFiles.has("package-lock.json")
+                ? "npm"
+                : null,
           hasPackageJson: rootFiles.has("package.json"),
           hasBuildScript: typeof pkg?.scripts?.build === "string",
           hasRequirements: rootFiles.has("requirements.txt"),
-          hasPyproject: rootFiles.has("pyproject.toml"),
-          hasGemfile: rootFiles.has("Gemfile"),
-          hasComposer: rootFiles.has("composer.json"),
-          hasCargoLock: rootFiles.has("Cargo.lock"),
-          hasMaven: rootFiles.has("pom.xml"),
-          hasGradle: rootFiles.has("build.gradle") || rootFiles.has("build.gradle.kts"),
           nodeEngine: engine || null,
         },
       };

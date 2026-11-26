@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { toast } from "@/components/ui/toast";
-import { RUNTIME_OPTIONS, runtimeLabel } from "@/components/hosting-options";
 import type { CloneSettings } from "@/server/clone-settings";
 import type { RootDetection } from "@/server/root-detect";
 
@@ -42,6 +41,13 @@ export function buildBody(b: BuildForm) {
   };
 }
 
+const RUNTIME_LABEL: Record<BuildForm["runtime"], string> = {
+  node: "Node.js",
+  python: "Python",
+  static: "Static site",
+  command: "Custom command",
+};
+
 type Source = { id: string; name: string; runtime: string };
 
 const isSubfolder = (dir: string) => dir.trim().replace(/^\.\/?$/, "") !== "";
@@ -56,14 +62,12 @@ const isSubfolder = (dir: string) => dir.trim().replace(/^\.\/?$/, "") !== "";
  */
 export function ProjectBuildFields({
   projectId,
-  workloadKind = "web",
   build,
   onLoad,
   onChange,
   onCopy,
 }: {
   projectId: string;
-  workloadKind?: "web" | "worker";
   /** Null until this project's own settings have been loaded. */
   build: BuildForm | null;
   onLoad: (b: BuildForm) => void;
@@ -136,8 +140,8 @@ export function ProjectBuildFields({
             >
               <option value="">{sources ? "Choose a project" : "Loading…"}</option>
               {sources?.map((s) => (
-                <option key={s.id} value={s.id} disabled={workloadKind === "worker" && s.runtime === "static"}>
-                  {s.name} ({runtimeLabel(s.runtime)})
+                <option key={s.id} value={s.id}>
+                  {s.name} ({RUNTIME_LABEL[s.runtime as BuildForm["runtime"]] ?? s.runtime})
                 </option>
               ))}
             </NativeSelect>
@@ -168,9 +172,9 @@ export function ProjectBuildFields({
               value={build.runtime}
               onChange={(e) => onChange({ ...build, runtime: e.target.value as BuildForm["runtime"] })}
             >
-              {RUNTIME_OPTIONS.map((r) => (
-                <option key={r.value} value={r.value} disabled={workloadKind === "worker" && r.value === "static"}>
-                  {r.label}
+              {(Object.keys(RUNTIME_LABEL) as BuildForm["runtime"][]).map((r) => (
+                <option key={r} value={r}>
+                  {RUNTIME_LABEL[r]}
                 </option>
               ))}
             </NativeSelect>
@@ -278,7 +282,7 @@ function RootHelp({ projectId, rootDir }: { projectId: string; rootDir: string }
           as apps/web.
         </p>
       ) : !current ? (
-          <p className="text-label text-muted-foreground">Looking in {rootDir.trim()} in the repository…</p>
+        <p className="text-label text-muted-foreground">Looking in {rootDir.trim()} on GitHub…</p>
       ) : current.failed || !current.detection ? (
         <p className="text-label text-muted-foreground">Could not look at the folder right now.</p>
       ) : current.detection.status !== "ok" ? (
@@ -300,7 +304,7 @@ function Found({ d, dir }: { d: RootDetection; dir: string }) {
     {
       label: "Lockfile",
       found: d.lockfile !== null,
-      value: d.lockfile ? `${d.lockfile} (${{ npm: "package-lock.json", pnpm: "pnpm-lock.yaml", yarn: "yarn.lock", bun: "bun.lock / bun.lockb" }[d.lockfile]})` : "none found",
+      value: d.lockfile ? `${d.lockfile} (${{ npm: "package-lock.json", pnpm: "pnpm-lock.yaml", yarn: "yarn.lock" }[d.lockfile]})` : "none found",
     },
     {
       label: "requirements.txt",

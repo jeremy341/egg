@@ -68,45 +68,26 @@ function Item({
  * open an SSH session. It looks again every 30 seconds while the tab is
  * visible, shows when the reading was taken, and Check now always asks.
  */
-export function ServiceCard({ projectId, workloadKind = "web" }: { projectId: string; workloadKind?: "web" | "worker" }) {
-  const worker = workloadKind === "worker";
+export function ServiceCard({ projectId }: { projectId: string }) {
   const [status, setStatus] = useState<ServiceStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [restartMsg, setRestartMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const inFlight = useRef(false);
-  /** A check asked for while one is running. One follow-up is kept, and it is fresh if any request asked for fresh. */
-  const pending = useRef(false);
-  const pendingFresh = useRef(false);
 
   /** Ask the container. State changes only happen after the answer arrives. */
-  const check = useCallback(async (fresh = false): Promise<void> => {
-    if (inFlight.current) {
-      // Not dropped: one follow-up check runs when the one in flight ends.
-      pending.current = true;
-      pendingFresh.current = pendingFresh.current || fresh;
-      return;
-    }
+  const check = useCallback(async (fresh = false) => {
+    if (inFlight.current) return;
     inFlight.current = true;
-    let ask = fresh;
     try {
-      // One more pass runs if a check was asked for while the last pass was in flight.
-      // Check now keeps its spinner until that pass has answered.
-      do {
-        pending.current = false;
-        pendingFresh.current = false;
-        try {
-          // The server reuses a reading under 30 seconds old; `fresh` always asks the container.
-          const res = await api<{ status: ServiceStatus }>(
-            `/api/projects/${projectId}/status${ask ? "?fresh=1" : ""}`
-          );
-          setStatus(res.status);
-          setError(null);
-        } catch (err) {
-          setError(err instanceof Error ? err.message : "Could not check the service");
-        }
-        ask = pendingFresh.current;
-      } while (pending.current);
+      // The server reuses a reading under 30 seconds old; `fresh` always asks the container.
+      const res = await api<{ status: ServiceStatus }>(
+        `/api/projects/${projectId}/status${fresh ? "?fresh=1" : ""}`
+      );
+      setStatus(res.status);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not check the service");
     } finally {
       inFlight.current = false;
       setLoading(false);
@@ -148,7 +129,7 @@ export function ServiceCard({ projectId, workloadKind = "web" }: { projectId: st
     >
       <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
         <h2 id="service-heading" className="text-title-3">
-          {worker ? "Worker process" : "Service"}
+          Service
         </h2>
         <div className="flex items-center gap-2">
           <ConfirmDialog
@@ -164,7 +145,7 @@ export function ServiceCard({ projectId, workloadKind = "web" }: { projectId: st
               </Button>
             }
             title="Restart the service?"
-            description={worker ? "The worker stops processing for a few seconds." : "The app is offline for a few seconds."}
+            description="The app is offline for a few seconds."
             confirmLabel="Restart"
             pendingLabel="Restarting…"
             onConfirm={restart}
@@ -191,7 +172,7 @@ export function ServiceCard({ projectId, workloadKind = "web" }: { projectId: st
 
       {status ? (
         <>
-          <dl className={cn("grid gap-x-6 gap-y-5 p-4 sm:grid-cols-2", worker ? "lg:grid-cols-4" : "lg:grid-cols-5")}>
+          <dl className="grid gap-x-6 gap-y-5 p-4 sm:grid-cols-2 lg:grid-cols-5">
             <Item label="Status" lead>
               <Swap value={status.state}>
                 <StatusIndicator
@@ -219,7 +200,7 @@ export function ServiceCard({ projectId, workloadKind = "web" }: { projectId: st
                 {status.restarts ?? "No reading"}
               </Swap>
             </Item>
-            {!worker && <Item label="Health check">
+            <Item label="Health check">
               <Swap value={http ? `${http.code}-${http.ms}` : "none"}>
                 {http === null || http === undefined ? (
                   <span className="font-normal text-muted-foreground">Not checked</span>
@@ -234,7 +215,7 @@ export function ServiceCard({ projectId, workloadKind = "web" }: { projectId: st
                   </span>
                 )}
               </Swap>
-            </Item>}
+            </Item>
           </dl>
           <p className="border-t px-4 py-2 text-caption text-muted-foreground">
             Checked{" "}
@@ -251,8 +232,8 @@ export function ServiceCard({ projectId, workloadKind = "web" }: { projectId: st
       ) : error ? null : (
         <div role="status">
           <span className="sr-only">Checking your container…</span>
-          <div aria-hidden="true" className={cn("grid gap-x-6 gap-y-5 p-4 sm:grid-cols-2", worker ? "lg:grid-cols-4" : "lg:grid-cols-5")}>
-            {(worker ? ["Status", "Uptime", "Memory", "Restarts"] : ["Status", "Uptime", "Memory", "Restarts", "Health check"]).map((label) => (
+          <div aria-hidden="true" className="grid gap-x-6 gap-y-5 p-4 sm:grid-cols-2 lg:grid-cols-5">
+            {["Status", "Uptime", "Memory", "Restarts", "Health check"].map((label) => (
               <div key={label}>
                 <p className="mb-1 text-label text-muted-foreground">{label}</p>
                 <div className="flex h-5 items-center">

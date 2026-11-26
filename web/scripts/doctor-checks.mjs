@@ -296,50 +296,15 @@ export function checkDatabaseUrl({ url }) {
 /**
  * Can anyone sign in? A production build ignores DEV_LOGIN, so a fresh `pnpm run setup` file
  * alone gives no way in. `dev` is true when started with --dev.
- * LOCAL_MODE follows the rules in src/server/config.ts: it needs a LOCAL_MODE_SECRET of 32 or more
- * characters, and a loopback APP_URL unless LOCAL_MODE_ALLOW_REMOTE is on. Otherwise the server
- * refuses to start, so that is a blocker and no other sign-in method is consulted.
  */
 export function checkSignIn({ env, dev }) {
   const name = "Sign-in";
-  const on = (key) => ["1", "true"].includes(String(env?.[key] ?? "").trim());
+  const on = (key) => String(env?.[key] ?? "").trim() === "1";
   const set = (key) => String(env?.[key] ?? "").trim() !== "";
-  if (on("LOCAL_MODE")) {
-    if (String(env?.LOCAL_MODE_SECRET ?? "").length < MIN_SECRET_LENGTH) {
-      return result(name, false, "blocker", `LOCAL_MODE is on but LOCAL_MODE_SECRET is missing or shorter than ${MIN_SECRET_LENGTH} characters`, "Add LOCAL_MODE_SECRET=<32 or more random characters> to .env.local.");
-    }
-    let host = null;
-    try {
-      host = new URL(String(env?.APP_URL ?? "").trim() || DEFAULT_APP_URL).hostname;
-    } catch {
-      host = null;
-    }
-    const loopback = host !== null && isLoopbackHost(host);
-    if (!loopback && !on("LOCAL_MODE_ALLOW_REMOTE")) {
-      return result(name, false, "blocker", "LOCAL_MODE needs APP_URL to be localhost or 127.0.0.1", "Set APP_URL=http://localhost:3000 in .env.local, or set LOCAL_MODE_ALLOW_REMOTE=1 only if you control who can reach the site.");
-    }
-    return result(name, true, "warning", "LOCAL_MODE is on: sign in on this computer");
-  }
+  if (on("LOCAL_MODE")) return result(name, true, "warning", "LOCAL_MODE=1: sign in on this computer");
   if (set("HACKCLUB_CLIENT_ID") && set("HACKCLUB_CLIENT_SECRET")) return result(name, true, "warning", "Sign-in with Hack Club Auth is set up");
   if (dev && on("DEV_LOGIN")) return result(name, true, "warning", "DEV_LOGIN=1 (development sign-in)");
   return result(name, false, "warning", "No way to sign in is set up", "Add LOCAL_MODE=1 to .env.local to sign in on this computer, or set the Hack Club Auth keys.");
-}
-
-/**
- * Rate limits key on the client address. With TRUST_PROXY off there is no address, so sign-in and
- * token guesses are not throttled per client. Only a proxy that sets X-Forwarded-For should change that.
- */
-export function checkProxy({ env }) {
-  const name = "Rate limits";
-  const v = String(env?.TRUST_PROXY ?? "").trim().toLowerCase();
-  if (v === "1" || v === "true") return result(name, true, "warning", "TRUST_PROXY is on: limits use the address from the proxy");
-  return result(
-    name,
-    false,
-    "warning",
-    "TRUST_PROXY is off: sign-in and token guesses are not limited per address",
-    "Set TRUST_PROXY=1 only if a reverse proxy in front of Egg sets X-Forwarded-For. Otherwise leave it off."
-  );
 }
 
 // --------------------------------------------------------------------- output

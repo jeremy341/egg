@@ -39,13 +39,7 @@ def copy_tree(source, target):
         info = os.stat(name, dir_fd=source, follow_symlinks=False)
         room(65536)
         if stat.S_ISLNK(info.st_mode):
-            link_target = os.readlink(name, dir_fd=source)
-            # The copy does not follow links, but adopting a preview points the
-            # production current symlink at this tree. An escaping link would
-            # let the live app read files outside its release folder.
-            if os.path.isabs(link_target) or '..' in link_target.split('/'):
-                raise RuntimeError('Preview contains an escaping symlink')
-            os.symlink(link_target, name, dir_fd=target)
+            os.symlink(os.readlink(name, dir_fd=source), name, dir_fd=target)
         elif stat.S_ISDIR(info.st_mode):
             os.mkdir(name, mode=0o700, dir_fd=target)
             s = os.open(name, flags, dir_fd=source)

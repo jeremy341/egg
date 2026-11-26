@@ -1,16 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { ScheduleError, describeSchedule, nextRun, parseSchedule, toOnCalendar } from "@/lib/cron-schedule";
+import { describeSchedule, nextRun, parseSchedule, toOnCalendar } from "@/lib/cron-schedule";
 
 const calendar = (expr: string) => toOnCalendar(parseSchedule(expr));
 const words = (expr: string) => describeSchedule(parseSchedule(expr));
 const at = (iso: string) => new Date(iso);
 
 describe("parseSchedule", () => {
-  it("rejects an object key such as constructor with a schedule error, not a TypeError", () => {
-    expect(() => parseSchedule("constructor")).toThrow(ScheduleError);
-    expect(() => parseSchedule("toString")).toThrow(ScheduleError);
-  });
-
   it("reads steps, ranges, lists and plain numbers", () => {
     expect(parseSchedule("*/15 * * * *").minutes).toEqual([0, 15, 30, 45]);
     expect(parseSchedule("0 9-17 * * *").hours).toEqual([9, 10, 11, 12, 13, 14, 15, 16, 17]);
@@ -61,27 +56,6 @@ describe("parseSchedule", () => {
     expect(() => parseSchedule("0,3 * * * *")).toThrow(/every 3 minutes/);
     expect(parseSchedule("*/5 * * * *").minutes).toHaveLength(12);
     expect(parseSchedule("0 0,1 * * *").hours).toEqual([0, 1]);
-  });
-
-  it("refuses a run pattern that only gets close across midnight, but keeps a five-minute bridge", () => {
-    expect(() => parseSchedule("0,56 0,23 * * *")).toThrow(/every 4 minutes/);
-    expect(() => parseSchedule("0,58 0,23 * * *")).toThrow(/every 2 minutes/);
-    expect(parseSchedule("0,55 0,23 * * *").hours).toEqual([0, 23]);
-    // A job on a single weekday has no adjacent active days, so only within-day gaps matter.
-    expect(parseSchedule("0,56 0,23 * * 1").weekdays).toEqual([1]);
-  });
-
-  it("checks the midnight gap across active days, weekdays and month wraps", () => {
-    expect(() => parseSchedule("0,59 0,23 1,2 * *")).toThrow(/every 1 minute\b/);
-    expect(() => parseSchedule("0,58 0,23 1,2 * *")).toThrow(/every 2 minutes/);
-    expect(() => parseSchedule("0,59 0,23 * * 0,1")).toThrow(/every 1 minute\b/);
-    expect(() => parseSchedule("0,59 0,23 1,31 1,2 *")).toThrow(/every 1 minute\b/);
-    // A five-minute bridge and non-adjacent active days stay accepted.
-    expect(parseSchedule("0,55 0,23 1,2 * *").hours).toEqual([0, 23]);
-    expect(parseSchedule("0,59 0,23 1,15 * *").days).toEqual([1, 15]);
-    // April has no 31st, so those two listed days are never adjacent.
-    expect(parseSchedule("0,59 0,23 30,31 4 *").days).toEqual([30, 31]);
-    expect(parseSchedule("0 0 * * *").hours).toEqual([0]);
   });
 
   it("rejects absurd input without hanging", () => {

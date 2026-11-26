@@ -31,14 +31,8 @@ if [ -z "$container" ]; then
   echo "The app container must be running so its database can be identified and backed up." >&2
   exit 1
 fi
-# Check the exec itself: a pipeline into tr used to hide a failed exec and turn
-# it into a misleading "cannot back up DATABASE_URL" message.
-if ! db_url=$(docker compose exec -T app node -p 'process.env.DATABASE_URL || ""'); then
-  echo "Could not read DATABASE_URL from the app container; is it running?" >&2
-  echo "Refusing to upgrade without a backup." >&2
-  exit 1
-fi
-db_url=$(printf '%s' "$db_url" | tr -d '\r')
+db_url=$(docker compose exec -T app node -p 'process.env.DATABASE_URL || ""' | tr -d '\r')
+data_mount=$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Source}}{{end}}{{end}}' "$container")
 case "$db_url" in
   file:/data/*) container_db=${db_url#file:} ;;
   *) echo "Cannot automatically back up the configured DATABASE_URL; back it up separately before upgrading." >&2; exit 1 ;;
@@ -46,48 +40,11 @@ esac
 case "$container_db" in
   *".."*|*"?"*|*"#"*) echo "Unsupported database path; back it up separately before upgrading." >&2; exit 1 ;;
 esac
-
-# One line per /data mount. Concatenating the sources (the old format string)
-# produced a single unusable path when there was more than one mount.
-if ! mounts=$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{println .Source}}{{end}}{{end}}' "$container"); then
-  echo "Could not inspect the app container's mounts." >&2
-  exit 1
-fi
-mount_count=0
-data_mount=
-while IFS= read -r m; do
-  [ -n "$m" ] || continue
-  mount_count=$((mount_count + 1))
-  data_mount=$m
-done <<EOF
-$mounts
-EOF
-if [ "$mount_count" -gt 1 ]; then
-  echo "The app container has more than one /data mount; cannot tell which one holds the database. Back it up separately before upgrading." >&2
-  exit 1
-fi
-if [ "$mount_count" -eq 0 ] || [ -z "$data_mount" ]; then
+if [ -z "$data_mount" ]; then
   echo "Cannot identify the app's /data mount; refusing to upgrade without a backup." >&2
   exit 1
 fi
-case "$data_mount" in
-  /*) ;;
-  *) echo "The app's /data is the named Docker volume '$data_mount', which is not a host path. Back up the database separately before upgrading." >&2; exit 1 ;;
-esac
-
-# A named volume (or a volume owned by another user) may be unreadable here, so
-# verify the file before handing it to backup.sh.
-db_path=$data_mount/${container_db#/data/}
-if [ ! -f "$db_path" ]; then
-  echo "Database not found at $db_path. If /data is a Docker volume it may not be readable from the host; back up the database separately before upgrading." >&2
-  exit 1
-fi
-if [ ! -r "$db_path" ]; then
-  echo "Database at $db_path is not readable by this user; back up the database separately before upgrading." >&2
-  exit 1
-fi
-
-EGG_SKIP_IF_MISSING=0 EGG_DB="$db_path" EGG_CONTAINER_DB="$container_db" EGG_DATA_MOUNT="$data_mount" sh deploy/backup.sh
+EGG_SKIP_IF_MISSING=0 EGG_DB="$data_mount/${container_db#/data/}" EGG_CONTAINER_DB="$container_db" EGG_DATA_MOUNT="$data_mount" sh deploy/backup.sh
 
 if [ -d .git ]; then
   echo "== git pull"

@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CaretRightIcon, PencilSimpleIcon, TrashIcon } from "@phosphor-icons/react";
+import { PencilSimpleIcon, TrashIcon } from "@phosphor-icons/react";
 import { api } from "@/components/api";
 import { Swap } from "@/components/motion/swap";
 import { GithubBuildCard } from "@/components/github-build-card";
@@ -24,54 +24,8 @@ import { PixelAvatar } from "@/components/ui/pixel-avatar";
 import type { ProjectView } from "@/server/queries";
 import { cn } from "@/lib/utils";
 import { CleanupCard } from "@/components/cleanup-card";
-import { HostingOptions, StartCommandHelp, runtimeHint, type TargetCapabilities } from "@/components/hosting-options";
-import { ContainerDeploymentFields, containerConfigurationError, containerDeploymentBody, defaultContainerForm } from "@/components/container-deployment-fields";
 
 type EnvVar = { id: string; key: string; target: "all" | "production" | "preview" };
-
-/** The cards inside the Automation "Advanced" disclosure. The settings nav links to their headings. */
-const AUTOMATION_ADVANCED_IDS = ["alerts-heading", "status-page-heading", "homepage-feed-heading"];
-
-/** One heading for a group of cards. */
-function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
-  return (
-    <section aria-labelledby={id} className="space-y-6">
-      <h2 id={id} className="border-b pb-2 text-sm font-medium">
-        {title}
-      </h2>
-      {children}
-    </section>
-  );
-}
-
-/** A native disclosure for the rarely used options of a section. */
-function Advanced({
-  label = "Advanced",
-  open,
-  onOpenChange,
-  className,
-  children,
-}: {
-  label?: string;
-  open?: boolean;
-  onOpenChange?: (open: boolean) => void;
-  className?: string;
-  children: ReactNode;
-}) {
-  return (
-    <details
-      className={cn("disclosure", className)}
-      open={open}
-      onToggle={onOpenChange ? (e) => onOpenChange(e.currentTarget.open) : undefined}
-    >
-      <summary className="touch-target -mx-1 w-fit items-center gap-1.5 rounded-sm px-1 py-1.5 text-label font-medium max-sm:min-h-10">
-        <CaretRightIcon aria-hidden="true" className="disclosure-caret size-4" />
-        {label}
-      </summary>
-      <div className="mt-3">{children}</div>
-    </details>
-  );
-}
 
 export function ProjectSettings({
   project,
@@ -84,8 +38,7 @@ export function ProjectSettings({
 
   // ---- build and run settings
   const [form, setForm] = useState({
-    port: project.listenPort === null ? "" : String(project.listenPort),
-    deploymentMode: project.deploymentMode,
+    port: String(project.port),
     startCommand: project.startCommand ?? "",
     productionBranch: project.branch,
     healthPath: project.healthPath,
@@ -95,22 +48,6 @@ export function ProjectSettings({
   const [build, setBuild] = useState<BuildForm | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const [capabilities, setCapabilities] = useState<TargetCapabilities | null>(null);
-  const [container, setContainer] = useState({
-    dockerfilePath: project.dockerfilePath ?? defaultContainerForm.dockerfilePath,
-    composeFilePath: project.composeFilePath ?? defaultContainerForm.composeFilePath,
-    composeService: project.composeService ?? defaultContainerForm.composeService,
-    containerPort: project.containerPort === null ? "" : String(project.containerPort ?? defaultContainerForm.containerPort),
-  });
-  const containerError = containerConfigurationError(form.deploymentMode, project.workloadKind, container);
-  const [capabilityError, setCapabilityError] = useState<string | null>(null);
-  const [capabilityAttempt, setCapabilityAttempt] = useState(0);
-  const githubPush = project.repoUrl.startsWith("https://github.com/") && project.repo !== null;
-  useEffect(() => {
-    let live = true;
-    api<TargetCapabilities>(`/api/servers/${project.serverId}/capabilities`).then((value) => { if (live) { setCapabilities(value); setCapabilityError(null); } }).catch((error) => { if (live) setCapabilityError(error instanceof Error ? error.message : "Could not load target capabilities."); });
-    return () => { live = false; };
-  }, [project.serverId, capabilityAttempt]);
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -120,13 +57,11 @@ export function ProjectSettings({
       await api(`/api/projects/${project.id}`, {
         method: "PATCH",
         body: {
-          listenPort: project.workloadKind === "worker" ? (form.port.trim() === "" ? null : Number(form.port)) : Number(form.port),
-          deploymentMode: form.deploymentMode,
-          ...containerDeploymentBody(form.deploymentMode, project.workloadKind, container),
+          port: Number(form.port),
           startCommand: form.startCommand.trim() || null,
           productionBranch: form.productionBranch.trim(),
-          ...(project.workloadKind === "web" ? { healthPath: form.healthPath.trim() || "/" } : {}),
-          autoDeploy: githubPush && form.autoDeploy,
+          healthPath: form.healthPath.trim() || "/",
+          autoDeploy: form.autoDeploy,
           ...(build ? buildBody(build) : {}),
         },
       });
@@ -216,17 +151,6 @@ export function ProjectSettings({
 
   const canDelete = confirm === project.slug;
 
-  // ---- automation: open the Advanced group when a link points at a card inside it
-  const [autoOpen, setAutoOpen] = useState(false);
-  useEffect(() => {
-    const reveal = () => {
-      if (AUTOMATION_ADVANCED_IDS.includes(window.location.hash.slice(1))) setAutoOpen(true);
-    };
-    reveal();
-    window.addEventListener("hashchange", reveal);
-    return () => window.removeEventListener("hashchange", reveal);
-  }, []);
-
   return (
     <div className="motion-enter w-full max-w-[936px]">
       <PageHeader
@@ -237,8 +161,7 @@ export function ProjectSettings({
       <div className="grid gap-10 lg:grid-cols-[176px_minmax(0,720px)]">
         <SettingsNav />
 
-        <div className="min-w-0 space-y-10">
-          <Section id="section-build" title="Build">
+        <div className="min-w-0 space-y-6">
           <Card
             id="run-heading"
             title="Build and Run"
@@ -258,17 +181,13 @@ export function ProjectSettings({
                     {saveMsg?.text ?? "Changes apply to the next deployment."}
                   </Swap>
                 </p>
-                <Button type="submit" form="run-form" loading={saving} disabled={!build || Boolean(containerError)}>
+                <Button type="submit" form="run-form" loading={saving}>
                   {saving ? "Saving…" : "Save"}
                 </Button>
               </>
             }
           >
             <form id="run-form" onSubmit={save} className="grid gap-4 sm:grid-cols-2">
-              <HostingOptions prefix="ps" workloadKind={project.workloadKind} workloadLocked deploymentMode={form.deploymentMode} capabilities={capabilities} onWorkloadChange={() => {}} onModeChange={(value) => setForm({ ...form, deploymentMode: value })} />
-              {capabilityError && <Alert role="alert" tone="error" className="sm:col-span-2" action={<Button type="button" variant="outline" size="sm" onClick={() => { setCapabilityError(null); setCapabilityAttempt((attempt) => attempt + 1); }}>Try again</Button>}>Could not load target capabilities: {capabilityError} Container modes remain unavailable until the check succeeds.</Alert>}
-              <ContainerDeploymentFields prefix="ps" mode={form.deploymentMode} workloadKind={project.workloadKind} value={container} onChange={setContainer} />
-              {containerError && <p role="alert" className="text-label text-destructive sm:col-span-2">{containerError}</p>}
               <div>
                 <Label htmlFor="ps-branch">Production branch</Label>
                 <Input
@@ -279,7 +198,7 @@ export function ProjectSettings({
                 />
               </div>
               <div>
-                <Label htmlFor="ps-port">{project.workloadKind === "worker" ? "Listen port (optional)" : "Port"}</Label>
+                <Label htmlFor="ps-port">Port</Label>
                 <Input
                   id="ps-port"
                   inputMode="numeric"
@@ -287,36 +206,28 @@ export function ProjectSettings({
                   onChange={(e) => setForm({ ...form, port: e.target.value })}
                   className="font-mono"
                 />
-                {project.workloadKind === "worker" && <p className="text-label text-muted-foreground">Fill this only if the bot must receive webhooks over HTTP. A domain can point at it once it is set. Leave it empty to keep the worker closed.</p>}
               </div>
               <div className="sm:col-span-2">
                 <Label htmlFor="ps-start">Start command</Label>
                 <Input
                   id="ps-start"
                   value={form.startCommand}
-                  placeholder={runtimeHint(build?.runtime ?? project.runtime)}
+                  placeholder={project.runtime === "node" ? "npm start" : "python3 app.py"}
                   onChange={(e) => setForm({ ...form, startCommand: e.target.value })}
                   className="font-mono"
-                  aria-describedby="ps-start-help"
                 />
-                <StartCommandHelp runtime={build?.runtime ?? project.runtime} id="ps-start-help" />
               </div>
               <ProjectBuildFields
                 projectId={project.id}
-                workloadKind={project.workloadKind}
                 build={build}
                 onLoad={setBuild}
                 onChange={setBuild}
                 onCopy={(s) => {
-                  if (project.workloadKind === "worker" && s.runtime === "static") {
-                    setSaveMsg({ ok: false, text: "Static sites require a separate web project. These settings were not copied." });
-                    return;
-                  }
                   setBuild(toBuildForm(s));
                   setForm((f) => ({ ...f, startCommand: s.startCommand ?? "", healthPath: s.healthPath }));
                 }}
               />
-              {project.workloadKind === "web" && <div>
+              <div>
                 <Label htmlFor="ps-health">Health check path</Label>
                 <Input
                   id="ps-health"
@@ -324,35 +235,30 @@ export function ProjectSettings({
                   onChange={(e) => setForm({ ...form, healthPath: e.target.value })}
                   className="font-mono"
                 />
-              </div>}
+              </div>
               <label className="touch-target inline-flex min-h-10 items-center gap-2 self-end sm:min-h-9">
                 <input
                   type="checkbox"
                   checked={form.autoDeploy}
-                  disabled={!githubPush}
                   onChange={(e) => setForm({ ...form, autoDeploy: e.target.checked })}
                 />
                 Deploy automatically on push
               </label>
-              {!githubPush && <p className="text-label text-muted-foreground sm:col-span-2">Use manual deployments or the Deploy Hook below. Automatic push deployment needs a verified provider webhook.</p>}
             </form>
           </Card>
 
           <GithubBuildCard project={project} />
-          </Section>
 
-          <Section id="section-env" title="Environment">
           <Card
             id="env-heading"
             title="Environment Variables"
-            description="Stored encrypted. Values are never shown again."
+            description="Stored encrypted. They are written to your server when you deploy, and values are never shown again."
             docsHref="/docs/env"
             docsTopic="environment variables"
-            docsLabel="Learn more"
           >
             <form
               onSubmit={addEnv}
-              className="grid gap-3 sm:grid-cols-2 min-[1280px]:grid-cols-[1fr_1.4fr_130px_auto] sm:items-end"
+              className="grid gap-3 sm:grid-cols-[1fr_1.4fr_130px_auto] sm:items-end"
             >
               <div>
                 <Label htmlFor="env-key">Name</Label>
@@ -391,8 +297,7 @@ export function ProjectSettings({
                   <option value="preview">{ENV_TARGET_LABEL.preview}</option>
                 </NativeSelect>
               </div>
-              {/* The stored value is never shown, so an update must carry a new one. Saving blank would erase it. */}
-              <Button type="submit" disabled={!key.trim() || (editing && !value)} loading={envSaving}>
+              <Button type="submit" disabled={!key.trim()} loading={envSaving}>
                 {envSaving ? "Saving…" : editing ? "Update" : "Save"}
               </Button>
             </form>
@@ -402,9 +307,7 @@ export function ProjectSettings({
               </Alert>
             ) : null}
 
-            <Advanced label="How variables work" className="mt-4">
-              <EnvHelp />
-            </Advanced>
+            <EnvHelp />
 
             <EnvImportButton
               projectId={project.id}
@@ -445,34 +348,26 @@ export function ProjectSettings({
                 ))}
               </ul>
             ) : (
-              <p className="mt-4 text-muted-foreground">No variables yet.</p>
+              <p className="mt-4 text-muted-foreground">No variables yet. Add a name and a value above; they reach your server on the next deploy.</p>
             )}
           </Card>
-          </Section>
 
-          <Section id="section-automation" title="Automation">
-            <DeployHookCard project={project} />
+          <DeployHookCard project={project} />
 
-            <ScheduledJobsCard projectId={project.id} />
+          <ScheduledJobsCard projectId={project.id} />
 
-            <NotificationsCard project={project} />
+          <NotificationsCard project={project} />
 
-            <Advanced open={autoOpen} onOpenChange={setAutoOpen}>
-              <div className="space-y-6">
-                <AlertsCard project={project} />
-                <StatusPageCard project={project} />
-                <HomepageFeedCard project={project} />
-              </div>
-            </Advanced>
-          </Section>
+          <AlertsCard project={project} />
 
-          <Section id="section-danger" title="Danger zone">
+          <StatusPageCard project={project} />
+          <HomepageFeedCard project={project} />
           <CleanupCard name={project.slug} projectId={project.id} />
 
           <Card
             id="danger-heading"
             title="Delete Project"
-            description="Removes the project from Egg. The lists below show what goes and what stays."
+            description="Removes the project from Egg. Optionally stops it and deletes its releases on your server first. The lists below show what goes and what stays."
             tone="danger"
             footer={
               <>
@@ -536,7 +431,6 @@ export function ProjectSettings({
               className="font-mono"
             />
           </Card>
-          </Section>
         </div>
       </div>
     </div>

@@ -99,13 +99,9 @@ type Message = { title: string; detail: string; link: string };
 
 function payload(kind: Kind, m: Message) {
   const text = `${m.title}\n${m.detail}\n${m.link}`;
-  if (kind === "discord") {
-    return { username: "Egg", content: text, allowed_mentions: { parse: [] } };
-  }
-  // Slack parses markup in `text`; commit messages, branches, project names and
-  // error strings are attacker-influenced and could otherwise ping a whole channel
-  // with <!channel> or forge links. Discord already disables mentions above.
-  return { text: text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") };
+  return kind === "discord"
+    ? { username: "Egg", content: text, allowed_mentions: { parse: [] } }
+    : { text };
 }
 
 async function post(url: string, kind: Kind, m: Message, fetcher: Fetcher) {
@@ -465,7 +461,6 @@ type AlertProject = Pick<
   | "id"
   | "slug"
   | "name"
-  | "workloadKind"
   | "notifyUrlEnc"
   | "alertOnDown"
   | "alertOnRecovery"
@@ -486,9 +481,7 @@ function titleFor(
   phase: "fire" | "resolve"
 ): string {
   if (type === "down") {
-    // A worker does not answer requests; it runs, or it has stopped.
-    const down = project.workloadKind === "worker" ? `${project.name} has stopped` : `${project.name} is not answering`;
-    return phase === "fire" ? down : `${project.name} is back up`;
+    return phase === "fire" ? `${project.name} is not answering` : `${project.name} is back up`;
   }
   return `${project.name}: ${RESOURCE_TITLE[type][phase === "fire" ? 0 : 1]}`;
 }

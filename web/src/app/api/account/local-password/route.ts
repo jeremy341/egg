@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
-import { SESSION_COOKIE, createSession, sessionCookieOptions } from "@/server/auth/session";
+import { SESSION_COOKIE, createSession, deleteSession, sessionCookieOptions } from "@/server/auth/session";
 import { localCredential, replaceLocalCredential } from "@/server/auth/local-credential";
 import { hashLocalPassword, localPasswordProblem, verifyLocalPassword } from "@/server/auth/local-password";
 import { localModeEnabled } from "@/server/config";
@@ -36,14 +36,13 @@ export const POST = handle(async (req: NextRequest) => {
   if (!(await replaceLocalCredential(current.passwordHash, newHash))) {
     throw new HttpError(409, "The password changed in another request. Try again.", "conflict");
   }
-  // A competing change that landed after our compare-and-set wins before any
-  // session is touched, so a raced-out user keeps the session they came with.
-  const latest = await localCredential();
-  if (latest?.passwordHash !== newHash) {
-    throw new HttpError(409, "The password changed again. Sign in with the new password.", "conflict");
-  }
   await revokeOtherSessions(user.id, undefined);
   const session = await createSession(user.id, req.headers.get("user-agent"));
+  const latest = await localCredential();
+  if (latest?.passwordHash !== newHash) {
+    await deleteSession(session.token);
+    throw new HttpError(409, "The password changed again. Sign in with the new password.", "conflict");
+  }
   const res = NextResponse.json({ changed: true });
   res.cookies.set(SESSION_COOKIE, session.token, sessionCookieOptions(session.expiresAt));
   return res;

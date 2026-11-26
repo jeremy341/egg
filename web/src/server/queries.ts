@@ -22,20 +22,10 @@ export type ProjectView = {
   id: string;
   slug: string;
   name: string;
-  /** Always "owner": projects are single-owner. */
-  role?: "owner";
   repo: string | null;
   repoUrl: string;
   branch: string;
   runtime: string;
-  workloadKind: "web" | "worker";
-  deploymentMode: "native" | "dockerfile" | "compose";
-  /** Docker-mode settings; null in native mode. */
-  dockerfilePath: string | null;
-  composeFilePath: string | null;
-  composeService: string | null;
-  containerPort: number | null;
-  listenPort: number | null;
   startCommand: string | null;
   port: number;
   healthPath: string;
@@ -93,8 +83,6 @@ export type DeploymentView = {
   cleanedUp: boolean;
   error: string | null;
   createdAt: string;
-  /** Always true for the owner unless a caller explicitly hides actions. */
-  canAct?: boolean;
 };
 
 type DeploymentRow = typeof schema.deployments.$inferSelect;
@@ -102,15 +90,13 @@ type DeploymentRow = typeof schema.deployments.$inferSelect;
 function toDeploymentView(
   d: DeploymentRow,
   project: { id: string; userId: string; slug: string; name: string; repoFullName: string | null },
-  userId: string,
-  canAct = true
+  userId: string
 ): DeploymentView {
   return {
     id: d.id,
     projectId: project.id,
     projectSlug: project.userId === userId ? project.slug : `~${project.id}`,
     projectName: project.name,
-    canAct,
     repo: project.repoFullName,
     env: d.env,
     state: uiState(d.state),
@@ -168,20 +154,12 @@ async function loadProjectViews(userId: string): Promise<ProjectView[]> {
     const d = latest.get(p.id);
     return {
       id: p.id,
-      slug: p.slug,
+      slug: p.userId === userId ? p.slug : `~${p.id}`,
       name: p.name,
-      role: "owner",
       repo: p.repoFullName,
       repoUrl: p.repoUrl,
       branch: p.productionBranch,
       runtime: p.runtime,
-      workloadKind: p.workloadKind,
-      deploymentMode: p.deploymentMode,
-      dockerfilePath: p.dockerfilePath,
-      composeFilePath: p.composeFilePath,
-      composeService: p.composeService,
-      containerPort: p.containerPort,
-      listenPort: p.listenPort ?? (p.workloadKind === "worker" ? null : p.port),
       startCommand: p.startCommand,
       port: p.port,
       healthPath: p.healthPath,
@@ -269,12 +247,7 @@ export async function deploymentView(userId: string, deploymentId: string) {
     .where(eq(schema.domains.projectId, row.p.id));
   return {
     deployment: toDeploymentView(row.d, row.p, userId),
-    project: {
-      id: row.p.id,
-      slug: row.p.slug,
-      name: row.p.name,
-      port: row.p.port,
-    },
+    project: { id: row.p.id, slug: row.p.slug, name: row.p.name, port: row.p.port },
     domains: domains.map((x) => x.domain),
   };
 }

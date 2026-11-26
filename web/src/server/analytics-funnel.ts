@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, sql } from "drizzle-orm";
 import { getFeatures, type FunnelStep } from "@/server/analytics-config";
 import { sinceDay } from "@/server/analytics-events";
 import { getDb, schema } from "@/server/db";
@@ -16,9 +16,6 @@ import { MIN_SAMPLE } from "@/server/stats";
  */
 
 export type FunnelEvent = { visitor: string; kind: FunnelStep["kind"]; value: string; at: number };
-
-/** Raw rows loaded per query, the bound `analytics-flow.ts` uses for its own load. */
-const MAX_ROW_LOAD = 50_000;
 
 /**
  * Visitors who reached each step. Each visitor's events are walked in time
@@ -125,9 +122,7 @@ export async function funnelSummary(userId: string, projectId: string, days = 30
           gte(schema.pageviews.at, new Date(`${from}T00:00:00Z`)),
           inArray(schema.pageviews.path, paths)
         )
-      )
-      .orderBy(desc(schema.pageviews.at))
-      .limit(MAX_ROW_LOAD);
+      );
     for (const r of rows) events.push({ visitor: r.visitor, kind: "page", value: r.path, at: r.at.getTime() });
   }
 
@@ -144,9 +139,7 @@ export async function funnelSummary(userId: string, projectId: string, days = 30
           inArray(schema.analyticsEvents.label, names),
           sql`${schema.analyticsEvents.visitor} is not null`
         )
-      )
-      .orderBy(desc(schema.analyticsEvents.at))
-      .limit(MAX_ROW_LOAD);
+      );
     for (const r of rows) {
       if (r.visitor && r.label && r.at) events.push({ visitor: r.visitor, kind: "track", value: r.label, at: r.at.getTime() });
     }

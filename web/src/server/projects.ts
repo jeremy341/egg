@@ -3,10 +3,9 @@ import { z } from "zod";
 import { audit } from "@/server/audit";
 import { pickCloneSettings, type CloneSettings } from "@/server/clone-settings";
 import { newId, open, seal } from "@/server/crypto";
-import { getDb, schema, withLockRetry, type Db } from "@/server/db";
-import { isUniqueViolation } from "@/server/db/errors";
+import { getDb, schema, type Db } from "@/server/db";
 import { pageLimit, selectDeploymentPage, type DeploymentFilter } from "@/server/deployment-page";
-import { BUILD_LOCATIONS, RUNTIMES, WORKLOAD_KINDS, DEPLOYMENT_MODES } from "@/server/db/schema";
+import { BUILD_LOCATIONS, RUNTIMES } from "@/server/db/schema";
 import { assertCloneUrl, BuildError } from "@/server/deploy/build";
 import { isValidSlug, slugify } from "@/server/deploy/layout";
 import { ENV_KEY, RESERVED_ENV } from "@/server/deploy/runtime";
@@ -17,24 +16,9 @@ import { getServerForUser } from "@/server/servers";
 import { assertCleanupAllowsWork } from "@/server/cleanup-guards";
 import { maintenanceBlocksUser } from "@/server/maintenance";
 import { projectReadableBy } from "@/server/project-roles";
-import { forgetDeliveriesForDeployments } from "@/server/webhooks";
-import { providerClientForUser, publicProviderClient, repositoryNameFromUrl, validateProviderSource } from "@/server/providers/connections";
-import { genericGitEnvironment } from "@/server/providers/generic";
 
 export type ProjectRow = typeof schema.projects.$inferSelect;
 export type DeploymentRow = typeof schema.deployments.$inferSelect;
-
-/** Hide the legacy compatibility port for portless workers at API boundaries. */
-export function projectResponse(project: ProjectRow) {
-  const { providerWebhookSecretEnc: _secret, ...safe } = project;
-  void _secret;
-  // A worker with a listen port (a webhook bot) exposes it; a portless worker stays closed.
-  const listen = project.listenPort ?? (project.workloadKind === "worker" ? null : project.port);
-  return { ...safe, port: listen, listenPort: listen, healthPath: project.workloadKind === "worker" ? null : project.healthPath };
-}
-export function deploymentResponse(deployment: DeploymentRow) {
-  return { ...deployment, port: deployment.port === 0 ? null : deployment.port };
-}
 
 /** Previews get ports from this range so they never collide with production. */
 export const PREVIEW_PORT_MIN = 20000;
@@ -58,18 +42,7 @@ const rootDir = z
   )
   .default(".");
 
-/** A file path relative to the repository root, for Dockerfile and Compose file paths. */
-const repoFilePath = z
-  .string()
-  .trim()
-  .max(200)
-  .refine(
-    (v) => !v.startsWith("/") && !v.split(/[\\/]/).includes(".."),
-    "Must be a relative path inside the repository"
-  );
-
-/** A git branch name. Every entry point uses this one rule, so a name that is refused in one place is refused everywhere. */
-export const branch = z
+const branch = z
   .string()
   .trim()
   .min(1)
@@ -93,22 +66,10 @@ export const createProjectInput = z.object({
   slug: z.string().trim().toLowerCase().optional(),
   repoUrl: z.string().trim().max(300),
   repoFullName: z.string().trim().max(200).nullable().optional(),
-  sourceProvider: z.enum(["github", "gitlab", "forgejo", "codeberg", "generic"]).default("github"),
-  providerConnectionId: z.string().min(1).max(64).nullable().optional(),
   installationId: z.number().int().positive().nullable().optional(),
   productionBranch: branch.default("main"),
   rootDir,
   runtime: z.enum(RUNTIMES),
-  workloadKind: z.enum(WORKLOAD_KINDS).default("web"),
-  deploymentMode: z.enum(DEPLOYMENT_MODES).default("native"),
-  /** Dockerfile path relative to the repository root; used only in "dockerfile" mode. */
-  dockerfilePath: repoFilePath.nullable().optional(),
-  /** Compose file path relative to the repository root; used only in "compose" mode. */
-  composeFilePath: repoFilePath.nullable().optional(),
-  /** The Compose service that is deployed; used only in "compose" mode. */
-  composeService: z.string().trim().max(100).nullable().optional(),
-  /** Port the container image listens on; used only in Docker modes. */
-  containerPort: port.nullable().optional(),
   installCommand: command,
   buildCommand: command,
   startCommand: command,
@@ -116,8 +77,7 @@ export const createProjectInput = z.object({
   /** Where builds run: "container" (the default) or "github" (a GitHub Actions workflow uploads the release). */
   buildLocation: z.enum(BUILD_LOCATIONS).optional(),
   buildCacheEnabled: z.boolean().optional(),
-  port: port.optional(),
-  listenPort: port.nullable().optional(),
+  port,
   healthPath: z.string().trim().max(200).regex(/^\//, "Must start with /").default("/"),
   autoDeploy: z.boolean().default(true),
   /**
@@ -134,14 +94,12 @@ export const createProjectInput = z.object({
  * would silently reset the branch, root folder, health path and auto deploy.
  */
 export const updateProjectInput = createProjectInput
-  .omit({ serverId: true, slug: true, repoUrl: true, repoFullName: true, installationId: true, sourceProvider: true, providerConnectionId: true, adopted: true })
+  .omit({ serverId: true, slug: true, repoUrl: true, repoFullName: true, installationId: true, adopted: true })
   .extend({
     productionBranch: createProjectInput.shape.productionBranch.removeDefault(),
     rootDir: createProjectInput.shape.rootDir.removeDefault(),
     healthPath: createProjectInput.shape.healthPath.removeDefault(),
     autoDeploy: createProjectInput.shape.autoDeploy.removeDefault(),
-    workloadKind: createProjectInput.shape.workloadKind.removeDefault(),
-    deploymentMode: createProjectInput.shape.deploymentMode.removeDefault(),
   })
   .partial();
 
@@ -167,19 +125,22 @@ export async function getReadableProject(userId: string, projectId: string): Pro
   return project;
 }
 
-/** Owner-only alias kept for the deploy actions that used to allow developer members. */
 async function getDevelopableProject(userId: string, projectId: string): Promise<ProjectRow> {
-  return assertOwned(userId, projectId);
+  const db = await getDb();
+  const project = await db.select().from(schema.projects).where(and(eq(schema.projects.id, projectId), sql`(
+    ${schema.projects.userId} = ${userId} or exists (
+      select 1 from project_members pm where pm.project_id = ${schema.projects.id} and pm.user_id = ${userId} and pm.role = 'developer'
+    ))`)).get();
+  if (!project) throw notFound("Project not found");
+  return project;
 }
 
 export async function listProjects(userId: string) {
   const db = await getDb();
-  // Projects are single-owner. This surface, the dashboard and v1 list_projects
-  // all use the same owner predicate so their results agree.
   return db
     .select()
     .from(schema.projects)
-    .where(projectReadableBy(userId))
+    .where(eq(schema.projects.userId, userId))
     .orderBy(desc(schema.projects.createdAt));
 }
 
@@ -211,49 +172,23 @@ async function assertGithubLinks(
 
 export async function createProject(userId: string, raw: unknown): Promise<ProjectRow> {
   const input = createProjectInput.parse(raw);
-  if (input.port !== undefined && input.listenPort !== undefined && input.port !== input.listenPort) throw new HttpError(400, "Port and listenPort must agree.", "validation");
-  const selectedPort = input.listenPort !== undefined ? input.listenPort : input.port;
-  if (input.workloadKind === "web" && selectedPort == null) throw new HttpError(400, "A web project needs a port.", "validation");
-  if (input.workloadKind === "worker" && input.runtime === "static") throw new HttpError(400, "Static sites need a web workload.", "validation");
-  if (input.deploymentMode === "dockerfile" && !input.dockerfilePath) throw new HttpError(400, "A Dockerfile project needs the Dockerfile path.", "validation");
-  if (input.deploymentMode === "compose" && (!input.composeFilePath || !input.composeService)) throw new HttpError(400, "A Compose project needs the Compose file path and the service to run.", "validation");
-  if (input.deploymentMode !== "native" && input.buildLocation === "github") throw new HttpError(400, "Container projects build their image on your server. GitHub build settings are for native projects.", "validation");
   const db = await getDb();
   await getServerForUser(userId, input.serverId);
-  let providerRepoName = input.repoFullName ?? null;
 
-  if (input.sourceProvider === "github") {
-    if (input.providerConnectionId) throw new HttpError(400, "GitHub uses an installation, not a provider connection.", "validation");
-    try { assertCloneUrl(input.repoUrl); } catch (e) {
-      if (e instanceof BuildError) throw new HttpError(400, e.message, "validation");
-      throw e;
-    }
-    await assertGithubLinks(userId, input);
-  } else if (input.sourceProvider === "generic") {
-    if (input.providerConnectionId || input.installationId || input.buildLocation === "github") throw new HttpError(400, "Generic Git supports public HTTPS only.", "validation");
-    try { await genericGitEnvironment(input.repoUrl); } catch { throw new HttpError(400, "Enter a public HTTPS repository on a public host.", "validation"); }
-  } else {
-    if (input.installationId || input.buildLocation === "github") throw new HttpError(400, "GitHub build settings cannot be used for this provider.", "validation");
-    const api = input.providerConnectionId ? await providerClientForUser(userId, input.providerConnectionId, input.sourceProvider) : publicProviderClient(input.sourceProvider, input.repoUrl);
-    providerRepoName ??= repositoryNameFromUrl(input.repoUrl);
-    await validateProviderSource(api, { repoFullName: providerRepoName, repoUrl: input.repoUrl, productionBranch: input.productionBranch }, !input.providerConnectionId);
+  try {
+    assertCloneUrl(input.repoUrl);
+  } catch (e) {
+    if (e instanceof BuildError) throw new HttpError(400, e.message, "validation");
+    throw e;
   }
+
+  await assertGithubLinks(userId, input);
 
   const slug = input.slug ? input.slug : slugify(input.name);
   if (!isValidSlug(slug)) {
     throw new HttpError(
       400,
       "The project name must use lowercase letters, digits and hyphens (up to 40).",
-      "validation"
-    );
-  }
-  // Preview and job services are named egg-<slug>-pv-<id8> and egg-<slug>-job-<id8>;
-  // a project with a matching suffix would own the same unit file stem as
-  // another project's live service, so the name is refused up front.
-  if (/-(?:pv|job)-[0-9a-f]{8}$/.test(slug)) {
-    throw new HttpError(
-      400,
-      'The project name cannot end with "-pv-" or "-job-" and eight characters, like "-pv-1a2b3c4d". Choose another name.',
       "validation"
     );
   }
@@ -270,24 +205,13 @@ export async function createProject(userId: string, raw: unknown): Promise<Proje
   const now = new Date();
   // The port check and the insert are one write transaction, so two requests for the same
   // port cannot both pass the check before either row exists.
-  await withLockRetry(() => db.transaction(async (tx) => {
+  await db.transaction(async (tx) => {
     await assertCleanupAllowsWork(tx, userId);
-    // Derived names on the server (systemd unit, container, ~/.egg/<slug> folder, image,
-    // Compose project) are built from the slug alone, so two projects with the same slug
-    // on one server would silently kill each other's units. A slug is unique per server,
-    // not just per user.
-    const onServer = await tx
-      .select({ id: schema.projects.id })
-      .from(schema.projects)
-      .where(and(eq(schema.projects.serverId, input.serverId), eq(schema.projects.slug, slug)));
-    if (onServer.length > 0) {
-      throw new HttpError(409, `A project called "${slug}" already runs on this server. Slugs are unique per server, so choose another name.`, "conflict");
-    }
-    if (selectedPort != null) await assertPortFree(
+    await assertPortFree(
       tx,
       input.serverId,
-      selectedPort,
-      `Port ${selectedPort} is already used by another project on this server.`
+      input.port,
+      `Port ${input.port} is already used by another project on this server.`
     );
     await tx.insert(schema.projects).values({
       id,
@@ -296,152 +220,60 @@ export async function createProject(userId: string, raw: unknown): Promise<Proje
       slug,
       name: input.name,
       repoUrl: input.repoUrl,
-      repoFullName: providerRepoName,
-      sourceProvider: input.sourceProvider,
-      providerConnectionId: input.providerConnectionId ?? null,
+      repoFullName: input.repoFullName ?? null,
       installationId: input.installationId ?? null,
       productionBranch: input.productionBranch,
       rootDir: input.rootDir,
       runtime: input.runtime,
-      workloadKind: input.workloadKind,
-      deploymentMode: input.deploymentMode,
-      // Container settings only mean something in Docker modes; native projects
-      // store none, so switching modes never leaves stale file paths behind.
-      dockerfilePath: input.deploymentMode === "dockerfile" ? input.dockerfilePath ?? null : null,
-      composeFilePath: input.deploymentMode === "compose" ? input.composeFilePath ?? null : null,
-      composeService: input.deploymentMode === "compose" ? input.composeService ?? null : null,
-      containerPort: input.deploymentMode === "native" ? null : input.containerPort ?? null,
       installCommand: input.installCommand || null,
       buildCommand: input.buildCommand || null,
       startCommand: input.startCommand || null,
       outputDir: input.outputDir || null,
       buildLocation: input.buildLocation ?? "container",
       buildCacheEnabled: input.buildCacheEnabled ?? false,
-      port: selectedPort ?? 0,
-      listenPort: selectedPort ?? null,
+      port: input.port,
       healthPath: input.healthPath,
-      autoDeploy: input.sourceProvider !== "github" || input.adopted ? false : input.autoDeploy,
+      autoDeploy: input.adopted ? false : input.autoDeploy,
       createdAt: now,
       updatedAt: now,
-    }).catch((err: unknown) => {
-      // The slug and port pre-checks can still race a concurrent create; the
-      // unique indexes have the final word, and every collision must surface as
-      // a clean conflict naming the real loser, not a raw database error.
-      if (isUniqueViolation(err)) {
-        throw createProjectConflict(err, slug, `Port ${selectedPort} is already used by another project on this server.`);
-      }
-      throw err;
     });
-  }));
+  });
   await audit(userId, "project.create", id, { name: input.name });
   return assertOwned(userId, id);
 }
 
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
-/** Walks the error chain for the first unique-violation message, like isUniqueViolation. */
-function uniqueViolationMessage(err: unknown): string {
-  let e: unknown = err;
-  for (let i = 0; i < 4 && e; i++) {
-    const message = String((e as { message?: unknown }).message ?? "");
-    if (/UNIQUE constraint failed/i.test(message)) return message;
-    e = (e as { cause?: unknown }).cause;
-  }
-  return "";
-}
-
-/** Maps a unique-index violation from the project insert to the matching conflict message. */
-function createProjectConflict(err: unknown, slug: string, portMessage: string): HttpError {
-  const message = uniqueViolationMessage(err);
-  if (/projects_server_slug_idx|projects\.server_id, projects\.slug/.test(message)) {
-    return new HttpError(409, `A project called "${slug}" already runs on this server. Slugs are unique per server, so choose another name.`, "conflict");
-  }
-  if (/projects_server_listen_port_idx|listen_port/.test(message)) {
-    return new HttpError(409, portMessage, "conflict");
-  }
-  return new HttpError(409, `You already have a project called "${slug}".`, "conflict");
-}
-
 /** 409 when another project on this server already has the port. Call inside the write transaction. */
 async function assertPortFree(tx: Tx, serverId: string, port: number, message: string, exceptId?: string) {
   const taken = await tx
     .select({ id: schema.projects.id })
     .from(schema.projects)
-    .where(and(eq(schema.projects.serverId, serverId), eq(schema.projects.listenPort, port)));
+    .where(and(eq(schema.projects.serverId, serverId), eq(schema.projects.port, port)));
   if (taken.some((p) => p.id !== exceptId)) throw new HttpError(409, message, "conflict");
 }
 
 export async function updateProject(userId: string, projectId: string, raw: unknown) {
   const input = updateProjectInput.parse(raw);
   const project = await assertOwned(userId, projectId);
-  if (input.autoDeploy && project.sourceProvider !== "github" && !project.providerWebhookSecretEnc) throw new HttpError(400, "Configure a provider webhook before enabling automatic deployments.", "validation");
-  if (input.workloadKind && input.workloadKind !== project.workloadKind) throw new HttpError(400, "Create a separate project to change between a web service and a worker.", "validation");
-  if (input.port !== undefined && input.listenPort !== undefined && input.port !== input.listenPort) throw new HttpError(400, "Port and listenPort must agree.", "validation");
-  const selectedPort = input.listenPort !== undefined ? input.listenPort : input.port;
-  // Workers may set or clear their listen port; a web project keeps a port at all times.
-  const portTouched = input.port !== undefined || input.listenPort !== undefined;
-  if (project.workloadKind === "web" && portTouched && selectedPort === null) throw new HttpError(400, "A web project needs a port.", "validation");
-  if (project.workloadKind === "worker" && input.runtime === "static") throw new HttpError(400, "Static sites need a web workload.", "validation");
-  const selectedMode = input.deploymentMode ?? project.deploymentMode;
-  if (selectedMode === "dockerfile" && (input.dockerfilePath ?? project.dockerfilePath) == null) throw new HttpError(400, "A Dockerfile project needs the Dockerfile path.", "validation");
-  if (selectedMode === "compose" && (input.composeFilePath ?? project.composeFilePath) == null) throw new HttpError(400, "A Compose project needs the Compose file path.", "validation");
-  if (selectedMode === "compose" && (input.composeService ?? project.composeService) == null) throw new HttpError(400, "A Compose project needs the service to run.", "validation");
-  if (selectedMode !== "native" && (input.buildLocation ?? project.buildLocation) === "github") throw new HttpError(400, "Container projects build their image on your server. GitHub build settings are for native projects.", "validation");
   const db = await getDb();
 
   const clean = Object.fromEntries(
     Object.entries(input).filter(([, v]) => v !== undefined)
   ) as Partial<typeof schema.projects.$inferInsert>;
-  if (portTouched) {
-    if (selectedPort != null) { clean.port = selectedPort; clean.listenPort = selectedPort; }
-    else if (project.workloadKind === "worker") { clean.port = 0; clean.listenPort = null; }
-  }
-  if (selectedMode === "native") {
-    // Container settings only mean something in Docker modes; keep the stored
-    // set in step with the mode so switching back never resurrects stale paths.
-    clean.dockerfilePath = null;
-    clean.composeFilePath = null;
-    clean.composeService = null;
-    clean.containerPort = null;
-  }
-  const newPort = selectedPort != null && selectedPort !== project.port ? selectedPort : null;
-  await withLockRetry(() => db.transaction(async (tx) => {
+  const newPort = input.port !== undefined && input.port !== project.port ? input.port : null;
+  await db.transaction(async (tx) => {
     await assertCleanupAllowsWork(tx, userId, projectId);
-    if (newPort !== null || (portTouched && selectedPort === null && project.listenPort != null)) {
-      // A queued or running deployment pins the old port: changing it under the
-      // worker lets a second project claim the freed port and end up with the
-      // old release listening on it.
-      const active = await tx
-        .select({ id: schema.deployments.id })
-        .from(schema.deployments)
-        .where(and(
-          eq(schema.deployments.projectId, project.id),
-          inArray(schema.deployments.state, ["queued", "building", "deploying"]),
-        ))
-        .get();
-      if (active) {
-        throw new HttpError(409, "A deployment is still running for this project. Wait for it to finish before changing its port.", "conflict");
-      }
-      if (newPort !== null) {
-        await assertPortFree(tx, project.serverId, newPort, `Port ${newPort} is already used on this server.`, project.id);
-      }
+    if (newPort !== null) {
+      await assertPortFree(tx, project.serverId, newPort, `Port ${newPort} is already used on this server.`, project.id);
     }
     await tx
       .update(schema.projects)
       .set({ ...clean, updatedAt: new Date() })
-      .where(eq(schema.projects.id, project.id))
-      .catch((err: unknown) => {
-        // The pre-check races a concurrent update only in theory (one writer at a
-        // time in SQLite), but a unique violation must surface as a clean
-        // conflict, not a raw database error.
-        if (isUniqueViolation(err)) {
-          throw new HttpError(409, `Port ${newPort} is already used on this server.`, "conflict");
-        }
-        throw err;
-      });
+      .where(eq(schema.projects.id, project.id));
     // Nest holds the real port mapping: a domain left on the old port must say so.
     if (newPort !== null) await moveDomainsToPort(tx, project.id, newPort);
-  }));
+  });
   await audit(userId, "project.update", project.id, { fields: Object.keys(clean).join(", ") });
   return assertOwned(userId, projectId);
 }
@@ -464,13 +296,8 @@ export async function setEnvVar(userId: string, projectId: string, raw: unknown)
   const project = await assertOwned(userId, projectId);
   const db = await getDb();
 
-  await withLockRetry(() => db.transaction(async (tx) => {
+  await db.transaction(async (tx) => {
     await assertCleanupAllowsWork(tx, userId, project.id);
-    const valueEnc = seal(input.value, `env:${project.id}:${input.key}:${input.target}`);
-    // Only a genuinely new variable consumes the 100-variable budget. The
-    // existence check, the count and the write all live in the same write
-    // transaction (BEGIN IMMEDIATE), so two concurrent different keys cannot
-    // both see a free slot and push the project past the cap.
     const existing = await tx
       .select({ id: schema.envVars.id })
       .from(schema.envVars)
@@ -482,7 +309,10 @@ export async function setEnvVar(userId: string, projectId: string, raw: unknown)
         )
       )
       .get();
-    if (!existing) {
+    const valueEnc = seal(input.value, `env:${project.id}:${input.key}:${input.target}`);
+    if (existing) {
+      await tx.update(schema.envVars).set({ valueEnc }).where(eq(schema.envVars.id, existing.id));
+    } else {
       const count = await tx
         .select({ n: sql<number>`count(*)` })
         .from(schema.envVars)
@@ -491,21 +321,16 @@ export async function setEnvVar(userId: string, projectId: string, raw: unknown)
       if ((count?.n ?? 0) >= 100) {
         throw new HttpError(400, "A project can have up to 100 variables.", "limit");
       }
+      await tx.insert(schema.envVars).values({
+        id: newId(),
+        projectId: project.id,
+        key: input.key,
+        valueEnc,
+        target: input.target,
+        createdAt: new Date(),
+      });
     }
-    // One upsert: concurrent same-key writes collapse to a single row (last
-    // write wins) instead of one succeeding and the other failing on the index.
-    await tx.insert(schema.envVars).values({
-      id: newId(),
-      projectId: project.id,
-      key: input.key,
-      valueEnc,
-      target: input.target,
-      createdAt: new Date(),
-    }).onConflictDoUpdate({
-      target: [schema.envVars.projectId, schema.envVars.key, schema.envVars.target],
-      set: { valueEnc },
-    });
-  }));
+  });
   await audit(userId, "env.set", project.id, { name: input.key, target: input.target });
 }
 
@@ -591,26 +416,18 @@ export async function enqueueDeployment(
   input: NewDeployment,
   jobType: "deploy" | "rollback" = "deploy"
 ): Promise<DeploymentRow> {
-  // Compose previews cannot share the production Compose project: aux services,
-  // networks and named volumes are keyed by project name, so a preview would
-  // overwrite the live stack. Refuse when the deployment is queued, not after
-  // the build has run. Production and rollbacks are unaffected.
-  if (jobType === "deploy" && input.env === "preview" && project.deploymentMode === "compose") {
-    throw new HttpError(400, "Pull request previews are not available for Compose projects. Deploy the branch to production instead.", "validation");
-  }
   const db = await getDb();
   const id = newId();
   const enqueue = () => db.transaction(async (tx) => {
     if (input.triggeredBy && input.triggeredBy !== project.userId) {
-      throw notFound("Project not found");
+      const member = await tx.select({ role: schema.projectMembers.role }).from(schema.projectMembers).where(and(
+        eq(schema.projectMembers.projectId, project.id), eq(schema.projectMembers.userId, input.triggeredBy)
+      )).get();
+      if (member?.role !== "developer") throw notFound("Project not found");
     }
     await assertCleanupAllowsWork(tx, project.userId, project.id);
     if (await maintenanceBlocksUser(project.userId, tx)) throw new HttpError(503, "Maintenance is active. New deployments are paused.", "maintenance");
-    // A port is what production uses: the worker's listen port, or the web project's port.
-    // Previews are web traffic (PRs); a worker preview stays portless and is checked as a process.
-    const port = project.workloadKind === "worker"
-      ? input.env === "production" ? project.listenPort ?? 0 : 0
-      : input.port ??
+    const port = input.port ??
       (input.env === "production" ? project.port : await allocatePreviewPort(tx, project.serverId));
     await tx.insert(schema.deployments).values({
       id,
@@ -625,7 +442,6 @@ export async function enqueueDeployment(
       prNumber: input.prNumber ?? null,
       author: input.author ?? null,
       port,
-      listenPort: port === 0 ? null : port,
       releaseId: input.releaseId ?? newId(),
       createdAt: new Date(),
     });
@@ -638,8 +454,17 @@ export async function enqueueDeployment(
       createdAt: new Date(),
     });
   });
-  // SQLite can reject a concurrent write transaction immediately; retry only lock contention.
-  await withLockRetry(enqueue);
+  // SQLite can reject a concurrent write transaction immediately. Retry only lock
+  // contention; constraint and application errors must reach the caller unchanged.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await enqueue();
+      break;
+    } catch (err) {
+      if (attempt >= 49 || !(err instanceof Error) || !/SQLITE_BUSY|SQLITE_LOCKED/.test(err.message)) throw err;
+      await new Promise((resolve) => setTimeout(resolve, 20 + attempt * 5));
+    }
+  }
   return (await db.select().from(schema.deployments).where(eq(schema.deployments.id, id)).get())!;
 }
 
@@ -669,7 +494,7 @@ function viaMeta(via: ActionVia): Record<string, string> {
 
 /** Build the same commit again. */
 export async function redeploy(userId: string, deploymentId: string, via: ActionVia = {}) {
-  const { project, dep } = await ownedDeployment(userId, deploymentId);
+  const { project, dep } = await developerDeployment(userId, deploymentId);
   await audit(userId, "deploy.redeploy", project.id, { branch: dep.branch, ...viaMeta(via) });
   return enqueueDeployment(project, {
     env: dep.env,
@@ -684,7 +509,7 @@ export async function redeploy(userId: string, deploymentId: string, via: Action
 
 /** Point production back at an earlier release that is still on the server. */
 export async function rollback(userId: string, deploymentId: string, via: ActionVia = {}) {
-  const { project, dep } = await ownedDeployment(userId, deploymentId);
+  const { project, dep } = await developerDeployment(userId, deploymentId);
   if (dep.env !== "production") {
     throw new HttpError(400, "Only production deployments can be rolled back to.", "validation");
   }
@@ -719,7 +544,7 @@ export async function rollback(userId: string, deploymentId: string, via: Action
 }
 
 export async function cancelDeployment(userId: string, deploymentId: string, via: ActionVia = {}) {
-  const { project, dep } = await ownedDeployment(userId, deploymentId);
+  const { project, dep } = await developerDeployment(userId, deploymentId);
   const db = await getDb();
   // This conditional write races atomically with the worker's activation CAS.
   // Exactly one side wins: a cancel before activation, or the activation lock.
@@ -756,9 +581,15 @@ export async function ownedDeployment(userId: string, deploymentId: string) {
   return { dep, project };
 }
 
-/** Both read and action access are owner-only since team collaboration was removed. */
-export const readableDeployment = ownedDeployment;
-
+async function scopedDeployment(userId: string, deploymentId: string, role: "viewer" | "developer") {
+  const db = await getDb();
+  const dep = await db.select().from(schema.deployments).where(eq(schema.deployments.id, deploymentId)).get();
+  if (!dep) throw notFound("Deployment not found");
+  const project = role === "viewer" ? await getReadableProject(userId, dep.projectId) : await getDevelopableProject(userId, dep.projectId);
+  return { dep, project };
+}
+export const readableDeployment = (userId: string, deploymentId: string) => scopedDeployment(userId, deploymentId, "viewer");
+const developerDeployment = (userId: string, deploymentId: string) => scopedDeployment(userId, deploymentId, "developer");
 
 export async function listDeployments(userId: string, projectId?: string, limit = 50) {
   return (await listDeploymentsPage(userId, { projectId, limit })).rows;
@@ -833,14 +664,7 @@ export async function deleteProjectRecords(userId: string, projectId: string) {
         "conflict"
       );
     }
-    const deployments = await tx
-      .select({ id: schema.deployments.id })
-      .from(schema.deployments)
-      .where(eq(schema.deployments.projectId, project.id));
     await tx.delete(schema.projects).where(eq(schema.projects.id, project.id));
-    // The cascade removes the deployments; their delivery history survives by
-    // design, so the links that would now point at nothing are forgotten here.
-    await forgetDeliveriesForDeployments(tx, deployments.map((d) => d.id));
   });
   await audit(userId, "project.delete", null, { name: project.name });
 }

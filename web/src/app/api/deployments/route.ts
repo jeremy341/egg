@@ -32,7 +32,6 @@ export const GET = handle(async (req) => {
   return ok({
     deployments: rows.map((r) => ({
       ...r.deployment,
-      port: r.deployment.port === 0 ? null : r.deployment.port,
       projectName: r.projectName,
       projectSlug: r.projectSlug,
     })),

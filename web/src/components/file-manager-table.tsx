@@ -158,10 +158,10 @@ export function FileTable({
           <th scope="col" role="columnheader" className="px-4 py-2 font-medium">
             Name
           </th>
-          <th scope="col" role="columnheader" className="hidden w-24 px-3 py-2 text-right font-medium sm:table-cell lg:hidden xl:table-cell">
+          <th scope="col" role="columnheader" className="hidden w-24 px-3 py-2 text-right font-medium sm:table-cell">
             Size
           </th>
-          <th scope="col" role="columnheader" className="hidden w-36 px-3 py-2 font-medium md:table-cell lg:hidden xl:table-cell">
+          <th scope="col" role="columnheader" className="hidden w-36 px-3 py-2 font-medium md:table-cell">
             Modified
           </th>
           <th scope="col" role="columnheader" className="hidden w-36 px-3 py-2 font-medium 2xl:table-cell">
@@ -227,17 +227,17 @@ export function FileTable({
                     ) : hint ? (
                       <span className="block text-caption text-muted-foreground">{hint}</span>
                     ) : (
-                      <span className="block truncate text-caption text-muted-foreground sm:hidden lg:block xl:hidden">
+                      <span className="block truncate text-caption text-muted-foreground sm:hidden">
                         {facts.join(", ")}
                       </span>
                     )}
                   </div>
                 </div>
               </td>
-              <td role="gridcell" className="tabular hidden px-3 py-2 text-right text-[13px] text-muted-foreground sm:table-cell lg:hidden xl:table-cell">
+              <td role="gridcell" className="tabular hidden px-3 py-2 text-right text-[13px] text-muted-foreground sm:table-cell">
                 {folder || entry.type !== "file" ? "-" : formatBytes(entry.size)}
               </td>
-              <td role="gridcell" className="hidden truncate px-3 py-2 text-[13px] text-muted-foreground md:table-cell lg:hidden xl:table-cell">
+              <td role="gridcell" className="hidden truncate px-3 py-2 text-[13px] text-muted-foreground md:table-cell">
                 {entry.modified ? (
                   <time dateTime={entry.modified}>{formatModified(entry.modified)}</time>
                 ) : (

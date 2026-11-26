@@ -31,7 +31,6 @@ export const LABELS: Record<string, string> = {
   "project.update": "Changed settings for",
   "project.delete": "Deleted project",
   "project.restart": "Restarted",
-  "project.workflow.publish": "Opened a pull request that adds the build workflow to",
   "env.set": "Saved environment variable on",
   "env.delete": "Removed environment variable from",
   "deploy.redeploy": "Redeployed",
@@ -56,10 +55,7 @@ export const LABELS: Record<string, string> = {
   "server.build_cpu": "Changed the build CPU limit for",
   "project.cleanup_request": "Scheduled project cleanup for",
   "account.cleanup_request": "Scheduled account cleanup",
-  "account.cleanup_cancel_failed": "Dropped a failed cleanup after acknowledging possibly-unremoved projects",
   "admin.maintenance": "Changed maintenance settings",
-  "admin.grant": "Made someone an administrator",
-  "admin.revoke": "Removed an administrator",
   "security_report.list": "Viewed the security report inbox",
   "security_report.read": "Read a security report",
   "security_report.status": "Changed a security report status",
@@ -96,6 +92,11 @@ export const LABELS: Record<string, string> = {
   "admin.recovery.attempt": "Started recovery of interrupted work",
   "admin.recovery.complete": "Recovered interrupted backend work",
   "admin.recovery.failed": "Recorded an unsuccessful recovery",
+  "project.invitation.create": "Created a project invitation for",
+  "project.invitation.revoke": "Revoked a project invitation for",
+  "project.invitation.accept": "Accepted a project invitation for",
+  "project.member.role": "Changed a project collaborator role on",
+  "project.member.remove": "Removed a project collaborator from",
   "file.write": "Saved a file on",
   "file.mkdir": "Created a folder on",
   "file.rename": "Renamed a file on",
@@ -107,7 +108,6 @@ export const LABELS: Record<string, string> = {
   "webhook.delete": "Deleted a webhook",
   "webhook.rotate": "Replaced the secret of a webhook",
   "webhook.test": "Sent a test message to a webhook",
-  "provider.disconnect": "Disconnected a provider",
 };
 
 export function describeAction(action: string): string {

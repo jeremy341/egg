@@ -270,36 +270,6 @@ describe("import copy: disk space, size budget and partial copy cleanup", () => 
     expect(await stateOf(plan.id)).toBe("executing");
     expect(await guards(server.id)).toHaveLength(1);
   });
-
-  it("removes the copied production release on a failed cutover and releases the guard", async () => {
-    const { server, project, plan, token } = await planned();
-    // The stop confirmation fails after the copy succeeded, so the rollback runs.
-    const c = container(s => (s.includes("systemctl stop 'example.service'") ? { code: 1, stdout: "", stderr: "" } : undefined));
-    await expect(confirmImport(owner, project.id, plan.id, { confirm: true }, token, async () => c.session as never))
-      .rejects.toThrow(/could not be confirmed stopped/i);
-    const copied = c.scripts.findIndex(s => s.includes(COPY_MARK));
-    const back = c.scripts.find(s => s.includes('rm -rf -- "$dst"'));
-    expect(copied).toBeGreaterThan(-1);
-    expect(back).toBeDefined();
-    // The removal is in the rollback script itself, after the original service was restarted.
-    expect(back).toContain("systemctl start 'example.service'");
-    expect(back!.indexOf("systemctl start 'example.service'")).toBeLessThan(back!.indexOf('rm -rf -- "$dst"'));
-    expect(await stateOf(plan.id)).toBe("failed");
-    expect(await guards(server.id)).toHaveLength(0);
-  });
-
-  it("keeps the guard when the copied production release cannot be confirmed removed", async () => {
-    const { server, project, plan, token } = await planned();
-    const c = container(s => {
-      if (s.includes("systemctl stop 'example.service'")) return { code: 1, stdout: "", stderr: "" };
-      if (s.includes('rm -rf -- "$dst"')) return { code: 1, stdout: "", stderr: "" };
-      return undefined;
-    });
-    await expect(confirmImport(owner, project.id, plan.id, { confirm: true }, token, async () => c.session as never)).rejects.toThrow();
-    expect(c.scripts.some(s => s.includes('rm -rf -- "$dst"'))).toBe(true);
-    expect(await stateOf(plan.id)).toBe("executing");
-    expect(await guards(server.id)).toHaveLength(1);
-  });
 });
 
 describe("import copy: the checks themselves", () => {

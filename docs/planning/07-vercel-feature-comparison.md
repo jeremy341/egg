@@ -22,8 +22,8 @@ Sources: [Accounts](https://vercel.com/docs/accounts), [Projects](https://vercel
 | Project creation and settings | Need | Organize each application. |
 | GitHub repository connection | Need | Core import workflow. |
 | GitLab, Bitbucket and Azure DevOps | Could need | Expand beyond GitHub later. |
-| Team collaboration and invitations | Do not need | Removed 2026-11-22; projects are single-owner. |
-| Roles and permissions | Need | Owner-only project access; API token scopes remain. |
+| Team collaboration and invitations | Could need | Useful for shared projects later. |
+| Roles and permissions | Need | Enforce ownership initially; expand for teams. |
 | Enterprise SSO and governance | Do not need | Not required for individual-first use. |
 | Notifications and account recovery | Need | Help users respond to failures and regain access. |
 | Pricing, billing and spend management | Could need | Operator costs matter; customer billing is undecided. |

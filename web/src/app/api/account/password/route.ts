@@ -53,8 +53,8 @@ const NO_EMAIL =
  * sign-in in the last few minutes, the same rule the permission switches use.
  * A stolen or old session cannot add a password that would outlive its revocation.
  */
-async function requireFreshSignIn(req: NextRequest, userId: string) {
-  if (!(await isFreshAuth(req.cookies.get(SESSION_COOKIE)?.value, Date.now(), userId))) {
+async function requireFreshSignIn(req: NextRequest) {
+  if (!(await isFreshAuth(req.cookies.get(SESSION_COOKIE)?.value))) {
     throw new HttpError(
       403,
       `Confirm with Hack Club first. Turning on password sign-in needs a sign-in in the last ${Math.round(REAUTH_WINDOW_MS / 60000)} minutes.`,
@@ -79,14 +79,14 @@ export const POST = handle(async (req: NextRequest) => {
   if (body.action === "prepare") {
     if (current) throw new HttpError(409, "Password sign-in is already on.", "conflict");
     if (!user.email) throw new HttpError(400, NO_EMAIL, "validation");
-    await requireFreshSignIn(req, user.id);
+    await requireFreshSignIn(req);
     return NextResponse.json(prepareSetup(user.id));
   }
 
   if (body.action === "enable") {
     if (current) throw new HttpError(409, "Password sign-in is already on.", "conflict");
     if (!user.email) throw new HttpError(400, NO_EMAIL, "validation");
-    await requireFreshSignIn(req, user.id);
+    await requireFreshSignIn(req);
     if (body.savedRecoveryKey !== true) {
       throw new HttpError(400, "Confirm that you have saved the recovery key.", "validation");
     }

@@ -1,5 +1,4 @@
 import { Suspense } from "react";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ProjectSettings } from "@/components/project-settings";
 import { SettingsSkeleton } from "@/components/skeletons/settings";
@@ -19,7 +18,6 @@ async function Content({ params }: Props) {
   const user = await requireUser();
   const project = (await projectViews(user.id)).find((p) => p.slug === slug);
   if (!project) notFound();
-
   const env = await listEnvVars(user.id, project.id);
   return <ProjectSettings project={project} env={env} />;
 }

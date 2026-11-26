@@ -87,12 +87,9 @@ export type Project = {
   repo: string | null;
   branch: string;
   runtime: string;
-  port: number | null;
-  listenPort: number | null;
-  workloadKind: "web" | "worker";
-  deploymentMode: "native" | "dockerfile" | "compose";
+  port: number;
   startCommand: string | null;
-  healthPath: string | null;
+  healthPath: string;
   autoDeploy: boolean;
   /** Where builds run: container (your Nest container, under a memory and CPU cap) or github (your GitHub Actions workflow). */
   buildLocation: BuildLocation;
@@ -115,7 +112,7 @@ export type Deployment = DeploymentSummary & {
 export type DeploymentDetail = Deployment & {
   startedAt: string | null;
   finishedAt: string | null;
-  port: number | null;
+  port: number;
 };
 
 export type LogLine = { id: number; at: string; level: "info" | "warn" | "error"; message: string };
@@ -132,7 +129,7 @@ export type DeploymentLogPage = {
 export type Domain = {
   id: string;
   domain: string;
-  status: "pending" | "valid" | "invalid" | "unknown";
+  status: "pending" | "valid" | "invalid";
   port: number;
   projectId: string | null;
   projectName: string | null;
@@ -214,16 +211,14 @@ export type Usage = {
 
 export type BuildLocation = "container" | "github";
 
-export type Runtime = "node" | "python" | "static" | "command" | "go" | "rust" | "ruby" | "php" | "java";
+export type Runtime = "node" | "python" | "static" | "command";
 
 export type CreateProjectInput = {
   serverId: string;
   name: string;
   repoUrl: string;
   runtime: Runtime;
-  port?: number;
-  workloadKind?: "web" | "worker";
-  deploymentMode?: "native" | "dockerfile" | "compose";
+  port: number;
   slug?: string;
   productionBranch?: string;
   rootDir?: string | null;
@@ -287,11 +282,11 @@ export type Inventory = {
     projectId: string;
     slug: string;
     name: string;
-    port: number | null;
+    port: number;
     serviceState: ServiceState | null;
     folderKb: number | null;
-    portStatus: "own" | "free" | "clash" | null;
-    previews: { branch: string; port: number | null; state: ServiceState }[];
+    portStatus: "own" | "free" | "clash";
+    previews: { branch: string; port: number; state: ServiceState }[];
   }[];
   leftovers: {
     kind: "service" | "preview" | "folder";
@@ -577,7 +572,7 @@ export class Egg {
   }
 
   /** Check the domain's DNS now. Needs `domains:write`. */
-  verifyDomain(domainId: string): Promise<{ status: "valid" | "invalid" | "unknown"; reason: string | null; app: DomainAppCheck }> {
+  verifyDomain(domainId: string): Promise<{ status: "valid" | "invalid"; reason: string | null; app: DomainAppCheck }> {
     return this.request("POST", `/domains/${seg(domainId)}/verify`);
   }
 

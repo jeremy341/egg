@@ -167,8 +167,8 @@ beforeAll(async () => {
   domainId = newId();
   theirDomainId = newId();
   await ctx.db.insert(schema.domains).values([
-    { id: domainId, userId: me.id, serverId: myServerId, projectId, domain: "app.example.com", port: 3000, status: "pending", createdAt: new Date(), updatedAt: new Date() },
-    { id: theirDomainId, userId: other.id, serverId: theirServerId, projectId: theirProjectId, domain: "theirs.example.com", port: 3001, status: "pending", createdAt: new Date(), updatedAt: new Date() },
+    { id: domainId, userId: me.id, serverId: myServerId, projectId, domain: "app.example.com", port: 3000, status: "pending", createdAt: new Date() },
+    { id: theirDomainId, userId: other.id, serverId: theirServerId, projectId: theirProjectId, domain: "theirs.example.com", port: 3001, status: "pending", createdAt: new Date() },
   ]);
   // Secrets that exist in the database and must stay there.
   await setEnvVar(me.id, projectId, { key: "API_KEY", value: ENV_SECRET, target: "production" });
@@ -304,14 +304,7 @@ describe("the endpoint list", () => {
 
   it("puts every SSH-using endpoint in the small bucket and every change in the write bucket", () => {
     const byId = new Map(ENDPOINTS.map((e) => [e.id, e]));
-    for (const id of [
-      "get_logs",
-      "get_container_inventory",
-      "get_deployment_logs",
-      "get_resource_history",
-      "get_project_resources",
-      "get_server_usage",
-    ]) {
+    for (const id of ["get_container_inventory", "get_deployment_logs", "get_resource_history", "get_project_resources"]) {
       expect(byId.get(id)!.bucket, id).toBe("ssh");
     }
     for (const ep of ENDPOINTS.filter((e) => !e.readOnly && e.tag !== "Terminal" && e.tag !== "Files")) {
@@ -454,17 +447,11 @@ describe("create, change and delete a project", () => {
       expect((await run(updateProjectRoute, req(`/projects/${projectId}`, { secret: t.secret, method: "PATCH", body: { buildLocation } }), { projectId })).status, buildLocation).toBe(400);
     }
 
-    // A queued deployment pins the project's current port, so the seeded
-    // deployment must be finished before the port itself can move.
-    await ctx.db.update(schema.deployments).set({ state: "ready", finishedAt: new Date() }).where(eq(schema.deployments.id, deploymentId));
-
     // Null puts a command back to its default, and a port can move.
     const cleared = await run(updateProjectRoute, req(`/projects/${projectId}`, { secret: t.secret, method: "PATCH", body: { startCommand: null, port: 3050, autoDeploy: true } }), { projectId });
     expect((await cleared.json()).project).toMatchObject({ startCommand: null, port: 3050, autoDeploy: true });
 
-    await ctx.db.update(schema.projects).set({ autoDeploy: true, healthPath: "/", productionBranch: "main", rootDir: ".", port: 3000, listenPort: 3000 }).where(eq(schema.projects.id, projectId));
-    // The later detail tests still describe the fixture as a queued deployment.
-    await ctx.db.update(schema.deployments).set({ state: "queued", startedAt: null, finishedAt: null }).where(eq(schema.deployments.id, deploymentId));
+    await ctx.db.update(schema.projects).set({ autoDeploy: true, healthPath: "/", productionBranch: "main", rootDir: ".", port: 3000 }).where(eq(schema.projects.id, projectId));
   });
 
   it("does not take where builds run as a setting, and reports every project as built on the container", async () => {
@@ -792,7 +779,7 @@ describe("notifications, alerts and the status page", () => {
     const secret = await token(["notifications:read"]);
     const set = await (await run(notifyRoute, req(`/projects/${projectId}/notify`, { secret }), { projectId })).json();
     expect(set).toEqual({ notifications: { configured: true, kind: "discord", on: "failures" } });
-    await ctx.db.insert(schema.projects).values({ ...(await ctx.db.select().from(schema.projects).where(eq(schema.projects.id, projectId)).get())!, id: "plain-project", slug: "plain", name: "Plain", port: 3999, listenPort: 3999, notifyUrlEnc: null });
+    await ctx.db.insert(schema.projects).values({ ...(await ctx.db.select().from(schema.projects).where(eq(schema.projects.id, projectId)).get())!, id: "plain-project", slug: "plain", name: "Plain", port: 3999, notifyUrlEnc: null });
     const none = await (await run(notifyRoute, req("/projects/plain-project/notify", { secret }), { projectId: "plain-project" })).json();
     expect(none).toEqual({ notifications: { configured: false, kind: null, on: null } });
     await ctx.db.delete(schema.projects).where(eq(schema.projects.id, "plain-project"));

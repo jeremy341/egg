@@ -307,6 +307,11 @@ describe("opting in", () => {
     expect(row?.homepageFeed).toBe(false);
   });
 
+  it("is for the owner only: a developer collaborator is refused too", async () => {
+    const p = await project("sam/team");
+    await ctx.db.insert(schema.projectMembers).values({ projectId: p.id, userId: kim.id, role: "developer", createdAt: new Date() } as never);
+    await expect(setHomepageFeed(kim.id, p.id, true, { visibility: async () => "public" })).rejects.toMatchObject({ status: 404 });
+  });
 });
 
 describe("the settings route", () => {

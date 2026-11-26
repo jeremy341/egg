@@ -15,7 +15,6 @@ import {
   checkOs,
   checkPnpm,
   checkPort,
-  checkProxy,
   checkSignIn,
   dataDirFromDatabaseUrl,
   formatResults,
@@ -76,7 +75,6 @@ export async function runDoctor({ webDir = WEB_DIR, env = process.env, platform 
     checkPort({ server, free: server.ok ? await probes.portFree(server.port, server.host) : true }),
     checkDataFolder({ dir, probe: dir === null ? { exists: false, writable: false, error: null } : probes.directory(dir) }),
     checkSignIn({ env: merged, dev }),
-    checkProxy({ env: merged }),
     checkOs({ platform }),
     checkDatabaseUrl({ url: merged.DATABASE_URL }),
   ];

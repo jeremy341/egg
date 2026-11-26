@@ -24,9 +24,6 @@ export class SshError extends Error {
 
 const DEFAULT_MAX_OUTPUT_BYTES = 128 * 1024 * 1024;
 
-/** How long a stopped command (TERM sent) may keep its channel open before it is force-closed. */
-const STOP_GRACE_MS = 30_000;
-
 export type ExecResult = { code: number; stdout: string; stderr: string };
 
 export type ExecOptions = {
@@ -183,7 +180,6 @@ export class NestSession {
         const droppingTail = { stdout: false, stderr: false };
         let settled = false;
         let timer: NodeJS.Timeout | undefined;
-        let grace: NodeJS.Timeout | undefined;
         let received = 0;
         let stopError: SshError | null = null;
         const requestStop = (error: SshError) => {
@@ -194,17 +190,8 @@ export class NestSession {
           opts.stdinStream?.destroy();
           // Keep the SSH channel open until the server reports command exit.
           // Closing it immediately could release the queue guard while a remote
-          // child is still modifying the project. But a remote process that
-          // ignores TERM (or a grandchild holding the channel open) must not
-          // wedge the awaited promise forever: after a grace period the channel
-          // is force-closed and the caller learns the command could not be
-          // confirmed stopped.
+          // child is still modifying the project.
           stream.signal?.("TERM");
-          grace = setTimeout(() => {
-            if (settled) return;
-            stream.close();
-            finish(255);
-          }, STOP_GRACE_MS);
         };
         const onAbort = () => {
           requestStop(new SshError("Command canceled", "exec"));
@@ -260,7 +247,6 @@ export class NestSession {
           if (settled) return;
           settled = true;
           if (timer) clearTimeout(timer);
-          if (grace) clearTimeout(grace);
           opts.signal?.removeEventListener("abort", onAbort);
           if (stopError) {
             reject(stopError);
@@ -306,11 +292,7 @@ export class NestSession {
           if (settled) return;
           settled = true;
           if (timer) clearTimeout(timer);
-          if (grace) clearTimeout(grace);
           opts.signal?.removeEventListener("abort", onAbort);
-          // The channel is gone, so the local read stream piped into it must be
-          // dropped too, or it holds its fd open until garbage collection.
-          opts.stdinStream?.destroy();
           reject(friendlyConnectError(e));
         });
 
@@ -343,32 +325,10 @@ export class NestSession {
    * it works even if the bastion does not forward SFTP.
    */
   async uploadFile(localPath: string, remotePath: string, opts: { signal?: AbortSignal } = {}): Promise<void> {
-    const source = createReadStream(localPath);
-    // A read error (file removed, I/O failure) must fail this upload, not crash the process.
-    // It stops the remote cat the same way an abort does, so no truncated file is moved into place.
-    const sourceFault: { error?: Error } = {};
-    const cancel = new AbortController();
-    source.on("error", (err: Error) => {
-      sourceFault.error = err;
-      cancel.abort();
-    });
-    const onParentAbort = () => cancel.abort();
-    if (opts.signal?.aborted) cancel.abort();
-    else opts.signal?.addEventListener("abort", onParentAbort, { once: true });
-    let result: ExecResult;
-    try {
-      result = await this.exec(
-        `cat > ${shellQuote(remotePath)}.partial && mv ${shellQuote(remotePath)}.partial ${shellQuote(remotePath)}`,
-        { stdinStream: source, timeoutMs: 10 * 60_000, signal: cancel.signal }
-      );
-    } catch (err) {
-      throw sourceFault.error ?? err;
-    } finally {
-      opts.signal?.removeEventListener("abort", onParentAbort);
-      // Release the file descriptor on every settle path, including an early remote exit.
-      source.destroy();
-    }
-    if (sourceFault.error) throw sourceFault.error;
+    const result = await this.exec(
+      `cat > ${shellQuote(remotePath)}.partial && mv ${shellQuote(remotePath)}.partial ${shellQuote(remotePath)}`,
+      { stdinStream: createReadStream(localPath), timeoutMs: 10 * 60_000, signal: opts.signal }
+    );
     if (result.code !== 0) {
       throw new SshError(
         `Upload failed (exit ${result.code}): ${result.stderr.trim() || "no output"}`,

@@ -58,7 +58,7 @@ describe("deployment log edge cases", () => {
 
   it("does not store terminal control sequences or NUL bytes from build output", async () => {
     const log = new DeploymentLogger(deploymentId, 5);
-    log.info("\u001b[31mred\u001b[0m and a nul\u0000byte and a cr\rforge");
+    log.info("\u001b[31mred\u001b[0m and a nul\u0000byte");
     await log.flush();
     const row = (await stored()).find((r) => r.message.includes("red"));
     expect(row?.message).toBeDefined();

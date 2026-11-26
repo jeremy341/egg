@@ -334,7 +334,7 @@ export function DomainsView({
         <EmptyState
           icon={<GlobeSimpleIcon />}
           title="No domains yet"
-          description="Type a domain and its port above. Egg tells you which DNS record to add, and Nest does the routing, so add the same domain there too."
+          description="Type a domain and its port above. Egg tells you which DNS record to add and shows the domain as active once DNS checks out. Nest does the routing, so add the same domain on its dashboard too."
         />
       ) : (
         <Stagger

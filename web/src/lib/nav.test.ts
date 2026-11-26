@@ -54,23 +54,3 @@ describe("create button", () => {
     expect(hasOwnCreateButton("/projects/demo")).toBe(false);
   });
 });
-
-describe("project nav", () => {
-  it("lists every project page", () => {
-    expect(navFor("/projects/demo").items.map((i) => i.label)).toEqual([
-      "Overview",
-      "Deployments",
-      "Analytics",
-      "Files",
-      "Terminal",
-      "Settings",
-    ]);
-  });
-
-  it("titles and marks the project pages", () => {
-    const ctx = navFor("/projects/demo/settings");
-    expect(ctx.title).toBe("Project settings");
-    expect(ctx.items.some((i) => i.href === "/projects/demo/settings" && i.active("/projects/demo/settings"))).toBe(true);
-    expect(navFor("/projects/demo/analytics").backHref).toBe("/projects/demo");
-  });
-});

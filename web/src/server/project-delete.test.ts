@@ -4,24 +4,22 @@ import { upsertUser } from "@/server/auth/session";
 import { resetConfigForTests } from "@/server/config";
 import { open } from "@/server/crypto";
 import { getDb, schema } from "@/server/db";
-import { serverDiscriminator, unitName } from "@/server/deploy/layout";
+import { unitName } from "@/server/deploy/layout";
 import { runDeployJob, type PipelineDeps } from "@/server/deploy/pipeline";
 import { deleteProject } from "@/server/project-delete";
 import { claimNextJob } from "@/server/jobs";
 import { createProject, deployBranch, type ProjectRow } from "@/server/projects";
 import { connectToServer, createServer, getServerForUser, type ServerRow } from "@/server/servers";
-import { createWebhook } from "@/server/webhooks";
 import { NestSession } from "@/server/ssh/connection";
 import { containerReadyFacts, fakeBuilder, freePort, installFakeContainerBuild, installFakeSystemd, nodeApp } from "@/server/test/fake-nest";
 import { useFreshDb } from "@/server/test/db";
-import { linuxTestHostAvailable, startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
+import { startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
 
-describe.skipIf(!linuxTestHostAvailable())("deleting a project with a remote step on a mock Nest", () => {
+describe("deleting a project with a remote step on a mock Nest", () => {
   let ctx: Awaited<ReturnType<typeof useFreshDb>>;
   let mock: MockSsh;
   let userId: string;
   let server: ServerRow;
-  let scope = "";
   let deps: PipelineDeps;
   let unitDir: string;
   let home: string;
@@ -77,7 +75,6 @@ describe.skipIf(!linuxTestHostAvailable())("deleting a project with a remote ste
     const db = await getDb();
     await db.update(schema.servers).set({ port: mock.port, hostKeyFingerprint: mock.hostKeyFingerprint }).where(eq(schema.servers.id, server.id));
     server = await getServerForUser(userId, server.id);
-    scope = serverDiscriminator(server.id);
     home = await sh("echo $HOME");
     deps = {
       preflight: () => async () => containerReadyFacts,
@@ -106,7 +103,7 @@ describe.skipIf(!linuxTestHostAvailable())("deleting a project with a remote ste
     await expect(deleteProject(userId, p.id, { remote: true }, { removeRemote })).rejects.toMatchObject({ status: 409 });
     expect(removeRemote).not.toHaveBeenCalled();
     expect(await projectRow(p.id)).toBeDefined();
-    expect(await unitFiles()).toContain(unitName(p.slug, undefined, scope));
+    expect(await unitFiles()).toContain(unitName(p.slug));
     expect(await cleanupRows(p.id)).toEqual([]);
     await dropProject(p.id);
   });
@@ -122,7 +119,7 @@ describe.skipIf(!linuxTestHostAvailable())("deleting a project with a remote ste
     await expect(deleteProject(userId, p.id, { remote: true }, { removeRemote })).rejects.toMatchObject({ status: 409 });
     expect(removeRemote).not.toHaveBeenCalled();
     expect(await projectRow(p.id)).toBeDefined();
-    expect(await unitFiles()).toContain(unitName(p.slug, undefined, scope));
+    expect(await unitFiles()).toContain(unitName(p.slug));
     expect(await cleanupRows(p.id)).toEqual([]);
     await dropProject(p.id);
   });
@@ -162,12 +159,12 @@ describe.skipIf(!linuxTestHostAvailable())("deleting a project with a remote ste
   it("removes the units and releases from the container, marks the reservation done, and drops the project", async () => {
     const p = await newProject("Real Delete");
     await runDeployJob((await deployBranch(userId, p.id)).id, deps);
-    expect(await unitFiles()).toContain(unitName(p.slug, undefined, scope));
+    expect(await unitFiles()).toContain(unitName(p.slug));
     expect(await exists(`${home}/.egg/${p.slug}/releases`)).toBe(true);
 
     await deleteProject(userId, p.id, { remote: true });
 
-    expect(await unitFiles()).not.toContain(unitName(p.slug, undefined, scope));
+    expect(await unitFiles()).not.toContain(unitName(p.slug));
     expect(await exists(`${home}/.egg/${p.slug}/releases`)).toBe(false);
     expect(await projectRow(p.id)).toBeUndefined();
     const [reservation] = await cleanupRows(p.id);
@@ -179,7 +176,7 @@ describe.skipIf(!linuxTestHostAvailable())("deleting a project with a remote ste
     const p = await newProject("Data Delete");
     await runDeployJob((await deployBranch(userId, p.id)).id, deps);
     await deleteProject(userId, p.id, { remote: true, deleteData: true });
-    expect(await unitFiles()).not.toContain(unitName(p.slug, undefined, scope));
+    expect(await unitFiles()).not.toContain(unitName(p.slug));
     expect(await exists(`${home}/.egg/${p.slug}`)).toBe(false);
   });
 
@@ -194,7 +191,7 @@ describe.skipIf(!linuxTestHostAvailable())("deleting a project with a remote ste
     expect(await projectRow(p.id)).toBeDefined();
     const blocking = (await cleanupRows(p.id)).filter((row) => ["draining", "running", "failed"].includes(row.state));
     expect(blocking).toEqual([]);
-    expect(await unitFiles()).toContain(unitName(p.slug, undefined, scope));
+    expect(await unitFiles()).toContain(unitName(p.slug));
 
     // The project is usable again: a new deployment is accepted.
     await expect(deployBranch(userId, p.id)).resolves.toMatchObject({ state: "queued" });
@@ -237,47 +234,5 @@ describe.skipIf(!linuxTestHostAvailable())("deleting a project with a remote ste
     const db = await getDb();
     const left = await db.select().from(schema.cleanupJobs).where(and(eq(schema.cleanupJobs.projectId, idle.id)));
     expect(left).toEqual([]);
-  });
-
-  it("forgets the webhook delivery link to the deployments it deletes", async () => {
-    const p = await newProject("Delivery Forget");
-    const other = await newProject("Delivery Keep");
-    const db = await getDb();
-    for (const d of [
-      { id: "dep-forget", projectId: p.id, port: p.port, releaseId: "rel-forget" },
-      { id: "dep-keep", projectId: other.id, port: other.port, releaseId: "rel-keep" },
-    ]) {
-      await db.insert(schema.deployments).values({
-        ...d,
-        env: "production",
-        state: "ready",
-        source: "manual",
-        branch: "main",
-        createdAt: new Date(),
-      });
-    }
-    const { webhook } = await createWebhook(userId, { url: "https://hooks.example.com/in" });
-    const delivery = (id: string, deploymentId: string) => ({
-      id,
-      webhookId: webhook.id,
-      event: "deployment.succeeded",
-      deploymentId,
-      status: "success" as const,
-      attempts: 1,
-      createdAt: new Date(),
-    });
-    await db.insert(schema.webhookDeliveries).values([
-      delivery("dv-forget", "dep-forget"),
-      delivery("dv-keep", "dep-keep"),
-    ]);
-
-    await deleteProject(userId, p.id, { remote: true }, { removeRemote: vi.fn(async () => {}) });
-
-    expect(await projectRow(p.id)).toBeUndefined();
-    const rows = Object.fromEntries((await db.select().from(schema.webhookDeliveries)).map((d) => [d.id, d]));
-    expect(rows["dv-forget"].deploymentId).toBeNull();
-    expect(rows["dv-keep"].deploymentId).toBe("dep-keep");
-    await db.delete(schema.webhooks).where(eq(schema.webhooks.id, webhook.id));
-    await dropProject(other.id);
   });
 });

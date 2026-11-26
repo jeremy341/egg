@@ -28,20 +28,6 @@
 # The stock caddy:2 image cannot rate-limit requests or cap concurrent connections per path:
 # both need a third-party module, which this file does not add. For those limits, use your
 # firewall or cloud provider's request limits on /api/webhooks/github (see docs/selfhost).
-#
-# Global server timeouts. Without these a slow client can hold a connection open
-# indefinitely, which is the cheapest way to exhaust Caddy's file descriptors.
-{
-	servers {
-		timeouts {
-			read_header 10s
-			read_body 30s
-			write 60s
-			idle 120s
-		}
-	}
-}
-
 {$APP_HOST} {
 	encode zstd gzip
 

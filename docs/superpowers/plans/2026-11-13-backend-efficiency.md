@@ -22,14 +22,14 @@
 - [x] Builds: incremental archive hashing, nonblocking clone-size guard, bounded scoped download caches, deployment-stage timings and diagnosis API.
 - [x] Monitoring/maintenance: batched eligibility and service probes, bounded concurrency, shared maintenance leases, log byte/retention budgets, diagnostic baseline metrics.
 - [x] GitHub reconciliation: detect missed production commits with explicit authorized recovery, immutable commit selection, duplicate suppression.
-- [x] Project roles: expiring invitations, viewer/developer/owner checks applied consistently to dashboard backend, API/MCP and operations; retain owner-only server/root/account actions. **Superseded 2026-11-22:** project collaboration was removed; every project is single-owner and a forward migration drops the member/invitation tables.
+- [x] Project roles: expiring invitations, viewer/developer/owner checks applied consistently to dashboard backend, API/MCP and operations; retain owner-only server/root/account actions.
 - [x] Existing-app import: read-only discovery and expiring verified plan, explicit cutover confirmation, ownership and persistent-data protection, health check and rollback; no automatic live execution during development.
 - [x] Operator recovery: admin-only inspection and confirmed remote-stop verification before clearing stale guards; audit every action.
 - [x] Verification: focused tests per package, independent review, full suite, typecheck, changed backend lint, diff/scope audit.
 
 ## Review focus
 
-1. Revoked credentials must never inherit server-root authority; project access is owner-only.
+1. Revoked credentials and collaborator access must never inherit server-root authority.
 2. Slow clients, giant logs, large repos and cache corruption stay bounded.
 3. Duplicate/reordered events and concurrent jobs cannot corrupt or activate unintended releases.
 4. Adoption/recovery must fail closed if remote state or ownership cannot be verified.
