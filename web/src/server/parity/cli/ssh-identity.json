@@ -1,1 +1,66 @@
-[]
+[
+  {
+    "orchard": "sshidentity list",
+    "source": "sshidentity.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "credential management stays in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Display the registered SSH public-key identities.",
+      "args": [],
+      "flags": ["--output <table|json>"],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "sshidentity add",
+    "source": "sshidentity.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "credential management stays in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Register a public key under a supplied identity name, accepting the key inline or from a local file.",
+      "args": ["name"],
+      "flags": ["--key <public-key-or-file>", "--output <table|json>"],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "sshidentity remove",
+    "source": "sshidentity.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "credential management stays in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Delete a registered identity selected by its name or identifier.",
+      "args": ["name"],
+      "flags": ["--yes"],
+      "destructive": true,
+      "confirm": "Interactive confirmation; --yes bypasses the prompt."
+    }
+  },
+  {
+    "orchard": "sshidentity import-github",
+    "source": "sshidentity.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "credential management stays in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Import public SSH keys from the user's GitHub profile as named identities.",
+      "args": [],
+      "flags": ["--output <table|json>"],
+      "destructive": false,
+      "confirm": null
+    }
+  }
+]

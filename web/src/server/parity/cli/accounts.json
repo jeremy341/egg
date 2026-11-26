@@ -1,1 +1,210 @@
-[]
+[
+  {
+    "orchard": "auth login",
+    "source": "auth.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Signs in to an Orchard instance through a browser or a supplied API token, then saves the selected instance context.",
+      "args": [],
+      "flags": ["--token", "--with-token", "--api-url", "--name", "--web-url", "--no-browser"],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "auth status",
+    "source": "auth.go",
+    "status": "present",
+    "egg": "whoami",
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg's whoami command shows the signed-in account and credential details.",
+    "spec": {
+      "summary": "Checks the saved credential and shows which account is signed in.",
+      "args": [],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "auth logout",
+    "source": "auth.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Clears the saved token from the local CLI context.",
+      "args": [],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "auth token list",
+    "source": "auth.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Lists personal token details without revealing token values.",
+      "args": [],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "auth token create",
+    "source": "auth.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Creates a personal API token with optional scope, project limits, and expiration.",
+      "args": [],
+      "flags": ["--name", "--scope", "--project", "--expires-in"],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "auth token revoke <tokenId>",
+    "source": "auth.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Disables the selected API token so it can no longer authenticate requests.",
+      "args": ["tokenId"],
+      "flags": ["--yes"],
+      "destructive": true,
+      "confirm": "Asks before revoking the token unless --yes is supplied."
+    }
+  },
+  {
+    "orchard": "auth session list",
+    "source": "auth.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Lists active browser sessions and identifies the current session when known.",
+      "args": [],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "auth session revoke <sessionId>",
+    "source": "auth.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Ends the selected browser session and signs that device out.",
+      "args": ["sessionId"],
+      "flags": ["--yes"],
+      "destructive": true,
+      "confirm": "Asks before ending the session unless --yes is supplied."
+    }
+  },
+  {
+    "orchard": "auth session revoke-all",
+    "source": "auth.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Ends all browser sessions and removes every personal API token, including the CLI's credential.",
+      "args": [],
+      "flags": ["--yes"],
+      "destructive": true,
+      "confirm": "Asks before revoking all sessions and tokens unless --yes is supplied."
+    }
+  },
+  {
+    "orchard": "user profile",
+    "source": "user.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Displays the signed-in account's profile fields.",
+      "args": [],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "user profile update",
+    "source": "user.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Changes only supplied username or name fields; an empty first or last name clears that field.",
+      "args": [],
+      "flags": ["--username", "--first-name", "--last-name"],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "user avatar set <file>",
+    "source": "user.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Uploads an image from the given path as the account avatar.",
+      "args": ["file"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "user avatar delete",
+    "source": "user.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Removes the current account avatar.",
+      "args": [],
+      "flags": ["--yes"],
+      "destructive": true,
+      "confirm": "Asks before removing the avatar unless --yes is supplied."
+    }
+  }
+]

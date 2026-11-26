@@ -1,1 +1,160 @@
-[]
+[
+  {
+    "orchard": "registry list",
+    "source": "project_registry.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": "list_registry_credentials",
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Show which image registry hosts this project can authenticate with and the usernames saved for them.",
+      "args": [],
+      "flags": [
+        "--project"
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "registry set",
+    "source": "project_registry.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": "set_registry_credential",
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Store or replace this project's login for an image registry so matching workloads can fetch private images.",
+      "args": [
+        "registry"
+      ],
+      "flags": [
+        "--project",
+        "--username",
+        "--password",
+        "--password-stdin"
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "registry remove",
+    "source": "project_registry.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": "delete_registry_credential",
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Remove one saved image registry login by ID after confirming that exact credential ID; workloads using it may no longer fetch private images.",
+      "args": [
+        "id"
+      ],
+      "flags": [
+        "--project",
+        "--confirm-credential-id"
+      ],
+      "destructive": true,
+      "confirm": "--confirm-credential-id <id>"
+    }
+  },
+  {
+    "orchard": "quota show",
+    "source": "quota.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "get_resource_quota",
+    "orchardTool": null,
+    "reason": "Egg has no matching CLI command; get_resource_quota reports one project's recent usage and server measurements, not organization totals or caps.",
+    "spec": {
+      "summary": "Compare the organization's CPU, memory, pod and service totals with its limits, including default sizing and shared quota information.",
+      "args": [],
+      "flags": [
+        "--org"
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "quota me",
+    "source": "quota.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "get_resource_quota",
+    "orchardTool": "get_resource_quota",
+    "reason": "Egg has no matching CLI command; get_resource_quota reports project and server measurements, not a member's allowance or remaining quota.",
+    "spec": {
+      "summary": "Show your organization's CPU and memory allowance, current use, remaining capacity and per-workload use.",
+      "args": [],
+      "flags": [
+        "--org"
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "quota members",
+    "source": "quota.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "get_resource_quota",
+    "orchardTool": null,
+    "reason": "Egg has no matching CLI command; get_resource_quota does not provide member-level limits and usage.",
+    "spec": {
+      "summary": "Show organization member roles, individual CPU and memory allowances, and current use.",
+      "args": [],
+      "flags": [
+        "--org"
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "quota projects",
+    "source": "quota.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "get_resource_quota",
+    "orchardTool": null,
+    "reason": "Egg has no matching CLI command; get_resource_quota reports one project's measurements, not an organization-wide project limit and usage table.",
+    "spec": {
+      "summary": "Show organization resource totals and each project's CPU, memory and pod use against its limits.",
+      "args": [],
+      "flags": [
+        "--org"
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "import",
+    "source": "import.go",
+    "status": "partial",
+    "egg": "projects create",
+    "endpoint": "create_project",
+    "orchardTool": null,
+    "reason": "Egg's projects create command can register a public repository, but it does not start the first deployment or return its resulting address.",
+    "spec": {
+      "summary": "Create a project from a repository, detect its build setup, start an initial deployment and provide its protected address.",
+      "args": [
+        "repository"
+      ],
+      "flags": [
+        "--org",
+        "--name",
+        "--port",
+        "--wait",
+        "--timeout"
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  }
+]

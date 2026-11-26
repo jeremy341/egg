@@ -1,1 +1,211 @@
-[]
+[
+  {
+    "orchard": "deploy rollback",
+    "source": "deploy_release.go",
+    "status": "partial",
+    "egg": "deploy rollback",
+    "endpoint": "rollback_deployment",
+    "orchardTool": "rollback_deployment",
+    "reason": "Egg's CLI rolls back to an earlier deployment, but it cannot select an image-history entry, restore bound databases, or confirm the exact target ID.",
+    "spec": {
+      "summary": "Roll a deployment back to the prior release or to a selected image-history entry, optionally restoring bound databases and waiting for rollout completion.",
+      "args": ["id", "historyId?"],
+      "flags": [
+        { "name": "confirm-deployment-id", "type": "value", "required": true, "description": "Repeat the exact deployment ID in id to authorize the rollback." },
+        { "name": "restore-databases", "type": "flag", "required": false, "description": "Also restore bound databases to their checkpoints from before the current release." },
+        { "name": "wait", "type": "flag", "required": false, "description": "Wait for the new rollout to finish." },
+        { "name": "timeout", "type": "value", "required": false, "description": "Maximum time to wait for the rollout." }
+      ],
+      "destructive": true,
+      "confirm": "confirm-deployment-id must equal id"
+    }
+  },
+  {
+    "orchard": "deploy image set",
+    "source": "deploy_release.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "update_deployment_image",
+    "orchardTool": "update_deployment_image",
+    "reason": "Egg exposes image updates through its API, but its CLI has no command to set a deployment image.",
+    "spec": {
+      "summary": "Set the image reference used by an image-based deployment.",
+      "args": ["id", "image"],
+      "flags": [
+        { "name": "wait", "type": "flag", "required": false, "description": "Wait for the updated deployment to finish rolling out." },
+        { "name": "timeout", "type": "value", "required": false, "description": "Maximum time to wait for the rollout." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "deploy history",
+    "source": "deploy_release.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "get_image_history",
+    "orchardTool": "get_image_history",
+    "reason": "Egg exposes image history through its API, but its CLI has no history command; reading logs for a chosen history entry also needs a matching endpoint.",
+    "spec": {
+      "summary": "Show a deployment's image history or print logs for one selected history entry.",
+      "args": ["id"],
+      "flags": [
+        { "name": "logs", "type": "value", "required": false, "description": "Show build logs for this image-history entry instead of listing history." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "deploy killed list",
+    "source": "deploy_release.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": "list_killed_containers",
+    "reason": "Egg exposes a single service journal and cannot identify individual killed containers, their names, or their termination times.",
+    "spec": {
+      "summary": "List recently killed containers for a deployment, including their identity and termination details.",
+      "args": ["id"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "deploy killed logs",
+    "source": "deploy_release.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "get_killed_container_logs",
+    "orchardTool": "get_killed_container_logs",
+    "reason": "Egg can scan project journal lines about killed processes, but its CLI has no matching command or entry-specific log lookup.",
+    "spec": {
+      "summary": "Read the saved output for one killed-container entry.",
+      "args": ["id", "entryId"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "deploy auto-deploy status",
+    "source": "deploy_release.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "get_auto_deploy_status",
+    "orchardTool": "get_auto_deploy_status",
+    "reason": "Egg provides project auto-deploy status through its API, but its CLI has no matching command.",
+    "spec": {
+      "summary": "Show whether automatic deploys are enabled and which source settings they use.",
+      "args": ["id"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "deploy auto-deploy enable",
+    "source": "deploy_release.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "enable_auto_deploy",
+    "orchardTool": "enable_auto_deploy",
+    "reason": "Egg's API can enable project auto-deploy, but the CLI is absent and the endpoint does not accept a chosen branch or path filters.",
+    "spec": {
+      "summary": "Enable automatic builds from a selected branch, optionally limited to matching changed paths.",
+      "args": ["id"],
+      "flags": [
+        { "name": "branch", "type": "value", "required": true, "description": "Branch whose pushes trigger automatic builds." },
+        { "name": "path", "type": "value", "required": false, "description": "Path glob to watch; repeat to add multiple patterns." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "deploy auto-deploy disable",
+    "source": "deploy_release.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "disable_auto_deploy",
+    "orchardTool": "disable_auto_deploy",
+    "reason": "Egg exposes auto-deploy changes through its API, but its CLI has no command to disable the project setting.",
+    "spec": {
+      "summary": "Stop future pushes from automatically building this deployment.",
+      "args": ["id"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "deploy webhook-token list",
+    "source": "deploy_release.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": "list_deploy_webhook_tokens",
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "List a deployment's webhook-token identifiers, labels, and creation dates without revealing token values.",
+      "args": ["id"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "deploy webhook-token create",
+    "source": "deploy_release.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": "create_deploy_webhook_token",
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Create a credential that allows an external system to trigger a deployment, optionally with a label.",
+      "args": ["id"],
+      "flags": [
+        { "name": "label", "type": "value", "required": false, "description": "Human-readable label for this credential." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "deploy webhook-token delete",
+    "source": "deploy_release.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": "delete_deploy_webhook_token",
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Revoke a deployment webhook credential so its trigger can no longer be used.",
+      "args": ["id", "tokenId"],
+      "flags": [
+        { "name": "confirm-token-id", "type": "value", "required": true, "description": "Repeat the exact token ID in tokenId to authorize deletion." }
+      ],
+      "destructive": true,
+      "confirm": "confirm-token-id must equal tokenId"
+    }
+  },
+  {
+    "orchard": "deploy github-deployments",
+    "source": "deploy_release.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg has no API endpoint or CLI command for reading GitHub deployment status entries, so both are needed.",
+    "spec": {
+      "summary": "List GitHub deployment-status records associated with a deployment.",
+      "args": ["id"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  }
+]
