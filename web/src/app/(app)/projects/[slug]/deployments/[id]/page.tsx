@@ -44,7 +44,7 @@ async function Content({ params }: Props) {
   } catch {
     notFound();
   }
-  const { deployment: d, project, domains, postDeployCheck, postDeployWaiting } = data;
+  const { deployment: d, project, domains } = data;
   if (project.slug !== slug) notFound();
 
   const logs = (await deploymentLogs(user.id, id)).map((l) => ({
@@ -102,66 +102,6 @@ async function Content({ params }: Props) {
         <p data-tour="error-summary" className="text-[var(--status-error)]">
           {d.error}
         </p>
-      ) : null}
-
-      {postDeployCheck || postDeployWaiting ? (
-        <section
-          aria-labelledby="regression-heading"
-          className="overflow-hidden rounded-lg bg-card shadow-border-small"
-        >
-          <div className="border-b px-4 py-3">
-            <h2 id="regression-heading" className="text-title-3">
-              After this deploy
-            </h2>
-          </div>
-          {postDeployCheck ? (
-            <div className="space-y-3 p-4 text-[13px]">
-              <p className="font-medium">
-                {postDeployCheck.verdict === "regressed"
-                  ? "Regressed: the app got slower or less reliable after this deploy."
-                  : postDeployCheck.verdict === "ok"
-                    ? "No regression: the 15 minutes after the deploy look like the 15 minutes before."
-                    : "Not enough checks to compare the 15 minutes before and after."}
-              </p>
-              {postDeployCheck.reasons.length > 0 ? (
-                <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
-                  {postDeployCheck.reasons.map((r) => (
-                    <li key={r}>{r}</li>
-                  ))}
-                </ul>
-              ) : null}
-              <dl className="grid gap-x-6 gap-y-2 sm:grid-cols-3">
-                <div>
-                  <dt className="text-label text-muted-foreground">P95 latency</dt>
-                  <dd className="tabular">
-                    {postDeployCheck.before.p95Ms === null ? "n/a" : `${Math.round(postDeployCheck.before.p95Ms)} ms`}
-                    {" → "}
-                    {postDeployCheck.after.p95Ms === null ? "n/a" : `${Math.round(postDeployCheck.after.p95Ms)} ms`}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-label text-muted-foreground">Error rate</dt>
-                  <dd className="tabular">
-                    {postDeployCheck.before.errorRate === null ? "n/a" : `${Math.round(postDeployCheck.before.errorRate * 1000) / 10}%`}
-                    {" → "}
-                    {postDeployCheck.after.errorRate === null ? "n/a" : `${Math.round(postDeployCheck.after.errorRate * 1000) / 10}%`}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-label text-muted-foreground">Restarts after deploy</dt>
-                  <dd className="tabular">{postDeployCheck.after.restarts}</dd>
-                </div>
-              </dl>
-              <p className="text-label text-muted-foreground">
-                Compared 15 minutes before and after the deploy became ready. Based on the health checks Egg makes once a minute, not on visitor traffic.
-              </p>
-            </div>
-          ) : (
-            <p className="p-4 text-[13px] text-muted-foreground">
-              Checking the 15 minutes after this deploy. The result appears here shortly after.
-            </p>
-          )}
-        </section>
       ) : null}
 
       <section

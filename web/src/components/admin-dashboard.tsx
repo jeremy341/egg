@@ -304,7 +304,7 @@ export function AdminDashboard({ initial }: { initial: Overview }) {
           <ul className="hairline-y">
             {overview.events.map((event) => (
               <li key={event.id} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-4 py-2.5">
-                <span>{event.label}</span>
+                <span>Maintenance settings updated</span>
                 <time dateTime={event.at} className="tabular font-mono text-caption font-normal text-muted-foreground">
                   {new Date(event.at).toLocaleString()}
                 </time>

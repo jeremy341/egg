@@ -7,7 +7,7 @@ import type { ProjectView } from "@/server/queries";
 const worker: ProjectView = {
   id: "worker-1", branch: "main", runtime: "node", deploymentMode: "native",
   dockerfilePath: null, composeFilePath: null, composeService: null, containerPort: null, startCommand: null,
-  healthPath: "/", autoDeploy: false, deletionProtected: false, buildLocation: "container", hookActive: false,
+  healthPath: "/", autoDeploy: false, buildLocation: "container", hookActive: false,
   hookCreatedAt: null, notify: null, serverId: "server-1", nestUsername: "sam",
   lastShaFull: null, latestDeploymentId: null, monitorSince: null, analyticsKey: null,
   statusUrl: null, homepageFeed: false, homepageFeedPossible: false,

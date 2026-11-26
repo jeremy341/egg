@@ -20,9 +20,7 @@ describe("the homepage opt-in card", () => {
     for (const t of ["first line of the commit message", "the short commit", "the branch", "Production or", "Preview", "the time", "sam/site"]) {
       expect(out, t).toContain(t);
     }
-    expect(out).toContain("Never build logs, your server, ports, or environment variables");
-    expect(out).toContain("Never your Hack Club name or email");
-    expect(out).toContain("Someone");
+    expect(out).toContain("Never build logs, your server, ports, environment variables");
     expect(out).toContain("Public GitHub repositories only");
     expect(out).toContain("separate from the public status page");
   });

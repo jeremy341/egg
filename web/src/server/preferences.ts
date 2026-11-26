@@ -1,10 +1,8 @@
 import { cache } from "react";
-import { eq, inArray, sql, type SQL } from "drizzle-orm";
+import { eq, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema } from "@/server/db";
 import { HttpError } from "@/server/http";
-import { invalidatePublicFeed } from "@/server/public-feed-tags";
-import { invalidateStatusPage } from "@/server/status-tags";
 import {
   ANALYTICS_FEATURES,
   parseAnalyticsDefaults,
@@ -21,8 +19,6 @@ import {
   PRESET_IDS,
   isCustomPreset,
   isValidBranchName,
-  PUBLIC_FALLBACK_NAME,
-  publicName,
   themeChoiceFromLegacy,
   type DarkPreset,
   type LightPreset,
@@ -90,7 +86,6 @@ export const preferencesPatch = z
       (v) => v === null || !HIDDEN.test(v),
       "The display name cannot contain control or invisible characters"
     ),
-    showNamePublic: z.boolean(),
     avatar: z.enum(AVATAR_IDS, "Pick one of the characters in the list"),
     analyticsDefaults: z
       .object(Object.fromEntries(ANALYTICS_FEATURES.map((k) => [k, z.boolean()])) as Record<(typeof ANALYTICS_FEATURES)[number], z.ZodBoolean>)
@@ -132,7 +127,6 @@ function fromRow(
     reducedMotion: pick(MOTIONS, row.reducedMotion, DEFAULT_PREFERENCES.reducedMotion),
     defaultBranch: row.defaultBranch,
     displayName: row.displayName,
-    showNamePublic: row.showNamePublic,
     avatar: pick(AVATAR_IDS as readonly string[], row.avatar, DEFAULT_PREFERENCES.avatar),
     analyticsDefaults: parseAnalyticsDefaults(row.analyticsDefaults),
   };
@@ -227,7 +221,6 @@ export async function updatePreferences(userId: string, raw: unknown): Promise<P
   if (patch.reducedMotion !== undefined) set.reducedMotion = patch.reducedMotion;
   if (patch.defaultBranch !== undefined) set.defaultBranch = patch.defaultBranch;
   if (patch.displayName !== undefined) set.displayName = patch.displayName;
-  if (patch.showNamePublic !== undefined) set.showNamePublic = patch.showNamePublic;
   if (patch.avatar !== undefined) set.avatar = patch.avatar;
   // Switches in the patch are merged over the saved ones inside the statement itself, the
   // way setMark merges onboarding marks; one left out keeps its value. A switch switched
@@ -252,7 +245,6 @@ export async function updatePreferences(userId: string, raw: unknown): Promise<P
     reducedMotion: patch.reducedMotion ?? DEFAULT_PREFERENCES.reducedMotion,
     defaultBranch: patch.defaultBranch ?? DEFAULT_PREFERENCES.defaultBranch,
     displayName: patch.displayName ?? DEFAULT_PREFERENCES.displayName,
-    showNamePublic: patch.showNamePublic ?? DEFAULT_PREFERENCES.showNamePublic,
     avatar: patch.avatar ?? DEFAULT_PREFERENCES.avatar,
     analyticsDefaults: serializeAnalyticsDefaults({ ...DEFAULT_PREFERENCES.analyticsDefaults, ...patch.analyticsDefaults }),
     updatedAt: now,
@@ -262,48 +254,5 @@ export async function updatePreferences(userId: string, raw: unknown): Promise<P
     .values({ userId, ...values })
     .onConflictDoUpdate({ target: schema.userPreferences.userId, set })
     .returning();
-  // The name on public pages is cached; drop those pages now rather than after their cache time.
-  if (patch.displayName !== undefined || patch.showNamePublic !== undefined) await refreshPublicNames(userId);
   return fromRow(row, await themeSchemes(userId));
-}
-
-/**
- * The public name of each of these people, keyed by user id. Read in one query. A person with no
- * saved preferences gets the default (their name is shown only once they set a display name).
- */
-export async function publicNamesFor(userIds: string[]): Promise<Map<string, string>> {
-  const out = new Map<string, string>();
-  const ids = [...new Set(userIds)];
-  if (ids.length === 0) return out;
-  const db = await getDb();
-  const rows = await db
-    .select({
-      userId: schema.userPreferences.userId,
-      displayName: schema.userPreferences.displayName,
-      showNamePublic: schema.userPreferences.showNamePublic,
-    })
-    .from(schema.userPreferences)
-    .where(inArray(schema.userPreferences.userId, ids));
-  const byUser = new Map(rows.map((r) => [r.userId, r]));
-  for (const id of ids) {
-    const row = byUser.get(id);
-    out.set(id, publicName(row ?? { displayName: null, showNamePublic: DEFAULT_PREFERENCES.showNamePublic }));
-  }
-  return out;
-}
-
-/** The public name of one person (see publicNamesFor). */
-export async function publicNameFor(userId: string): Promise<string> {
-  return (await publicNamesFor([userId])).get(userId) ?? PUBLIC_FALLBACK_NAME;
-}
-
-/** Drop the cached homepage feed and every public status page of this person's projects. */
-async function refreshPublicNames(userId: string) {
-  const db = await getDb();
-  const keys = await db
-    .select({ statusKey: schema.projects.statusKey })
-    .from(schema.projects)
-    .where(eq(schema.projects.userId, userId));
-  await invalidatePublicFeed();
-  for (const { statusKey } of keys) await invalidateStatusPage(statusKey);
 }

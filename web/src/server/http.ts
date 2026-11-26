@@ -88,21 +88,6 @@ async function enforceRequestMaintenance(req: NextRequest) {
   if (!(await isInstanceAdmin(userId))) throw maintenanceError();
 }
 
-/** Suspended accounts after their grace period: the account's own writes are refused, reads are not. */
-async function enforceAccountWrites(req: NextRequest) {
-  const { accountExemptRequest, assertAccountCanWrite } = await import("@/server/account-standing");
-  const path = new URL(req.url).pathname;
-  if (accountExemptRequest(path, req.method.toUpperCase())) return;
-  let userId: string | null = null;
-  if (path.startsWith("/api/v1/")) {
-    const { bearerFrom, principalFor } = await import("@/server/api-tokens");
-    userId = (await principalFor(bearerFrom(req)))?.userId ?? null;
-  } else {
-    userId = (await getCurrentUser())?.id ?? null;
-  }
-  if (userId) await assertAccountCanWrite(userId);
-}
-
 /** Wrap a route handler: same-origin check plus uniform JSON errors. */
 export function handle<C = unknown>(
   fn: Handler<C>,
@@ -112,7 +97,6 @@ export function handle<C = unknown>(
     try {
       if (!options.skipOriginCheck) assertSameOrigin(req);
       await enforceRequestMaintenance(req);
-      await enforceAccountWrites(req);
       return await fn(req, ctx);
     } catch (err) {
       // Let Next.js control-flow errors (dynamic-API bailouts, redirects) through.

@@ -3,8 +3,7 @@ import { eq, sql } from "drizzle-orm";
 import { upsertUser } from "@/server/auth/session";
 import { schema } from "@/server/db";
 import { isUniqueViolation } from "@/server/db/errors";
-import { createProject, enqueueDeployment } from "@/server/projects";
-import { trashProject } from "@/server/project-trash";
+import { createProject, deleteProjectRecords, enqueueDeployment } from "@/server/projects";
 import { createServer } from "@/server/servers";
 import { useFreshDb } from "@/server/test/db";
 
@@ -72,9 +71,9 @@ describe("unique indexes that close the deploy dedupe races", () => {
     const dep = await enqueueDeployment(p, { env: "production", source: "manual", branch: "main" });
     await ctx.db.update(schema.jobs).set({ state: "running" }).where(eq(schema.jobs.deploymentId, dep.id));
     await ctx.db.update(schema.deployments).set({ state: "canceled" }).where(eq(schema.deployments.id, dep.id));
-    await expect(trashProject(user.id, p.id)).rejects.toMatchObject({ status: 409 });
+    await expect(deleteProjectRecords(user.id, p.id)).rejects.toMatchObject({ status: 409 });
     await ctx.db.update(schema.jobs).set({ state: "done" }).where(eq(schema.jobs.deploymentId, dep.id));
-    await expect(trashProject(user.id, p.id)).resolves.toBeUndefined();
+    await expect(deleteProjectRecords(user.id, p.id)).resolves.toBeUndefined();
   });
   it("lets one webhook deployment per commit be active and refuses a racing second one", async () => {
     await webhook("a".repeat(40));

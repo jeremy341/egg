@@ -9,12 +9,9 @@ import { getServerForUser, listServers, publicServer } from "@/server/servers";
 import { notifySummary } from "@/server/notify";
 import { getReadableProject } from "@/server/projects";
 import { projectReadableBy } from "@/server/project-roles";
-import { RIGHT_SIZE_WINDOW_DAYS, suggestRightSize, type RightSize } from "@/server/right-size";
-import { parseStoredCheck } from "@/server/deploy-regression";
 import { statusUrl } from "@/server/status-page";
 import { usageFromProbe } from "@/server/runtime-info";
 import { durationText, timeAgo, uiState, type UiState } from "@/lib/status";
-import { bucketPoints, type MetricRange } from "@/lib/metric-range";
 
 /**
  * Read models for the dashboard. They return plain, serialisable objects with
@@ -32,7 +29,7 @@ export type ProjectView = {
   branch: string;
   runtime: string;
   workloadKind: "web" | "worker";
-  deploymentMode: "native" | "dockerfile" | "compose" | "image";
+  deploymentMode: "native" | "dockerfile" | "compose";
   /** Docker-mode settings; null in native mode. */
   dockerfilePath: string | null;
   composeFilePath: string | null;
@@ -43,8 +40,6 @@ export type ProjectView = {
   port: number;
   healthPath: string;
   autoDeploy: boolean;
-  /** Refuses deletion while on. Switched from the danger zone of the settings page. */
-  deletionProtected: boolean;
   buildLocation: BuildLocation;
   /** True when a deploy hook exists. The URL is only ever shown when it is created. */
   hookActive: boolean;
@@ -191,7 +186,6 @@ async function loadProjectViews(userId: string): Promise<ProjectView[]> {
       port: p.port,
       healthPath: p.healthPath,
       autoDeploy: p.autoDeploy,
-      deletionProtected: p.deletionProtected,
       buildLocation: p.buildLocation,
       hookActive: Boolean(p.hookHash),
       hookCreatedAt: p.hookCreatedAt ? p.hookCreatedAt.toISOString() : null,
@@ -275,15 +269,6 @@ export async function deploymentView(userId: string, deploymentId: string) {
     .where(eq(schema.domains.projectId, row.p.id));
   return {
     deployment: toDeploymentView(row.d, row.p, userId),
-    /** The before/after comparison, or null while it is still waiting for 15 minutes of checks. */
-    postDeployCheck: parseStoredCheck(row.d.postDeployCheck),
-    /** A production deploy that became ready in the last 20 minutes and is not compared yet. */
-    postDeployWaiting:
-      row.d.state === "ready" &&
-      row.d.env === "production" &&
-      row.d.postDeployCheck === null &&
-      row.d.finishedAt !== null &&
-      Date.now() - row.d.finishedAt.getTime() < 20 * 60_000,
     project: {
       id: row.p.id,
       slug: row.p.slug,
@@ -414,26 +399,6 @@ export async function projectMetrics(
   return rows.map((r) => ({ at: r.at.getTime(), memMb: r.memMb, cpuPercent: r.cpuPercent }));
 }
 
-/**
- * The resource suggestion for one project's service, computed from the same
- * monitor samples the charts use. Reading it is owner-only like every other
- * project read, and nothing is ever applied from here.
- */
-export async function projectRightSize(userId: string, projectId: string): Promise<RightSize> {
-  const project = await getReadableProject(userId, projectId);
-  const db = await getDb();
-  const since = new Date(Date.now() - RIGHT_SIZE_WINDOW_DAYS * 24 * 3_600_000);
-  const rows = await db
-    .select()
-    .from(schema.projectSamples)
-    .where(and(eq(schema.projectSamples.projectId, project.id), gte(schema.projectSamples.at, since)))
-    .orderBy(asc(schema.projectSamples.at));
-  return suggestRightSize(
-    rows.map((r) => ({ at: r.at.getTime(), memMb: r.memMb, cpuPercent: r.cpuPercent })),
-    Date.now()
-  );
-}
-
 export type ProjectResource = {
   id: string;
   serverId: string;
@@ -450,11 +415,7 @@ export type ProjectResource = {
 };
 
 /** What each of the user's projects used over the last `hours`, from the worker's samples. */
-export async function projectResources(
-  userId: string,
-  hours = 24,
-  range?: MetricRange
-): Promise<ProjectResource[]> {
+export async function projectResources(userId: string, hours = 24): Promise<ProjectResource[]> {
   const db = await getDb();
   const projects = await db
     .select({
@@ -491,12 +452,8 @@ export async function projectResources(
     byProject.set(r.projectId, list);
   }
 
-  const now = Date.now();
   return projects.map((p) => {
     const rows = byProject.get(p.id) ?? [];
-    const raw = rows.map((r) => ({ at: r.at.getTime(), memMb: r.memMb, cpuPercent: r.cpuPercent }));
-    // With a range, the points are averaged into that range's buckets.
-    const points = range ? bucketPoints(raw, range, now) : raw;
     const mem = rows.filter((r) => r.memMb !== null);
     const cpu = rows.filter((r) => r.cpuPercent !== null);
     return {
@@ -506,7 +463,7 @@ export async function projectResources(
       cpuNow: cpu.at(-1)?.cpuPercent ?? null,
       cpuPeak: cpu.length ? Math.max(...cpu.map((r) => r.cpuPercent as number)) : null,
       restarts: rows.at(-1)?.restarts ?? null,
-      points,
+      points: rows.map((r) => ({ at: r.at.getTime(), memMb: r.memMb, cpuPercent: r.cpuPercent })),
     };
   });
 }

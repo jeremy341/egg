@@ -2,8 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowRightIcon } from "@phosphor-icons/react";
-import { AgentMarks } from "@/components/agent-marks";
+import { ArrowRightIcon, CheckIcon, CopyIcon } from "@phosphor-icons/react";
 import { Swap } from "@/components/motion/swap";
 import { Button } from "@/components/ui/button";
 import { TOKEN_PLACEHOLDER, meExample, mcpUrl, openApiUrl } from "@/lib/developer";
@@ -58,8 +57,10 @@ export function CopyButton({
         aria-label={label}
         className={className}
       >
-        <AgentMarks />
-        <Swap value={state}>{state === "copied" ? "Copied" : state === "failed" ? "Press Ctrl+C" : "Copy"}</Swap>
+        <Swap value={state} className="inline-flex items-center gap-1">
+          {state === "copied" ? <CheckIcon aria-hidden="true" /> : <CopyIcon aria-hidden="true" />}
+          {state === "copied" ? "Copied" : state === "failed" ? "Press Ctrl+C" : "Copy"}
+        </Swap>
       </Button>
       <span aria-live="polite" className="sr-only">
         {state === "copied" ? "Copied" : state === "failed" ? "Could not copy. Select the text and copy it by hand." : ""}

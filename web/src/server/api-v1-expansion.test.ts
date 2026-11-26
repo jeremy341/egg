@@ -62,11 +62,6 @@ import { GET as listServersRoute } from "@/app/api/v1/servers/route";
 import { GET as inventoryRoute } from "@/app/api/v1/servers/[serverId]/inventory/route";
 import { GET as usageHistoryRoute } from "@/app/api/v1/servers/[serverId]/usage/history/route";
 import { GET as activityRoute } from "@/app/api/v1/activity/route";
-import { GET as searchLogsRoute } from "@/app/api/v1/projects/[projectId]/logs/search/route";
-import { GET as logContextRoute } from "@/app/api/v1/projects/[projectId]/logs/context/route";
-import { GET as projectErrorsRoute } from "@/app/api/v1/projects/[projectId]/errors/route";
-import { POST as triageErrorRoute } from "@/app/api/v1/projects/[projectId]/errors/[fingerprint]/route";
-import { fingerprintOf } from "@/server/error-fingerprint";
 
 let ctx: Awaited<ReturnType<typeof useFreshDb>>;
 let me: { id: string };
@@ -77,7 +72,6 @@ let projectId: string;
 let theirProjectId: string;
 let deploymentId: string;
 let theirDeploymentId: string;
-let errorFingerprint: string;
 let domainId: string;
 let theirDomainId: string;
 
@@ -170,14 +164,6 @@ beforeAll(async () => {
   theirProjectId = (await createProject(other.id, { ...base, serverId: theirServerId, name: "Theirs", slug: "theirs", port: 3001 })).id;
   deploymentId = (await deployBranch(me.id, projectId)).id;
   theirDeploymentId = (await deployBranch(other.id, theirProjectId)).id;
-  errorFingerprint = fingerprintOf("TypeError: Sample failure", "src/app.js");
-  await ctx.db.insert(schema.analyticsErrors).values({
-    projectId,
-    at: new Date(),
-    message: "TypeError: Sample failure",
-    file: "src/app.js",
-    line: 3,
-  });
   domainId = newId();
   theirDomainId = newId();
   await ctx.db.insert(schema.domains).values([
@@ -256,7 +242,6 @@ type Spec = {
   path: (i: Ids) => string;
   params: (i: Ids) => Record<string, string>;
   body?: (i: Ids) => unknown;
-  query?: (i: Ids) => string;
   /** The call should be refused (404) when the ids belong to someone else. */
   owned?: boolean;
 };
@@ -277,10 +262,6 @@ const SPECS: Record<string, Spec> = {
   delete_project: { scope: "projects:write", handler: deleteProjectRoute, method: "DELETE", path: proj(""), params: projParams, owned: true },
   get_deployment: { scope: "deployments:read", handler: getDeploymentRoute, method: "GET", path: (i) => `/deployments/${i.deploymentId}`, params: (i) => ({ deploymentId: i.deploymentId }), owned: true },
   get_deployment_logs: { scope: "deployments:read", handler: deploymentLogsRoute, method: "GET", path: (i) => `/deployments/${i.deploymentId}/logs`, params: (i) => ({ deploymentId: i.deploymentId }), owned: true },
-  search_logs: { scope: "logs:read", handler: searchLogsRoute, method: "GET", path: proj("/logs/search"), params: projParams, owned: true },
-  get_log_context: { scope: "logs:read", handler: logContextRoute, method: "GET", path: proj("/logs/context"), params: projParams, query: () => "?at=1795514400000", owned: true },
-  list_deployment_errors: { scope: "analytics:read", handler: projectErrorsRoute, method: "GET", path: proj("/errors"), params: projParams, owned: true },
-  triage_deployment_error: { scope: "projects:write", handler: triageErrorRoute, method: "POST", path: (i) => `/projects/${i.projectId}/errors/${errorFingerprint}`, params: (i) => ({ projectId: i.projectId, fingerprint: errorFingerprint }), body: () => ({ action: "assign", assigneeId: null }), owned: true },
   list_env_vars: { scope: "env:read", handler: listEnvRoute, method: "GET", path: proj("/env"), params: projParams, owned: true },
   set_env_var: { scope: "env:write", handler: setEnvRoute, method: "PUT", path: proj("/env/NEW_KEY"), params: (i) => ({ projectId: i.projectId, key: "NEW_KEY" }), body: () => ({ value: "x" }), owned: true },
   delete_env_var: { scope: "env:write", handler: deleteEnvRoute, method: "DELETE", path: proj("/env/API_KEY"), params: (i) => ({ projectId: i.projectId, key: "API_KEY" }), owned: true },
@@ -305,7 +286,7 @@ const SPECS: Record<string, Spec> = {
 };
 
 const callSpec = (spec: Spec, ids: Ids, secret: string | null) =>
-  run(spec.handler, req(`${spec.path(ids)}${spec.query?.(ids) ?? ""}`, { method: spec.method, secret, body: spec.body?.(ids) }), spec.params(ids));
+  run(spec.handler, req(spec.path(ids), { method: spec.method, secret, body: spec.body?.(ids) }), spec.params(ids));
 
 const FIRST = ["get_me", "list_projects", "get_project", "list_deployments", "deploy_branch", "redeploy", "cancel_deployment", "rollback_deployment", "get_logs", "list_domains", "get_server_usage"];
 
@@ -352,13 +333,8 @@ describe("authentication and scopes", () => {
 
   it("answers 403 naming the scope when a token lacks it, before doing anything", async () => {
     const before = await counts();
-    const withoutByScope = new Map<Scope, string>();
     for (const [id, spec] of Object.entries(SPECS)) {
-      let without = withoutByScope.get(spec.scope);
-      if (!without) {
-        without = await token(ALL.filter((s) => s !== spec.scope));
-        withoutByScope.set(spec.scope, without);
-      }
+      const without = await token(ALL.filter((s) => s !== spec.scope));
       const res = await callSpec(spec, mine, without);
       const e = await errorOf(res);
       expect(res.status, id).toBe(403);
@@ -385,7 +361,6 @@ describe("ownership", () => {
     const before = await counts();
     for (const [id, spec] of Object.entries(SPECS)) {
       if (!spec.owned) continue;
-      rateLimiter().clear();
       const res = await callSpec(spec, theirs, secret);
       expect(await errorOf(res), id).toMatchObject({ status: 404, code: "not_found" });
     }
@@ -393,7 +368,6 @@ describe("ownership", () => {
     const ghost: Ids = { projectId: "no-such-id", deploymentId: "no-such-id", serverId: "no-such-id", domainId: "no-such-id" };
     for (const [id, spec] of Object.entries(SPECS)) {
       if (!spec.owned || id === "create_project" || id === "add_domain") continue;
-      rateLimiter().clear();
       const res = await callSpec(spec, ghost, secret);
       expect(await errorOf(res), `ghost ${id}`).toMatchObject({ status: 404, code: "not_found" });
     }
@@ -590,54 +564,6 @@ describe("create, change and delete a project", () => {
   });
 });
 
-describe("runtime query endpoints", () => {
-  it("searches problem lines in one project service and returns an older-page cursor", async () => {
-    const secret = await token(["logs:read"]);
-    scriptReply = () => ({ code: 0, stdout: [
-      "2026-11-24T10:00:00+00:00 nest app[123]: INFO ready",
-      "2026-11-24T10:00:01+00:00 nest app[123]: ERROR boom first",
-      "2026-11-24T10:00:02+00:00 nest app[123]: ERROR boom second",
-    ].join("\n") });
-    const get = (query: string) => run(searchLogsRoute, req(`/projects/${projectId}/logs/search${query}`, { secret }), { projectId });
-    const page = await (await get("?q=boom&level=problems&limit=1")).json();
-    expect(page.lines).toEqual(["2026-11-24T10:00:02+00:00 nest app[123]: ERROR boom second"]);
-    expect(page.older).toMatch(/^\d+\.\d+$/);
-    const older = await (await get(`?q=boom&level=problems&limit=1&before=${page.older}`)).json();
-    expect(older.lines).toEqual(["2026-11-24T10:00:01+00:00 nest app[123]: ERROR boom first"]);
-    expect(Buffer.byteLength(JSON.stringify(page))).toBeLessThanOrEqual(40 * 1024);
-  });
-
-  it("reads log context inside the requested timestamp window", async () => {
-    const secret = await token(["logs:read"]);
-    const at = Date.parse("2026-11-24T10:00:00.000Z");
-    scriptReply = () => ({ code: 0, stdout: "before\nneedle\nafter\n" });
-    const res = await run(logContextRoute, req(`/projects/${projectId}/logs/context?at=${at}&beforeSeconds=30&afterSeconds=45`, { secret }), { projectId });
-    expect(res.status).toBe(200);
-    expect((await res.json()).lines).toEqual(["before", "needle", "after"]);
-    const command = session.script.mock.calls.at(-1)?.[0] as string;
-    expect(command).toContain("--since '2026-11-24T09:59:30.000Z'");
-    expect(command).toContain("--until '@1795514445'");
-  });
-
-  it("lists and triages project client-error groups with separate read and write scopes", async () => {
-    const reader = await token(["analytics:read"]);
-    const listed = await run(projectErrorsRoute, req(`/projects/${projectId}/errors?status=open&limit=5`, { secret: reader }), { projectId });
-    expect(listed.status).toBe(200);
-    expect(await listed.json()).toMatchObject({
-      source: "client-analytics",
-      groups: [{ fingerprint: errorFingerprint, message: "TypeError: Sample failure", status: "open" }],
-      truncated: false,
-    });
-
-    const writer = await token(["projects:write"]);
-    const triaged = await run(triageErrorRoute, req(`/projects/${projectId}/errors/${errorFingerprint}`, { secret: writer, method: "POST", body: { action: "resolve" } }), { projectId, fingerprint: errorFingerprint });
-    expect(triaged.status).toBe(200);
-    expect(await triaged.json()).toEqual({ status: "resolved", assigneeId: null });
-    const missingAssignee = await run(triageErrorRoute, req(`/projects/${projectId}/errors/${errorFingerprint}`, { secret: writer, method: "POST", body: { action: "assign" } }), { projectId, fingerprint: errorFingerprint });
-    expect((await errorOf(missingAssignee)).status).toBe(400);
-  });
-});
-
 // ------------------------------------------------------------ build output
 
 describe("deployment detail and build output", () => {
@@ -665,20 +591,6 @@ describe("deployment detail and build output", () => {
     expect(none).toMatchObject({ lines: [], more: false, nextAfter: all.nextAfter });
     for (const bad of ["?limit=0", "?limit=1001", "?after=-1", "?after=x"]) expect((await get(bad)).status, bad).toBe(400);
     expect(sshWasUsed()).toBe(false);
-  });
-
-  it("caps build log response bytes and marks the clipped message", async () => {
-    await ctx.db.update(schema.deploymentLogs)
-      .set({ message: "x".repeat(100_000) })
-      .where(and(eq(schema.deploymentLogs.deploymentId, deploymentId), eq(schema.deploymentLogs.message, "Build failed")));
-    const secret = await token(["deployments:read"]);
-    const res = await run(deploymentLogsRoute, req(`/deployments/${deploymentId}/logs?limit=500`, { secret }), { deploymentId });
-    const bodyText = await res.text();
-    const body = JSON.parse(bodyText);
-    expect(Buffer.byteLength(bodyText)).toBeLessThanOrEqual(40 * 1024);
-    expect(body.truncated).toBe(true);
-    expect(body.lines.at(-1).message.length).toBeLessThan(100_000);
-    expect(body.nextAfter).toBe(body.lines.at(-1).id);
   });
 });
 

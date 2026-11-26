@@ -20,7 +20,7 @@ describe("server capabilities route", () => {
     vi.mocked(getCurrentUser).mockResolvedValueOnce(user);
     vi.mocked(getServerForUser).mockResolvedValueOnce({ id: "s" } as never);
     vi.mocked(withServerSession).mockImplementationOnce(async (_server, fn) => fn({} as never));
-    const capabilities = { deploymentModes: { native: true, dockerfile: false, compose: false, image: false }, docker: { available: false, composeAvailable: false, reason: "unverified" }, runtimes: ["node"] };
+    const capabilities = { deploymentModes: { native: true, dockerfile: false, compose: false }, docker: { available: false, composeAvailable: false, reason: "unverified" }, runtimes: ["node"] };
     vi.mocked(probeTargetCapabilities).mockResolvedValueOnce(capabilities);
     const response = await GET(new NextRequest("http://localhost/api/servers/s/capabilities"), { params: Promise.resolve({ id: "s" }) });
     expect(getServerForUser).toHaveBeenCalledWith("u", "s");

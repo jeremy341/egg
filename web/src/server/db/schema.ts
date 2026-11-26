@@ -2,7 +2,6 @@ import { sql } from "drizzle-orm";
 import {
   index,
   integer,
-  primaryKey,
   real,
   sqliteTable,
   text,
@@ -20,15 +19,6 @@ export const users = sqliteTable("users", {
   emailVerified: integer("email_verified", { mode: "boolean" }).notNull().default(false),
   slackId: text("slack_id"),
   createdAt: ts("created_at").notNull(),
-  /**
-   * Set by an administrator's ban. A suspended account keeps working until graceEndsAt, then its writes are
-   * refused (see server/account-standing.ts). Reads always work. Changed only through the admin ban actions.
-   */
-  status: text("status", { enum: ["active", "suspended"] }).notNull().default("active"),
-  suspendedAt: ts("suspended_at"),
-  graceEndsAt: ts("grace_ends_at"),
-  /** The administrator's reason, kept for the audit trail and the admin page. */
-  suspensionReason: text("suspension_reason"),
 });
 
 /**
@@ -149,18 +139,7 @@ export const providerConnections = sqliteTable("provider_connections", {
 export const RUNTIMES = ["node", "python", "static", "command", "go", "rust", "ruby", "php", "java"] as const;
 export type Runtime = (typeof RUNTIMES)[number];
 export const WORKLOAD_KINDS = ["web", "worker"] as const;
-/** "image": a prebuilt container image pulled from a registry; nothing is built from source. */
-export const DEPLOYMENT_MODES = ["native", "dockerfile", "compose", "image"] as const;
-
-/**
- * How a new release replaces the running one. "rolling" (the default) starts the new copy before the
- * old one stops; "recreate" stops first; "blue_green" brings the new copy up beside the old one and
- * switches once it is healthy. An app whose containers mount a volume must use "recreate", because
- * two copies must never share a volume at once.
- */
-export const DEPLOY_STRATEGIES = ["rolling", "recreate", "blue_green"] as const;
-export type DeployStrategy = (typeof DEPLOY_STRATEGIES)[number];
-export type PullPolicy = (typeof PULL_POLICIES)[number];
+export const DEPLOYMENT_MODES = ["native", "dockerfile", "compose"] as const;
 
 /**
  * Where a project is built. "container": on the user's Nest container, under a memory and CPU
@@ -172,25 +151,45 @@ export const BUILD_LOCATIONS = ["container", "github"] as const;
 export type BuildLocation = (typeof BUILD_LOCATIONS)[number];
 
 /**
- * Logins for private container registries, one per owner and registry host. The username and the
- * password are sealed with the instance key (server/crypto); the password is never sent back by the API.
+ * An organization groups projects under shared roles. Personal projects have no
+ * organization (`projects.orgId` is null).
  */
-export const registryCredentials = sqliteTable(
-  "registry_credentials",
+export const organizations = sqliteTable(
+  "organizations",
   {
     id: text("id").primaryKey(),
-    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-    /** Registry host, with an optional port, such as ghcr.io or registry.example.com:5000. */
-    host: text("host").notNull(),
-    usernameEnc: text("username_enc").notNull(),
-    passwordEnc: text("password_enc").notNull(),
+    name: text("name").notNull(),
+    slug: text("slug").notNull(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
     createdAt: ts("created_at").notNull(),
     updatedAt: ts("updated_at").notNull(),
   },
-  (t) => [uniqueIndex("registry_credentials_user_host_idx").on(t.userId, t.host)]
+  (t) => [uniqueIndex("organizations_slug_idx").on(t.slug)]
 );
 
-export const PULL_POLICIES = ["auto", "always", "cached"] as const;
+export const ORG_ROLES = ["owner", "admin", "member", "guest"] as const;
+export type OrgRole = (typeof ORG_ROLES)[number];
+
+/** Organization membership. Owners and admins see every project in the organization. */
+export const orgMembers = sqliteTable(
+  "org_members",
+  {
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    role: text("role", { enum: ORG_ROLES }).notNull(),
+    createdAt: ts("created_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("org_members_org_user_idx").on(t.orgId, t.userId),
+    index("org_members_user_idx").on(t.userId),
+  ]
+);
 
 export const projects = sqliteTable(
   "projects",
@@ -220,15 +219,6 @@ export const projects = sqliteTable(
     runtime: text("runtime", { enum: RUNTIMES }).notNull(),
     workloadKind: text("workload_kind", { enum: WORKLOAD_KINDS }).notNull().default("web"),
     deploymentMode: text("deployment_mode", { enum: DEPLOYMENT_MODES }).notNull().default("native"),
-    deployStrategy: text("deploy_strategy", { enum: DEPLOY_STRATEGIES }).notNull().default("rolling"),
-    /** Image mode only: the image reference, such as nginx:1.27 or ghcr.io/owner/app@sha256:... */
-    imageRef: text("image_ref"),
-    /** Image mode only: when Docker pulls the image. "auto" pulls only if it is missing. */
-    pullPolicy: text("pull_policy", { enum: PULL_POLICIES }).notNull().default("auto"),
-    /** Image mode only: the registry login for a private image. Null for a public image. */
-    registryCredentialId: text("registry_credential_id").references(() => registryCredentials.id, { onDelete: "restrict" }),
-    /** Set by the last Compose deploy: the main service mounts a named volume. Such an app must use "recreate". */
-    hasVolumes: integer("has_volumes", { mode: "boolean" }).notNull().default(false),
     /** Dockerfile path relative to the repository root; used only in "dockerfile" mode. */
     dockerfilePath: text("dockerfile_path"),
     /** Path of the Compose file relative to the repository root; used only in "compose" mode. */
@@ -294,10 +284,8 @@ export const projects = sqliteTable(
      * status page. Only ever honoured for a repository that GitHub confirms is public (server/public-feed.ts).
      */
     homepageFeed: integer("homepage_feed", { mode: "boolean" }).notNull().default(false),
-    /** While on, the app cannot be deleted (or moved to the trash) until someone switches it off. */
-    deletionProtected: integer("deletion_protected", { mode: "boolean" }).notNull().default(false),
-    /** systemd's result for the service's last exit, such as "oom-kill". Null when unknown. */
-    lastExitResult: text("last_exit_result"),
+    /** Organization that owns this project. Null for a personal project. */
+    orgId: text("org_id").references(() => organizations.id, { onDelete: "set null" }),
     createdAt: ts("created_at").notNull(),
     updatedAt: ts("updated_at").notNull(),
   },
@@ -311,7 +299,88 @@ export const projects = sqliteTable(
     uniqueIndex("projects_analytics_idx").on(t.analyticsKey),
     uniqueIndex("projects_status_idx").on(t.statusKey),
     index("projects_user_idx").on(t.userId),
+    index("projects_org_idx").on(t.orgId),
   ]
+);
+
+export const PROJECT_ROLES = ["admin", "member", "viewer"] as const;
+export type ProjectRole = (typeof PROJECT_ROLES)[number];
+
+/** Per-project access for people who are not the project owner or an org owner/admin. */
+export const projectMembers = sqliteTable(
+  "project_members",
+  {
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    role: text("role", { enum: PROJECT_ROLES }).notNull(),
+    createdAt: ts("created_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("project_members_project_user_idx").on(t.projectId, t.userId),
+    index("project_members_user_idx").on(t.userId),
+  ]
+);
+
+/**
+ * Email invitations to an organization. Only the SHA-256 of the token is stored;
+ * the link is shown once. `acceptedAt`, `cancelledAt` and `expiresAt` make a
+ * token single-use and time-limited.
+ */
+export const invitations = sqliteTable(
+  "invitations",
+  {
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    role: text("role", { enum: ORG_ROLES }).notNull(),
+    tokenHash: text("token_hash").notNull(),
+    invitedBy: text("invited_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    expiresAt: ts("expires_at").notNull(),
+    acceptedAt: ts("accepted_at"),
+    acceptedBy: text("accepted_by").references(() => users.id, { onDelete: "set null" }),
+    cancelledAt: ts("cancelled_at"),
+    createdAt: ts("created_at").notNull(),
+    updatedAt: ts("updated_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("invitations_token_hash_idx").on(t.tokenHash),
+    index("invitations_org_idx").on(t.orgId),
+  ]
+);
+
+/**
+ * Transfer of a project to another user. The recipient must already be a project
+ * member and must accept. Pending requests expire after 7 days.
+ */
+export const ownershipTransfers = sqliteTable(
+  "ownership_transfers",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    fromUserId: text("from_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    toUserId: text("to_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    state: text("state", { enum: ["pending", "accepted", "declined", "cancelled", "expired"] })
+      .notNull()
+      .default("pending"),
+    expiresAt: ts("expires_at").notNull(),
+    resolvedAt: ts("resolved_at"),
+    createdAt: ts("created_at").notNull(),
+  },
+  (t) => [index("ownership_transfers_project_idx").on(t.projectId, t.state), index("ownership_transfers_to_idx").on(t.toUserId, t.state)]
 );
 
 export const providerWebhookDeliveries = sqliteTable("provider_webhook_deliveries", {
@@ -335,44 +404,6 @@ export const envVars = sqliteTable(
     createdAt: ts("created_at").notNull(),
   },
   (t) => [uniqueIndex("env_project_key_idx").on(t.projectId, t.key, t.target)]
-);
-
-/**
- * SSH keys Egg generates for you, beyond the per-server key stored on the
- * servers row. Each key's private half is sealed for its own row, and is
- * replaced by a seal of "removed" once the key is revoked.
- */
-export const SSH_KEY_KINDS = ["github_deploy", "git_key", "personal"] as const;
-export type SshKeyKind = (typeof SSH_KEY_KINDS)[number];
-
-export const sshKeys = sqliteTable(
-  "ssh_keys",
-  {
-    id: text("id").primaryKey(),
-    userId: text("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    /** The project a github_deploy or git_key belongs to. Always null for personal keys. */
-    projectId: text("project_id").references(() => projects.id, { onDelete: "cascade" }),
-    /** "github_deploy": added to the linked repo through the GitHub App. "git_key": pasted by you on your own git host. "personal": for your own use outside Egg. */
-    kind: text("kind", { enum: SSH_KEY_KINDS }).notNull(),
-    name: text("name").notNull(),
-    publicKey: text("public_key").notNull(),
-    privateKeyEnc: text("private_key_enc").notNull(),
-    /** SHA256 fingerprint of the public key, shown in lists. */
-    fingerprint: text("fingerprint").notNull(),
-    /** The id GitHub gave the deploy key, so it can be removed there on revoke. */
-    externalId: text("external_id"),
-    createdAt: ts("created_at").notNull(),
-    revokedAt: ts("revoked_at"),
-  },
-  (t) => [
-    // One active key per project and kind; revoking frees the slot.
-    uniqueIndex("ssh_keys_project_kind_idx")
-      .on(t.projectId, t.kind)
-      .where(sql`${t.projectId} is not null and ${t.revokedAt} is null`),
-    index("ssh_keys_user_idx").on(t.userId),
-  ]
 );
 
 export const DEPLOY_STATES = [
@@ -425,9 +456,6 @@ export const deployments = sqliteTable(
     /** Set atomically immediately before production/preview activation; cancellation is refused after this point. */
     activationStartedAt: ts("activation_started_at"),
     finishedAt: ts("finished_at"),
-    /** Before/after comparison 15 minutes after the deploy became ready. JSON; null until it has run. */
-    postDeployCheck: text("post_deploy_check"),
-    postDeployCheckedAt: ts("post_deploy_checked_at"),
   },
   (t) => [
     index("deployments_project_idx").on(t.projectId, t.createdAt, t.id),
@@ -651,8 +679,6 @@ export const userPreferences = sqliteTable("user_preferences", {
   analyticsDefaults: text("analytics_defaults").notNull().default("{}"),
   /** JSON object of per-chapter marks, see src/lib/onboarding-marks.ts */
   onboarding: text("onboarding").notNull().default("{}"),
-  /** Show the display name on public status pages and the homepage feed. Off shows "Someone". */
-  showNamePublic: integer("show_name_public", { mode: "boolean" }).notNull().default(true),
   updatedAt: ts("updated_at").notNull(),
 });
 
@@ -684,14 +710,21 @@ export const userThemes = sqliteTable(
 
 export type UserTheme = typeof userThemes.$inferSelect;
 
+/**
+ * Who did what. `level` says which scope the entry belongs to: an app event, an
+ * organization event (then `orgId` is set) or an instance-wide admin event. Kept
+ * for 180 days (see cleanup-audit.ts).
+ */
 export const auditLog = sqliteTable("audit_log", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: text("user_id"),
   action: text("action").notNull(),
   target: text("target"),
   meta: text("meta"),
+  level: text("level", { enum: ["app", "organization", "instance"] }).notNull().default("app"),
+  orgId: text("org_id"),
   at: ts("at").notNull(),
-}, (t) => [index("audit_log_action_at_idx").on(t.action, t.at)]);
+}, (t) => [index("audit_log_action_at_idx").on(t.action, t.at), index("audit_log_at_idx").on(t.at), index("audit_log_org_idx").on(t.orgId, t.at)]);
 
 /** Server load, memory and disk, sampled by the worker so the dashboard can show trends. */
 export const usageSamples = sqliteTable(
@@ -846,28 +879,6 @@ export const analyticsErrors = sqliteTable(
 );
 
 /**
- * Triage state of an error group. Groups are computed from `analytics_errors`
- * by fingerprint (see server/error-fingerprint.ts); this row only holds what a
- * person decided. No message or query string is stored here. A group with no
- * row is open and unassigned.
- */
-export const analyticsErrorGroups = sqliteTable(
-  "analytics_error_groups",
-  {
-    id: integer("id").primaryKey({ autoIncrement: true }),
-    projectId: text("project_id")
-      .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
-    fingerprint: text("fingerprint").notNull(),
-    status: text("status", { enum: ["open", "resolved", "ignored"] }).notNull().default("open"),
-    /** The project member this group is assigned to, or null. */
-    assigneeId: text("assignee_id"),
-    updatedAt: ts("updated_at").notNull(),
-  },
-  (t) => [uniqueIndex("analytics_error_groups_project_fp_idx").on(t.projectId, t.fingerprint)]
-);
-
-/**
  * Heartbeats for the live view: one row a minute from each open, visible page,
  * with the salted retention code. Deleted after an hour.
  */
@@ -899,73 +910,8 @@ export const projectSamples = sqliteTable(
     /** Total CPU time the service has used, in nanoseconds. Used to work out cpuPercent. */
     cpuNs: real("cpu_ns"),
     restarts: integer("restarts"),
-    /**
-     * Exit status and systemd's reason (exit-code, signal, oom-kill, ...) of the
-     * service's last main process, kept when it was not a clean exit. Only the
-     * status and the reason are kept, never the program's output.
-     */
-    exitCode: integer("exit_code"),
-    exitReason: text("exit_reason"),
-    /** Time the health path took, in milliseconds. Null when nothing answered or it was not checked. */
-    healthMs: integer("health_ms"),
-    /** Whether the health path answered below a server error. Null when the service was not checked. */
-    healthOk: integer("health_ok", { mode: "boolean" }),
   },
   (t) => [index("project_samples_idx").on(t.projectId, t.at)]
-);
-
-export const ALERT_RULE_METRICS = ["cpu_percent", "memory_mb", "latency_ms"] as const;
-export type AlertRuleMetric = (typeof ALERT_RULE_METRICS)[number];
-export const ALERT_RULE_STATUSES = ["ok", "over", "firing", "recovering", "no_data"] as const;
-export type AlertRuleStatus = (typeof ALERT_RULE_STATUSES)[number];
-
-/**
- * A threshold rule on one app metric. `status` is the last evaluated state; the
- * time fields say when the metric first crossed the line and when it came back.
- */
-export const alertRules = sqliteTable(
-  "alert_rules",
-  {
-    id: text("id").primaryKey(),
-    projectId: text("project_id")
-      .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
-    metric: text("metric", { enum: ALERT_RULE_METRICS }).notNull(),
-    comparison: text("comparison", { enum: ["above", "below"] }).notNull(),
-    threshold: real("threshold").notNull(),
-    /** Minutes the metric must stay past the threshold before the rule fires. */
-    durationMinutes: integer("duration_minutes").notNull(),
-    paused: integer("paused", { mode: "boolean" }).notNull().default(false),
-    status: text("status", { enum: ALERT_RULE_STATUSES }).notNull().default("ok"),
-    breachSince: ts("breach_since"),
-    recoverSince: ts("recover_since"),
-    lastValue: real("last_value"),
-    evaluatedAt: ts("evaluated_at"),
-    createdAt: ts("created_at").notNull(),
-    updatedAt: ts("updated_at").notNull(),
-  },
-  (t) => [index("alert_rules_project_idx").on(t.projectId)]
-);
-
-/**
- * A deleted app, kept for 30 days. `payload` is a snapshot of its rows (sealed
- * fields stay sealed); restoring puts them back under the same ids.
- */
-export const projectTrash = sqliteTable(
-  "project_trash",
-  {
-    projectId: text("project_id").primaryKey(),
-    userId: text("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    name: text("name").notNull(),
-    slug: text("slug").notNull(),
-    serverId: text("server_id").notNull(),
-    payload: text("payload").notNull(),
-    deletedAt: ts("deleted_at").notNull(),
-    purgeAt: ts("purge_at").notNull(),
-  },
-  (t) => [index("project_trash_user_idx").on(t.userId), index("project_trash_purge_idx").on(t.purgeAt)]
 );
 
 export const ALERT_TYPES = ["down", "disk", "memory", "cpu", "deploy"] as const;
@@ -999,7 +945,6 @@ export const WEBHOOK_EVENTS = [
   "deployment.started",
   "deployment.succeeded",
   "deployment.failed",
-  "deploy.regressed",
 ] as const;
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
 
@@ -1057,38 +1002,6 @@ export const githubWebhookEvents = sqliteTable("github_webhook_events", {
   /** Legacy SQL column name; now stores the digest of event type plus signed body. */
   eventHash: text("body_hash").primaryKey(),
   receivedAt: ts("received_at").notNull(),
-});
-
-/**
- * Every pull_request webhook event for a project, recorded from the day this
- * shipped (GitHub is not backfilled). `action` is the GitHub action as sent;
- * the activity heatmap counts "opened". Kept apart from deployments so a PR
- * that never builds still shows up.
- */
-export const pullRequestEvents = sqliteTable("pull_request_events", {
-  id: text("id").primaryKey(),
-  projectId: text("project_id")
-    .notNull()
-    .references(() => projects.id, { onDelete: "cascade" }),
-  action: text("action").notNull(),
-  number: integer("number").notNull(),
-  createdAt: ts("created_at").notNull(),
-}, (t) => [index("pull_request_events_project_idx").on(t.projectId, t.createdAt)]);
-
-/**
- * Per-project switches for the statistics section. Every switch defaults to off;
- * a project with no row has everything off. Visitors is the same data as the
- * analytics pages, shown on the statistics section only when this is on.
- */
-export const projectStatistics = sqliteTable("project_statistics", {
-  projectId: text("project_id")
-    .primaryKey()
-    .references(() => projects.id, { onDelete: "cascade" }),
-  deployCount: integer("deploy_count", { mode: "boolean" }).notNull().default(false),
-  deploySuccess: integer("deploy_success", { mode: "boolean" }).notNull().default(false),
-  buildTime: integer("build_time", { mode: "boolean" }).notNull().default(false),
-  visitors: integer("visitors", { mode: "boolean" }).notNull().default(false),
-  updatedAt: ts("updated_at").notNull(),
 });
 
 /** Local-mode credential hash; the recovery secret remains in the owner's private environment. */
@@ -1200,125 +1113,3 @@ export const adoptionPlans = sqliteTable("adoption_plans", {
   createdAt: ts("created_at").notNull(), expiresAt: ts("expires_at").notNull(),
   confirmedAt: ts("confirmed_at"), error: text("error"),
 });
-
-// --- OAuth 2.1 / PKCE (oauth-anchor) ---
-
-/**
- * A registered OAuth client. `client_id` is the public identifier (prefixed
- * `eggcli_`) and is safe to store in the clear; `client_secret_hash` is a
- * SHA-256 hash, so the secret is shown only once at registration.
- * `redirect_uris` and `scopes` are JSON arrays.
- */
-export const oauthClients = sqliteTable(
-  "oauth_clients",
-  {
-    id: text("id").primaryKey(),
-    userId: text("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    name: text("name").notNull(),
-    clientId: text("client_id").notNull().unique(),
-    clientSecretHash: text("client_secret_hash").notNull(),
-    /** JSON array of exact redirect URIs, matched literally at token time. */
-    redirectUris: text("redirect_uris").notNull(),
-    /** JSON array of scope strings this client may request. */
-    scopes: text("scopes").notNull(),
-    createdAt: ts("created_at").notNull(),
-  },
-  (t) => [index("oauth_clients_user_idx").on(t.userId)]
-);
-
-/**
- * A short-lived, single-use authorization code (10 minutes). Only the SHA-256
- * hash of the code is stored; `code_challenge` is the PKCE S256 challenge.
- */
-export const oauthGrants = sqliteTable(
-  "oauth_grants",
-  {
-    id: text("id").primaryKey(),
-    clientId: text("client_id").notNull(),
-    userId: text("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    codeHash: text("code_hash").notNull().unique(),
-    scopes: text("scopes").notNull(),
-    codeChallenge: text("code_challenge").notNull(),
-    redirectUri: text("redirect_uri").notNull(),
-    expiresAt: ts("expires_at").notNull(),
-    usedAt: ts("used_at"),
-  },
-  (t) => [index("oauth_grants_user_idx").on(t.userId)]
-);
-
-/**
- * An issued access token (1 day). Only its SHA-256 hash is stored and looked
- * up; the raw token (prefixed `egg_oauth_`) is shown only once.
- */
-export const oauthTokens = sqliteTable(
-  "oauth_tokens",
-  {
-    id: text("id").primaryKey(),
-    clientId: text("client_id").notNull(),
-    userId: text("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    tokenHash: text("token_hash").notNull().unique(),
-    scopes: text("scopes").notNull(),
-    expiresAt: ts("expires_at").notNull(),
-    createdAt: ts("created_at").notNull(),
-    /** The refresh-token family this access token belongs to, so revoking the family revokes it too. */
-    familyId: text("family_id"),
-  },
-  (t) => [index("oauth_tokens_user_idx").on(t.userId), index("oauth_tokens_family_idx").on(t.familyId)]
-);
-
-/**
- * A refresh token (30 days from the first grant of its family). Only the hash
- * is stored. Every use rotates it: the presented row gets `used_at` and a new
- * row joins the same family. Presenting a row that is already used means the
- * token leaked, so the whole family and its access tokens are revoked.
- */
-export const oauthRefreshTokens = sqliteTable(
-  "oauth_refresh_tokens",
-  {
-    id: text("id").primaryKey(),
-    familyId: text("family_id").notNull(),
-    clientId: text("client_id").notNull(),
-    userId: text("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    tokenHash: text("token_hash").notNull().unique(),
-    scopes: text("scopes").notNull(),
-    /** Absolute: rotation carries this forward, so a family cannot be kept alive forever. */
-    expiresAt: ts("expires_at").notNull(),
-    usedAt: ts("used_at"),
-    createdAt: ts("created_at").notNull(),
-  },
-  (t) => [index("oauth_refresh_tokens_family_idx").on(t.familyId), index("oauth_refresh_tokens_user_idx").on(t.userId)]
-);
-
-/**
- * One Idempotency-Key answer, per (token, key). A row is a claim while `state` is
- * pending, then holds the first answer for replay. A sensitive answer is stored
- * with an empty body, so a repeat is refused and no secret is kept. A row expires
- * 24 hours after it was claimed. `claimId` lets only the request that made the
- * claim finish or release it.
- */
-export const idempotencyKeys = sqliteTable(
-  "idempotency_keys",
-  {
-    /** The token id that made the first request, so one token never replays another's answer. */
-    scope: text("scope").notNull(),
-    key: text("key").notNull(),
-    claimId: text("claim_id").notNull(),
-    fingerprint: text("fingerprint").notNull(),
-    state: text("state", { enum: ["pending", "done"] }).notNull(),
-    status: integer("status"),
-    body: text("body").notNull().default(""),
-    headers: text("headers").notNull().default("[]"),
-    sensitive: integer("sensitive", { mode: "boolean" }).notNull().default(false),
-    createdAt: ts("created_at").notNull(),
-    expiresAt: ts("expires_at").notNull(),
-  },
-  (t) => [primaryKey({ columns: [t.scope, t.key] }), index("idempotency_keys_expires_idx").on(t.expiresAt)]
-);
