@@ -6,7 +6,7 @@
     "egg": null,
     "endpoint": null,
     "orchardTool": null,
-    "reason": "Egg has no registered version command and does not print its build version through the CLI.",
+    "reason": "needs SDK method getCliVersion",
     "spec": {
       "summary": "Prints the CLI build version as text or JSON.",
       "args": [],
@@ -22,7 +22,7 @@
     "egg": null,
     "endpoint": null,
     "orchardTool": null,
-    "reason": "Running Egg without a subcommand returns a usage error instead of printing command usage.",
+    "reason": "needs SDK method getRootUsage",
     "spec": {
       "summary": "The bare CLI entry point displays the command usage and available commands.",
       "args": [],
@@ -38,7 +38,7 @@
     "egg": null,
     "endpoint": null,
     "orchardTool": null,
-    "reason": "Egg help lists registered commands, but no Egg command emits Orchard's complete text and JSON command tree.",
+    "reason": "needs SDK method listCliCommands",
     "spec": {
       "summary": "Lists the CLI command tree, with accepted flags, in readable or structured form.",
       "args": [],
@@ -54,7 +54,7 @@
     "egg": null,
     "endpoint": null,
     "orchardTool": null,
-    "reason": "Egg help documents only part of Orchard's stable exit-code table, and Egg has no matching command.",
+    "reason": "needs SDK method listCliExitCodes",
     "spec": {
       "summary": "Shows the stable process exit codes and the failure class each one represents.",
       "args": [],
@@ -70,7 +70,7 @@
     "egg": null,
     "endpoint": null,
     "orchardTool": null,
-    "reason": "Egg has no command that prints its bundled dependency notices and license texts.",
+    "reason": "needs SDK method listCliLicenses",
     "spec": {
       "summary": "Prints the license notices for open-source packages included in the CLI.",
       "args": [],
@@ -82,11 +82,11 @@
   {
     "orchard": "doctor",
     "source": "doctor.go",
-    "status": "partial",
+    "status": "missing",
     "egg": "doctor",
     "endpoint": null,
     "orchardTool": null,
-    "reason": "Egg checks whether the local machine can run Egg, while Orchard inspects server isolation and can run a cluster self-test.",
+    "reason": "needs SDK method getServerIsolation; cluster self-test also needs runClusterSelftest",
     "spec": {
       "summary": "Reports server isolation and security checks, with an optional active cluster self-test.",
       "args": [],

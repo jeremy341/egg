@@ -141,11 +141,10 @@
   {
     "orchard": "compose list",
     "source": "compose.go",
-    "status": "missing",
-    "egg": null,
+    "status": "present",
+    "egg": "compose list",
     "endpoint": "list_compose_stacks",
     "orchardTool": "list_compose_stacks",
-    "reason": "Egg has the stack-list endpoint, but its CLI has no command to list Compose stacks.",
     "spec": {
       "summary": "List the Compose stacks in the currently selected project.",
       "args": [],
@@ -157,11 +156,10 @@
   {
     "orchard": "compose get",
     "source": "compose.go",
-    "status": "missing",
-    "egg": null,
+    "status": "present",
+    "egg": "compose show",
     "endpoint": "get_compose_stack",
     "orchardTool": "get_compose_stack",
-    "reason": "Egg has the stack-detail endpoint, but its CLI has no command to show a Compose stack.",
     "spec": {
       "summary": "Show a stack's source settings and the deployments it manages.",
       "args": ["stack-id"],
@@ -177,7 +175,7 @@
     "egg": null,
     "endpoint": null,
     "orchardTool": null,
-    "reason": "Egg has no endpoint or CLI command to create a Compose stack from a repository file.",
+    "reason": "needs SDK method createComposeStack",
     "spec": {
       "summary": "Create a stack by reading a Compose file from a GitHub repository.",
       "args": [],
@@ -194,11 +192,10 @@
   {
     "orchard": "compose redeploy",
     "source": "compose.go",
-    "status": "missing",
-    "egg": null,
+    "status": "present",
+    "egg": "compose redeploy",
     "endpoint": "redeploy_compose_stack",
     "orchardTool": "redeploy_compose_stack",
-    "reason": "Egg has the stack-redeploy endpoint, but its CLI has no command to invoke it.",
     "spec": {
       "summary": "Read the current Compose file again and apply its services to the stack.",
       "args": ["stack-id"],
@@ -214,7 +211,7 @@
     "egg": "projects update",
     "endpoint": "enable_auto_deploy",
     "orchardTool": null,
-    "reason": "Egg can change a project's auto-deploy setting, but has no stack-specific toggle command.",
+    "reason": "needs SDK method enableAutoDeploy",
     "spec": {
       "summary": "Turn on automatic deployment for changes to the stack's watched branch.",
       "args": ["stack-id"],
@@ -230,7 +227,7 @@
     "egg": "projects update",
     "endpoint": "disable_auto_deploy",
     "orchardTool": null,
-    "reason": "Egg can change a project's auto-deploy setting, but has no stack-specific toggle command.",
+    "reason": "needs SDK method disableAutoDeploy",
     "spec": {
       "summary": "Turn off automatic deployment for changes to the stack's watched branch.",
       "args": ["stack-id"],
@@ -242,11 +239,10 @@
   {
     "orchard": "compose delete",
     "source": "compose.go",
-    "status": "partial",
-    "egg": "projects delete",
+    "status": "present",
+    "egg": "compose delete",
     "endpoint": "delete_project",
     "orchardTool": null,
-    "reason": "Egg can delete the backing project with exact-name confirmation, but removing it from the server is optional.",
     "spec": {
       "summary": "Delete a Compose stack and all deployments it manages.",
       "args": ["stack-id"],

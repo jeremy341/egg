@@ -36,7 +36,7 @@
   {
     "orchard": "deploy create",
     "source": "deploy.go",
-    "status": "partial",
+    "status": "present",
     "egg": "deploy",
     "endpoint": "deploy_branch",
     "orchardTool": "create_deployment",
@@ -77,11 +77,11 @@
   {
     "orchard": "deploy delete",
     "source": "deploy.go",
-    "status": "missing",
-    "egg": null,
+    "status": "partial",
+    "egg": "deploy delete",
     "endpoint": "delete_deployment",
     "orchardTool": "delete_deployment",
-    "reason": "The deployment delete API exists, but Egg has no deployment delete command and the port needs exact-name confirmation.",
+    "reason": "Egg exposes the deployment's project slug but not a separate deployment name, so exact-name confirmation is limited to the project slug.",
     "spec": {
       "summary": "Permanently remove a deployment and its associated runtime resources.",
       "args": ["id"],
@@ -114,7 +114,7 @@
   {
     "orchard": "deploy stop",
     "source": "deploy.go",
-    "status": "partial",
+    "status": "present",
     "egg": "ops stop",
     "endpoint": "stop_deployment",
     "orchardTool": "stop_deployment",
@@ -130,7 +130,7 @@
   {
     "orchard": "deploy start",
     "source": "deploy.go",
-    "status": "partial",
+    "status": "present",
     "egg": "ops start",
     "endpoint": "start_deployment",
     "orchardTool": "start_deployment",
@@ -169,7 +169,7 @@
   {
     "orchard": "deploy rebuild",
     "source": "deploy.go",
-    "status": "partial",
+    "status": "present",
     "egg": "deploy redeploy",
     "endpoint": "redeploy",
     "orchardTool": "rebuild_deployment",
@@ -188,7 +188,7 @@
   {
     "orchard": "deploy rollback",
     "source": "deploy.go",
-    "status": "partial",
+    "status": "present",
     "egg": "deploy rollback",
     "endpoint": "rollback_deployment",
     "orchardTool": "rollback_to_previous",
@@ -225,7 +225,7 @@
   {
     "orchard": "deploy logs",
     "source": "deploy.go",
-    "status": "partial",
+    "status": "present",
     "egg": "deploy logs",
     "endpoint": "get_deployment_logs",
     "orchardTool": "get_deployment_logs",
@@ -245,11 +245,11 @@
   {
     "orchard": "deploy pods",
     "source": "deploy.go",
-    "status": "missing",
-    "egg": null,
+    "status": "present",
+    "egg": "deploy pods",
     "endpoint": "list_project_containers",
     "orchardTool": "list_pods",
-    "reason": "The API can list project containers, but Egg has no CLI command and cannot report Kubernetes pod and node details.",
+    "reason": "Egg lists project containers, but its SDK does not expose Kubernetes pod and node details.",
     "spec": {
       "summary": "List pods for a deployment and optionally query live cluster state for usage and warnings.",
       "args": ["id"],
@@ -263,11 +263,11 @@
   {
     "orchard": "deploy metrics",
     "source": "deploy.go",
-    "status": "missing",
-    "egg": null,
+    "status": "present",
+    "egg": "deploy metrics",
     "endpoint": "get_deployment_metrics",
     "orchardTool": "get_deployment_metrics",
-    "reason": "A partial metrics endpoint exists, but Egg has no CLI command and samples are not attributed to individual releases.",
+    "reason": "Egg metrics provide CPU, memory, and restart samples but not network measurements or individual-release attribution.",
     "spec": {
       "summary": "Show CPU, memory and network measurements for the deployment over the most recent hour.",
       "args": ["id"],
@@ -295,11 +295,11 @@
   {
     "orchard": "deploy releases",
     "source": "deploy_releases.go",
-    "status": "missing",
-    "egg": null,
+    "status": "present",
+    "egg": "deploy releases",
     "endpoint": "list_releases",
     "orchardTool": "list_releases",
-    "reason": "Egg's release history endpoint is project-scoped and the CLI has no deployment release-list command.",
+    "reason": "Egg's release history endpoint is project-scoped and cannot filter releases to an individual deployment.",
     "spec": {
       "summary": "List a deployment's releases from newest to oldest.",
       "args": ["id"],
@@ -313,7 +313,7 @@
   {
     "orchard": "deploy status",
     "source": "rollout.go",
-    "status": "partial",
+    "status": "present",
     "egg": "deploy rollout",
     "endpoint": "get_rollout",
     "orchardTool": "get_deployment_rollout",

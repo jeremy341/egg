@@ -3,6 +3,7 @@
 // commands: registry entries { name, args, options?, required?, description, runner }.
 // runners: async (nest, args, flags, out, deps, fail, kit) => void. Use kit for printData, table, clean, dash, json, redactSecrets, UsageError, Failure.
 // optionTypes: { "option-name": "flag" | "value" } for options this group adds.
+// The remaining meta checklist entries have no matching Egg SDK methods, so this group stays empty.
 export const commands = [];
 export const runners = {};
 export const optionTypes = {};
