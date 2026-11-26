@@ -167,6 +167,18 @@ export async function listInvitations(actorId: string, orgId: string) {
     .orderBy(desc(schema.invitations.createdAt));
 }
 
+/** Invitations that can still be accepted: not accepted, not cancelled, not expired. Admins only. */
+export async function pendingInvitations(actorId: string, orgId: string, now = new Date()) {
+  const rows = await listInvitations(actorId, orgId);
+  return rows.filter((r) => !r.acceptedAt && !r.cancelledAt && r.expiresAt.getTime() > now.getTime());
+}
+
+/** An invitation id from another organization is not found here. Call after the caller's role check. */
+export async function assertInvitationInOrg(invitationId: string, orgId: string): Promise<void> {
+  const row = await findInvitation(invitationId);
+  if (row.orgId !== orgId) throw notFound("Invitation not found");
+}
+
 export type AcceptResult = { orgId: string; role: OrgRole };
 
 /** Accept with the token from the link, while signed in with the invited email address. */
