@@ -16,6 +16,9 @@
 html[data-chick-state="over"] {
   cursor: grab;
 }
+html[data-chick-state="stop"] {
+  cursor: not-allowed;
+}
 html[data-chick-state="held"],
 html[data-chick-state="held"] * {
   cursor: grabbing !important;
