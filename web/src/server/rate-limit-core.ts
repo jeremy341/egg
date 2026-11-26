@@ -175,6 +175,11 @@ export const RATE_LIMITS = {
   // Requests whose address is unknown (TRUST_PROXY off), which all share one key. Only a high safety ceiling, because
   // one shared key cannot be banned per client without locking every user out.
   ingressGlobal: { limit: 6_000, windowMs: 60_000, what: "requests" },
+  // Every session-cookie claim combined (TRUST_PROXY off): a cookie is a claim, not proof, and
+  // anyone can mint unlimited fresh token-shaped cookies, so per-claim gates alone would let a
+  // mint multiply the instance-wide allowance. One aggregate ceiling bounds them all; it is
+  // separate from `ingressGlobal` so an anonymous flood cannot hold a signed-in browser at 429.
+  ingressSessionGlobal: { limit: 6_000, windowMs: 60_000, what: "requests with a session cookie" },
 } as const;
 
 export type RateBucket = keyof typeof RATE_LIMITS;
@@ -283,6 +288,19 @@ export function admitRequest(
     const g = RATE_LIMITS.ingressGlobal;
     const r = limiter.check("ingress-global", g.limit, g.windowMs);
     return r.allowed ? { refused: false } : { refused: true, banned: false, retryAfterSeconds: r.retryAfterSeconds };
+  }
+
+  // A cookie key is a claim, not proof: anyone can mint unlimited fresh token-shaped cookies,
+  // and each would otherwise earn its own private ingress (and json) budget. Every cookie-claim
+  // request therefore also counts toward one aggregate ceiling across all claims, so minting can
+  // widen neither a single claim nor the instance-wide allowance. The ceiling is separate from
+  // the anonymous one, so a cookie-less flood cannot hold a signed-in browser at 429 either.
+  if (identity.startsWith("session:")) {
+    const g = RATE_LIMITS.ingressSessionGlobal;
+    const r = limiter.check("ingress-session-global", g.limit, g.windowMs);
+    if (!r.allowed) {
+      return { refused: true, banned: false, retryAfterSeconds: r.retryAfterSeconds };
+    }
   }
 
   if (options.bucket === "webhook") {

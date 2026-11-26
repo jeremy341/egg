@@ -53,9 +53,26 @@ export function applyRole(members: TeamMember[], userId: string, next: MemberRol
 }
 
 /**
- * A failed role change must fall back to server truth. Rebuilding the row locally
- * is unsafe: two interleaved failures can each "undo" toward a different stale
- * value. Re-rendering from the server discards all local guesses at once.
+ * Merge a fresh server snapshot with roles the server has already accepted but
+ * the snapshot predates: a refresh dispatched by an older failed change can
+ * land after a newer change succeeded, and adopting such a stale snapshot would
+ * clobber it. A committed role wins over the snapshot's; when the snapshot has
+ * caught up, the entry is dropped so later snapshots apply unchanged.
+ */
+export function reconcileMembers(server: TeamMember[], committed: Map<string, MemberRole>): TeamMember[] {
+  for (const m of server) {
+    if (committed.get(m.userId) === m.role) committed.delete(m.userId);
+  }
+  return server.map((m) => {
+    const role = committed.get(m.userId);
+    return role === undefined ? m : { ...m, role };
+  });
+}
+
+/**
+ * A failed role change falls back to server truth. The optimistic value is
+ * reverted synchronously (the network may be down and the refresh then never
+ * lands); this fetches the server's rows for the rest of the page.
  */
 export function onRoleChangeFailed(refresh: () => void): void {
   refresh();
@@ -80,9 +97,12 @@ export function ProjectTeam({
 }) {
   const [members, setMembers] = useState(firstMembers);
   const [invitations, setInvitations] = useState(firstInvitations);
-  // router.refresh() re-renders the server component without discarding local
-  // state, so adopt the fresh props it returns after a failed role change.
-  useEffect(() => setMembers(firstMembers), [firstMembers]);
+  // Roles the server has already accepted whose containing refresh has not landed
+  // yet; see reconcileMembers. router.refresh() re-renders the server component
+  // without discarding local state, and a stale snapshot must not clobber a newer
+  // committed change.
+  const committedRef = useRef(new Map<string, MemberRole>());
+  useEffect(() => setMembers((() => reconcileMembers(firstMembers, committedRef.current))), [firstMembers]);
   // Read once: "Expires in 6 days" is measured from the moment the page opened.
   const [now] = useState(() => Date.now());
   const [email, setEmail] = useState("");
@@ -127,8 +147,19 @@ export function ProjectTeam({
     setMembers((cur) => applyRole(cur, member.userId, next));
     try {
       await api(`${base}/members/${encodeURIComponent(member.userId)}`, { method: "PATCH", body: { role: next } });
+      // The server holds the new role now. Any refresh still in flight (dispatched
+      // by an older failure) predates it, so keep the truth until a snapshot that
+      // carries it lands.
+      committedRef.current.set(member.userId, next);
+      router.refresh();
       toast.success(`Now a ${ROLE_LABEL[next].toLowerCase()}`, member.name ?? member.email ?? undefined);
     } catch (e) {
+      // Revert the optimistic value right away: the refresh may be a no-op (the
+      // network is down, so its render fails too) and the select would otherwise
+      // keep advertising a role the server never took. Each click reverts toward
+      // the row it saw, so interleaved failures cannot each "undo" past the other.
+      setMembers((cur) => applyRole(cur, member.userId, member.role));
+      committedRef.current.delete(member.userId);
       onRoleChangeFailed(() => router.refresh());
       toast.error("Could not change the role", errorText(e, "Try again."));
     }

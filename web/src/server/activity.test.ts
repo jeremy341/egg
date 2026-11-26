@@ -293,11 +293,17 @@ describe("secrets never show", () => {
       "token", "apiToken", "accessToken", "secret", "clientSecret", "password", "passwd", "apiKey", "api_key", "key",
       "privateKey", "authorization", "authHeader", "cookie", "sessionId", "hash", "valueEnc", "notifyUrlEnc",
       "webhookUrl", "bearer", "signature", "credentials", "salt", "otp",
+      "passphrase", "recaptchaSiteKey", "seedPhrase", "mnemonic", "clientId", "privateData",
     ];
     for (const key of keys) expect(isSecretKey(key), key).toBe(true);
     const meta = Object.fromEntries(keys.map((k) => [k, "plain value"]));
     expect(cleanMeta(meta)).toEqual({});
     expect(formatMeta("project.update", meta).fields).toEqual([]);
+  });
+
+  it("drops plumbing keys in any letter case", () => {
+    const meta = { project: "x", Project: "y", TOKEN: "z", Deployment: "d", tOkEn: "t" };
+    expect(cleanMeta(meta)).toEqual({});
   });
 
   it("keeps ordinary keys", () => {
@@ -326,7 +332,11 @@ describe("secrets never show", () => {
       "password=hunter2",
       "nho9f83nd0aks2lmzqx7wp5rtb4cy6ve",
       "aB3xY7pQ2mN9kL4d",
-      "550e8400-e29b-41d4-a716-446655440000",
+      "aB3xY7pQ2mN9kL4",
+      "nho9f83nd0aks2lm",
+      "xY7pQ2mN9kL4dAbC3.eF5gH5iJ7kL9mN0pQrS2tU4vW.xY7pQ2mN9bC3dF5q",
+      "aB3xY7pQ:2mN9kL4d:eF5gH6iJ7k",
+      "use the key aB3xY7pQ2mN9kL4d and call it a day",
     ];
     for (const value of secrets) expect(isSecretValue(value), value).toBe(true);
     const meta = Object.fromEntries(secrets.map((s, i) => [`field${i}`, s]));
@@ -344,8 +354,25 @@ describe("secrets never show", () => {
       "projects:read, deployments:write",
       "main",
       "3000",
+      "shop.example.com",
+      "1.21.3",
+      "refs/heads/feature/ABC-123",
+      "2026-11-20T19:34:00Z",
+      "20261120T193400Z",
+      "alpha-beta-2026",
+      "deadbeefcafe1234",
+      "a1b2c3d4e5f6a7b8c9d0",
+      "feature2026ABCupdate",
+      "egg-web-1a2b3c4d",
+      "550e8400-e29b-41d4-a716-446655440000",
     ];
     for (const value of fine) expect(isSecretValue(value), value).toBe(false);
+  });
+
+  it("keeps the app's own resource ids that audit entries name", () => {
+    const id = "550e8400-e29b-41d4-a716-446655440000";
+    const meta = { job: id, planId: id, deploymentId: id, holder: id, invitationId: id, id };
+    expect(cleanMeta(meta)).toEqual(meta);
   });
 
   it("never lets a secret reach a field, the sentence or the search text", () => {

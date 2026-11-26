@@ -559,6 +559,7 @@ describe("computeStats, the richer figures", () => {
         port: 3000,
         status: i < 12 ? "valid" : "pending",
         createdAt: created,
+        updatedAt: created,
       });
     await db.insert(schema.domains).values(domains);
 

@@ -214,7 +214,10 @@ describe("dispatching deployment events", () => {
     // The request goes to the checked address, over https, to the stored path.
     expect(req.address).toBe("93.184.216.34");
     expect(req.url.toString()).toBe(URL_OK);
-    expect(req.timeoutMs).toBe(5000);
+    // The DNS lookup and the send share one 5 s budget, so whatever the transport
+    // sees is what remained at send time.
+    expect(req.timeoutMs).toBeGreaterThan(0);
+    expect(req.timeoutMs).toBeLessThanOrEqual(5000);
     expect(req.maxBytes).toBe(4096);
     // The signature header is t=<unix>,v1=<hex> over "<t>.<body>" with this webhook's secret.
     const sig = req.headers["X-Egg-Signature"];

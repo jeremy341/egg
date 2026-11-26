@@ -3,7 +3,7 @@ import { z } from "zod";
 import { audit } from "@/server/audit";
 import { pickCloneSettings, type CloneSettings } from "@/server/clone-settings";
 import { newId, open, seal } from "@/server/crypto";
-import { getDb, schema, type Db } from "@/server/db";
+import { getDb, schema, withLockRetry, type Db } from "@/server/db";
 import { isUniqueViolation } from "@/server/db/errors";
 import { pageLimit, selectDeploymentPage, type DeploymentFilter } from "@/server/deployment-page";
 import { BUILD_LOCATIONS, RUNTIMES, WORKLOAD_KINDS, DEPLOYMENT_MODES } from "@/server/db/schema";
@@ -272,7 +272,7 @@ export async function createProject(userId: string, raw: unknown): Promise<Proje
   const now = new Date();
   // The port check and the insert are one write transaction, so two requests for the same
   // port cannot both pass the check before either row exists.
-  await db.transaction(async (tx) => {
+  await withLockRetry(() => db.transaction(async (tx) => {
     await assertCleanupAllowsWork(tx, userId);
     // Derived names on the server (systemd unit, container, ~/.egg/<slug> folder, image,
     // Compose project) are built from the slug alone, so two projects with the same slug
@@ -334,7 +334,7 @@ export async function createProject(userId: string, raw: unknown): Promise<Proje
       }
       throw err;
     });
-  });
+  }));
   await audit(userId, "project.create", id, { name: input.name });
   return assertOwned(userId, id);
 }
@@ -407,7 +407,7 @@ export async function updateProject(userId: string, projectId: string, raw: unkn
     clean.containerPort = null;
   }
   const newPort = selectedPort != null && selectedPort !== project.port ? selectedPort : null;
-  await db.transaction(async (tx) => {
+  await withLockRetry(() => db.transaction(async (tx) => {
     await assertCleanupAllowsWork(tx, userId, projectId);
     if (newPort !== null || (portTouched && selectedPort === null && project.listenPort != null)) {
       // A queued or running deployment pins the old port: changing it under the
@@ -443,7 +443,7 @@ export async function updateProject(userId: string, projectId: string, raw: unkn
       });
     // Nest holds the real port mapping: a domain left on the old port must say so.
     if (newPort !== null) await moveDomainsToPort(tx, project.id, newPort);
-  });
+  }));
   await audit(userId, "project.update", project.id, { fields: Object.keys(clean).join(", ") });
   return assertOwned(userId, projectId);
 }
@@ -629,17 +629,8 @@ export async function enqueueDeployment(
       createdAt: new Date(),
     });
   });
-  // SQLite can reject a concurrent write transaction immediately. Retry only lock
-  // contention; constraint and application errors must reach the caller unchanged.
-  for (let attempt = 0; ; attempt++) {
-    try {
-      await enqueue();
-      break;
-    } catch (err) {
-      if (attempt >= 49 || !(err instanceof Error) || !/SQLITE_BUSY|SQLITE_LOCKED/.test(err.message)) throw err;
-      await new Promise((resolve) => setTimeout(resolve, 20 + attempt * 5));
-    }
-  }
+  // SQLite can reject a concurrent write transaction immediately; retry only lock contention.
+  await withLockRetry(enqueue);
   return (await db.select().from(schema.deployments).where(eq(schema.deployments.id, id)).get())!;
 }
 

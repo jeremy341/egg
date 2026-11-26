@@ -19,12 +19,24 @@ const HEAD = "set -euo pipefail\n";
 /**
  * Unit names use the first eight hex characters of the job id, so two jobs can
  * collide on a name. The full job id in the marker decides which job owns the
- * file. A unit without a job marker is left alone, as before.
+ * file. Install refuses a unit owned by another job of this project; it may
+ * still rewrite a unit we marked before jobs carried a `job=`, as before, so a
+ * pre-upgrade job upgrades to the owning marker on its next save. Removal and
+ * running require an exact `job=` match (a pre-upgrade project-marked unit
+ * counts as this project's), so one job can never stop, delete or start
+ * another job's units under a colliding name. A file with more than one
+ * marker line belongs to no one and is always refused; trailing whitespace
+ * after the id does not break a reinstall.
  */
 const JOB_OWNERSHIP_HELPER =
+  `egg_job_markers() { local f="$1"; grep -cE "^${UNIT_MARKER} " -- "$f" 2>/dev/null || return 0; }\n` +
+  `egg_unit_is_job() { local f="$1" slug="$2" id="$3"; ` +
+  `[ "$(egg_job_markers "$f")" -le 1 ] || return 1; ` +
+  `grep -qE "^${UNIT_MARKER} project="$slug" job="$id"[[:space:]]*$" -- "$f" 2>/dev/null && return 0; ` +
+  `grep -qE "^${UNIT_MARKER} project="$slug"[[:space:]]*$" -- "$f" 2>/dev/null; }\n` +
   `egg_job_unit_free() { local f="$1" slug="$2" id="$3"; ` +
   `grep -qE "^${UNIT_MARKER} project="$slug" job=" -- "$f" 2>/dev/null || return 0; ` +
-  `grep -qE "^${UNIT_MARKER} project="$slug" job="$id"\\$" -- "$f" 2>/dev/null; }\n`;
+  `egg_unit_is_job "$f" "$slug" "$id"; }\n`;
 
 /** Exit code when the project has no release yet, so there is nothing to run a job in. */
 export const NO_RELEASE_EXIT = 31;
@@ -138,11 +150,21 @@ export function installJob(args: {
   );
 }
 
-/** Stop and delete both units, but only ones that carry our marker. */
+/** Stop and delete both units, but only ones this job owns exactly. */
 export function removeJob(args: { slug: string; jobId: string; unitDir: string }) {
   const { service, timer } = jobUnits(args.slug, args.jobId);
+  const guard = (unit: string) => {
+    const f = shellQuote(`${args.unitDir}/${unit}`);
+    return (
+      `if { [ -e ${f} ] || [ -L ${f} ]; } && ! egg_unit_is_job ${f} ${shellQuote(args.slug)} ${shellQuote(args.jobId)}; then ` +
+      `echo ${shellQuote(`${unit} was created for another job (or before jobs carried their id), so it was left alone.`)} >&2; exit ${NOT_OURS_EXIT}; fi\n`
+    );
+  };
   return (
     SH_MARKER_HELPERS +
+    JOB_OWNERSHIP_HELPER +
+    guard(timer) +
+    guard(service) +
     // The timer first, so nothing starts the service again while it is being removed.
     removeOwnUnit(args.unitDir, timer, args.slug) +
     removeOwnUnit(args.unitDir, service, args.slug) +
@@ -163,7 +185,10 @@ export function runJobNow(args: { slug: string; jobId: string; unitDir: string }
   return (
     HEAD +
     SH_MARKER_HELPERS +
-    `egg_unit_ours ${f} ${shellQuote(args.slug)} || { echo "That job is not installed on the container." >&2; exit ${NOT_INSTALLED_EXIT}; }\n` +
+    JOB_OWNERSHIP_HELPER +
+    // The exact job id decides ownership here too: a colliding 8-hex name must
+    // not let one job start another job's service.
+    `if ! egg_unit_is_job ${f} ${shellQuote(args.slug)} ${shellQuote(args.jobId)}; then echo "That job is not installed on the container." >&2; exit ${NOT_INSTALLED_EXIT}; fi\n` +
     `systemctl start ${shellQuote(service)} --no-block\n` +
     `echo "Started ${service}"\n`
   );

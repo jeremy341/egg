@@ -167,8 +167,8 @@ beforeAll(async () => {
   domainId = newId();
   theirDomainId = newId();
   await ctx.db.insert(schema.domains).values([
-    { id: domainId, userId: me.id, serverId: myServerId, projectId, domain: "app.example.com", port: 3000, status: "pending", createdAt: new Date() },
-    { id: theirDomainId, userId: other.id, serverId: theirServerId, projectId: theirProjectId, domain: "theirs.example.com", port: 3001, status: "pending", createdAt: new Date() },
+    { id: domainId, userId: me.id, serverId: myServerId, projectId, domain: "app.example.com", port: 3000, status: "pending", createdAt: new Date(), updatedAt: new Date() },
+    { id: theirDomainId, userId: other.id, serverId: theirServerId, projectId: theirProjectId, domain: "theirs.example.com", port: 3001, status: "pending", createdAt: new Date(), updatedAt: new Date() },
   ]);
   // Secrets that exist in the database and must stay there.
   await setEnvVar(me.id, projectId, { key: "API_KEY", value: ENV_SECRET, target: "production" });

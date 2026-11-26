@@ -102,6 +102,28 @@ describe("resolved Compose volumes", () => {
     expect(validateResolvedCompose(resolved({ data: {} }, []), opts).errors).toEqual([]);
   });
 
+  it("refuses external, foreign and undeclared networks, keeping joins project-scoped", () => {
+    const net = (networks: unknown, serviceNetworks: unknown) => ({
+      services: { web: { image: "img", networks: serviceNetworks } },
+      networks,
+    });
+    // An external network joins something that already exists outside this project.
+    expect(validateResolvedCompose(net({ shared: { name: "hostnet", external: true } }, ["shared"]), opts).errors)
+      .toEqual([expect.stringMatching(/Invalid network/)]);
+    // A renamed network points somewhere other than this project's namespace.
+    expect(validateResolvedCompose(net({ shared: { name: "egg-victim_shared" } }, ["shared"]), opts).errors)
+      .toEqual([expect.stringMatching(/Invalid network/)]);
+    // Only bridge networks may be declared.
+    expect(validateResolvedCompose(net({ shared: { name: "egg-demo_shared", driver: "host" } }, ["shared"]), opts).errors)
+      .toEqual([expect.stringMatching(/Invalid network/)]);
+    // A service may only join networks declared at the top level.
+    expect(validateResolvedCompose(net({ shared: {} }, ["other"]), opts).errors)
+      .toEqual([expect.stringMatching(/undeclared network/)]);
+    // Exactly what `docker compose -p egg-demo config` emits for a plain network.
+    expect(validateResolvedCompose(net({ shared: { name: "egg-demo_shared", driver: "bridge" } }, { shared: null }), opts).errors)
+      .toEqual([]);
+  });
+
   it("refuses volumes_from and bind-style long mounts", () => {
     const withFrom = { services: { web: { image: "img", volumes_from: ["db"] }, db: { image: "img" } }, volumes: {} };
     expect(validateResolvedCompose(withFrom, opts).errors).toEqual([expect.stringMatching(/volumes_from/)]);

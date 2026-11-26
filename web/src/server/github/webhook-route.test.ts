@@ -175,7 +175,7 @@ describe("GitHub webhook route", () => {
     expect(ok.status).toBe(200);
   });
 
-  it("caps body reads globally so bad signatures without a client address self-limit", async () => {
+  it("never lets unverified signatures burn the global ceiling a real delivery needs", async () => {
     rateLimiter().clear();
     const body = '{"ping":"x"}';
     const badSig = () => new NextRequest("http://localhost/api/webhooks/github", {
@@ -187,8 +187,18 @@ describe("GitHub webhook route", () => {
         "content-length": String(Buffer.byteLength(body)),
       },
     });
-    for (let i = 0; i < 120; i++) expect((await POST(badSig())).status, String(i)).toBe(401);
-    const refused = await POST(badSig());
+    // A flood of well-formed but wrong signatures is refused per request and
+    // never counts toward the shared global budget.
+    for (let i = 0; i < 400; i++) expect((await POST(badSig())).status, String(i)).toBe(401);
+    // A correctly signed delivery still sails through after the flood.
+    const legit = await POST(signed(body));
+    expect(legit.status).toBe(200);
+    // The ceiling still exists, but only verified deliveries fill it.
+    for (let i = 0; i < 119; i++) {
+      const res = await POST(signed(JSON.stringify({ z: i })));
+      expect(res.status, `legit flood ${i}`).toBeLessThan(429);
+    }
+    const refused = await POST(signed(body));
     expect(refused.status).toBe(429);
     expect(refused.headers.get("Retry-After")).toBeTruthy();
     rateLimiter().clear();

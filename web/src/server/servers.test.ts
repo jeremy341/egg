@@ -37,6 +37,9 @@ afterAll(async () => {
 describe("nest username validation", () => {
   it("accepts normal usernames and rejects shell-ish input", () => {
     expect(validateNestUsername(" sam-r ")).toBe("sam-r");
+    // Stored canonicity: the (host, nest_username) unique index compares raw text while
+    // the conflict checks compare lower(), so every username must be stored lowercase.
+    expect(validateNestUsername("Sam-R")).toBe("sam-r");
     for (const bad of ["", "a b", "a;rm", "-lead", "x".repeat(40), "$(id)", "a/b"]) {
       expect(() => validateNestUsername(bad)).toThrow();
     }

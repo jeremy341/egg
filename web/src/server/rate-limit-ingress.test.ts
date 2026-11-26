@@ -144,6 +144,24 @@ describe("admitRequest", () => {
     expect(admitRequest(h({ cookie: "egg_session=not a token" }), { trustProxy: false, bucket: "all" }).refused).toBe(false);
   });
 
+  it("bounds minted cookie claims by one aggregate ceiling, not the anonymous one", () => {
+    const call = (token: string) => admitRequest(h({ cookie: `egg_session=${token}` }), { trustProxy: false, bucket: "all" });
+    // Each fresh mint would otherwise widen the instance's total allotment by a
+    // whole ingress budget (600 more a minute per mint, forever, for free).
+    expect(call("mint-0").refused).toBe(false);
+    let hitCeiling = false;
+    for (let i = 0; i < RATE_LIMITS.ingressSessionGlobal.limit + 5 && !hitCeiling; i++) {
+      hitCeiling = call(`mint-${i}`).refused;
+    }
+    expect(hitCeiling).toBe(true);
+    // A brand-new mint cannot escape the now-saturated aggregate ceiling...
+    expect(call("brand-new-mint").refused).toBe(true);
+    // ...but an anonymous request keeps its own, separate shared ceiling, and a
+    // known address keeps its own budget.
+    expect(admitRequest(h(), { trustProxy: false, bucket: "all" }).refused).toBe(false);
+    expect(admitRequest(xff("203.0.113.9"), { trustProxy: true, bucket: "all" })).toEqual({ refused: false });
+  });
+
   it("never limits or bans the webhook when the address is unknown, so no one can block GitHub's deliveries", () => {
     for (let i = 0; i < RATE_LIMITS.ingressGlobal.limit + 10; i++) {
       expect(admitRequest(h(), { trustProxy: false, bucket: "webhook" }).refused).toBe(false);

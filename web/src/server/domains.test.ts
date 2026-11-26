@@ -137,13 +137,31 @@ describe("domain records", () => {
     expect(stale.domain.status).toBe("pending");
     const db = await getDb();
     await db.update(schema.domains)
-      .set({ createdAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000) })
+      .set({ createdAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000), updatedAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000) })
       .where(eq(schema.domains.id, stale.domain.id));
 
     const mine = await addDomain(userId, { serverId, domain: "stale.example.com", port: 3000 });
     expect(mine.domain).toMatchObject({ domain: "stale.example.com", userId, status: "pending" });
     expect(await db.select().from(schema.domains).where(eq(schema.domains.domain, "stale.example.com"))).toHaveLength(1);
     await removeDomain(userId, mine.domain.id);
+  });
+
+  it("does not reclaim an old pending claim its owner still actively updates", async () => {
+    const other = (await upsertUser({ id: "u-active", name: "Active", email: null, slackId: null })).id;
+    const otherServer = (await createServer(other, "active-r")).id;
+    const added = await addDomain(other, { serverId: otherServer, domain: "old-but-ours.example.com", port: 3000 });
+    const db = await getDb();
+    // Added eight days ago, but the owner still points it at a project today:
+    // the reclaim window runs from the owner's last action, not the add date.
+    await db.update(schema.domains)
+      .set({ createdAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000) })
+      .where(eq(schema.domains.id, added.domain.id));
+    await db.update(schema.domains)
+      .set({ projectId: null, port: 3001, status: "pending", lastCheckedAt: null, updatedAt: new Date() })
+      .where(eq(schema.domains.id, added.domain.id));
+
+    await expect(addDomain(userId, { serverId, domain: "old-but-ours.example.com", port: 3000 })).rejects.toMatchObject({ status: 409 });
+    await removeDomain(other, added.domain.id);
   });
 
   it("keeps a recent pending claim by another user reserved", async () => {

@@ -83,8 +83,8 @@ beforeAll(async () => {
   myDeploymentId = (await deployBranch(me.id, projectId)).id;
   theirDeploymentId = (await deployBranch(other.id, theirProjectId)).id;
   await ctx.db.insert(schema.domains).values([
-    { id: newId(), userId: me.id, serverId: myServerId, projectId, domain: "app.example.com", port: 3000, status: "valid", createdAt: new Date() },
-    { id: newId(), userId: other.id, serverId: theirServerId, projectId: theirProjectId, domain: "theirs.example.com", port: 3001, status: "pending", createdAt: new Date() },
+    { id: newId(), userId: me.id, serverId: myServerId, projectId, domain: "app.example.com", port: 3000, status: "valid", createdAt: new Date(), updatedAt: new Date() },
+    { id: newId(), userId: other.id, serverId: theirServerId, projectId: theirProjectId, domain: "theirs.example.com", port: 3001, status: "pending", createdAt: new Date(), updatedAt: new Date() },
   ]);
 });
 afterAll(async () => {

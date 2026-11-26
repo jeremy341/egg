@@ -518,7 +518,7 @@ pnpm build
 pnpm start
 ```
 
-Database changes are applied automatically the first time the new version opens the database. Going backwards, from a newer database to older code, is not supported, so keep the backup from before the update. On a server, use `sh deploy/upgrade.sh` (see below).
+Database changes are applied automatically the first time the new version opens the database. Going backwards, from a newer database to older code, is not supported, so keep the backup from before the update. On a server, use `sh deploy/upgrade.sh` (see below). One migration renames old duplicates in place rather than failing: if two accounts held the same project slug on one server, or the same Nest username on one host, the older row gets a `-r-…` suffix so the newer row keeps the name — no data is deleted, and a renamed project provisions its unit under the new slug on its next deploy.
 
 ## Setup B: on your own server
 

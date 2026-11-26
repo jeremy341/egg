@@ -5,7 +5,7 @@ import { z } from "zod";
 import { audit } from "@/server/audit";
 import { runAppCheck, type AppCheckReport, type Probe } from "@/server/app-check";
 import { newId } from "@/server/crypto";
-import { getDb, schema, type Db } from "@/server/db";
+import { getDb, schema, withLockRetry, type Db } from "@/server/db";
 import { HttpError, notFound } from "@/server/http";
 import { checkDomainPolicy, isNestName, ownedParentOf } from "@/server/domain-policy";
 import { getServerForUser } from "@/server/servers";
@@ -115,13 +115,15 @@ export async function addDomain(userId: string, raw: unknown) {
   const id = newId();
   const staleBefore = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   try {
-    await db.transaction(async (tx) => {
+    await withLockRetry(() => db.transaction(async (tx) => {
       const existing = await tx.select().from(schema.domains).where(eq(schema.domains.domain, domain)).get();
       if (existing) {
-        // A pending claim nobody ever verified must not reserve the name forever.
-        // Valid, invalid and recent pending rows keep the normal 409.
+        // A pending claim nobody ever verified must not reserve the name forever. The
+        // window runs from the owner's last action (added, re-pointed, re-verified), not
+        // from the original add: an actively updated domain never becomes reclaimable.
+        // Valid, invalid and fresh pending rows keep the normal 409.
         const stale = existing.status === "pending" && existing.userId !== userId &&
-          existing.createdAt < staleBefore;
+          existing.updatedAt < staleBefore;
         if (!stale) throw new HttpError(409, `${domain} is already added.`, "conflict");
         await tx.delete(schema.domains).where(eq(schema.domains.id, existing.id));
       }
@@ -134,8 +136,9 @@ export async function addDomain(userId: string, raw: unknown) {
         port: input.port,
         status: verifiedBy === "dns" ? "pending" : "valid",
         createdAt: new Date(),
+        updatedAt: new Date(),
       });
-    });
+    }));
   } catch (err) {
     if (isUniqueViolation(err)) throw new HttpError(409, `${domain} is already added.`, "conflict");
     throw err;
@@ -211,7 +214,12 @@ export async function updateDomain(userId: string, domainId: string, raw: unknow
   const portChanged = port !== row.port;
   await db
     .update(schema.domains)
-    .set({ projectId, port, ...(portChanged ? { status: "pending" as const, lastCheckedAt: null } : {}) })
+    .set({
+      projectId,
+      port,
+      updatedAt: new Date(),
+      ...(portChanged ? { status: "pending" as const, lastCheckedAt: null } : {}),
+    })
     .where(eq(schema.domains.id, row.id));
   await audit(userId, "domain.update", projectId, { domain: row.domain, port });
 
@@ -231,7 +239,7 @@ export async function updateDomain(userId: string, domainId: string, raw: unknow
 export async function moveDomainsToPort(db: Pick<Db, "update">, projectId: string, port: number) {
   await db
     .update(schema.domains)
-    .set({ port, status: "pending", lastCheckedAt: null })
+    .set({ port, status: "pending", lastCheckedAt: null, updatedAt: new Date() })
     .where(eq(schema.domains.projectId, projectId));
 }
 
@@ -353,7 +361,7 @@ export async function verifyDomain(
     // verified domain keeps its status when the lookup fails; the reason is still shown.
     const lost = result.state === "missing" && row.status === "valid" && !nest;
     const status = result.state === "ok" ? "valid" : lost ? "invalid" : row.status;
-    await db.update(schema.domains).set({ status, lastCheckedAt: new Date() }).where(eq(schema.domains.id, row.id));
+    await db.update(schema.domains).set({ status, lastCheckedAt: new Date(), updatedAt: new Date() }).where(eq(schema.domains.id, row.id));
   }
   const status = result.state === "ok" ? "valid" : result.state === "missing" ? "invalid" : "unknown";
   return { status, reason: result.reason };

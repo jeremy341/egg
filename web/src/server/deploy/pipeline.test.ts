@@ -194,6 +194,22 @@ describe("deploy pipeline", () => {
     expect(mock.commands.length).toBeGreaterThan(before);
   });
 
+  it("masks the deployment's environment values in a failed rollback's stored error", async () => {
+    const rb = await rollback(userId, v2.id);
+    // The failure’s message embeds a production env value; the stored error must not carry it.
+    const broken: PipelineDeps = {
+      ...deps,
+      connect: async () => {
+        throw new Error("handshake failed: the banner contained hello-secret-value");
+      },
+    };
+    await runRollbackJob(rb.id, broken);
+    const done = await ctx.db.select().from(schema.deployments).where(eq(schema.deployments.id, rb.id)).get();
+    expect(done?.state).toBe("error");
+    expect(done?.error).not.toContain("hello-secret-value");
+    expect(done?.error).toContain("***");
+  });
+
   it("does not switch a rollback canceled while reading the current unit", async () => {
     const rb = await rollback(userId, v2.id);
     const abort = new AbortController();

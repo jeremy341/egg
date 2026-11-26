@@ -27,10 +27,12 @@ const BODY_IDLE_TIMEOUT_MS = 15_000;
 const BODY_DEADLINE_MS = 30_000;
 const SIGNATURE_FORMAT = /^sha256=[0-9a-f]{64}$/;
 /**
- * A global ceiling on bodies read, even when no client address is known
- * (TRUST_PROXY off). Repeated well-formed but wrong signatures can each hold a
- * read slot for up to the body deadline; without this, nobody could be refused.
- * Set above any real GitHub delivery rate so legitimate events are never lost.
+ * A global ceiling on verified deliveries, even when no client address is known
+ * (TRUST_PROXY off). It is counted only AFTER the HMAC has been verified: a
+ * flood of well-formed but wrong signatures cannot burn the shared budget and
+ * 429 genuine GitHub deliveries, and without the secret a flood has to hold one
+ * of the few body-read slots to cost anything at all. Set above any real GitHub
+ * delivery rate so legitimate events are never lost.
  */
 const GLOBAL_WEBHOOK_LIMIT = 120;
 const GLOBAL_WEBHOOK_WINDOW_MS = 60_000;
@@ -94,16 +96,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // With TRUST_PROXY off the per-address limiter above does nothing. Cap body
-  // reads globally too, so a flood of bad signatures cannot starve real ones.
-  const global = rateLimiter().check(GLOBAL_WEBHOOK_KEY, GLOBAL_WEBHOOK_LIMIT, GLOBAL_WEBHOOK_WINDOW_MS);
-  if (!global.allowed) {
-    return NextResponse.json(
-      { error: "too many webhook deliveries; redeliver shortly" },
-      { status: 429, headers: { "Retry-After": String(global.retryAfterSeconds) } }
-    );
-  }
-
   const release = webhookBodyReads.acquire();
   if (!release) {
     return NextResponse.json(
@@ -121,6 +113,15 @@ export async function POST(req: NextRequest) {
     release();
   }
   if (!body) return NextResponse.json({ error: "bad signature" }, { status: 401 });
+  // Only now, on a verified delivery, does the shared global ceiling count: wrong
+  // signatures were refused without ever touching it (see GLOBAL_WEBHOOK_LIMIT).
+  const global = rateLimiter().check(GLOBAL_WEBHOOK_KEY, GLOBAL_WEBHOOK_LIMIT, GLOBAL_WEBHOOK_WINDOW_MS);
+  if (!global.allowed) {
+    return NextResponse.json(
+      { error: "too many webhook deliveries; redeliver shortly" },
+      { status: 429, headers: { "Retry-After": String(global.retryAfterSeconds) } }
+    );
+  }
   const raw = body.toString("utf8");
 
   let payload: unknown;

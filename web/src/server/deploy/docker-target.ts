@@ -150,9 +150,24 @@ export function validateResolvedCompose(
     return { errors: ["Compose requires services"], aux: [] };
   }
   for (const key of Object.keys(input)) if (!["services", "volumes", "networks", "name"].includes(key)) errors.push(`Unsupported Compose field: ${key}`);
-  const volumes = record(input.volumes ?? {}) ? (input.volumes as Record<string, unknown>) : {};
+  const volumes = record(input.volumes) ? (input.volumes as Record<string, unknown>) : {};
   const declared = new Set(Object.keys(volumes));
   if (input.volumes !== undefined && !record(input.volumes)) errors.push("Invalid volumes");
+  const networkRecord = record(input.networks) ? (input.networks as Record<string, unknown>) : {};
+  if (input.networks !== undefined && !record(input.networks)) errors.push("Invalid networks");
+  const declaredNetworks = new Set(Object.keys(networkRecord));
+  for (const [name, value] of Object.entries(networkRecord)) {
+    if (!COMPOSE_SERVICE.test(name) || !record(value) || value.external === true) { errors.push(`Invalid network: ${name}`); continue; }
+    // Like volumes: an external or renamed network would carry this deployment
+    // outside the project's own Compose namespace, so it is refused outright.
+    if (typeof value.name === "string" && value.name !== `${main.project}_${name}`) {
+      errors.push(`Invalid network: ${name}`);
+    }
+    for (const field of Object.keys(value)) {
+      if (field !== "name" && field !== "driver") errors.push(`Invalid network: ${name}`);
+      if (field === "driver" && value.driver !== "bridge") errors.push(`Invalid network: ${name}`);
+    }
+  }
   for (const [name, value] of Object.entries(volumes)) {
     if (!COMPOSE_SERVICE.test(name) || !record(value) || value.external === true) { errors.push(`Invalid volume: ${name}`); continue; }
     // Config resolves a declared volume's physical name to `<project>_<key>`. A
@@ -200,6 +215,19 @@ export function validateResolvedCompose(
       }
     } else if (value.volumes !== undefined && value.volumes !== null) {
       errors.push(`Invalid volume list: ${service}`);
+    }
+    // A service may join only networks declared at the top level, which the
+    // namespace checks above keep inside this project's Compose namespace.
+    if (value.networks !== undefined && value.networks !== null) {
+      const joined = Array.isArray(value.networks)
+        ? value.networks
+        : record(value.networks) ? Object.keys(value.networks) : null;
+      if (joined === null) errors.push(`Invalid network list: ${service}`);
+      else for (const id of joined) {
+        if (typeof id !== "string" || !declaredNetworks.has(id)) {
+          errors.push(`Service ${service} joins an undeclared network`);
+        }
+      }
     }
     if (value.environment !== undefined && value.environment !== null && !record(value.environment)) errors.push(`Invalid environment: ${service}`);
   }

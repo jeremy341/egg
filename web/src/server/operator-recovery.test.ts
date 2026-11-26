@@ -129,6 +129,36 @@ describe("operator recovery", () => {
     expect((await ctx.db.select().from(schema.servers).where(eq(schema.servers.id, server.id)).get())!.buildLockHolder).toBeNull();
     await release(server.id);
   });
+  it("a crash before activation began never tears down the live previous release", async () => {
+    const { server, dep, job, stale } = await setup("recover-ten");
+    // The crash happened mid-build: activation never started, so the unit,
+    // containers and Compose stack still serve the previous release.
+    let sweepScript = "";
+    await recoverBuild(admin, server.id, { confirm: true, holder: dep.id, lockAt: stale.toISOString(), workerStoppedConfirmed: true, workerId: job.lockedBy! }, async () => ({
+      script: async (text: string) => { sweepScript = text; return { code: 0, stdout: "", stderr: "" }; },
+      close() {},
+    } as never));
+    expect(sweepScript).toContain("egg-build-");
+    expect(sweepScript).not.toContain("systemctl stop 'egg-");
+    expect(sweepScript).not.toContain("docker rm -f");
+    expect(sweepScript).not.toContain("docker compose -p");
+    expect((await ctx.db.select().from(schema.deployments).where(eq(schema.deployments.id, dep.id)).get())!.state).toBe("error");
+    await release(server.id);
+  });
+  it("a preview crash mid-activation stops its own unit and containers but never the shared Compose stack", async () => {
+    const { server, dep, job, stale } = await setup("recover-eleven");
+    await ctx.db.update(schema.deployments).set({ state: "deploying", activationStartedAt: new Date(), env: "preview" }).where(eq(schema.deployments.id, dep.id));
+    await ctx.db.update(schema.servers).set({ buildLockHolder: null, buildLockAt: null }).where(eq(schema.servers.id, server.id));
+    let sweepScript = "";
+    await recoverBuild(admin, server.id, { confirm: true, holder: dep.id, lockAt: stale.toISOString(), workerStoppedConfirmed: true, workerId: job.lockedBy! }, async () => ({
+      script: async (text: string) => { sweepScript = text; return { code: 0, stdout: "", stderr: "" }; },
+      close() {},
+    } as never));
+    expect(sweepScript).toContain("systemctl stop");
+    expect(sweepScript).toContain("docker rm -f");
+    expect(sweepScript).not.toContain("docker compose -p");
+    await release(server.id);
+  });
   // Sets free the per-user server cap so later setups can create one.
   async function release(serverId: string) {
     await ctx.db.delete(schema.projects).where(eq(schema.projects.serverId, serverId));

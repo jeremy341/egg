@@ -34,7 +34,11 @@ export function validateNestUsername(value: string): string {
       "validation"
     );
   }
-  return v;
+  // The collision domain is case-insensitive (the conflict checks compare lower()), but the
+  // backing unique index on (host, nest_username) compares raw text. Storing the canonical
+  // lowercase form keeps the two in agreement, so two racing inserts of "Nest-User" and
+  // "nest-user" collide on the index instead of coexisting on the same Nest account.
+  return v.toLowerCase();
 }
 
 /** Public view of a server: never includes key material beyond the public key. */

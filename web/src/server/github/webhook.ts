@@ -327,12 +327,13 @@ async function handleRepository(payload: unknown): Promise<WebhookResult> {
 
   const db = await getDb();
   const projects = await db.select().from(schema.projects).where(sameRepo(oldName));
-  // The dispatcher checked maintenance before this event; check again before
-  // rewriting rows in case a window opened in the meantime.
-  if ((await maintenanceState()).active) throw maintenanceError();
   let renamed = 0;
   for (const project of projects) {
     if (!(await installationTrusted(db, project, p.installation?.id))) continue;
+    // The dispatcher checked maintenance before this event, and this loop awaits
+    // between projects; the window can open mid-fan-out, so re-check before every
+    // rewrite. A throw releases the replay digest and the delivery is redelivered.
+    if ((await maintenanceState()).active) throw maintenanceError();
     // Keep the clone URL pointing at the same host, with the new path.
     let repoUrl = project.repoUrl;
     try {
@@ -356,12 +357,14 @@ async function handleInstallation(payload: unknown): Promise<WebhookResult> {
   if (p.action === "deleted" && p.installation?.id) {
     const db = await getDb();
     // The dispatcher checked maintenance before this event; check again before
-    // deleting rows in case a window opened in the meantime.
+    // each write, as the window can open between them. A throw releases the
+    // replay digest, GitHub redelivers, and the delete re-runs as a no-op.
     if ((await maintenanceState()).active) throw maintenanceError();
     await db
       .delete(schema.githubInstallations)
       .where(eq(schema.githubInstallations.id, p.installation.id));
     // Projects keep their record but lose private-repo access until relinked.
+    if ((await maintenanceState()).active) throw maintenanceError();
     await db
       .update(schema.projects)
       .set({ installationId: null })

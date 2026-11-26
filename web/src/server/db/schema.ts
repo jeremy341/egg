@@ -405,6 +405,9 @@ export const domains = sqliteTable(
       .default("pending"),
     lastCheckedAt: ts("last_checked_at"),
     createdAt: ts("created_at").notNull(),
+    /** The last owner action on this domain (added, re-pointed, re-verified). The reclaim
+     *  window for an abandoned pending claim runs from this, not from the add date. */
+    updatedAt: ts("updated_at").notNull(),
   },
   (t) => [uniqueIndex("domains_domain_idx").on(t.domain)]
 );
