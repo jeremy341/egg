@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { requireScope, type Principal, type Scope } from "@/server/api-tokens";
-import { authenticate, jsonResponse, readCappedText } from "@/server/api-v1-http";
+import { withIdempotency, fingerprintOf, idempotencyKeyFrom } from "@/server/api-idempotency";
+import { authenticate, httpErrorResponse, jsonResponse, readCappedText } from "@/server/api-v1-http";
 import { API_LIMITS, enforceApiRate, type Bucket } from "@/server/api-v1-kit";
 import { handle, HttpError } from "@/server/http";
 import { rateLimiter } from "@/server/rate-limit";
@@ -42,10 +43,31 @@ export function webhookRoute(
       const principal = await authenticate(req);
       requireScope(principal, scope);
       enforceApiRate(principal, bucket);
+      // Checked before any work, so a malformed key is a 400 and never runs the write.
+      const idemKey = req.method === "GET" ? null : idempotencyKeyFrom(req);
       const id = (await ctx.params).webhookId;
-      const { data, status } = await fn(principal, req, typeof id === "string" ? id : undefined);
-      // Secrets can appear in these responses: never cache them.
-      return jsonResponse(data, status ?? 200);
+      const webhookId = typeof id === "string" ? id : undefined;
+
+      const run = async (): Promise<Response> => {
+        try {
+          const { data, status } = await fn(principal, req, webhookId);
+          // Secrets can appear in these responses: never cache them.
+          return jsonResponse(data, status ?? 200);
+        } catch (err) {
+          if (idemKey !== null && err instanceof HttpError) return httpErrorResponse(err);
+          throw err;
+        }
+      };
+      if (idemKey === null) return run();
+
+      // A clone keeps the body for fn; the size cap matches what fn reads.
+      const text = await readCappedText(req.clone(), MAX_BODY_BYTES);
+      return withIdempotency({
+        scope: principal.tokenId,
+        key: idemKey,
+        fingerprint: fingerprintOf(req.method, req.nextUrl.pathname + req.nextUrl.search, text),
+        run,
+      });
     },
     { skipOriginCheck: true }
   );

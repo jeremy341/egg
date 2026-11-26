@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { bearerFrom, principalFor, type Principal } from "@/server/api-tokens";
 import { callEndpoint, endpointById, enforceApiRate, type Endpoint } from "@/server/api-v1";
+import { fingerprintOf, idempotencyKeyFrom, withIdempotency } from "@/server/api-idempotency";
 import { handle, HttpError } from "@/server/http";
 import { assertRateRoom, clientIp, enforceRateLimit } from "@/server/rate-limit";
 
@@ -33,6 +34,8 @@ export async function authenticate(req: Request): Promise<Principal> {
     if (ip) enforceRateLimit("badToken", ip);
     throw new HttpError(401, "That access token is not valid.", "unauthorized", WWW_AUTHENTICATE);
   }
+  // Per token, on top of the per-user buckets in api-v1-kit.ts. Counted only for a valid token.
+  enforceRateLimit("apiToken", principal.tokenId);
   return principal;
 }
 
@@ -68,17 +71,16 @@ export async function readCappedText(req: Request, maxBytes: number): Promise<st
 }
 
 /**
- * The endpoint's body fields, from an optional JSON object body. Unknown fields are
- * refused, and so is any field on an endpoint that takes none. An empty or missing
- * body is always fine.
+ * The endpoint's body fields, from the raw JSON text of its body. Unknown fields are
+ * refused, and so is any field on an endpoint that takes none. An empty body is fine.
  */
-export async function readBodyFields(ep: Endpoint, req: Request): Promise<Record<string, unknown>> {
+export function parseBodyFields(ep: Endpoint, text: string): Record<string, unknown> {
   const allowed = Object.keys(ep.body);
-  const text = (await readCappedText(req, ep.maxBodyBytes)).trim();
-  if (text === "") return {};
+  const trimmed = text.trim();
+  if (trimmed === "") return {};
   let parsed: unknown;
   try {
-    parsed = JSON.parse(text);
+    parsed = JSON.parse(trimmed);
   } catch {
     throw new HttpError(400, "Request body must be JSON", "bad_json");
   }
@@ -95,6 +97,16 @@ export async function readBodyFields(ep: Endpoint, req: Request): Promise<Record
   return fields;
 }
 
+/** Read a request's body (size-capped) and parse it as the endpoint's body fields. */
+export async function readBodyFields(ep: Endpoint, req: Request): Promise<Record<string, unknown>> {
+  return parseBodyFields(ep, await readCappedText(req, ep.maxBodyBytes));
+}
+
+/** The same JSON error body `handle` writes. Used where a failure must be stored as a response for replay. */
+export function httpErrorResponse(err: HttpError) {
+  return NextResponse.json({ error: { code: err.code, message: err.message } }, { status: err.status, headers: err.headers });
+}
+
 type Ctx = { params: Promise<Record<string, string | string[] | undefined>> };
 
 /** A route handler for one endpoint of the shared list. */
@@ -107,6 +119,8 @@ export function v1Route(id: string) {
     async (req: NextRequest, ctx) => {
       const principal = await authenticate(req);
       enforceApiRate(principal, ep.bucket);
+      // Checked before any work, so a malformed key is a 400 and never runs the write.
+      const idemKey = ep.readOnly ? null : idempotencyKeyFrom(req);
 
       const params = await ctx.params;
       const query: Record<string, unknown> = {};
@@ -117,10 +131,26 @@ export function v1Route(id: string) {
       const path: Record<string, unknown> = {};
       for (const key of Object.keys(ep.pathParams)) path[key] = params[key];
 
-      // Path values win, so a body field can never retarget the id in the URL.
-      const body = await readBodyFields(ep, req);
-      const data = await callEndpoint(principal, ep, { ...query, ...body, ...path });
-      return jsonResponse(data, ep.status);
+      const text = await readCappedText(req, ep.maxBodyBytes);
+      const run = async (): Promise<Response> => {
+        try {
+          // Path values win, so a body field can never retarget the id in the URL.
+          const body = parseBodyFields(ep, text);
+          const data = await callEndpoint(principal, ep, { ...query, ...body, ...path });
+          return jsonResponse(data, ep.status);
+        } catch (err) {
+          if (idemKey !== null && err instanceof HttpError) return httpErrorResponse(err);
+          throw err;
+        }
+      };
+      if (idemKey === null) return run();
+
+      return withIdempotency({
+        scope: principal.tokenId,
+        key: idemKey,
+        fingerprint: fingerprintOf(req.method, req.nextUrl.pathname + req.nextUrl.search, text),
+        run,
+      });
     },
     { skipOriginCheck: true }
   );
