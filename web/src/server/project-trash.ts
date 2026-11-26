@@ -24,6 +24,8 @@ export type TrashSnapshot = {
   envVars: Row[];
   deployments: Row[];
   scheduledJobs: Row[];
+  /** Alert rules and their last state. Optional so snapshots written before rules existed still restore. */
+  alertRules?: Row[];
   /** Domains that pointed at the app. They are kept by the database and re-linked on restore. */
   domainIds: string[];
 };
@@ -64,6 +66,7 @@ export async function moveProjectToTrash(tx: Tx, userId: string, project: Projec
   const deployments = await tx.select().from(schema.deployments).where(eq(schema.deployments.projectId, project.id));
   const envVars = await tx.select().from(schema.envVars).where(eq(schema.envVars.projectId, project.id));
   const scheduledJobs = await tx.select().from(schema.scheduledJobs).where(eq(schema.scheduledJobs.projectId, project.id));
+  const rules = await tx.select().from(schema.alertRules).where(eq(schema.alertRules.projectId, project.id));
   const domains = await tx
     .select({ id: schema.domains.id })
     .from(schema.domains)
@@ -73,6 +76,7 @@ export async function moveProjectToTrash(tx: Tx, userId: string, project: Projec
     envVars: envVars.map(pack),
     deployments: deployments.map(pack),
     scheduledJobs: scheduledJobs.map(pack),
+    alertRules: rules.map(pack),
     domainIds: domains.map((d) => d.id),
   };
   await tx.insert(schema.projectTrash).values({
@@ -173,6 +177,9 @@ export async function restoreTrashedProject(userId: string, projectId: string): 
           .update(schema.domains)
           .set({ projectId: project.id })
           .where(and(inArray(schema.domains.id, snapshot.domainIds), isNull(schema.domains.projectId)));
+      }
+      if (snapshot.alertRules?.length) {
+        await tx.insert(schema.alertRules).values(snapshot.alertRules.map((r) => unpack(r) as typeof schema.alertRules.$inferInsert));
       }
       await tx.delete(schema.projectTrash).where(eq(schema.projectTrash.projectId, projectId));
     });
