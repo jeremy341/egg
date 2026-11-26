@@ -4,9 +4,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { CaretLeftIcon, ShieldCheckIcon } from "@phosphor-icons/react";
 import { useAccount } from "@/components/account-context";
+import { CollapsibleNavGroup } from "@/components/collapsible-nav-group";
 import { PixelAvatar } from "@/components/ui/pixel-avatar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DOCS_ITEM, navFor } from "@/lib/nav";
+import { DOCS_ITEM, navFor, type NavItem } from "@/lib/nav";
 import { cn } from "@/lib/utils";
 
 /** Shared by every row of the sidebar and the phone menu. 32px tall, 44px in the phone menu. */
@@ -17,13 +18,27 @@ export const navItemIdle =
 export const navItemCurrent = "bg-selected text-selected-foreground";
 
 /**
- * Items that open a new group get a little air above them, so nine links read
- * as three small clusters instead of one long list.
+ * The sidebar's items fall into groups. A new group starts at these links, so
+ * the items read as a few small clusters. Each cluster folds away under its
+ * label (see CollapsibleNavGroup); the cluster holding the current page stays
+ * open. The labels are by position, matching the order of the clusters.
  */
 const GROUP_STARTS = new Set(["/resources", "/container", "/files", "/settings"]);
+const TEAM_GROUP_LABELS = ["Apps", "Operate", "Platform"];
+const PROJECT_GROUP_LABELS = ["Build", "Tools", "Config"];
+
 function startsGroup(href: string) {
   const last = "/" + href.split("/").pop();
   return GROUP_STARTS.has(last);
+}
+
+function groupItems(items: NavItem[]): NavItem[][] {
+  const groups: NavItem[][] = [];
+  items.forEach((item, i) => {
+    if (i === 0 || startsGroup(item.href)) groups.push([item]);
+    else groups[groups.length - 1].push(item);
+  });
+  return groups;
 }
 
 /** Sidebar links. Switches to project links inside a project. */
@@ -41,6 +56,8 @@ export function NavList({
   const projectName = ctx.project
     ? (projects.find((p) => p.slug === ctx.project?.slug)?.name ?? ctx.project.name)
     : null;
+  const labels = ctx.project ? PROJECT_GROUP_LABELS : TEAM_GROUP_LABELS;
+  const groups = groupItems(ctx.items);
 
   return (
     <nav aria-label="Primary" className="flex flex-col gap-0.5">
@@ -62,34 +79,44 @@ export function NavList({
         </>
       ) : null}
 
-      {ctx.items.map((item, i) => {
-        const active = item.active(pathname);
-        const Icon = item.icon;
+      {groups.map((group, gi) => {
+        const holdsCurrent = group.some((item) => item.active(pathname));
         return (
-          <Link
-            key={item.href}
-            href={item.href}
-            onClick={onNavigate}
-            data-menu-first={roomy && !ctx.project && i === 0 ? "" : undefined}
-            aria-current={active ? "page" : undefined}
-            className={cn(
-              navItemClass,
-              roomy && "h-11",
-              i > 0 && startsGroup(item.href) && (roomy ? "mt-3" : "mt-2.5"),
-              active ? navItemCurrent : navItemIdle
-            )}
+          <CollapsibleNavGroup
+            key={group[0].href}
+            label={labels[gi] ?? `Group ${gi + 1}`}
+            count={group.length}
+            locked={holdsCurrent}
+            className={gi === 0 ? "mt-0" : undefined}
           >
-            <Icon
-              aria-hidden="true"
-              className="size-4 shrink-0"
-              weight={active ? "fill" : "regular"}
-            />
-            {item.label}
-            {/* The one lit square: you are here. */}
-            {active ? (
-              <span aria-hidden="true" className="ml-auto size-1.5 shrink-0 rounded-[1px] bg-foreground" />
-            ) : null}
-          </Link>
+            <div className="flex flex-col gap-0.5">
+              {group.map((item) => {
+                const active = item.active(pathname);
+                const Icon = item.icon;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={onNavigate}
+                    data-menu-first={roomy && !ctx.project && item === ctx.items[0] ? "" : undefined}
+                    aria-current={active ? "page" : undefined}
+                    className={cn(navItemClass, roomy && "h-11", active ? navItemCurrent : navItemIdle)}
+                  >
+                    <Icon
+                      aria-hidden="true"
+                      className="size-4 shrink-0"
+                      weight={active ? "fill" : "regular"}
+                    />
+                    {item.label}
+                    {/* The one lit square: you are here. */}
+                    {active ? (
+                      <span aria-hidden="true" className="ml-auto size-1.5 shrink-0 rounded-[1px] bg-foreground" />
+                    ) : null}
+                  </Link>
+                );
+              })}
+            </div>
+          </CollapsibleNavGroup>
         );
       })}
       {user.isAdmin ? <Link href="/admin" onClick={onNavigate} aria-current={pathname.startsWith("/admin") ? "page" : undefined} className={cn(navItemClass, roomy && "h-11", "mt-2.5", pathname.startsWith("/admin") ? navItemCurrent : navItemIdle)}><ShieldCheckIcon aria-hidden="true" className="size-4 shrink-0" />Administration</Link> : null}
