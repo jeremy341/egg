@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { open } from "@/server/crypto";
 import { getDb, schema } from "@/server/db";
@@ -6,11 +6,10 @@ import { endpoint, NOT_FOUND_NOTE, projectIdInput, type Endpoint } from "@/serve
 import { requireScope, type Principal } from "@/server/api-tokens";
 import { tagAudit } from "@/server/api-v1-audit";
 import { envInput, getProjectAtLevel, setEnvVarSecret } from "@/server/projects";
-import { notFound } from "@/server/http";
 
 const projectId = projectIdInput;
 const key = envInput.shape.key;
-const target = envInput.shape.target;
+const target = envInput.shape.target.removeDefault();
 const secret = z.boolean().describe("Whether the value stays secret. Only explicitly non-secret values are returned.");
 const envVarSchema = z.object({
   key,

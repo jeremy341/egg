@@ -142,6 +142,8 @@ export type Domain = {
 
 /** Names only. Values are never returned by the API. */
 export type EnvName = { key: string; target: "all" | "production" | "preview" };
+/** Values are present only for variables explicitly marked non-secret. */
+export type EnvVarValue = EnvName & { secret: boolean; value?: string };
 
 export type Analytics = {
   days: number;
@@ -657,8 +659,9 @@ export class Egg {
   }
 
   /**
-   * Create or replace one variable. The value is write-only: it is never returned
-   * and never put in an error. It reaches the app at the next deploy. Needs `env:write`.
+   * Create or replace one variable. The value is omitted from this write's response
+   * and errors. `getEnvVars` returns it only after it is explicitly marked non-secret.
+   * It reaches the app at the next deploy. Needs `env:write`.
    */
   setEnvVar(projectId: string, key: string, input: { value: string; target?: EnvTarget }): Promise<{ env: EnvName }> {
     return this.request("PUT", `/projects/${seg(projectId)}/env/${seg(key)}`, {}, input);
@@ -826,6 +829,22 @@ export class Egg {
   }
   listEnvVars(projectId: string): Promise<unknown> {
     return this.request("GET", `/projects/${seg(projectId)}/env`);
+  }
+  getEnvVars(projectId: string): Promise<{ env: EnvVarValue[] }> {
+    return this.request("GET", `/projects/${seg(projectId)}/env/values`);
+  }
+  setEnvVarSecret(
+    projectId: string,
+    key: string,
+    target: EnvTarget,
+    input: { secret: boolean },
+  ): Promise<{ env: { key: string; target: EnvTarget; secret: boolean } }> {
+    return this.request(
+      "PATCH",
+      `/projects/${seg(projectId)}/env/${seg(key)}/${seg(target)}/secret`,
+      {},
+      input,
+    );
   }
   addEnvVars(projectId: string, input: unknown): Promise<unknown> {
     return this.request("POST", `/projects/${seg(projectId)}/env`, {}, input);
