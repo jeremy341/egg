@@ -7,6 +7,7 @@ import {
 } from "@/server/auth/session";
 import { config } from "@/server/config";
 import { HttpError, handle } from "@/server/http";
+import { clientIp, enforceRateLimit } from "@/server/rate-limit";
 
 /**
  * Local development only. Signs in as a made-up user so the app can be used
@@ -17,6 +18,8 @@ export const POST = handle(async (req: NextRequest) => {
   if (process.env.NODE_ENV === "production" || !config().DEV_LOGIN) {
     throw new HttpError(404, "Not found", "not_found");
   }
+  const ip = clientIp(req.headers);
+  if (ip) enforceRateLimit("signIn", ip);
   const form = await req.formData();
   const raw = String(form.get("name") ?? "").trim() || "dev";
   const name = raw.slice(0, 40);
@@ -26,7 +29,7 @@ export const POST = handle(async (req: NextRequest) => {
     email: null,
     slackId: null,
   });
-  const session = await createSession(user.id, req.headers.get("user-agent"));
+  const session = await createSession(user.id, req.headers.get("user-agent"), req.cookies.get(SESSION_COOKIE)?.value);
   const res = NextResponse.redirect(new URL("/projects", config().APP_URL), 303);
   res.cookies.set(SESSION_COOKIE, session.token, sessionCookieOptions(session.expiresAt));
   return res;

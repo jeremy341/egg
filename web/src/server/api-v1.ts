@@ -22,6 +22,7 @@ import {
   toProject,
   usageSchema,
 } from "@/server/api-v1-models";
+import { ME_ENDPOINTS } from "@/server/api-v1-me";
 import { EXPANDED_ENDPOINTS } from "@/server/api-v1-more";
 import { SHELL_ENDPOINTS } from "@/server/api-v1-shell";
 import { notFound, zodToHttp } from "@/server/http";
@@ -302,7 +303,7 @@ const CORE_ENDPOINTS: Endpoint[] = [
 ];
 
 /** Every endpoint, in the order the docs and the agent tool list show them. */
-export const ENDPOINTS: Endpoint[] = [...CORE_ENDPOINTS, ...EXPANDED_ENDPOINTS, ...SHELL_ENDPOINTS];
+export const ENDPOINTS: Endpoint[] = [...ME_ENDPOINTS, ...CORE_ENDPOINTS, ...EXPANDED_ENDPOINTS, ...SHELL_ENDPOINTS];
 
 export function endpointById(id: string): Endpoint | undefined {
   return ENDPOINTS.find((e) => e.id === id);
@@ -313,7 +314,7 @@ export function endpointById(id: string): Endpoint | undefined {
  * service function. Rate limiting is the transport's job (it knows the bucket).
  */
 export async function callEndpoint(p: Principal, ep: Endpoint, raw: unknown): Promise<unknown> {
-  requireScope(p, ep.scope);
+  if (ep.scope !== null) requireScope(p, ep.scope);
   const parsed = ep.input.safeParse(raw ?? {});
   if (!parsed.success) throw zodToHttp(parsed.error);
   return ep.run(p, parsed.data as never);

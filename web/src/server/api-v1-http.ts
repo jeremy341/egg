@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { bearerFrom, principalFor, type Principal } from "@/server/api-tokens";
 import { callEndpoint, endpointById, enforceApiRate, type Endpoint } from "@/server/api-v1";
 import { handle, HttpError } from "@/server/http";
+import { assertRateRoom, clientIp, enforceRateLimit } from "@/server/rate-limit";
 
 /**
  * HTTP glue for the public API and the MCP endpoint. The ONLY credential
@@ -22,8 +23,14 @@ export async function authenticate(req: Request): Promise<Principal> {
       WWW_AUTHENTICATE
     );
   }
+  // Guessing tokens is pointless against 256 random bits, but each guess costs a database
+  // read. An address that keeps sending tokens that are not valid is turned away. With no
+  // proxy header there is no way to tell callers apart, so nobody is throttled.
+  const ip = clientIp(req.headers);
+  if (ip) assertRateRoom("badToken", ip);
   const principal = await principalFor(secret);
   if (!principal) {
+    if (ip) enforceRateLimit("badToken", ip);
     throw new HttpError(401, "That access token is not valid.", "unauthorized", WWW_AUTHENTICATE);
   }
   return principal;
@@ -34,17 +41,30 @@ export function jsonResponse(data: unknown, status = 200, headers: Record<string
   return NextResponse.json(data, { status, headers: { "Cache-Control": "no-store", ...headers } });
 }
 
-/** Read a size-capped text body. Nothing is logged. */
+/**
+ * Read a size-capped text body. The Content-Length header is only a hint, so the
+ * bytes are counted as they arrive and reading stops at the cap. Nothing is logged.
+ */
 export async function readCappedText(req: Request, maxBytes: number): Promise<string> {
+  const tooLarge = () => new HttpError(413, "The request body is too large.", "too_large");
   const declared = Number(req.headers.get("content-length") ?? 0);
-  if (Number.isFinite(declared) && declared > maxBytes) {
-    throw new HttpError(413, "The request body is too large.", "too_large");
+  if (Number.isFinite(declared) && declared > maxBytes) throw tooLarge();
+  if (!req.body) return "";
+
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel().catch(() => undefined);
+      throw tooLarge();
+    }
+    chunks.push(value);
   }
-  const text = await req.text();
-  if (Buffer.byteLength(text) > maxBytes) {
-    throw new HttpError(413, "The request body is too large.", "too_large");
-  }
-  return text;
+  return new TextDecoder().decode(Buffer.concat(chunks));
 }
 
 /** The endpoint's body fields, from an optional JSON object body. Unknown fields are refused. */

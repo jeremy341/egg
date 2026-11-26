@@ -34,7 +34,7 @@ export function ProjectResources({ points }: { points: ProjectSamplePoint[] }) {
             <div className="flex items-baseline justify-between gap-3">
               <span>Memory</span>
               <span className="tabular font-mono text-[12px] text-muted-foreground">
-                {latestMem !== null ? `${latestMem.toFixed(0)} MB now` : "None"}
+                {latestMem !== null ? `${latestMem.toFixed(0)} MB now` : "No reading"}
                 {memPeak > 0 ? `, peak ${memPeak.toFixed(0)} MB` : ""}
               </span>
             </div>
@@ -48,7 +48,7 @@ export function ProjectResources({ points }: { points: ProjectSamplePoint[] }) {
             <div className="flex items-baseline justify-between gap-3">
               <span>CPU</span>
               <span className="tabular font-mono text-[12px] text-muted-foreground">
-                {latestCpu !== null ? `${latestCpu.toFixed(1)}% now` : "None"}
+                {latestCpu !== null ? `${latestCpu.toFixed(1)}% now` : "No reading"}
                 {cpuPeak > 0 ? `, peak ${cpuPeak.toFixed(1)}%` : ""}
               </span>
             </div>

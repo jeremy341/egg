@@ -46,6 +46,7 @@ export const LABELS: Record<string, string> = {
   "domain.update": "Changed domain",
   "analytics.enable": "Turned on analytics for",
   "analytics.disable": "Turned off analytics for",
+  "analytics.settings": "Changed what analytics records for",
   "status.enable": "Published a status page for",
   "status.disable": "Unpublished the status page for",
   "account.session_revoke": "Signed out another browser",
@@ -66,6 +67,11 @@ export const LABELS: Record<string, string> = {
   "file.delete": "Deleted a file on",
   "container.permissions": "Changed container permissions for",
   "terminal.revoked": "Closed a terminal after a sign-out on",
+  "webhook.create": "Created a webhook",
+  "webhook.update": "Changed a webhook",
+  "webhook.delete": "Deleted a webhook",
+  "webhook.rotate": "Replaced the secret of a webhook",
+  "webhook.test": "Sent a test message to a webhook",
 };
 
 export function describeAction(action: string): string {

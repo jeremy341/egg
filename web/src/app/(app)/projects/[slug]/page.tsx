@@ -49,6 +49,16 @@ const LIVE_LABEL: Record<UiState, string> = {
   canceled: "Canceled",
 };
 
+/** What the uptime monitor last saw. Same three states as the Projects list. */
+const MONITOR_VIEW: Record<
+  "unknown" | "up" | "down",
+  { tone: "ready" | "error" | "neutral"; label: string }
+> = {
+  up: { tone: "ready", label: "Answering" },
+  down: { tone: "error", label: "Not answering" },
+  unknown: { tone: "neutral", label: "Not checked yet" },
+};
+
 const LIVE_TONE: Record<UiState, "ready" | "building" | "error" | "neutral"> = {
   ready: "ready",
   building: "building",
@@ -91,16 +101,33 @@ async function ProjectContent({ params }: Props) {
         leading={<PixelAvatar seed={slug} size={40} />}
         title={project.name}
         description={
-          address ? (
-            <a href={`https://${address}`} target="_blank" rel="noreferrer" className="link">
-              {address}
-              <span className="sr-only"> (opens in a new tab)</span>
-            </a>
-          ) : (
-            <>
-              Port <span className="font-mono">{project.port}</span>
-            </>
-          )
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            {address ? (
+              <a href={`https://${address}`} target="_blank" rel="noreferrer" className="link">
+                {address}
+                <span className="sr-only"> (opens in a new tab)</span>
+              </a>
+            ) : (
+              <span>
+                Port <span className="font-mono">{project.port}</span>
+              </span>
+            )}
+            {/* The deployment can be Ready while the app itself is not answering, so the monitor is named here. */}
+            <Link
+              href={`/projects/${slug}/settings#alerts-heading`}
+              className="-my-2 inline-flex min-h-10 items-center rounded-sm underline-offset-4 hover:underline sm:min-h-6"
+            >
+              <span className="sr-only">Uptime monitor: </span>
+              <StatusIndicator
+                tone={MONITOR_VIEW[project.monitor].tone}
+                label={`${MONITOR_VIEW[project.monitor].label}${
+                  project.monitor === "down" && project.monitorSince ? ` since ${project.monitorSince}` : ""
+                }`}
+                className="text-label"
+              />
+              <span className="sr-only">. See the alert history.</span>
+            </Link>
+          </span>
         }
         actions={
           <>
@@ -150,7 +177,7 @@ async function ProjectContent({ params }: Props) {
       >
         <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
           <h2 id="production-heading" className="text-title-3">
-            Production Deployment
+            Production deployment
           </h2>
           {live ? (
             <StatusIndicator
@@ -225,7 +252,7 @@ async function ProjectContent({ params }: Props) {
         <details className="disclosure border-t">
           <summary className="items-center gap-2 px-4 py-3 font-medium tracking-[-0.02em] select-none">
             <CaretRightIcon aria-hidden="true" className="disclosure-caret size-4" />
-            Runtime Settings
+            Runtime settings
           </summary>
           <dl className="grid gap-4 px-4 pb-4 sm:grid-cols-4">
             <Field label="Runtime">{project.runtime}</Field>
@@ -334,8 +361,8 @@ async function ProjectContent({ params }: Props) {
       </div>
 
       <section aria-labelledby="branches-heading">
-        <h2 id="branches-heading" className="mb-3 text-title-2">
-          Active Branches
+        <h2 id="branches-heading" className="mb-3 text-title-3">
+          Active branches
         </h2>
         {branches.length === 0 ? (
           <div className="rounded-lg bg-card px-4 shadow-border-small">

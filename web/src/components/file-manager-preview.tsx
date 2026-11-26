@@ -38,6 +38,8 @@ type Props = {
   modifiable: boolean;
   /** The file is in the live release (current/), which is read only. */
   liveRelease: boolean;
+  /** A release's .env file: the environment values, never shown or downloaded here. */
+  secret: boolean;
   downloadHref: string | null;
   headingRef: React.Ref<HTMLHeadingElement>;
   onBack: () => void;
@@ -61,6 +63,7 @@ export function FilePreview({
   saveError,
   modifiable,
   liveRelease,
+  secret,
   downloadHref,
   headingRef,
   onBack,
@@ -87,9 +90,10 @@ export function FilePreview({
   }
 
   const tooLarge = entry.size > READ_LIMIT || (state.status === "ready" && state.data.truncated);
-  const canDownload = (entry.type === "file" || entry.linkTo === "file") && entry.size <= DOWNLOAD_LIMIT;
+  const canDownload =
+    !secret && (entry.type === "file" || entry.linkTo === "file") && entry.size <= DOWNLOAD_LIMIT;
   const editable =
-    modifiable && entry.type === "file" && state.status === "ready" && !state.data.binary && !state.data.truncated;
+    !secret && modifiable && entry.type === "file" && state.status === "ready" && !state.data.binary && !state.data.truncated;
   const dirty = edit !== null && edit.draft !== edit.original;
 
   return (
@@ -146,7 +150,7 @@ export function FilePreview({
             </>
           )}
         </div>
-        {liveRelease ? (
+        {liveRelease && !secret ? (
           <p className="mt-2 text-caption text-muted-foreground">
             This file is in the live release, so it is read only. You can still read and download it.
           </p>
@@ -189,6 +193,13 @@ export function FilePreview({
               fieldClass,
               "block h-auto min-h-72 resize-y overflow-auto py-2 font-mono text-[13px] leading-5 whitespace-pre max-sm:h-auto md:text-[13px]"
             )}
+          />
+        ) : secret ? (
+          <EmptyState
+            size="compact"
+            icon={<FileIcon />}
+            title="Environment values are not shown"
+            description="This file holds the project's environment variable values, so it is not shown or downloaded here. Change the values in the project's settings."
           />
         ) : (
           <Body entry={entry} state={state} tooLarge={tooLarge} canDownload={canDownload} downloadHref={downloadHref} onRetry={onRetry} />

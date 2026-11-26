@@ -101,7 +101,7 @@ export function browserLabel(ua: string | null): string {
  * container are left alone: we stop managing them, we do not remove them.
  */
 export async function deleteAccount(userId: string, userName: string, typedName: unknown) {
-  if (typeof typedName !== "string" || typedName.trim() !== userName) {
+  if (typeof typedName !== "string" || typedName.trim() !== userName.trim()) {
     throw new HttpError(400, "Type your name exactly to confirm.", "validation");
   }
   // Close first (and wait for its audit entry) so nothing is written after the account is gone.

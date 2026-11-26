@@ -188,7 +188,7 @@ async function ProjectsContent() {
                       >
                         {d.projectName}
                       </Link>
-                      <StatusDot state={d.state} showLabel={d.state !== "ready"} className="shrink-0" />
+                      <StatusDot state={d.state} className="shrink-0" />
                     </div>
                     <p className="mt-0.5 truncate text-muted-foreground">
                       {d.commit ?? `${d.source} deployment`}

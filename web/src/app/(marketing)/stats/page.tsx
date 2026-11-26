@@ -88,7 +88,7 @@ async function StatsBody() {
           </section>
         </div>
 
-        <div className={cn(GRID, "mt-6")}>
+        <div className={cn(GRID, "mt-[30px]")}>
           <section aria-labelledby="growth" className={cn(FRAME, "p-5")}>
             <FrameLabel id="growth">New accounts in the last {growth.windowDays} days</FrameLabel>
             <p className="mt-1 flex min-h-10 flex-wrap items-center gap-x-4 gap-y-1">
@@ -147,7 +147,7 @@ async function StatsBody() {
               </Total>
             </dl>
             <div className="border-t p-5">
-              <FrameLabel>Share that succeeded</FrameLabel>
+              <FrameLabel level={4}>Share that succeeded</FrameLabel>
               <p className="mt-1 flex min-h-10 items-center">
                 {rate.percent === null ? <NotEnough /> : <Value>{rate.percent}%</Value>}
               </p>
@@ -159,7 +159,7 @@ async function StatsBody() {
             </div>
           </section>
 
-          <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-[30px]">
             <section aria-labelledby="build" className={cn(FRAME, "p-5")}>
               <FrameLabel id="build">Build time, start to finish</FrameLabel>
               {build.medianSeconds === null || build.p90Seconds === null ? (
@@ -268,7 +268,7 @@ async function StatsBody() {
         </div>
       </section>
 
-      <section aria-labelledby="about" className="mt-14 max-w-[640px] lg:mt-20">
+      <section aria-labelledby="about" className={cn(SECTION, "[&>*]:max-w-[640px]")}>
         <h2 id="about" className="text-title-3">
           About these numbers
         </h2>

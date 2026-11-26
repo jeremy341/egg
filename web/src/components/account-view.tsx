@@ -9,6 +9,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
+/** How many signed-in browsers show before "Show all". */
+const SESSIONS_SHOWN = 5;
+
 export type SessionItem = { id: string; label: string; started: string; current: boolean };
 
 /** Browser sessions and account deletion. The profile itself comes from Hack Club and is read-only. */
@@ -18,7 +21,9 @@ export function AccountView({ name, sessions }: { name: string; sessions: Sessio
   const [error, setError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState("");
+  const [showAll, setShowAll] = useState(false);
   const others = sessions.filter((s) => !s.current);
+  const visible = showAll ? sessions : sessions.slice(0, SESSIONS_SHOWN);
 
   async function revoke(id: string) {
     setBusy(id);
@@ -69,7 +74,7 @@ export function AccountView({ name, sessions }: { name: string; sessions: Sessio
         description="Anywhere you are signed in to Nest Deploy. Sign out any you do not recognise."
       >
         <ul className="hairline-y overflow-hidden rounded-md shadow-border-base">
-          {sessions.map((s) => (
+          {visible.map((s) => (
             <li key={s.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
               <div className="min-w-0">
                 <p className="flex min-w-0 items-center gap-2 font-medium">
@@ -92,6 +97,17 @@ export function AccountView({ name, sessions }: { name: string; sessions: Sessio
             </li>
           ))}
         </ul>
+        {sessions.length > SESSIONS_SHOWN ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="mt-2"
+            aria-expanded={showAll}
+            onClick={() => setShowAll((v) => !v)}
+          >
+            {showAll ? "Show fewer" : `Show all ${sessions.length}`}
+          </Button>
+        ) : null}
         {others.length > 0 ? (
           <div className="mt-4">
             <Button

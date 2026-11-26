@@ -81,19 +81,22 @@ export function ProjectsView({
             className="pl-9"
           />
         </div>
-        <Segmented<View>
-          label="Layout"
-          value={view}
-          onChange={setView}
-          options={[
-            { value: "grid", label: "Grid view", icon: <SquaresFourIcon />, iconOnly: true },
-            { value: "list", label: "List view", icon: <ListIcon />, iconOnly: true },
-          ]}
-        />
-        <Button className="h-9 px-3 max-sm:h-10" render={<Link href="/new" />}>
-          Add New
-          <PlusIcon aria-hidden="true" />
-        </Button>
+        {/* Phones: the layout toggle and the one primary button share a row under the search box. */}
+        <div className="flex w-full items-center justify-between gap-2 sm:contents">
+          <Segmented<View>
+            label="Layout"
+            value={view}
+            onChange={setView}
+            options={[
+              { value: "grid", label: "Grid view", icon: <SquaresFourIcon />, iconOnly: true },
+              { value: "list", label: "List view", icon: <ListIcon />, iconOnly: true },
+            ]}
+          />
+          <Button className="h-9 px-3 max-sm:h-10" render={<Link href="/new" />}>
+            <PlusIcon aria-hidden="true" data-icon="inline-start" />
+            New project
+          </Button>
+        </div>
       </div>
 
       {visible.length === 0 ? (

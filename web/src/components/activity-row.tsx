@@ -15,6 +15,7 @@ import {
   TerminalWindowIcon,
 } from "@phosphor-icons/react";
 import { timeAgo } from "@/lib/status";
+import { runLabel } from "@/components/activity-runs";
 import { cn } from "@/lib/utils";
 import { KIND_LABELS, type ActivityItem, type ActivityKind } from "@/server/activity";
 
@@ -69,7 +70,7 @@ export function ActivityRow({ item, now }: { item: ActivityItem; now: number }) 
       label: f.label,
       mono: f.mono,
       value: f.href ? (
-        <Link href={f.href} className="link">
+        <Link href={f.href} className="link max-sm:py-[11px]">
           {f.value}
         </Link>
       ) : (
@@ -96,7 +97,7 @@ export function ActivityRow({ item, now }: { item: ActivityItem; now: number }) 
               <>
                 {" "}
                 {item.target.href ? (
-                  <Link href={item.target.href} className="link font-medium">
+                  <Link href={item.target.href} className="link font-medium max-sm:py-[11px]">
                     {item.target.name}
                   </Link>
                 ) : (
@@ -156,6 +157,65 @@ export function ActivityRow({ item, now }: { item: ActivityItem; now: number }) 
             </div>
           ))}
         </dl>
+      ) : null}
+    </li>
+  );
+}
+
+/**
+ * A run of neighbouring entries of one kind, folded into a single row that
+ * opens to show every one of them. Closed by default; the entries are the same
+ * rows as everywhere else, so nothing is hidden from the data.
+ */
+export function ActivityRun({
+  kind,
+  items,
+  now,
+}: {
+  kind: ActivityKind;
+  items: ActivityItem[];
+  now: number;
+}) {
+  const [open, setOpen] = useState(false);
+  const panelId = useId();
+  const Icon = ICONS[kind];
+  const label = runLabel(kind, items.length);
+  const newest = items[0];
+  const oldest = items[items.length - 1];
+
+  return (
+    <li>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={panelId}
+        onClick={() => setOpen((v) => !v)}
+        className="pressable flex min-h-14 w-full items-center gap-3 px-4 py-3 text-left hover:bg-[var(--ds-gray-alpha-100)]"
+      >
+        <span
+          aria-hidden="true"
+          className="inline-flex size-8 shrink-0 items-center justify-center rounded-md bg-[var(--ds-gray-100)] text-muted-foreground [&_svg]:size-4"
+        >
+          <Icon aria-hidden />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block font-medium tracking-[-0.02em]">{label}</span>
+          <span className="tabular mt-0.5 block text-label text-muted-foreground">
+            {timeAgo(newest.at, now)}
+            {oldest.at !== newest.at ? ` to ${timeAgo(oldest.at, now)}` : ""}
+          </span>
+        </span>
+        <span className="inline-flex shrink-0 items-center gap-1 text-label text-muted-foreground [&_svg]:size-4">
+          <span className="max-sm:sr-only">{open ? "Hide" : "Show"}</span>
+          {open ? <CaretDownIcon aria-hidden /> : <CaretRightIcon aria-hidden />}
+        </span>
+      </button>
+      {open ? (
+        <ol id={panelId} aria-label={label} className="hairline-y border-t">
+          {items.map((item) => (
+            <ActivityRow key={item.id} item={item} now={now} />
+          ))}
+        </ol>
       ) : null}
     </li>
   );

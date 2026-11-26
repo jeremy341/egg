@@ -169,7 +169,62 @@ async function ResourcesContent({ searchParams }: Props) {
         {projects.length === 0 ? (
           <p className="px-4 py-5 text-muted-foreground">No projects on this server yet.</p>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          <ul className="divide-y sm:hidden">
+            {projects.map((p) => {
+              const peak = p.memPeak ?? 0;
+              return (
+                <li key={p.id} className="px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <Link
+                      href={`/projects/${p.slug}`}
+                      className="-my-2 inline-flex min-h-10 min-w-0 items-center truncate font-medium text-foreground underline-offset-4 hover:underline"
+                    >
+                      {p.name}
+                    </Link>
+                    {p.monitor === "down" ? <StatusIndicator tone="error" label="Down" /> : null}
+                  </div>
+                  {p.memNow === null && p.cpuNow === null ? (
+                    <p className="mt-1 text-label text-muted-foreground">No readings yet. They appear after a few checks.</p>
+                  ) : (
+                  <dl className="mt-1 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1">
+                    <dt className="text-label text-muted-foreground">Memory</dt>
+                    <dd className="tabular font-mono text-[13px]">
+                      {p.memNow !== null ? (
+                        <>
+                          {p.memNow.toFixed(0)} MB
+                          <span className="text-muted-foreground"> / peak {(p.memPeak ?? 0).toFixed(0)}</span>
+                        </>
+                      ) : (
+                        <span className="font-sans text-muted-foreground">No readings</span>
+                      )}
+                    </dd>
+                    <dt className="text-label text-muted-foreground">CPU</dt>
+                    <dd className="tabular font-mono text-[13px]">
+                      {p.cpuNow !== null ? (
+                        <>
+                          {p.cpuNow.toFixed(1)}%
+                          <span className="text-muted-foreground"> / peak {(p.cpuPeak ?? 0).toFixed(1)}</span>
+                        </>
+                      ) : (
+                        <span className="font-sans text-muted-foreground">No readings</span>
+                      )}
+                    </dd>
+                    <dt className="text-label text-muted-foreground">Restarts</dt>
+                    <dd className="tabular font-mono text-[13px]">{p.restarts ?? "No reading"}</dd>
+                  </dl>
+                  )}
+                  <Sparkline
+                    className="mt-2"
+                    points={p.points.map((x) => ({ at: x.at, value: x.memMb }))}
+                    max={Math.max(peak * 1.15, 1)}
+                    label={`${p.name} memory over the last ${range.label}, peak ${peak.toFixed(0)} megabytes`}
+                  />
+                </li>
+              );
+            })}
+          </ul>
+          <div className="overflow-x-auto max-sm:hidden">
             <table className="w-full min-w-[620px] border-collapse text-left">
               <thead>
                 <tr className="border-b text-label text-muted-foreground">
@@ -208,27 +263,35 @@ async function ResourcesContent({ searchParams }: Props) {
                           </span>
                         ) : null}
                       </th>
-                      <td className="tabular px-4 py-3 font-mono text-[13px]">
-                        {p.memNow !== null ? (
-                          <>
-                            {p.memNow.toFixed(0)} MB
-                            <span className="text-muted-foreground"> / peak {(p.memPeak ?? 0).toFixed(0)}</span>
-                          </>
-                        ) : (
-                          <span className="font-sans text-muted-foreground">No readings</span>
-                        )}
-                      </td>
-                      <td className="tabular px-4 py-3 font-mono text-[13px]">
-                        {p.cpuNow !== null ? (
-                          <>
-                            {p.cpuNow.toFixed(1)}%
-                            <span className="text-muted-foreground"> / peak {(p.cpuPeak ?? 0).toFixed(1)}</span>
-                          </>
-                        ) : (
-                          <span className="font-sans text-muted-foreground">No readings</span>
-                        )}
-                      </td>
-                      <td className="tabular px-4 py-3 font-mono text-[13px]">{p.restarts ?? "None"}</td>
+                      {p.memNow === null && p.cpuNow === null ? (
+                        <td colSpan={3} className="px-4 py-3 text-muted-foreground">
+                          No readings yet. They appear after a few checks.
+                        </td>
+                      ) : (
+                        <>
+                          <td className="tabular px-4 py-3 font-mono text-[13px]">
+                            {p.memNow !== null ? (
+                              <>
+                                {p.memNow.toFixed(0)} MB
+                                <span className="text-muted-foreground"> / peak {(p.memPeak ?? 0).toFixed(0)}</span>
+                              </>
+                            ) : (
+                              <span className="font-sans text-muted-foreground">No readings</span>
+                            )}
+                          </td>
+                          <td className="tabular px-4 py-3 font-mono text-[13px]">
+                            {p.cpuNow !== null ? (
+                              <>
+                                {p.cpuNow.toFixed(1)}%
+                                <span className="text-muted-foreground"> / peak {(p.cpuPeak ?? 0).toFixed(1)}</span>
+                              </>
+                            ) : (
+                              <span className="font-sans text-muted-foreground">No readings</span>
+                            )}
+                          </td>
+                          <td className="tabular px-4 py-3 font-mono text-[13px]">{p.restarts ?? "No reading"}</td>
+                        </>
+                      )}
                       <td className="px-4 py-2">
                         <Sparkline
                           className="mt-0"
@@ -243,6 +306,7 @@ async function ResourcesContent({ searchParams }: Props) {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </section>
 

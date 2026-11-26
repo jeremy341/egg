@@ -39,7 +39,8 @@ type Props = {
   activeName: string | null;
   label: string;
   busy: boolean;
-  downloadHref: (entry: FileEntry) => string;
+  /** Null when the file cannot be downloaded here. */
+  downloadHref: (entry: FileEntry) => string | null;
   onActivate: (name: string) => void;
   onOpen: (entry: FileEntry) => void;
   onRename: (entry: FileEntry) => void;
@@ -177,7 +178,9 @@ export function FileTable({
           const selected = entry.name === selectedName;
           const hint = dir === "" ? TOP_LEVEL_HINTS[entry.name] : undefined;
           const canModify = modifiable;
-          const canDownload = entry.type === "file" || entry.linkTo === "file";
+          // No link for a file the server refuses (a release's .env).
+          const href = downloadHref(entry);
+          const canDownload = (entry.type === "file" || entry.linkTo === "file") && href !== null;
           const tooBig = entry.size > DOWNLOAD_LIMIT;
           const hasMenu = canModify || canDownload;
           const facts = [
@@ -268,7 +271,7 @@ export function FileTable({
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-44">
                       {canDownload && !tooBig ? (
-                        <DropdownMenuItem render={<a href={downloadHref(entry)} download={entry.name} />}>
+                        <DropdownMenuItem render={<a href={href ?? undefined} download={entry.name} />}>
                           <DownloadSimpleIcon /> Download
                         </DropdownMenuItem>
                       ) : null}

@@ -1,3 +1,4 @@
+import { REPO_URL } from "@/lib/site";
 import { timeAgo } from "@/lib/status";
 
 /**
@@ -226,6 +227,102 @@ export function mcpConfigSnippet(origin: string): string {
     null,
     2
   );
+}
+
+// ---- build with it ----------------------------------------------------------
+
+export type BuildResource = {
+  id: string;
+  title: string;
+  summary: string;
+  /** Path inside the repository. */
+  path: string;
+  /** Token permissions it needs. Empty when it needs no token. */
+  scopes: readonly string[];
+  /** Said instead of a scope list when `scopes` is empty. */
+  noScopeNote?: string;
+};
+
+/** The ready-made examples and the typed client. Each says which permissions its token needs. */
+export const BUILD_RESOURCES: readonly BuildResource[] = [
+  {
+    id: "sdk",
+    title: "TypeScript client",
+    summary: "One file, no dependencies. Typed methods for projects, deployments, logs, domains, environment names, analytics, usage, alerts and the status page. Runs on Node 20 and in the browser.",
+    path: "web/src/lib/sdk/nest-deploy.ts",
+    scopes: [],
+    noScopeNote: "Depends on the method. Each one names its permission.",
+  },
+  {
+    id: "node",
+    title: "Node script",
+    summary: "Lists your projects and follows a build log until it finishes.",
+    path: "examples/node/tail-logs.mjs",
+    scopes: ["projects:read", "deployments:read"],
+  },
+  {
+    id: "python",
+    title: "Python script",
+    summary: "The same, with only the standard library.",
+    path: "examples/python/tail_logs.py",
+    scopes: ["projects:read", "deployments:read"],
+  },
+  {
+    id: "dashboard",
+    title: "Static dashboard",
+    summary: "One HTML file. Paste a token and see your projects and page views. The token stays in the page's memory and is never saved.",
+    path: "examples/dashboard/index.html",
+    scopes: ["projects:read", "analytics:read"],
+  },
+  {
+    id: "actions",
+    title: "GitHub Actions workflow",
+    summary: "Deploys when you publish a release, through a deploy hook.",
+    path: "examples/github-actions/deploy-on-release.yml",
+    scopes: [],
+    noScopeNote: "No token. It uses the project's deploy hook URL.",
+  },
+  {
+    id: "mcp",
+    title: "MCP config",
+    summary: "Connect Claude Desktop, Cursor or Claude Code to your projects.",
+    path: "examples/mcp",
+    scopes: [],
+    noScopeNote: "Whatever you want the agent to do. The first call, get_me, needs none.",
+  },
+];
+
+/** "Needs projects:read and deployments:read", or the resource's own note. */
+export function scopeNeeds(r: BuildResource): string {
+  if (r.scopes.length === 0) return r.noScopeNote ?? "No permission needed.";
+  const list = r.scopes.length === 1 ? r.scopes[0] : `${r.scopes.slice(0, -1).join(", ")} and ${r.scopes[r.scopes.length - 1]}`;
+  return `Needs ${list}.`;
+}
+
+/** Where a path in the repository can be read. */
+export const repoLink = (path: string) => `${REPO_URL}/${path.includes(".") ? "blob" : "tree"}/main/${path}`;
+
+/** The first call a script or agent should make. It needs no permission. */
+export function meExample(origin: string): string {
+  return `curl -H "Authorization: Bearer ${TOKEN_PLACEHOLDER}" ${apiBase(origin)}/me`;
+}
+
+/** A first program with the TypeScript client. The token comes from the environment. */
+export function sdkExample(origin: string): string {
+  return [
+    'import { NestDeploy } from "./nest-deploy";',
+    "",
+    "const nest = new NestDeploy({",
+    "  token: process.env.NEST_TOKEN!,",
+    `  baseUrl: "${trimSlash(origin)}",`,
+    "});",
+    "",
+    "const me = await nest.me();",
+    "console.log(me.token.scopes);",
+    "",
+    "const { projects } = await nest.listProjects();",
+    "for (const p of projects) console.log(p.name, p.state);",
+  ].join("\n");
 }
 
 /** Pull the first error out of an unknown thrown value, for inline display. */

@@ -36,25 +36,42 @@ function Mark({ dot, pending }: { dot: string; pending?: string }) {
   );
 }
 
+/**
+ * A deployment state mark.
+ *
+ * The rule: every status mark in a card or a list carries its word. A quiet
+ * "Ready" is still a word, so a green square on its own never stands in for
+ * the state. `iconOnly` is for the one case where an adjacent heading already
+ * says what the mark means (a card titled "Status", a column header). It keeps
+ * the word for screen readers and shows it as a tooltip.
+ *
+ * `showLabel` is the old name for the same switch (`showLabel={false}` is
+ * `iconOnly`). Prefer `iconOnly`.
+ */
 export function StatusDot({
   state,
+  iconOnly = false,
   showLabel = true,
   className,
 }: {
   state: UiState | null;
+  iconOnly?: boolean;
+  /** @deprecated Use `iconOnly`. */
   showLabel?: boolean;
   className?: string;
 }) {
   const meta = META[state ?? "none"];
+  const visible = showLabel && !iconOnly;
   return (
     <span
+      title={visible ? undefined : meta.label}
       className={cn(
         "inline-flex items-center gap-2 font-medium tracking-[-0.02em]",
         className
       )}
     >
       <Mark dot={meta.dot} pending={meta.pending} />
-      {showLabel ? (
+      {visible ? (
         <span>{meta.label}</span>
       ) : (
         <span className="sr-only">{meta.label}</span>
@@ -85,7 +102,7 @@ const TONES: Record<Tone, { dot: string; pending: string }> = {
 /**
  * A status mark with a caller-supplied label, for states that are not
  * deployment states (service health, alerts, domains). Same layout as
- * StatusDot. `pending` swaps the dot for the pixel scanner.
+ * StatusDot, and the label is required: there is no icon-only form. `pending` swaps the dot for the pixel scanner.
  */
 export function StatusIndicator({
   tone,

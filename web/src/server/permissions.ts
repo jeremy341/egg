@@ -4,13 +4,18 @@ import { getDb, schema } from "@/server/db";
 import { HttpError, notFound } from "@/server/http";
 
 /**
- * Per-server container permissions. Each switch is an opt-out for one of the
+ * Per-server container permissions. Each switch is an opt-in for one of the
  * container features. The server enforces them; the UI only hides what is off.
  *
- * Defaults: the terminal and file changes are OFF until the owner turns them on.
- * The terminal is a root shell, and a file write can change the code the app
- * runs on its next restart, so file changes are close to terminal access.
- * Leftover removal is ON (each removal is confirmed in the UI).
+ * Defaults: every switch is OFF until the owner turns it on, for any server
+ * connected from now on. The terminal is a root shell, a file write can change
+ * the code the app runs on its next restart, and leftover removal deletes
+ * services and folders. File changes were turned off for every existing server
+ * once, by migration 0008. After that each switch keeps the value its owner set:
+ * a column default only applies to new rows.
+ * The guards in permission-guards.ts read the stored value on each request, so a
+ * switch that is off stops the very next call. (The browser terminal input and
+ * resize routes do not call a guard yet; see docs/design/permissions.md.)
  *
  * Turning the terminal or file changes ON needs a Hack Club sign-in from the last
  * few minutes (see `isFreshAuth` in auth/session.ts). That check is made by the
@@ -62,7 +67,7 @@ export async function getPermissions(userId: string, serverId: string): Promise<
 
 /** Throw 403 when the owner has switched this feature off. Call before any SSH work. */
 export function assertAllowed(perms: ContainerPermissions, feature: ContainerPermission): void {
-  if (!perms[feature]) throw new HttpError(403, MESSAGE[feature], "disabled");
+  if (perms[feature] !== true) throw new HttpError(403, MESSAGE[feature], "disabled");
 }
 
 /** Change one or more switches. Only the owner can, and each change is audited by name only. */

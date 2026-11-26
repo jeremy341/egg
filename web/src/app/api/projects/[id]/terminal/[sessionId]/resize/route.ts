@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { requireProjectFeature } from "@/server/permission-guards";
 import { authed, handle, notFound, ok, readJson } from "@/server/http";
 import { isSessionId, terminals } from "@/server/terminal";
 
@@ -11,6 +12,8 @@ const resize = z.object({ cols: z.number(), rows: z.number() });
 export const POST = handle<Ctx>(async (req, { params }) => {
   const user = await authed();
   const { id, sessionId } = await params;
+  // The terminal switch is read on every call, so turning it off stops input and output at once.
+  await requireProjectFeature(user.id, id, "terminal");
   if (!isSessionId(sessionId)) throw notFound("Terminal session not found");
   const size = await readJson(req, resize);
   terminals().resize(user.id, id, sessionId, size);

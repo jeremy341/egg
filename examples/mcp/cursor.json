@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "nest-deploy": {
+      "url": "https://your-nest-deploy/api/mcp",
+      "headers": {
+        "Authorization": "Bearer ndp_..."
+      }
+    }
+  }
+}

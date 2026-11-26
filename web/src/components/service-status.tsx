@@ -5,10 +5,11 @@ import { ArrowClockwiseIcon, PowerIcon } from "@phosphor-icons/react";
 import { api } from "@/components/api";
 import { Swap } from "@/components/motion/swap";
 import { StatusIndicator } from "@/components/status-dot";
-import { Alert } from "@/components/ui/alert";
+import { ConnectionAlert } from "@/components/connection-alert";
 import { ConfirmDialog } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { describeConnectionError } from "@/lib/connection-error";
 import { cn } from "@/lib/utils";
 import type { ServiceState, ServiceStatus } from "@/server/service-status";
 
@@ -82,7 +83,7 @@ export function ServiceCard({ projectId }: { projectId: string }) {
       setStatus(res.status);
       setError(null);
     } catch (err) {
-      setError((err instanceof Error ? err.message : "Could not check the service").replace(/\.$/, ""));
+      setError(err instanceof Error ? err.message : "Could not check the service");
     } finally {
       inFlight.current = false;
       setLoading(false);
@@ -114,6 +115,8 @@ export function ServiceCard({ projectId }: { projectId: string }) {
   }, [check]);
 
   const http = status?.http;
+  // While the host cannot be reached a restart would only fail, so it is off until a check succeeds.
+  const unreachable = error !== null && describeConnectionError(error).connection;
 
   return (
     <section
@@ -131,7 +134,7 @@ export function ServiceCard({ projectId }: { projectId: string }) {
                 type="button"
                 variant="outline"
                 size="sm"
-                disabled={status?.state === "not_deployed"}
+                disabled={status?.state === "not_deployed" || unreachable}
               >
                 <PowerIcon aria-hidden="true" />
                 Restart
@@ -176,20 +179,20 @@ export function ServiceCard({ projectId }: { projectId: string }) {
           </Item>
           <Item label="Uptime">
             <Swap
-              value={status.uptimeSeconds !== null ? formatUptime(status.uptimeSeconds) : "None"}
+              value={status.uptimeSeconds !== null ? formatUptime(status.uptimeSeconds) : "No reading"}
               className="tabular"
             >
-              {status.uptimeSeconds !== null ? formatUptime(status.uptimeSeconds) : "None"}
+              {status.uptimeSeconds !== null ? formatUptime(status.uptimeSeconds) : "No reading"}
             </Swap>
           </Item>
           <Item label="Memory">
-            <Swap value={status.memoryMb ?? "None"} className="tabular">
-              {status.memoryMb !== null ? `${status.memoryMb} MB` : "None"}
+            <Swap value={status.memoryMb ?? "No reading"} className="tabular">
+              {status.memoryMb !== null ? `${status.memoryMb} MB` : "No reading"}
             </Swap>
           </Item>
           <Item label="Restarts">
-            <Swap value={status.restarts ?? "None"} className="tabular">
-              {status.restarts ?? "None"}
+            <Swap value={status.restarts ?? "No reading"} className="tabular">
+              {status.restarts ?? "No reading"}
             </Swap>
           </Item>
           <Item label="Health check">
@@ -227,9 +230,12 @@ export function ServiceCard({ projectId }: { projectId: string }) {
 
       {error ? (
         <div className="p-4">
-          <Alert tone="error" role="alert">
-            {error}.{status ? " The last answer is shown above." : ""}
-          </Alert>
+          <ConnectionAlert
+            message={error}
+            onRetry={checkNow}
+            retrying={loading}
+            note={status ? "The last answer is shown above." : undefined}
+          />
         </div>
       ) : null}
     </section>

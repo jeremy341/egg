@@ -14,17 +14,13 @@ function commitText(project: ProjectView) {
   );
 }
 
-/** The state mark: quiet when ready, a word when not. A monitor that cannot reach the app wins. */
+/** The state mark, always with its word. A monitor that cannot reach the app wins. */
 function ProjectStatus({ project }: { project: ProjectView }) {
   if (project.monitor === "down") {
     return <StatusIndicator tone="error" label="Not answering" className="shrink-0" />;
   }
   return (
-    <StatusDot
-      state={project.state}
-      showLabel={project.state !== "ready"}
-      className="shrink-0"
-    />
+    <StatusDot state={project.state} className="shrink-0" />
   );
 }
 

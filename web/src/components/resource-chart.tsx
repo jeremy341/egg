@@ -77,7 +77,7 @@ export function ResourceChart({
             <div className="flex gap-2">
               <div
                 aria-hidden="true"
-                className="tabular flex h-[120px] shrink-0 flex-col justify-between text-[11px] leading-none text-subtle-foreground"
+                className="tabular flex h-[120px] shrink-0 flex-col justify-between text-[12px] leading-none text-muted-foreground"
               >
                 <span>100%</span>
                 <span>50%</span>
@@ -123,31 +123,33 @@ export function ResourceChart({
             </div>
             <div
               aria-hidden="true"
-              className="mt-1.5 flex justify-between pl-[34px] text-[11px] text-subtle-foreground"
+              className="mt-1.5 flex justify-between pl-[34px] text-[12px] text-muted-foreground"
             >
               <span>{rangeLabel} ago</span>
               <span>now</span>
             </div>
           </>
         ) : (
-          <p className="flex h-[120px] items-center justify-center text-center text-muted-foreground">
-            Collecting data. The worker takes a reading every five minutes.
+          <p className="flex h-14 items-center text-muted-foreground">
+            No line yet. The worker takes a reading every five minutes and a line needs two.
           </p>
         )}
       </div>
 
-      <dl className="grid grid-cols-3 divide-x border-t text-center">
-        {[
-          ["Lowest", enough ? pct(low) : "None"],
-          ["Average", enough ? pct(avg) : "None"],
-          ["Peak", enough ? pct(peak) : "None"],
-        ].map(([k, v]) => (
-          <div key={k} className="px-2 py-2.5">
-            <dt className="text-[11px] text-subtle-foreground">{k}</dt>
-            <dd className="tabular mt-0.5 font-mono text-[13px]">{v}</dd>
-          </div>
-        ))}
-      </dl>
+      {enough ? (
+        <dl className="grid grid-cols-3 divide-x border-t text-center">
+          {[
+            ["Lowest", pct(low)],
+            ["Average", pct(avg)],
+            ["Peak", pct(peak)],
+          ].map(([k, v]) => (
+            <div key={k} className="px-2 py-2.5">
+              <dt className="text-[12px] text-muted-foreground">{k}</dt>
+              <dd className="tabular mt-0.5 font-mono text-[13px]">{v}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
     </section>
   );
 }

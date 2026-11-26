@@ -1,9 +1,10 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { audit } from "@/server/audit";
 import { config } from "@/server/config";
 import { newId, open, seal } from "@/server/crypto";
 import { getDb, schema } from "@/server/db";
 import { HttpError, notFound } from "@/server/http";
+import { terminals } from "@/server/terminal";
 import { NestSession, SshError } from "@/server/ssh/connection";
 import { generateServerKey } from "@/server/ssh/keys";
 import {
@@ -131,20 +132,41 @@ export async function rotateServerKey(userId: string, serverId: string) {
 
 export async function deleteServer(userId: string, serverId: string) {
   const server = await getServerForUser(userId, serverId);
+  // Root shells opened with this server's key must not outlive the key.
+  await terminals().closeAllForUser(userId, "disabled", { serverId: server.id });
   const db = await getDb();
   await db.delete(schema.servers).where(eq(schema.servers.id, server.id));
 }
 
-/** Open an SSH session using the stored key and pinned host key. */
+/**
+ * Open an SSH session using the stored key and pinned host key. A server that
+ * has not been tested yet has no pinned key, so the first session that gets
+ * through pins what it saw: deploys, file changes and every later connection
+ * then refuse a different host, instead of sending environment values and
+ * files to whatever answers.
+ */
 export async function connectToServer(server: ServerRow): Promise<NestSession> {
   const privateKey = open(server.privateKeyEnc, `server:${server.id}`);
-  return NestSession.connect({
+  const session = await NestSession.connect({
     host: server.host,
     port: server.port,
     username: server.nestUsername,
     privateKey,
     pinnedHostKey: server.hostKeyFingerprint,
   });
+  if (!server.hostKeyFingerprint && session.hostKeyFingerprint) {
+    try {
+      const db = await getDb();
+      await db
+        .update(schema.servers)
+        .set({ hostKeyFingerprint: session.hostKeyFingerprint })
+        .where(and(eq(schema.servers.id, server.id), isNull(schema.servers.hostKeyFingerprint)));
+    } catch (err) {
+      session.close();
+      throw err;
+    }
+  }
+  return session;
 }
 
 /** Run `fn` with a session and always close it. */

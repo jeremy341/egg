@@ -236,6 +236,25 @@ describe("operations", () => {
     expect(Buffer.from(await res.arrayBuffer()).toString()).toBe("abc");
   });
 
+  it("keeps a backslash in a file name from escaping the quoted file name in the header", async () => {
+    reply = () => ({ code: 0, stdout: `1
+${Buffer.from("a").toString("base64")}` });
+    const res = await download(get("download", { path: "shared/a\\.txt" }), ctxFor(projectId));
+    const disposition = res.headers.get("content-disposition")!;
+    expect(disposition).toContain('filename="a_.txt"');
+    expect(disposition).toContain("filename*=UTF-8''a%5C.txt");
+  });
+
+  it("counts every list, read and download against a per-user limit, since each one opens an SSH connection", async () => {
+    reply = () => ({ code: 0, stdout: "" });
+    let last = 200;
+    for (let i = 0; i < 121; i++) last = (await list(get("list", { path: "shared" }), ctxFor(projectId))).status;
+    expect(last).toBe(429);
+    const blocked = await read(get("read", { path: "shared/a.txt" }), ctxFor(projectId));
+    expect(blocked.status).toBe(429);
+    expect(blocked.headers.get("retry-after")).toMatch(/^\d+$/);
+  });
+
   it("writes, passes the bytes on stdin, and audits the path only", async () => {
     const secret = "SUPER-SECRET-FILE-CONTENTS";
     const res = await write(upload({ path: "shared/data/notes.txt", overwrite: "1" }, secret), ctxFor(projectId));
@@ -398,6 +417,28 @@ describe("current/ is the read-only live release", () => {
   it("still allows writes in shared/ on the same server", async () => {
     const res = await write(upload({ path: "shared/ok.txt", overwrite: "1" }, "x"), ctxFor(projectId));
     expect(res.status).toBe(200);
+  });
+});
+
+describe("the release's .env file is never shown", () => {
+  it("refuses to read or download current/.env or a release's .env, before SSH", async () => {
+    reply = () => ({ code: 0, stdout: `9\n${Buffer.from("TOKEN=abc").toString("base64")}` });
+    for (const path of ["current/.env", "releases/abc123/.env"]) {
+      for (const res of [
+        await read(get("read", { path }), ctxFor(projectId)),
+        await download(get("download", { path }), ctxFor(projectId)),
+      ]) {
+        const e = await errorOf(res);
+        expect(e, path).toMatchObject({ status: 403, code: "secret_file" });
+        expect(e.message).not.toContain("TOKEN");
+      }
+    }
+    expect(sshWasUsed()).toBe(false);
+  });
+
+  it("still reads a .env the owner keeps in shared/", async () => {
+    reply = () => ({ code: 0, stdout: `5\n${Buffer.from("A=1\nB").toString("base64")}` });
+    expect((await read(get("read", { path: "shared/.env" }), ctxFor(projectId))).status).toBe(200);
   });
 });
 

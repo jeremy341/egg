@@ -1,5 +1,5 @@
 import { rmSync } from "node:fs";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, ne } from "drizzle-orm";
 import { open } from "@/server/crypto";
 import { config, githubConfigured } from "@/server/config";
 import { installationToken } from "@/server/github/app";
@@ -14,6 +14,7 @@ import {
   releaseDir,
   unitName,
 } from "@/server/deploy/layout";
+import { blockingConflicts, probeConflicts, repoNameOf } from "@/server/adoption";
 import { DeploymentLogger } from "@/server/deploy/logger";
 import * as remote from "@/server/deploy/remote";
 import {
@@ -25,6 +26,7 @@ import {
 } from "@/server/deploy/runtime";
 import { commentDeploymentOnPr } from "@/server/github/pulls";
 import { notifyDeploymentFinished } from "@/server/notify";
+import { dispatchDeploymentEvent } from "@/server/webhooks";
 import { connectToServer, type ServerRow } from "@/server/servers";
 import { shellQuote, type NestSession } from "@/server/ssh/connection";
 import { probeSession, type NestProbe } from "@/server/ssh/probe";
@@ -95,18 +97,35 @@ export async function envForDeployment(
   return out;
 }
 
+/**
+ * Move a deployment to a new state. A canceled deployment stays canceled: the
+ * cancel button writes the state straight to the database while this worker is
+ * mid-step, so a later "deploying" or "ready" must not overwrite it. Returns
+ * false when the move was refused for that reason.
+ */
 async function setState(
   id: string,
   state: Deployment["state"],
   extra: Partial<typeof schema.deployments.$inferInsert> = {}
-) {
+): Promise<boolean> {
   const db = await getDb();
-  await db.update(schema.deployments).set({ state, ...extra }).where(eq(schema.deployments.id, id));
+  const where =
+    state === "canceled"
+      ? eq(schema.deployments.id, id)
+      : and(eq(schema.deployments.id, id), ne(schema.deployments.state, "canceled"));
+  const moved = await db
+    .update(schema.deployments)
+    .set({ state, ...extra })
+    .where(where)
+    .returning({ id: schema.deployments.id });
+  if (moved.length === 0) return false;
+  void dispatchDeploymentEvent(id, { state }); // outbound webhooks; never throws
   if (state === "ready" || state === "error") {
     // Fire and forget: notifyDeploymentFinished never throws.
     void notifyDeploymentFinished(id);
     void commentDeploymentOnPr(id);
   }
+  return true;
 }
 
 async function stateOf(id: string) {
@@ -128,6 +147,12 @@ async function run(
     timeoutMs,
     onLine: (l, stream) => (stream === "stderr" ? log.warn(l) : log.info(l)),
   });
+  if (res.code === remote.NOT_OURS_EXIT) {
+    // Something on the container is not ours. The script says what, in plain words.
+    throw new DeployError(
+      res.stderr.trim().slice(0, 300) || `${label} stopped: it would overwrite something Nest Deploy did not create.`
+    );
+  }
   if (res.code !== 0) {
     throw new DeployError(`${label} failed (exit ${res.code}).`);
   }
@@ -289,7 +314,7 @@ export async function runDeployJob(
 
   try {
     if ((await stateOf(deploymentId)) !== "queued") return;
-    await setState(deploymentId, "building", { startedAt: new Date() });
+    if (!(await setState(deploymentId, "building", { startedAt: new Date() }))) return;
     log.info(
       `Deploying ${project.name} (${dep.env}) to ${server.nestUsername}@${server.host}`
     );
@@ -335,7 +360,7 @@ export async function runDeployJob(
       .where(eq(schema.deployments.id, deploymentId));
 
     // ---- release on Nest
-    await setState(deploymentId, "deploying");
+    if (!(await setState(deploymentId, "deploying"))) throw new DeployError("The deployment was canceled.");
     log.info("Connecting to your Nest container");
     session = await deps.connect(server);
     const probe = await getProbe(session, server);
@@ -350,7 +375,31 @@ export async function runDeployJob(
       throw e;
     }
 
+    // Look before touching anything: a service, folder or port that is not ours,
+    // or the same repo already running by hand, stops the deploy here.
+    const firstProduction = dep.env === "production" && !(await currentProduction(project.id, dep.id));
+    const conflicts = blockingConflicts(
+      await probeConflicts(session, {
+        unitDir: deps.unitDir,
+        slug: project.slug,
+        unit: unitInfo.unit,
+        port: dep.port,
+        repo: project.repoFullName ?? repoNameOf(project.repoUrl),
+      }),
+      firstProduction
+    );
+    if (conflicts.length > 0) {
+      for (const c of conflicts) log.warn(c.detail);
+      throw new DeployError(
+        `Nothing was changed on your container. ${conflicts
+          .slice(0, 3)
+          .map((c) => c.detail)
+          .join(" ")}`
+      );
+    }
+
     await run(session, log, "Preparing folders", remote.prepareDirs(home, project.slug));
+    await run(session, log, "Checking the service name", remote.guardUnitFree(deps.unitDir, unitInfo.unit));
     log.info(`Uploading ${(built.sizeBytes / 1e6).toFixed(1)} MB`);
     await session.uploadFile(built.archivePath, incomingArchive(home, project.slug, dep.releaseId));
     throwIfCanceled(signal);
@@ -459,7 +508,7 @@ export async function runDeployJob(
     await log.flush().catch(() => {});
     const canceled = signal.aborted || (await stateOf(deploymentId)) === "canceled";
     await setState(deploymentId, canceled ? "canceled" : "error", {
-      error: message.slice(0, 500),
+      error: log.mask(message).slice(0, 500),
       finishedAt: new Date(),
     });
     if (!(err instanceof DeployError) && !canceled) {

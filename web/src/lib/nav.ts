@@ -27,6 +27,17 @@ export type NavItem = {
   active: (pathname: string) => boolean;
 };
 
+/**
+ * The docs sit in the sidebar's bottom group (with Nest guides and the account
+ * menu) at every level, team or project, so they are not part of TEAM_ITEMS.
+ */
+export const DOCS_ITEM: NavItem = {
+  href: "/docs",
+  label: "Docs",
+  icon: BookOpenTextIcon,
+  active: (p) => p === "/docs" || p.startsWith("/docs/"),
+};
+
 export type NavContext = {
   /** Text shown centred in the top bar on phones, and the single crumb on team pages. */
   title: string;
@@ -108,7 +119,7 @@ const TEAM_TITLES: Record<string, string> = {
   "/activity": "Activity",
   "/container": "Container",
   "/developer": "Developer",
-  "/connect": "Connect a Server",
+  "/connect": "Connect a server",
 };
 
 function projectItems(slug: string): NavItem[] {
@@ -153,6 +164,11 @@ function projectItems(slug: string): NavItem[] {
   ];
 }
 
+/** True where the page itself carries the "New project" button, so the top bar menu would repeat it. */
+export function hasOwnCreateButton(pathname: string): boolean {
+  return pathname === "/projects";
+}
+
 export function navFor(pathname: string): NavContext {
   const match = pathname.match(/^\/projects\/([^/]+)(\/.*)?$/);
 
@@ -161,7 +177,7 @@ export function navFor(pathname: string): NavContext {
     const rest = match[2] ?? "";
     const name = slug;
 
-    let title = "Project Overview";
+    let title = "Project overview";
     let crumb = "Overview";
     let deploymentId: string | undefined;
     let backHref = "/projects";
@@ -171,7 +187,7 @@ export function navFor(pathname: string): NavContext {
       deploymentId = rest.split("/")[2]?.slice(0, 8);
       backHref = `/projects/${slug}/deployments`;
     } else if (rest.startsWith("/analytics")) {
-      title = "Project Analytics";
+      title = "Project analytics";
       crumb = "Analytics";
       backHref = `/projects/${slug}`;
     } else if (rest.startsWith("/files")) {
@@ -181,11 +197,11 @@ export function navFor(pathname: string): NavContext {
       title = "Terminal";
       backHref = `/projects/${slug}`;
     } else if (rest.startsWith("/settings")) {
-      title = "Project Settings";
+      title = "Project settings";
       crumb = "Settings";
       backHref = `/projects/${slug}`;
     } else if (rest.startsWith("/deployments")) {
-      title = "Project Deployments";
+      title = "Project deployments";
       crumb = "Deployments";
       backHref = `/projects/${slug}`;
     } else {
@@ -197,10 +213,14 @@ export function navFor(pathname: string): NavContext {
       crumb,
       deploymentId,
       backHref,
-      backLabel: "All Projects",
+      backLabel: "All projects",
       items: projectItems(slug),
       project: { slug, name },
     };
+  }
+
+  if (DOCS_ITEM.active(pathname)) {
+    return { title: "Docs", backHref: "/projects", items: TEAM_ITEMS };
   }
 
   if (pathname.startsWith("/account")) {
@@ -237,7 +257,7 @@ export function findTargets(
     })),
     { href: "/account", label: "Account", group: "Pages", icon: UserCircleIcon },
     { href: "/new", label: "New project", group: "Pages", icon: PlusIcon },
-    { href: "/docs", label: "Docs", group: "Pages", icon: BookOpenTextIcon },
+    { href: DOCS_ITEM.href, label: DOCS_ITEM.label, group: "Pages", icon: DOCS_ITEM.icon },
     ...projects.map((p) => ({
       href: `/projects/${p.slug}`,
       label: p.name,

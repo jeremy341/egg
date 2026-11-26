@@ -22,6 +22,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
+import { domainCause } from "@/lib/connection-error";
 import { cn } from "@/lib/utils";
 
 type DomainRow = {
@@ -65,6 +66,8 @@ export function DomainsView({
   const [adding, setAdding] = useState(false);
   const [instructions, setInstructions] = useState<{ domain: string; port: number; data: Instructions } | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
+  // Why the last check failed, kept apart from notes so it can sit under a "Needs attention" row.
+  const [reasons, setReasons] = useState<Record<string, string>>({});
   const [checking, setChecking] = useState<string | null>(null);
   const [appResults, setAppResults] = useState<Record<string, AppCheckResult>>({});
   const [editId, setEditId] = useState<string | null>(null);
@@ -118,7 +121,9 @@ export function DomainsView({
       );
       const app = r.app;
       if (app) setAppResults((a) => ({ ...a, [id]: app }));
-      setNotes((n) => ({ ...n, [id]: r.reason ?? "" }));
+      const failed = r.status === "invalid";
+      setReasons((x) => ({ ...x, [id]: failed ? (r.reason ?? "") : "" }));
+      setNotes((n) => ({ ...n, [id]: failed ? "" : (r.reason ?? "") }));
       router.refresh();
     } catch (err) {
       setNotes((n) => ({ ...n, [id]: err instanceof Error ? err.message : "Check failed" }));
@@ -307,6 +312,11 @@ export function DomainsView({
                       <Swap value={notes[d.id]}>{notes[d.id]}</Swap>
                     </p>
                   ) : null}
+                  {d.status === "invalid" ? (
+                    <p id={`cause-${d.id}`} className="mt-1 max-w-[60ch] text-label text-foreground">
+                      {domainCause(reasons[d.id])}
+                    </p>
+                  ) : null}
                   <div role="status" aria-label={`App check for ${d.domain}`}>
                     <DomainAppCheck result={appResults[d.id]} />
                   </div>
@@ -318,9 +328,11 @@ export function DomainsView({
                     </Swap>
                   </span>
                   <Button
-                    variant="outline"
+                    variant={d.status === "invalid" ? "default" : "outline"}
                     size="sm"
                     disabled={checking === d.id}
+                    aria-label={checking === d.id ? undefined : `Check ${d.domain}`}
+                    aria-describedby={d.status === "invalid" ? `cause-${d.id}` : undefined}
                     onClick={() => void check(d.id)}
                   >
                     <ArrowsClockwiseIcon className={cn(checking === d.id && "animate-spin")} />

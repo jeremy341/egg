@@ -5,23 +5,23 @@ import { cn } from "@/lib/utils"
 import { PixelLoader } from "@/components/ui/pixel-loader"
 
 const buttonVariants = cva(
-  "group/button inline-flex shrink-0 items-center justify-center rounded-md border border-transparent bg-clip-padding text-sm font-medium tracking-[-0.02em] whitespace-nowrap transition-[background-color,color,box-shadow,opacity,scale] duration-(--dur-fast) ease-snappy select-none active:not-disabled:not-aria-disabled:scale-[0.97] active:not-disabled:not-aria-disabled:duration-(--dur-press) disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "group/button inline-flex shrink-0 items-center justify-center rounded-md border border-transparent bg-clip-padding text-sm font-medium tracking-[-0.02em] whitespace-nowrap transition-[background-color,color,box-shadow,opacity,scale] duration-(--dur-fast) ease-snappy select-none active:not-disabled:not-aria-disabled:scale-[0.97] active:not-disabled:not-aria-disabled:duration-(--dur-press) disabled:pointer-events-none disabled:not-aria-busy:text-muted-foreground disabled:not-aria-busy:shadow-none aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/85",
+        default: "bg-primary text-primary-foreground hover:bg-primary/85 disabled:not-aria-busy:border-border disabled:not-aria-busy:bg-muted",
         brand:
-          "bg-brand text-brand-foreground hover:brightness-110 active:brightness-95",
+          "bg-brand text-brand-foreground hover:brightness-110 active:brightness-95 disabled:not-aria-busy:border-border disabled:not-aria-busy:bg-muted",
         outline:
-          "shadow-border-base border-transparent bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted",
+          "shadow-border-base border-transparent bg-background disabled:not-aria-busy:border-border disabled:not-aria-busy:bg-muted hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted",
         secondary:
-          "bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
+          "bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground disabled:not-aria-busy:border-border disabled:not-aria-busy:bg-muted",
         ghost:
           "hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50",
         destructive:
-          "bg-destructive/10 text-destructive hover:bg-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30",
+          "bg-destructive/10 text-destructive hover:bg-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 disabled:not-aria-busy:border-border disabled:not-aria-busy:bg-muted",
         "destructive-solid":
-          "bg-destructive text-destructive-foreground hover:bg-[color-mix(in_oklab,var(--destructive)_88%,var(--foreground))]",
+          "bg-destructive text-destructive-foreground hover:bg-[color-mix(in_oklab,var(--destructive)_88%,var(--foreground))] disabled:not-aria-busy:border-border disabled:not-aria-busy:bg-muted",
         link: "text-primary underline-offset-4 hover:underline",
       },
       size: {

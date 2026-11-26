@@ -1,3 +1,4 @@
+import { SH_MARKER_HELPERS } from "@/server/deploy/layout";
 import { shellQuote } from "@/server/ssh/connection";
 
 /**
@@ -25,6 +26,12 @@ export type InventoryUnit = {
   execStart: string | null;
   /** cgroup of the unit, used to tell which listening process belongs to it. */
   controlGroup: string | null;
+  /**
+   * Whether Nest Deploy wrote this unit (it carries our marker). False means
+   * someone else made it, so it is never stopped or removed. Missing when the
+   * container's answer did not say.
+   */
+  managed?: boolean;
 };
 
 export type InventoryFolder = {
@@ -33,6 +40,8 @@ export type InventoryFolder = {
   sizeKb: number | null;
   /** True when the entry is a symbolic link. Links are listed but never removed. */
   isLink: boolean;
+  /** Whether Nest Deploy created this folder (marker file, or only our own layout inside). */
+  managed?: boolean;
 };
 
 export type ListeningPort = {
@@ -70,55 +79,10 @@ export class InventoryParseError extends Error {
 const UNIT_RE = /^nd-[a-z0-9-]+\.service$/;
 
 /**
- * The read-only script. `unitDir` is where Nest Deploy installs units (the
- * app's own setting, not user input), and is quoted regardless.
+ * Lists listening TCP ports with ss or netstat and the cgroup of each owning
+ * process: PORT and PIDCG lines plus ports_format=. Shared with the adoption probe.
  */
-export function inventoryScript(unitDir: string): string {
-  return `
-set +e
-unit_dir=${shellQuote(unitDir)}
-base="$HOME/.nest-deploy"
-echo "home=$HOME"
-echo "unit_dir=$unit_dir"
-if command -v systemctl >/dev/null 2>&1; then echo "has_systemctl=1"; else echo "has_systemctl=0"; fi
-df -Pm "$HOME" 2>/dev/null | awk 'NR==2 { printf "disk_total_mb=%d\\ndisk_used_mb=%d\\n", $2, $3 }'
-
-names=$( {
-  ls -1 "$unit_dir" 2>/dev/null | grep -E '^nd-[a-z0-9-]+\\.service$'
-  systemctl list-unit-files --type=service --no-legend --no-pager 'nd-*.service' 2>/dev/null | awk '{print $1}' | grep -E '^nd-[a-z0-9-]+\\.service$'
-} | sort -u )
-for u in $names; do
-  load=""; active=""; sub=""; pid=""; frag=""; cg=""
-  while IFS='=' read -r k v; do
-    case "$k" in
-      LoadState) load=$v;;
-      ActiveState) active=$v;;
-      SubState) sub=$v;;
-      MainPID) pid=$v;;
-      FragmentPath) frag=$v;;
-      ControlGroup) cg=$v;;
-    esac
-  done < <(systemctl show "$u" -p LoadState -p ActiveState -p SubState -p MainPID -p FragmentPath -p ControlGroup 2>/dev/null)
-  if [ -z "$frag" ] && [ -f "$unit_dir/$u" ]; then frag="$unit_dir/$u"; fi
-  exec_start=""
-  if [ -n "$frag" ] && [ -r "$frag" ]; then
-    exec_start=$(grep -m1 '^ExecStart=' "$frag" 2>/dev/null | cut -c11- | tr '\\t\\r' '  ' | cut -c1-400)
-  fi
-  printf 'UNIT\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n' "$u" "$load" "$active" "$sub" "$pid" "$frag" "$cg" "$exec_start"
-done
-
-if [ -d "$base" ]; then
-  T=""; if command -v timeout >/dev/null 2>&1; then T="timeout 20"; fi
-  for d in "$base"/*/; do
-    [ -d "$d" ] || continue
-    n=$(basename "$d")
-    link=0; if [ -L "\${d%/}" ]; then link=1; fi
-    kb=$($T du -sk "$d" 2>/dev/null | cut -f1)
-    printf 'DIR\\t%s\\t%s\\t%s\\n' "$n" "$kb" "$link"
-  done
-fi
-
-fmt=none; out=""
+export const PORTS_SNIPPET = `fmt=none; out=""
 if command -v ss >/dev/null 2>&1; then
   if out=$(ss -ltnpH 2>/dev/null); then fmt=ss
   elif out=$(ss -ltnH 2>/dev/null); then fmt=ss
@@ -143,7 +107,60 @@ for p in $pids; do
   cgs=$(sed -n 's/^[0-9]*:[^:]*://p' "/proc/$p/cgroup" 2>/dev/null | tr '\\n' ',')
   printf 'PIDCG\\t%s\\t%s\\n' "$p" "$cgs"
 done
-echo "END=1"
+`;
+
+/**
+ * The read-only script. `unitDir` is where Nest Deploy installs units (the
+ * app's own setting, not user input), and is quoted regardless.
+ */
+export function inventoryScript(unitDir: string): string {
+  return `
+set +e
+unit_dir=${shellQuote(unitDir)}
+base="$HOME/.nest-deploy"
+${SH_MARKER_HELPERS}echo "home=$HOME"
+echo "unit_dir=$unit_dir"
+if command -v systemctl >/dev/null 2>&1; then echo "has_systemctl=1"; else echo "has_systemctl=0"; fi
+df -Pm "$HOME" 2>/dev/null | awk 'NR==2 { printf "disk_total_mb=%d\\ndisk_used_mb=%d\\n", $2, $3 }'
+
+names=$( {
+  ls -1 "$unit_dir" 2>/dev/null | grep -E '^nd-[a-z0-9-]+\\.service$'
+  systemctl list-unit-files --type=service --no-legend --no-pager 'nd-*.service' 2>/dev/null | awk '{print $1}' | grep -E '^nd-[a-z0-9-]+\\.service$'
+} | sort -u )
+for u in $names; do
+  load=""; active=""; sub=""; pid=""; frag=""; cg=""
+  while IFS='=' read -r k v; do
+    case "$k" in
+      LoadState) load=$v;;
+      ActiveState) active=$v;;
+      SubState) sub=$v;;
+      MainPID) pid=$v;;
+      FragmentPath) frag=$v;;
+      ControlGroup) cg=$v;;
+    esac
+  done < <(systemctl show "$u" -p LoadState -p ActiveState -p SubState -p MainPID -p FragmentPath -p ControlGroup 2>/dev/null)
+  if [ -z "$frag" ] && [ -f "$unit_dir/$u" ]; then frag="$unit_dir/$u"; fi
+  marked=0; if nd_unit_marked "$unit_dir/$u"; then marked=1; fi
+  exec_start=""
+  if [ -n "$frag" ] && [ -r "$frag" ]; then
+    exec_start=$(grep -m1 '^ExecStart=' "$frag" 2>/dev/null | cut -c11- | tr '\\t\\r' '  ' | cut -c1-400)
+  fi
+  printf 'UNIT\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n' "$u" "$load" "$active" "$sub" "$pid" "$frag" "$cg" "$exec_start" "$marked"
+done
+
+if [ -d "$base" ]; then
+  T=""; if command -v timeout >/dev/null 2>&1; then T="timeout 20"; fi
+  for d in "$base"/*/; do
+    [ -d "$d" ] || continue
+    n=$(basename "$d")
+    link=0; if [ -L "\${d%/}" ]; then link=1; fi
+    kb=$($T du -sk "$d" 2>/dev/null | cut -f1)
+    marked=0; if nd_dir_managed "\${d%/}"; then marked=1; fi
+    printf 'DIR\\t%s\\t%s\\t%s\\t%s\\n' "$n" "$kb" "$link" "$marked"
+  done
+fi
+
+${PORTS_SNIPPET}echo "END=1"
 `;
 }
 
@@ -207,7 +224,7 @@ export function parseInventory(output: string): RawInventory {
 
   for (const raw of output.split(/\r?\n/)) {
     if (raw.startsWith("UNIT\t")) {
-      const [, name, load, active, sub, pid, frag, cg, exec] = raw.split("\t");
+      const [, name, load, active, sub, pid, frag, cg, exec, marked] = raw.split("\t");
       if (!name || !UNIT_RE.test(name)) continue;
       const mainPid = toNumber(pid);
       units.push({
@@ -219,11 +236,17 @@ export function parseInventory(output: string): RawInventory {
         unitFile: frag ? frag : null,
         execStart: exec ? exec : null,
         controlGroup: cg ? cg : null,
+        ...(marked === "1" || marked === "0" ? { managed: marked === "1" } : {}),
       });
     } else if (raw.startsWith("DIR\t")) {
-      const [, name, kb, link] = raw.split("\t");
+      const [, name, kb, link, marked] = raw.split("\t");
       if (!name) continue;
-      folders.push({ name, sizeKb: toNumber(kb), isLink: link === "1" });
+      folders.push({
+        name,
+        sizeKb: toNumber(kb),
+        isLink: link === "1",
+        ...(marked === "1" || marked === "0" ? { managed: marked === "1" } : {}),
+      });
     } else if (raw.startsWith("PORT\t")) {
       portLines.push(raw.slice(5));
     } else if (raw.startsWith("PIDCG\t")) {
@@ -298,6 +321,11 @@ export function removeUnitScript(unitDir: string, unit: string): string {
   return (
     `set +e\n` +
     `unit=${shellQuote(unit)}\nfile=${shellQuote(file)}\n` +
+    SH_MARKER_HELPERS +
+    // Only a unit file Nest Deploy wrote is ever stopped or removed. One that is
+    // missing here, is a link, or has no marker belongs to someone else.
+    `if [ ! -e "$file" ] && [ ! -L "$file" ]; then echo "That service is not in Nest Deploy's service folder, so it was left alone" >&2; exit ${REMOVE_EXIT.refused}; fi\n` +
+    `if ! nd_unit_marked "$file"; then echo "This service was not created by Nest Deploy, so it was left alone" >&2; exit ${REMOVE_EXIT.refused}; fi\n` +
     `systemctl stop "$unit" >/dev/null 2>&1\n` +
     `systemctl disable "$unit" >/dev/null 2>&1\n` +
     `rm -f -- "$file"\n` +
@@ -316,10 +344,12 @@ export function removeFolderScript(folder: string): string {
   return (
     `set +e\n` +
     `name=${shellQuote(folder)}\nbase="$HOME/.nest-deploy"\ndir="$base/$name"\n` +
+    SH_MARKER_HELPERS +
     `if [ -L "$dir" ]; then echo "That folder is a link, so it was left alone" >&2; exit ${REMOVE_EXIT.refused}; fi\n` +
     `if [ ! -d "$dir" ]; then exit ${REMOVE_EXIT.notFound}; fi\n` +
     `real=$(cd "$dir" 2>/dev/null && pwd -P)\nrealbase=$(cd "$base" 2>/dev/null && pwd -P)\n` +
     `if [ -z "$real" ] || [ -z "$realbase" ] || [ "$(dirname "$real")" != "$realbase" ]; then echo "Refusing a folder outside $base" >&2; exit ${REMOVE_EXIT.refused}; fi\n` +
+    `if ! nd_dir_managed "$dir"; then echo "This folder was not created by Nest Deploy, so it was left alone" >&2; exit ${REMOVE_EXIT.refused}; fi\n` +
     `rm -rf -- "$dir"\n` +
     `if [ -e "$dir" ]; then echo "The folder is still there" >&2; exit ${REMOVE_EXIT.notRemoved}; fi\n` +
     `exit 0\n`

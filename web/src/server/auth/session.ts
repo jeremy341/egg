@@ -52,12 +52,18 @@ export async function upsertUser(profile: {
   return { id, name: profile.name, email: profile.email, hackClubId: profile.id };
 }
 
-/** Returns the raw token to put in the cookie. Only its hash is stored. */
+/**
+ * Returns the raw token to put in the cookie. Only its hash is stored. Pass the
+ * token from the request's existing cookie as `replacing` at sign-in: every
+ * sign-in gets a new token, and the one it replaces stops working.
+ */
 export async function createSession(
   userId: string,
-  userAgent?: string | null
+  userAgent?: string | null,
+  replacing?: string
 ): Promise<{ token: string; expiresAt: Date }> {
   const db = await getDb();
+  if (replacing) await db.delete(schema.sessions).where(eq(schema.sessions.id, sha256Hex(replacing)));
   const token = randomToken(32);
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
   await db.insert(schema.sessions).values({

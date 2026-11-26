@@ -106,6 +106,9 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
+// A deploy is roughly 15 SSH commands; tests that deploy several times in a row get a longer budget.
+const DEPLOY_LOOP_TIMEOUT = 90000;
+
 describe("deploy pipeline", () => {
   let v1: typeof schema.deployments.$inferSelect;
   let v2: typeof schema.deployments.$inferSelect;
@@ -186,7 +189,7 @@ describe("deploy pipeline", () => {
     files = nodeApp("preview");
     const pv = await deploy("feature/x");
     expect(pv.env).toBe("preview");
-    expect(pv.state).toBe("ready");
+    expect(pv.state, pv.error ?? "").toBe("ready");
     expect(pv.isCurrent).toBe(false);
     expect(pv.port).toBeGreaterThanOrEqual(20000);
     expect(await answer(pv.port)).toBe("preview:hello-secret-value");
@@ -207,7 +210,9 @@ describe("deploy pipeline", () => {
     // The oldest preview's service was stopped and its folder removed.
     expect(await answer(ports[0])).toBe("");
     expect(await answer(ports[2])).toBe("p3:hello-secret-value");
-  });
+    // Each deploy is about 15 commands, and every command is a separate wsl.exe start on Windows, so
+    // several deploys in one test need more than the global 20s.
+  }, DEPLOY_LOOP_TIMEOUT);
 
   it("prunes old production releases but never the live one", async () => {
     for (let i = 0; i < 6; i++) {
@@ -222,9 +227,33 @@ describe("deploy pipeline", () => {
     expect(dirs.length).toBeLessThanOrEqual(5 + 2); // 5 production + up to 2 previews
     expect(await answer(project.port)).toBe("r5:hello-secret-value");
     expect(rows.some((r) => r.cleanedUp && r.env === "production")).toBe(true);
-  });
+  }, DEPLOY_LOOP_TIMEOUT);
 
   it("refuses to roll back to a release that was pruned", async () => {
     await expect(rollback(userId, v1.id)).rejects.toMatchObject({ status: 409 });
+  });
+});
+
+describe("deploy state races", () => {
+  it("does not deploy, or revive, a deployment that was canceled while it was building", async () => {
+    files = nodeApp("never-ships");
+    const dep = await deployBranch(userId, project.id, "main");
+    const cancelDuringBuild: PipelineDeps = {
+      ...deps,
+      // The cancel button writes straight to the database; the abort signal only follows on the next poll.
+      build: async (req) => {
+        await ctx.db.update(schema.deployments).set({ state: "canceled" }).where(eq(schema.deployments.id, dep.id));
+        return deps.build(req);
+      },
+    };
+    await runDeployJob(dep.id, cancelDuringBuild);
+
+    const row = await ctx.db.select().from(schema.deployments).where(eq(schema.deployments.id, dep.id)).get();
+    expect(row?.state).toBe("canceled");
+    expect(row?.isCurrent).toBe(false);
+    const home = mock.home.replace(/\\/g, "/");
+    const dirs = await sh(`ls ${home}/.nest-deploy/demo-app/releases`);
+    expect(dirs).not.toContain(dep.releaseId);
+    expect(await answer(project.port)).not.toBe("never-ships:hello-secret-value");
   });
 });

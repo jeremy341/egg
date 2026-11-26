@@ -12,7 +12,7 @@ import {
 import { api } from "@/components/api";
 import { Segmented } from "@/components/segmented";
 import { StatusIndicator } from "@/components/status-dot";
-import { Alert } from "@/components/ui/alert";
+import { ConnectionAlert } from "@/components/connection-alert";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
@@ -195,8 +195,25 @@ export function LogsView({
           placeholder="Search the last 1000 lines…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          className="min-w-[14rem] max-w-80 flex-1 max-sm:max-w-none max-sm:basis-full"
+          className="min-w-[14rem] max-w-96 flex-1 max-sm:max-w-none max-sm:basis-full"
         />
+        <div className="ml-auto flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={download}
+            disabled={lines.length === 0}
+            aria-label={`Download ${lines.length} visible ${lines.length === 1 ? "line" : "lines"} as a text file`}
+          >
+            <DownloadSimpleIcon aria-hidden="true" />
+            Download
+          </Button>
+          <Button variant="outline" onClick={() => void load()} disabled={loading}>
+            <ArrowsClockwiseIcon aria-hidden="true" className={cn(loading && "animate-spin")} />
+            Refresh
+          </Button>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <Segmented<LogRange>
           label="Time range"
           value={range}
@@ -219,28 +236,9 @@ export function LogsView({
         {auto ? (
           <StatusIndicator tone="ready" label="Live" className="motion-fade text-label" />
         ) : null}
-        <div className="ml-auto flex items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={download}
-            disabled={lines.length === 0}
-            aria-label={`Download ${lines.length} visible ${lines.length === 1 ? "line" : "lines"} as a text file`}
-          >
-            <DownloadSimpleIcon aria-hidden="true" />
-            Download
-          </Button>
-          <Button variant="outline" onClick={() => void load()} disabled={loading}>
-            <ArrowsClockwiseIcon aria-hidden="true" className={cn(loading && "animate-spin")} />
-            Refresh
-          </Button>
-        </div>
       </div>
 
-      {error ? (
-        <Alert tone="error" role="alert">
-          {error}
-        </Alert>
-      ) : null}
+      {error ? <ConnectionAlert message={error} onRetry={() => void load()} retrying={loading} /> : null}
 
       {/* What is on screen, in one line. Not a live region: auto refresh would chatter. */}
       <p className="tabular min-h-[18px] text-label text-muted-foreground">
@@ -255,53 +253,54 @@ export function LogsView({
         ) : null}
       </p>
 
-      <div
-        role="log"
-        aria-label="Runtime logs"
-        aria-busy={showSkeleton || undefined}
-        tabIndex={0}
-        className="log-surface max-h-[70vh] min-h-[320px] overflow-auto rounded-lg py-3 shadow-border-small"
-      >
-        {showSkeleton ? (
-          Array.from({ length: 14 }, (_, i) => (
-            <div key={i} className="flex h-5 items-center px-4">
-              <Skeleton
-                className={cn(
-                  "h-3 max-w-full rounded-sm",
-                  SKELETON_LINE_WIDTHS[(i * 3) % SKELETON_LINE_WIDTHS.length]
-                )}
-              />
-            </div>
-          ))
-        ) : lines.length === 0 ? (
-          <p className="px-4 py-12 text-center font-sans text-muted-foreground">
-            {error
-              ? "Logs could not be read."
-              : term
-                ? `No lines match “${term}”.`
-                : level === "problems"
-                  ? "No warnings or errors in this time range."
-                  : "Nothing printed in this time range. Try a longer one."}
-          </p>
-        ) : (
-          lines.map((l, i) => {
-            const mark = levels?.[i];
-            if (!levels) {
+      {/* A failed read with nothing to show is already explained above, so no second empty panel. */}
+      {error && lines.length === 0 ? null : (
+        <div
+          role="log"
+          aria-label="Runtime logs"
+          aria-busy={showSkeleton || undefined}
+          tabIndex={0}
+          className="log-surface max-h-[70vh] min-h-[320px] overflow-auto rounded-lg py-3 shadow-border-small"
+        >
+          {showSkeleton ? (
+            Array.from({ length: 14 }, (_, i) => (
+              <div key={i} className="flex h-5 items-center px-4">
+                <Skeleton
+                  className={cn(
+                    "h-3 max-w-full rounded-sm",
+                    SKELETON_LINE_WIDTHS[(i * 3) % SKELETON_LINE_WIDTHS.length]
+                  )}
+                />
+              </div>
+            ))
+          ) : lines.length === 0 ? (
+            <p className="px-4 py-12 text-center font-sans text-muted-foreground">
+              {term
+                  ? `No lines match “${term}”.`
+                  : level === "problems"
+                    ? "No warnings or errors in this time range."
+                    : "Nothing printed in this time range. Try a longer one."}
+            </p>
+          ) : (
+            lines.map((l, i) => {
+              const mark = levels?.[i];
+              if (!levels) {
+                return (
+                  <p key={i} className="log-line whitespace-pre-wrap break-all">
+                    {l}
+                  </p>
+                );
+              }
               return (
-                <p key={i} className="log-line whitespace-pre-wrap break-all">
-                  {l}
+                <p key={i} className="log-line flex gap-3 whitespace-pre-wrap">
+                  <LevelMark level={mark ?? "info"} />
+                  <span className="min-w-0 flex-1 break-all">{l}</span>
                 </p>
               );
-            }
-            return (
-              <p key={i} className="log-line flex gap-3 whitespace-pre-wrap">
-                <LevelMark level={mark ?? "info"} />
-                <span className="min-w-0 flex-1 break-all">{l}</span>
-              </p>
-            );
-          })
-        )}
-      </div>
+            })
+          )}
+        </div>
+      )}
       {level === "problems" ? (
         <p className="text-label text-muted-foreground">
           Warnings and errors are found from what each line says: a level such as [ERROR] or

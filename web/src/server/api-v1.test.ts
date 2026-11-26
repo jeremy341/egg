@@ -224,7 +224,7 @@ describe("scope gates", () => {
 
   it("lets a token with exactly the right scope through", async () => {
     for (const ep of ENDPOINTS.filter((e) => e.method === "GET" && FIRST_ENDPOINTS.includes(e.id))) {
-      const secret = await token([ep.scope]);
+      const secret = await token(ep.scope ? [ep.scope] : []);
       const calls = Object.fromEntries(everyEndpoint(secret));
       scriptReply = () => ({ code: 0, stdout: "load1=0.5\ncpus=2\n" });
       expect((await calls[ep.id]()).status, ep.id).toBe(200);
@@ -458,7 +458,7 @@ describe("OpenAPI", () => {
     for (const ep of ENDPOINTS) {
       const op = doc.paths[ep.path][ep.method.toLowerCase()];
       expect(op.operationId).toBe(ep.id);
-      expect(op.security).toEqual([{ bearerAuth: [ep.scope] }]);
+      expect(op.security).toEqual([{ bearerAuth: ep.scope ? [ep.scope] : [] }]);
       expect(Object.keys(op.responses)).toEqual(expect.arrayContaining([String(ep.status), "401", "403", "429"]));
     }
     expect(ops.map((o) => o.operationId).sort()).toEqual([...ENDPOINTS.map((e) => e.id), "get_openapi"].sort());

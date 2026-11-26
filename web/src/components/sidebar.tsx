@@ -5,12 +5,12 @@ import Link from "next/link";
 import {
   ArrowUpRightIcon,
   BookOpenIcon,
-  BookOpenTextIcon,
   MagnifyingGlassIcon,
 } from "@phosphor-icons/react";
 import { useFind } from "@/components/find-palette";
 import { NestMark } from "@/components/nest-mark";
 import {
+  DocsLink,
   NavList,
   NavListSkeleton,
   navItemClass,
@@ -73,10 +73,7 @@ export function Sidebar() {
       </div>
 
       <div className="flex flex-col gap-0.5 border-t p-2">
-        <Link href="/docs" className={cn(navItemClass, navItemIdle)}>
-          <BookOpenTextIcon aria-hidden="true" className="size-4 shrink-0" />
-          Docs
-        </Link>
+        <DocsLink />
         <a
           href="https://guides.hackclub.app"
           target="_blank"

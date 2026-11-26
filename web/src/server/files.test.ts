@@ -290,6 +290,11 @@ ln -s data $r/shared/inside
 ln -s ../releases $r/shared/to-releases
 ln -s ../current $r/shared/to-current
 ln -s nowhere $r/shared/dead
+printf 'API_KEY="top"\n' > $r/releases/r1/.env
+printf 'kept' > $r/releases/r1/src/.env
+printf 'mine' > $r/shared/.env
+ln -s ../current/.env $r/shared/env-via-current
+ln -s ../releases/r1/.env $r/shared/env-via-release
 `);
   }, 60_000);
 
@@ -323,7 +328,7 @@ ln -s nowhere $r/shared/dead
   it("follows current into the release for reading, and reports it as the read-only live release", async () => {
     const res = await listDir(session, root, "current");
     expect(res.scope).toMatchObject({ area: "current", writable: false, liveRelease: true });
-    expect(res.entries.map((e) => e.name)).toEqual(["src", "index.js"]);
+    expect(res.entries.map((e) => e.name)).toEqual(["src", ".env", "index.js"]);
     const file = await readFile(session, root, "current/index.js");
     expect(file).toMatchObject({ content: "console.log(1)" + String.fromCharCode(10), liveRelease: true, writable: false });
     expect((await downloadFile(session, root, "current/index.js")).name).toBe("index.js");
@@ -442,6 +447,18 @@ ln -s nowhere $r/shared/dead
     expect(await status(renamePath(session, root, "shared/data/a.txt", "shared/to-current/a.txt"))).toMatchObject({ status: 403, code: "read_only" });
     expect(await exists(`${root}/releases/r1/patched.txt`)).toBe(false);
     expect(await exists(`${root}/releases/r1/index.js`)).toBe(true);
+  });
+
+  it("will not hand out a release's .env under another name, such as a link in shared/", async () => {
+    for (const path of ["shared/env-via-current", "shared/env-via-release", "current/.env", "releases/r1/.env"]) {
+      expect(await status(readFile(session, root, path)), path).toMatchObject({ status: 403, code: "secret_file" });
+      expect(await status(downloadFile(session, root, path)), path).toMatchObject({ status: 403, code: "secret_file" });
+    }
+  });
+
+  it("still reads other files named .env: the owner's in shared/ and a repository's own deeper in a release", async () => {
+    expect((await readFile(session, root, "shared/.env")).content).toBe("mine");
+    expect((await readFile(session, root, "current/src/.env")).content).toBe("kept");
   });
 
   it("will not write when the parent folder is missing", async () => {

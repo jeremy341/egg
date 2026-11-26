@@ -4,6 +4,7 @@ import { audit } from "@/server/audit";
 import { newId, randomToken, sha256Hex } from "@/server/crypto";
 import { getDb, schema } from "@/server/db";
 import { HttpError, notFound } from "@/server/http";
+import { terminals } from "@/server/terminal";
 
 /**
  * Personal access tokens for the public API and AI agents.
@@ -36,6 +37,8 @@ export const SCOPES = [
   "files:read",
   "files:write",
   "terminal:use",
+  "webhooks:read",
+  "webhooks:write",
 ] as const;
 export type Scope = (typeof SCOPES)[number];
 
@@ -58,6 +61,8 @@ export const SCOPE_LABEL: Record<Scope, string> = {
   "files:read": "List and read files in a project's folder on the container",
   "files:write": "Create, change, rename and delete files in a project's shared/ folder (never the live release)",
   "terminal:use": "Open and use a shell on the container. Commands run for real",
+  "webhooks:read": "Read your webhooks and their recent deliveries (never their secrets)",
+  "webhooks:write": "Create, change, delete and test webhooks, and replace a webhook secret",
 };
 
 /**
@@ -143,10 +148,11 @@ export async function createApiToken(userId: string, raw: unknown, now = new Dat
   const db = await getDb();
 
   const existing = await db
-    .select({ id: schema.apiTokens.id, revokedAt: schema.apiTokens.revokedAt })
+    .select({ revokedAt: schema.apiTokens.revokedAt, expiresAt: schema.apiTokens.expiresAt })
     .from(schema.apiTokens)
     .where(eq(schema.apiTokens.userId, userId));
-  if (existing.filter((t) => !t.revokedAt).length >= MAX_TOKENS_PER_USER) {
+  const active = existing.filter((t) => !t.revokedAt && t.expiresAt.getTime() > now.getTime());
+  if (active.length >= MAX_TOKENS_PER_USER) {
     throw new HttpError(400, `You can have up to ${MAX_TOKENS_PER_USER} active tokens. Revoke one first.`, "limit");
   }
 
@@ -194,6 +200,7 @@ export async function revokeApiToken(userId: string, tokenId: string, now = new 
     .where(and(eq(schema.apiTokens.id, tokenId), eq(schema.apiTokens.userId, userId), isNull(schema.apiTokens.revokedAt)))
     .returning({ id: schema.apiTokens.id });
   if (gone.length === 0) throw notFound("Token not found");
+  await terminals().closeAllForToken(userId, tokenId, "signed-out");
   await audit(userId, "token.revoke", tokenId);
 }
 

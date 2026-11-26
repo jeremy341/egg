@@ -1,0 +1,263 @@
+/**
+ * The single source of truth for the docs outline. The left nav, the mobile
+ * bar, the scroll spy and every `Section` / `H3` heading read their titles
+ * from here, so a title can never be typed twice or drift.
+ */
+
+export type DocsSubsection = { id: string; title: string };
+export type DocsSection = { id: string; title: string; subsections: DocsSubsection[] };
+export type DocsGroup = { group: string; sections: DocsSection[] };
+
+export const DOCS_NAV: DocsGroup[] = [
+  {
+    group: "Start",
+    sections: [
+      {
+        id: "overview",
+        title: "How it works",
+        subsections: [{ id: "overview-push", title: "What happens on a push" }],
+      },
+      { id: "quickstart", title: "Quick start", subsections: [] },
+    ],
+  },
+  {
+    group: "Use it",
+    sections: [
+      {
+        id: "servers",
+        title: "Servers",
+        subsections: [
+          { id: "servers-connection", title: "How the connection works" },
+          { id: "servers-manage", title: "Testing, rotating and removing" },
+        ],
+      },
+      {
+        id: "projects",
+        title: "Projects and runtimes",
+        subsections: [
+          { id: "projects-settings", title: "Settings" },
+          { id: "projects-runtimes", title: "Runtimes" },
+          { id: "projects-guarantees", title: "What every app can rely on" },
+        ],
+      },
+      {
+        id: "deployments",
+        title: "Deployments",
+        subsections: [
+          { id: "deployments-states", title: "States" },
+          { id: "deployments-actions", title: "Actions" },
+          { id: "deployments-releases", title: "Releases and previews on disk" },
+          { id: "deployments-previews", title: "Branch previews" },
+        ],
+      },
+      { id: "env", title: "Environment variables", subsections: [] },
+      { id: "logs", title: "Logs", subsections: [] },
+      { id: "domains", title: "Domains", subsections: [] },
+      {
+        id: "container",
+        title: "Container, terminal and files",
+        subsections: [
+          { id: "container-switches", title: "The three switches" },
+          { id: "container-page", title: "The Container page" },
+          { id: "container-leftovers", title: "Removing leftovers" },
+          { id: "container-adopt", title: "Adopting an app that already runs" },
+          { id: "container-terminal", title: "The terminal" },
+          { id: "container-files", title: "The Files tab" },
+        ],
+      },
+    ],
+  },
+  {
+    group: "Automate",
+    sections: [
+      {
+        id: "github",
+        title: "GitHub and previews",
+        subsections: [
+          { id: "github-push", title: "Deploying on push" },
+          { id: "github-pr-previews", title: "Pull request previews" },
+        ],
+      },
+      { id: "hooks", title: "Deploy hooks", subsections: [] },
+      { id: "notifications", title: "Notifications", subsections: [] },
+      {
+        id: "api",
+        title: "Access tokens and the API",
+        subsections: [
+          { id: "api-tokens", title: "Making a token" },
+          { id: "api-scopes", title: "What a token can do" },
+          { id: "api-limits", title: "Terminal, files and the 7-day rule" },
+          { id: "api-mcp", title: "The API and agents" },
+          { id: "api-examples", title: "Examples and the TypeScript client" },
+          { id: "api-addresses", title: "Addresses for tools and agents" },
+        ],
+      },
+    ],
+  },
+  {
+    group: "Watch",
+    sections: [
+      {
+        id: "monitoring",
+        title: "Monitoring and uptime",
+        subsections: [
+          { id: "monitoring-service-card", title: "The Service card" },
+          { id: "monitoring-resources", title: "Resource use" },
+          { id: "monitoring-uptime", title: "Uptime checks and alerts" },
+        ],
+      },
+      { id: "status-page", title: "Status page", subsections: [] },
+      {
+        id: "analytics",
+        title: "Analytics",
+        subsections: [
+          { id: "analytics-setup-steps", title: "Setting it up" },
+          { id: "analytics-data", title: "What you see" },
+          { id: "analytics-privacy", title: "Privacy" },
+        ],
+      },
+      {
+        id: "activity",
+        title: "Activity",
+        subsections: [
+          { id: "activity-log", title: "What the log records" },
+          { id: "activity-filters", title: "Searching and filtering" },
+        ],
+      },
+      {
+        id: "account",
+        title: "Account",
+        subsections: [
+          { id: "account-signin", title: "Signing in and out" },
+          { id: "account-sessions", title: "Signed-in browsers" },
+          { id: "account-delete", title: "Deleting your account" },
+        ],
+      },
+    ],
+  },
+  {
+    group: "Reference",
+    sections: [
+      {
+        id: "security",
+        title: "Security",
+        subsections: [
+          { id: "security-key", title: "The SSH key and the host key" },
+          { id: "security-builds", title: "Sandboxed builds" },
+          { id: "security-vars", title: "Variables and secrets" },
+          { id: "security-signin", title: "Sign-in and requests" },
+          { id: "security-visibility", title: "Who can see what" },
+        ],
+      },
+      {
+        id: "selfhost",
+        title: "Running your own",
+        subsections: [
+          { id: "selfhost-start", title: "Starting your own copy" },
+          { id: "selfhost-config", title: "Settings the code reads" },
+          { id: "selfhost-worker", title: "The worker" },
+          { id: "selfhost-database", title: "The database and backups" },
+          { id: "selfhost-apps", title: "Hack Club and GitHub apps" },
+        ],
+      },
+      {
+        id: "limits",
+        title: "Limits",
+        subsections: [
+          { id: "limits-deploys", title: "Projects and deploys" },
+          { id: "limits-container", title: "Container features" },
+          { id: "limits-api", title: "Access tokens and the API" },
+          { id: "limits-watch", title: "Watching and history" },
+          { id: "limits-account", title: "Sign-in" },
+        ],
+      },
+      {
+        id: "troubleshooting",
+        title: "Troubleshooting",
+        subsections: [
+          { id: "troubleshooting-connection", title: "Test connection fails" },
+          { id: "troubleshooting-build", title: "The build fails" },
+          { id: "troubleshooting-no-answer", title: "It built, but the app never answered" },
+          { id: "troubleshooting-adopt", title: "A deploy is blocked by something on the container" },
+          { id: "troubleshooting-project", title: "A project will not create" },
+          { id: "troubleshooting-rollback", title: "A rollback or cancel is refused" },
+          { id: "troubleshooting-env", title: "A variable will not save" },
+          { id: "troubleshooting-domain", title: "A domain stays on “Needs attention”" },
+          { id: "troubleshooting-hook-409", title: "A deploy hook answers 409" },
+          { id: "troubleshooting-pr-comment", title: "No comment appears on a pull request" },
+          { id: "troubleshooting-alerts", title: "Alerts or notifications do not arrive" },
+          { id: "troubleshooting-container", title: "The terminal, files or leftovers are refused" },
+          { id: "troubleshooting-token", title: "The API answers 401, 403 or 429" },
+          { id: "troubleshooting-signin", title: "Sign-in fails" },
+        ],
+      },
+    ],
+  },
+];
+
+/** Every section, in reading order. Each one is its own page. */
+export const DOCS_SECTIONS: DocsSection[] = DOCS_NAV.flatMap((g) => g.sections);
+
+const SECTION_BY_ID = new Map(DOCS_SECTIONS.map((s) => [s.id, s]));
+
+const SUB_BY_ID = new Map(
+  DOCS_SECTIONS.flatMap((s) => s.subsections.map((sub) => [sub.id, { ...sub, sectionId: s.id }] as const))
+);
+
+export function sectionTitle(id: string): string {
+  const section = SECTION_BY_ID.get(id);
+  if (!section) throw new Error(`Unknown docs section: ${id}`);
+  return section.title;
+}
+
+export function subsectionTitle(id: string): string {
+  const sub = SUB_BY_ID.get(id);
+  if (!sub) throw new Error(`Unknown docs subsection: ${id}`);
+  return sub.title;
+}
+
+export function getSection(id: string): DocsSection | undefined {
+  return SECTION_BY_ID.get(id);
+}
+
+/** The group a section belongs to ("Start", "Use it", ...). */
+export function groupOf(id: string): string | undefined {
+  return DOCS_NAV.find((g) => g.sections.some((s) => s.id === id))?.group;
+}
+
+/** The id of a page's `h1`. */
+export function headingId(sectionId: string): string {
+  return `${sectionId}-h`;
+}
+
+export function docsHref(sectionId: string): string {
+  return `/docs/${sectionId}`;
+}
+
+/** The page the visitor is on, from the pathname, or null on the docs home. */
+export function sectionIdFromPath(pathname: string): string | null {
+  const m = /^\/docs\/([^/#?]+)/.exec(pathname);
+  return m && SECTION_BY_ID.has(m[1]) ? m[1] : null;
+}
+
+/** The pages either side of this one, in reading order, across groups. */
+export function neighbors(sectionId: string): { prev: DocsSection | null; next: DocsSection | null } {
+  const i = DOCS_SECTIONS.findIndex((s) => s.id === sectionId);
+  return {
+    prev: i > 0 ? DOCS_SECTIONS[i - 1] : null,
+    next: i >= 0 && i < DOCS_SECTIONS.length - 1 ? DOCS_SECTIONS[i + 1] : null,
+  };
+}
+
+/**
+ * Old links pointed at one long page (`/docs#servers`). Given such a hash id,
+ * the page it lives on now, so a bookmark still lands in the right place.
+ */
+export function legacyHref(hashId: string): string | null {
+  const id = hashId.replace(/^#/, "");
+  if (SECTION_BY_ID.has(id)) return docsHref(id);
+  const sub = SUB_BY_ID.get(id);
+  if (sub) return `${docsHref(sub.sectionId)}#${id}`;
+  if (id.endsWith("-h") && SECTION_BY_ID.has(id.slice(0, -2))) return docsHref(id.slice(0, -2));
+  return null;
+}

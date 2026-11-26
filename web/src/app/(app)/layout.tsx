@@ -44,7 +44,7 @@ function ShellSkeleton() {
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBarSkeleton />
-        <div className="mx-auto w-full max-w-[var(--page-width)] flex-1 px-4 py-6 pb-28 lg:px-6 lg:pb-10">
+        <div className="mx-auto w-full max-w-[var(--page-width)] flex-1 px-4 py-6 pb-[calc(96px+env(safe-area-inset-bottom))] lg:px-6 lg:pb-10">
           <SkeletonPageHeader description />
           <SkeletonCard header className="h-64" />
         </div>
@@ -76,7 +76,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               </Suspense>
               <main
                 id="main"
-                className="mx-auto w-full max-w-[var(--page-width)] flex-1 px-4 py-6 pb-28 lg:px-6 lg:pb-10"
+                className="mx-auto w-full max-w-[var(--page-width)] flex-1 px-4 py-6 pb-[calc(96px+env(safe-area-inset-bottom))] lg:px-6 lg:pb-10"
               >
                 {children}
               </main>

@@ -21,6 +21,7 @@ import {
 import { FilePreview, type EditState, type PreviewState } from "@/components/file-manager-preview";
 import { FileTable } from "@/components/file-manager-table";
 import { UploadPanel, type UploadItem } from "@/components/file-manager-upload";
+import { isSecretFile } from "@/server/secret-files";
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { Alert } from "@/components/ui/alert";
@@ -135,7 +136,9 @@ export function FileManager({ projectId, slug, projectName, initialPath, fileWri
 
   const selected = selectedName ? (entries.find((e) => e.name === selectedName) ?? null) : null;
   const selectedPath = selected ? joinPath(path, selected.name) : null;
-  const canPreview = selected !== null && !isFolderLike(selected) && selected.size <= READ_LIMIT;
+  // A release's .env holds the environment values; the server refuses it, so it is never fetched.
+  const secret = selectedPath !== null && isSecretFile(selectedPath);
+  const canPreview = selected !== null && !isFolderLike(selected) && selected.size <= READ_LIMIT && !secret;
   const previewKey = canPreview && selectedPath ? `${selectedPath}#${reloadKey}` : null;
 
   useEffect(() => {
@@ -626,7 +629,10 @@ export function FileManager({ projectId, slug, projectName, initialPath, fileWri
                   activeName={activeName}
                   label={`Contents of ${here}`}
                   busy={loading}
-                  downloadHref={(entry) => fileHref(projectId, "download", joinPath(path, entry.name))}
+                  downloadHref={(entry) => {
+                    const p = joinPath(path, entry.name);
+                    return isSecretFile(p) ? null : fileHref(projectId, "download", p);
+                  }}
                   onActivate={setActiveName}
                   onOpen={openEntry}
                   onRename={askRename}
@@ -653,7 +659,8 @@ export function FileManager({ projectId, slug, projectName, initialPath, fileWri
             saveError={saveError}
             modifiable={writable}
             liveRelease={liveRelease}
-            downloadHref={selectedPath ? fileHref(projectId, "download", selectedPath) : null}
+            secret={secret}
+            downloadHref={selectedPath && !secret ? fileHref(projectId, "download", selectedPath) : null}
             headingRef={headingRef}
             onBack={() =>
               guard(() => {

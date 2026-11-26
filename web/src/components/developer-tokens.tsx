@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { WarningIcon } from "@phosphor-icons/react";
+import { CaretDownIcon, CaretRightIcon, PlusIcon, WarningIcon } from "@phosphor-icons/react";
 import { api } from "@/components/api";
 import { CopyButton } from "@/components/developer-docs";
-import { Card, Label } from "@/components/settings-ui";
+import { PageHeader } from "@/components/page-header";
+import { Label } from "@/components/settings-ui";
 import { TokenListSkeleton } from "@/components/skeletons/developer";
 import { StatusIndicator } from "@/components/status-dot";
 import { Alert } from "@/components/ui/alert";
@@ -44,22 +45,29 @@ import {
   type ExpiryChoice,
   type TokenPatch,
 } from "@/lib/developer";
+import { EXPIRING_SOON_DAYS, groupTokens } from "@/lib/developer-groups";
 import { cn } from "@/lib/utils";
 import type { TokenSummary } from "@/server/api-tokens";
 
 export type ScopeOption = { id: string; label: string };
 
-const TONE_FOR = { active: "ready", expired: "warning", revoked: "neutral" } as const;
+// Amber is kept for "Expires soon", the one state that asks for action.
+const TONE_FOR = { active: "ready", expired: "neutral", revoked: "neutral" } as const;
 
 type Secret = { name: string; value: string };
 
+/** The frame every token list sits in: one card, a hairline between rows. */
+const LIST_CLASS = "hairline-y overflow-hidden rounded-lg bg-card shadow-border-small";
+
 /**
- * The "Access tokens" card: a create form, the one-time secret, and the list.
- * The list loads in the browser from /api/tokens so it can show a skeleton and
- * a retry. The secret exists only in this component's state: it is never
- * stored and never comes back from the list.
+ * The Developer page's working part: the page header with "Create token", the
+ * create dialog with the one-time secret, and the list grouped by status
+ * (Active, Expired, then Revoked folded away). `aside` is the right-hand
+ * column. The list loads in the browser from /api/tokens so it can show a
+ * skeleton and a retry. The secret exists only in this component's state: it
+ * is never stored and never comes back from the list.
  */
-export function DeveloperTokens({ scopes }: { scopes: ScopeOption[] }) {
+export function DeveloperTokens({ scopes, aside }: { scopes: ScopeOption[]; aside?: React.ReactNode }) {
   const [tokens, setTokens] = useState<TokenSummary[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -132,83 +140,189 @@ export function DeveloperTokens({ scopes }: { scopes: ScopeOption[] }) {
 
   const active = tokens ? activeCount(tokens, now) : 0;
   const atLimit = active >= ACTIVE_TOKEN_LIMIT;
+  const groups = groupTokens(tokens ?? [], now);
+  const canCreate = tokens !== null && !atLimit;
+  const openCreate = () => setCreateOpen(true);
 
-  return (
-    <Card
-      id="tokens-heading"
-      title="Access tokens"
-      description="A token lets a script or an AI agent act for you, with only the permissions you pick. Treat it like a password."
-    >
-      <div className="space-y-6">
-        <TokenCreateDialog
-          open={createOpen}
-          onOpenChange={setCreateOpen}
-          scopes={scopes}
-          disabled={atLimit || tokens === null}
-          limitReached={atLimit}
-          secret={secret}
-          secretRef={secretRef}
-          onCreated={onCreated}
-          onSecretDone={() => {
-            setSecret(null);
-            setCreateOpen(false);
-            focusSoon("list");
-          }}
-        />
-
-        <section aria-labelledby="tokens-list-heading">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h3 id="tokens-list-heading" ref={listHeadingRef} tabIndex={-1} className="font-medium outline-none">
-              Your tokens
-            </h3>
-            <Button
-              type="button"
-              size="sm"
-              disabled={atLimit || tokens === null}
-              onClick={() => setCreateOpen(true)}
-              className="max-sm:w-full"
-            >
+  let body: React.ReactNode;
+  // Empty and error states get the same heading row as the groups, so both columns start level.
+  const plainHeading = (
+    <h2 id="tokens-heading" className="mb-2 font-medium">
+      Access tokens
+    </h2>
+  );
+  if (loadError) {
+    body = (
+      <>
+        {plainHeading}
+        <Alert
+          tone="error"
+          role="alert"
+          title="Could not load your tokens"
+          action={
+            <Button type="button" variant="outline" size="sm" onClick={retry}>
+              Try again
+            </Button>
+          }
+        >
+          {loadError}
+        </Alert>
+      </>
+    );
+  } else if (tokens === null) {
+    body = (
+      <LoadingRegion label="Loading tokens…">
+        <TokenListSkeleton />
+      </LoadingRegion>
+    );
+  } else if (tokens.length === 0) {
+    body = (
+      <>
+        {plainHeading}
+        <EmptyState
+          title="Create a token to let a script or an AI agent use the API."
+          action={
+            <Button type="button" variant="outline" onClick={openCreate}>
+              <PlusIcon aria-hidden="true" />
               Create token
             </Button>
-          </div>
-          {tokens ? <p className="mt-0.5 text-label text-muted-foreground">{limitNote(active)}</p> : null}
-
-          <div className="mt-3">
-            {loadError ? (
-              <Alert
-                tone="error"
-                role="alert"
-                title="Could not load your tokens"
-                action={
-                  <Button type="button" variant="outline" size="sm" onClick={retry}>
-                    Try again
-                  </Button>
-                }
-              >
-                {loadError}
-              </Alert>
-            ) : tokens === null ? (
-              <LoadingRegion label="Loading tokens…">
-                <TokenListSkeleton />
-              </LoadingRegion>
-            ) : tokens.length === 0 ? (
-              <EmptyState
-                size="compact"
-                className="py-4"
-                title="No tokens yet"
-                description="Create one to let a script or an AI agent use the API."
-              />
-            ) : (
-              <ul className="hairline-y overflow-hidden rounded-md shadow-border-base">
-                {tokens.map((t) => (
-                  <TokenRow key={t.id} token={t} now={now} scopes={scopes} onRevoke={() => revoke(t)} onSave={save} />
-                ))}
-              </ul>
-            )}
-          </div>
+          }
+        />
+      </>
+    );
+  } else {
+    const soon = groups.expiringSoon;
+    body = (
+      <div className="space-y-8">
+        <section aria-labelledby="tokens-active-heading">
+          <GroupHeading id="tokens-active-heading" headingRef={listHeadingRef} title="Active" count={groups.active.length}>
+            {soon > 0 ? (
+              <>
+                <span className="text-foreground">
+                  {soon} {soon === 1 ? "expires" : "expire"} within {EXPIRING_SOON_DAYS} days
+                </span>
+                <span aria-hidden="true"> · </span>
+                <span className="sr-only">, </span>
+              </>
+            ) : null}
+            {active} of {ACTIVE_TOKEN_LIMIT} in use
+          </GroupHeading>
+          {atLimit ? (
+            <Alert tone="warning" className="mb-3 p-3 text-label">
+              {limitNote(active)}
+            </Alert>
+          ) : null}
+          {groups.active.length > 0 ? (
+            <ul className={LIST_CLASS}>
+              {groups.active.map(({ token: t, expiringSoon }) => (
+                <TokenRow
+                  key={t.id}
+                  token={t}
+                  now={now}
+                  scopes={scopes}
+                  expiringSoon={expiringSoon}
+                  onRevoke={() => revoke(t)}
+                  onSave={save}
+                />
+              ))}
+            </ul>
+          ) : (
+            <p className="rounded-lg bg-card px-4 py-3 text-muted-foreground shadow-border-small">
+              No active tokens. Anything that used the ones below has stopped working.
+            </p>
+          )}
         </section>
+
+        {groups.expired.length > 0 ? (
+          <section aria-labelledby="tokens-expired-heading">
+            <GroupHeading id="tokens-expired-heading" title="Expired" count={groups.expired.length}>
+              An expired token cannot be renewed
+            </GroupHeading>
+            <ul className={LIST_CLASS}>
+              {groups.expired.map((t) => (
+                <TokenRow key={t.id} token={t} now={now} scopes={scopes} onRevoke={() => revoke(t)} onSave={save} />
+              ))}
+            </ul>
+          </section>
+        ) : null}
+
+        {groups.revoked.length > 0 ? (
+          <details className="disclosure">
+            <summary className="pressable -ml-1 min-h-10 items-center gap-2 rounded-md px-1 font-medium text-muted-foreground select-none hover:text-foreground sm:min-h-8">
+              <CaretRightIcon aria-hidden="true" className="disclosure-caret size-3.5 motion-reduce:transition-none" />
+              Revoked
+              <span className="tabular font-normal">{groups.revoked.length}</span>
+            </summary>
+            <ul className={cn(LIST_CLASS, "mt-2")}>
+              {groups.revoked.map((t) => (
+                <TokenRow key={t.id} token={t} now={now} scopes={scopes} onRevoke={() => revoke(t)} onSave={save} />
+              ))}
+            </ul>
+          </details>
+        ) : null}
       </div>
-    </Card>
+    );
+  }
+
+  return (
+    <>
+      <PageHeader
+        title="Developer"
+        description="Tokens let a script or an AI agent act for you, with only the permissions you pick. Treat each one like a password."
+        actions={
+          <Button type="button" disabled={!canCreate} onClick={openCreate} className="max-sm:w-full">
+            <PlusIcon aria-hidden="true" />
+            Create token
+          </Button>
+        }
+      />
+      <TokenCreateDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        scopes={scopes}
+        disabled={!canCreate}
+        limitReached={atLimit}
+        secret={secret}
+        secretRef={secretRef}
+        onCreated={onCreated}
+        onSecretDone={() => {
+          setSecret(null);
+          setCreateOpen(false);
+          focusSoon("list");
+        }}
+      />
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start lg:gap-6">
+        <section aria-label="Access tokens" className="min-w-0">
+          {body}
+        </section>
+        {aside}
+      </div>
+    </>
+  );
+}
+
+/** A group's title and count on the left, a short note on the right. */
+function GroupHeading({
+  id,
+  title,
+  count,
+  headingRef,
+  children,
+}: {
+  id: string;
+  title: string;
+  count: number;
+  headingRef?: React.Ref<HTMLHeadingElement>;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5">
+      <h2 id={id} ref={headingRef} tabIndex={headingRef ? -1 : undefined} className="font-medium outline-none">
+        {title} <span className="sr-only">tokens: </span>
+        <span className="tabular font-normal text-muted-foreground">{count}</span>
+      </h2>
+      {children ? <p className="text-label text-muted-foreground">{children}</p> : null}
+    </div>
   );
 }
 
@@ -602,21 +716,28 @@ function TokenRow({
   token,
   now,
   scopes,
+  expiringSoon = false,
   onRevoke,
   onSave,
 }: {
   token: TokenSummary;
   now: number;
   scopes: ScopeOption[];
+  /** An active token that ends within 7 days: its status reads "Expires soon". */
+  expiringSoon?: boolean;
   onRevoke: () => Promise<void>;
   onSave: (token: TokenSummary, patch: TokenPatch) => Promise<void>;
 }) {
   const status = tokenStatus(token, now);
   const dim = status !== "active";
   const [editing, setEditing] = useState(false);
+  const [showScopes, setShowScopes] = useState(false);
   const editRef = useRef<HTMLButtonElement>(null);
   const editorId = useId();
+  const scopesId = useId();
   const editable = canEdit(token, now);
+  const soon = status === "active" && expiringSoon;
+  const changes = token.scopes.filter(isChangeScope).length;
 
   function closeEditor() {
     setEditing(false);
@@ -625,20 +746,24 @@ function TokenRow({
   }
 
   return (
-    <li className="px-3 py-3">
+    <li className="px-4 py-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <p className={cn("min-w-0 font-medium break-words", dim && "text-muted-foreground")}>{token.name}</p>
-            <StatusIndicator tone={TONE_FOR[status]} label={STATUS_LABEL[status]} className="text-label" />
+            <StatusIndicator
+              tone={soon ? "warning" : TONE_FOR[status]}
+              label={soon ? "Expires soon" : STATUS_LABEL[status]}
+              className="text-label"
+            />
           </div>
-          <p className="mt-0.5 font-mono text-label text-muted-foreground">
+          <p className="mt-0.5 font-mono text-caption text-muted-foreground">
             <span className="sr-only">Starts with </span>
             {token.prefix}
           </p>
         </div>
         {editable ? (
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex shrink-0 items-center gap-1.5">
             <Button
               ref={editRef}
               type="button"
@@ -653,7 +778,13 @@ function TokenRow({
             </Button>
             <ConfirmDialog
               trigger={
-                <Button type="button" variant="destructive" size="sm" aria-label={`Revoke ${token.name}`}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  aria-label={`Revoke ${token.name}`}
+                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                >
                   Revoke
                 </Button>
               }
@@ -681,7 +812,49 @@ function TokenRow({
         />
       ) : (
         <>
-          <ul aria-label="Permissions" className="mt-2 flex flex-wrap gap-1.5">
+          <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2.5 text-label sm:grid-cols-4">
+            <Meta label="Permissions">
+              <button
+                type="button"
+                aria-expanded={showScopes}
+                aria-controls={scopesId}
+                onClick={() => setShowScopes((v) => !v)}
+                // 40px to touch on phones, without growing the row: the margins take back the extra height.
+                className="pressable -mx-1 inline-flex items-center gap-1 rounded-sm px-1 align-top sm:hover:bg-muted max-sm:-my-[11px] max-sm:min-h-10"
+              >
+                <span className="tabular">
+                  {token.scopes.length} {token.scopes.length === 1 ? "permission" : "permissions"}
+                </span>
+                {changes > 0 ? (
+                  <>
+                    <WarningIcon aria-hidden="true" className="size-3.5 text-[var(--tone-warning-icon)]" />
+                    <span className="sr-only">, {changes} can change things</span>
+                  </>
+                ) : null}
+                <CaretDownIcon
+                  aria-hidden="true"
+                  className={cn(
+                    "size-3 text-muted-foreground transition-transform duration-(--dur-fast) motion-reduce:transition-none",
+                    showScopes && "rotate-180"
+                  )}
+                />
+              </button>
+            </Meta>
+            <Meta label="Created">{formatDate(token.createdAt)}</Meta>
+            <Meta label="Last used">{lastUsedLabel(token.lastUsedAt, now)}</Meta>
+            <Meta label={status === "revoked" ? "Was due" : status === "expired" ? "Expired" : "Expires"}>
+              <span className={cn(soon && "font-medium")}>
+                {expiryLabel(token, now)}
+              </span>
+            </Meta>
+          </dl>
+
+          <ul
+            id={scopesId}
+            hidden={!showScopes}
+            aria-label={`Permissions of ${token.name}`}
+            className="mt-3 flex flex-wrap gap-1.5"
+          >
             {token.scopes.map((s) => (
               <li
                 key={s}
@@ -696,14 +869,6 @@ function TokenRow({
               </li>
             ))}
           </ul>
-
-          <dl className="mt-3 grid gap-x-4 gap-y-1.5 text-label sm:grid-cols-3">
-            <Meta label="Created">{formatDate(token.createdAt)}</Meta>
-            <Meta label="Last used">{lastUsedLabel(token.lastUsedAt, now)}</Meta>
-            <Meta label={status === "revoked" ? "Was due" : status === "expired" ? "Expired" : "Expires"}>
-              {expiryLabel(token, now)}
-            </Meta>
-          </dl>
         </>
       )}
     </li>
@@ -891,9 +1056,9 @@ function TokenEditor({
 
 function Meta({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-baseline justify-between gap-3 sm:block">
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className="tabular">{children}</dd>
+    <div className="min-w-0">
+      <dt className="text-caption text-muted-foreground">{label}</dt>
+      <dd className="tabular mt-0.5">{children}</dd>
     </div>
   );
 }

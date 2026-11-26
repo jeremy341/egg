@@ -1,5 +1,6 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb, schema } from "@/server/db";
+import { assertGitRef, assertGitSha } from "@/server/deploy/build";
 import { attachPullRequest, closePullRequestPreviews } from "@/server/github/pulls";
 import { enqueueDeployment } from "@/server/projects";
 
@@ -21,6 +22,84 @@ type PushPayload = {
 
 const ZERO_SHA = /^0+$/;
 
+/** Repository names are case-insensitive on GitHub; the project may store them as typed. */
+const sameRepo = (fullName: string) =>
+  sql`lower(${schema.projects.repoFullName}) = ${fullName.toLowerCase()}`;
+
+/**
+ * Whether an event's installation may act on a project. A project tied to an
+ * installation accepts only that one. A project without one (a public repository
+ * imported by URL) accepts only an installation its owner linked. An event with
+ * no installation id is left to the signature check, as before.
+ */
+async function installationTrusted(
+  db: Awaited<ReturnType<typeof getDb>>,
+  project: { userId: string; installationId: number | null },
+  eventInstallationId: number | undefined
+): Promise<boolean> {
+  if (!eventInstallationId) return true;
+  if (project.installationId) return project.installationId === eventInstallationId;
+  const linked = await db
+    .select({ id: schema.githubInstallations.id })
+    .from(schema.githubInstallations)
+    .where(
+      and(
+        eq(schema.githubInstallations.id, eventInstallationId),
+        eq(schema.githubInstallations.userId, project.userId)
+      )
+    )
+    .get();
+  return !!linked;
+}
+
+/** A branch name that cannot be read by git as an option or as revision syntax (the rule the builder applies). */
+export function isSafeBranch(name: unknown): name is string {
+  try {
+    assertGitRef(name as string);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** A full commit hash. */
+export function isSafeSha(sha: unknown): sha is string {
+  try {
+    assertGitSha(sha as string);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const DELIVERY_TTL_MS = 60 * 60_000;
+const DELIVERY_MAX = 5000;
+const deliveries = new Map<string, number>();
+
+/**
+ * Remember a GitHub delivery id for an hour. A signed request that is sent
+ * again (a replay, or a retry that already worked) is answered without being
+ * run again. Returns false when the id has been seen. Per process: another
+ * server process keeps its own list, and the push handler's own duplicate
+ * check still covers the commit.
+ */
+export function claimDelivery(id: string | null, now = Date.now()): boolean {
+  if (!id) return true;
+  for (const [key, at] of deliveries) {
+    if (now - at > DELIVERY_TTL_MS) deliveries.delete(key);
+    else break; // insertion order is time order
+  }
+  if (deliveries.has(id)) return false;
+  if (deliveries.size >= DELIVERY_MAX) deliveries.delete(deliveries.keys().next().value as string);
+  deliveries.set(id, now);
+  return true;
+}
+
+/** Forget a delivery whose handling failed, so GitHub's retry is run. */
+export function releaseDelivery(id: string | null) {
+  if (id) deliveries.delete(id);
+}
+
 /**
  * Turn a GitHub event into deployments. Pushes to a project's production
  * branch deploy to production; pushes to other branches build a preview.
@@ -32,6 +111,7 @@ export async function handleGithubEvent(
   if (event === "ping") return { handled: true, deployments: [], note: "pong" };
   if (event === "installation") return handleInstallation(payload);
   if (event === "pull_request") return handlePullRequest(payload);
+  if (event === "repository") return handleRepository(payload);
   if (event !== "push") return { handled: false, deployments: [], note: `ignored ${event}` };
 
   const p = payload as PushPayload;
@@ -43,19 +123,20 @@ export async function handleGithubEvent(
   if (p.deleted || !p.after || ZERO_SHA.test(p.after)) {
     return { handled: false, deployments: [], note: "branch deleted" };
   }
+  if (!isSafeBranch(branch) || !isSafeSha(p.after)) {
+    return { handled: false, deployments: [], note: "unsupported branch name" };
+  }
 
   const db = await getDb();
   const projects = await db
     .select()
     .from(schema.projects)
-    .where(and(eq(schema.projects.repoFullName, fullName), eq(schema.projects.autoDeploy, true)));
+    .where(and(sameRepo(fullName), eq(schema.projects.autoDeploy, true)));
 
   const created: string[] = [];
   for (const project of projects) {
-    // Only trust events for installations we know about.
-    if (p.installation?.id && project.installationId && p.installation.id !== project.installationId) {
-      continue;
-    }
+    // Only trust events for installations the project's owner can use.
+    if (!(await installationTrusted(db, project, p.installation?.id))) continue;
 
     // A push that is already queued or running for this commit is a retry.
     const dup = await db
@@ -113,6 +194,9 @@ async function handlePullRequest(payload: unknown): Promise<WebhookResult> {
   if (!fullName || !pr || !number || !branch || !sha) {
     return { handled: false, deployments: [], note: "incomplete pull request event" };
   }
+  if (!isSafeBranch(branch) || !isSafeSha(sha)) {
+    return { handled: false, deployments: [], note: "unsupported branch name" };
+  }
   const action = p.action ?? "";
   if (action !== "closed" && !BUILD_ACTIONS.has(action)) {
     return { handled: false, deployments: [], note: `ignored pull_request ${action}` };
@@ -122,10 +206,11 @@ async function handlePullRequest(payload: unknown): Promise<WebhookResult> {
   const projects = await db
     .select()
     .from(schema.projects)
-    .where(eq(schema.projects.repoFullName, fullName));
-  const trusted = projects.filter(
-    (x) => !(p.installation?.id && x.installationId && p.installation.id !== x.installationId)
-  );
+    .where(sameRepo(fullName));
+  const trusted: typeof projects = [];
+  for (const x of projects) {
+    if (await installationTrusted(db, x, p.installation?.id)) trusted.push(x);
+  }
 
   if (action === "closed") {
     // Not awaited: it talks to the user's server, and GitHub wants a quick answer.
@@ -153,6 +238,49 @@ async function handlePullRequest(payload: unknown): Promise<WebhookResult> {
     created.push(dep.id);
   }
   return { handled: true, deployments: created };
+}
+
+/**
+ * A repository renamed on GitHub: pushes now arrive under the new name, so the
+ * stored name (and the clone URL built from it) follows. Only projects that were
+ * under the old name and that the event's installation may act on are changed.
+ */
+async function handleRepository(payload: unknown): Promise<WebhookResult> {
+  const p = payload as {
+    action?: string;
+    changes?: { repository?: { name?: { from?: string } } };
+    repository?: { full_name?: string };
+    installation?: { id?: number };
+  };
+  const newName = p.repository?.full_name;
+  const oldRepo = p.changes?.repository?.name?.from;
+  if (p.action !== "renamed" || !newName || !oldRepo || !newName.includes("/")) {
+    return { handled: false, deployments: [], note: `ignored repository ${p.action}` };
+  }
+  const owner = newName.split("/")[0];
+  const oldName = `${owner}/${oldRepo}`;
+
+  const db = await getDb();
+  const projects = await db.select().from(schema.projects).where(sameRepo(oldName));
+  let renamed = 0;
+  for (const project of projects) {
+    if (!(await installationTrusted(db, project, p.installation?.id))) continue;
+    // Keep the clone URL pointing at the same host, with the new path.
+    let repoUrl = project.repoUrl;
+    try {
+      const url = new URL(project.repoUrl);
+      url.pathname = `/${newName}${/\.git$/i.test(url.pathname) ? ".git" : ""}`;
+      repoUrl = url.toString();
+    } catch {
+      // Leave an unparseable URL as it was.
+    }
+    await db
+      .update(schema.projects)
+      .set({ repoFullName: newName, repoUrl })
+      .where(eq(schema.projects.id, project.id));
+    renamed++;
+  }
+  return { handled: true, deployments: [], note: `renamed ${renamed} project(s)` };
 }
 
 async function handleInstallation(payload: unknown): Promise<WebhookResult> {

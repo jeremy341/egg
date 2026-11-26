@@ -287,7 +287,7 @@ const SPECS: Record<string, Spec> = {
 const callSpec = (spec: Spec, ids: Ids, secret: string | null) =>
   run(spec.handler, req(spec.path(ids), { method: spec.method, secret, body: spec.body?.(ids) }), spec.params(ids));
 
-const FIRST = ["list_projects", "get_project", "list_deployments", "deploy_branch", "redeploy", "cancel_deployment", "rollback_deployment", "get_logs", "list_domains", "get_server_usage"];
+const FIRST = ["get_me", "list_projects", "get_project", "list_deployments", "deploy_branch", "redeploy", "cancel_deployment", "rollback_deployment", "get_logs", "list_domains", "get_server_usage"];
 
 describe("the endpoint list", () => {
   it("covers every endpoint added after the first ten, apart from the terminal and files", () => {

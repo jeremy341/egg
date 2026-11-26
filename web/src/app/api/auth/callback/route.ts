@@ -9,6 +9,8 @@ import {
   upsertUser,
   userForSessionToken,
 } from "@/server/auth/session";
+import { parseOauthCookie, safeNextPath } from "@/server/auth/redirect";
+import { throttleSignIn } from "@/server/auth/throttle";
 import { audit } from "@/server/audit";
 import { config } from "@/server/config";
 import { safeEqual } from "@/server/crypto";
@@ -22,6 +24,9 @@ function back(error: string, to = "/login") {
 }
 
 export async function GET(req: NextRequest) {
+  const throttled = throttleSignIn(req);
+  if (throttled) return throttled;
+
   const params = req.nextUrl.searchParams;
   if (params.get("error")) return back("denied");
 
@@ -30,13 +35,9 @@ export async function GET(req: NextRequest) {
   const raw = req.cookies.get(OAUTH_COOKIE)?.value;
   if (!code || !state || !raw) return back("invalid_request");
 
-  let saved: { s: string; v: string; p?: string; n?: string };
-  try {
-    saved = JSON.parse(raw);
-  } catch {
-    return back("invalid_request");
-  }
-  if (!safeEqual(saved.s ?? "", state)) return back("state_mismatch");
+  const saved = parseOauthCookie(raw);
+  if (!saved) return back("invalid_request");
+  if (!safeEqual(saved.s, state)) return back("state_mismatch");
 
   try {
     const profile = await completeLogin(code, saved.v);
@@ -48,13 +49,13 @@ export async function GET(req: NextRequest) {
       if (!user || !token || user.hackClubId !== profile.id) return back("mismatch", "/account");
       await markFreshAuth(token);
       await audit(user.id, "auth.reauth");
-      const next = typeof saved.n === "string" && saved.n.startsWith("/") && !saved.n.startsWith("//") ? saved.n : "/account";
+      const next = safeNextPath(saved.n);
       const res = NextResponse.redirect(new URL(next, config().APP_URL), 303);
       res.cookies.delete({ name: OAUTH_COOKIE, path: "/api/auth" });
       return res;
     }
     const user = await upsertUser(profile);
-    const session = await createSession(user.id, req.headers.get("user-agent"));
+    const session = await createSession(user.id, req.headers.get("user-agent"), req.cookies.get(SESSION_COOKIE)?.value);
     const res = NextResponse.redirect(new URL("/projects", config().APP_URL), 303);
     res.cookies.set(SESSION_COOKIE, session.token, sessionCookieOptions(session.expiresAt));
     res.cookies.delete({ name: OAUTH_COOKIE, path: "/api/auth" });

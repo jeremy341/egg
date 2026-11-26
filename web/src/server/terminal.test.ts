@@ -151,10 +151,21 @@ describe("opening", () => {
   });
 
   it("caps the number of sessions on the server", async () => {
-    const owners = { [ALICE]: Array.from({ length: TERMINAL_LIMITS.maxSessions + 1 }, (_, i) => `p${i}`) };
-    const { manager } = setup(owners);
-    for (let i = 0; i < TERMINAL_LIMITS.maxSessions; i++) await manager.open(ALICE, `p${i}`, SIZE);
-    expect(await status(() => manager.open(ALICE, `p${TERMINAL_LIMITS.maxSessions}`, SIZE))).toBe(503);
+    const users = Array.from({ length: TERMINAL_LIMITS.maxSessions + 1 }, (_, i) => `user${i}`);
+    const { manager } = setup(Object.fromEntries(users.map((u) => [u, ["p1"]])));
+    for (let i = 0; i < TERMINAL_LIMITS.maxSessions; i++) await manager.open(users[i], "p1", SIZE);
+    expect(await status(() => manager.open(users[TERMINAL_LIMITS.maxSessions], "p1", SIZE))).toBe(503);
+  });
+
+  it("caps the sessions one user can hold, so one account cannot use up the server's share", async () => {
+    const projects = Array.from({ length: TERMINAL_LIMITS.maxSessionsPerUser + 1 }, (_, i) => `p${i}`);
+    const { manager } = setup({ [ALICE]: projects, [BOB]: ["p3"] });
+    for (let i = 0; i < TERMINAL_LIMITS.maxSessionsPerUser; i++) await manager.open(ALICE, projects[i], SIZE);
+    expect(await status(() => manager.open(ALICE, projects[TERMINAL_LIMITS.maxSessionsPerUser], SIZE))).toBe(429);
+    // Someone else is unaffected, and a slot frees up when one closes.
+    expect(await status(() => manager.open(BOB, "p3", SIZE))).toBe("ok");
+    manager.close(ALICE, projects[0], manager.active(ALICE, projects[0])!.sessionId);
+    expect(await status(() => manager.open(ALICE, projects[TERMINAL_LIMITS.maxSessionsPerUser], SIZE))).toBe("ok");
   });
 });
 

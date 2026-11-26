@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { resetConfigForTests } from "@/server/config";
 import {
@@ -9,6 +9,7 @@ import {
 import {
   createSession,
   deleteSession,
+  sessionCookieOptions,
   upsertUser,
   userForSessionToken,
 } from "@/server/auth/session";
@@ -119,5 +120,31 @@ describe("sessions", () => {
     expect(await userForSessionToken(fresh.token)).not.toBeNull();
     await deleteSession(fresh.token);
     expect(await userForSessionToken(fresh.token)).toBeNull();
+  });
+
+  it("ends the session a sign-in replaces, so an old cookie stops working", async () => {
+    const user = await upsertUser({ id: "ident!4", name: "Max", email: null, slackId: null });
+    const old = await createSession(user.id);
+    const next = await createSession(user.id, "agent", old.token);
+    expect(next.token).not.toBe(old.token);
+    expect(await userForSessionToken(old.token)).toBeNull();
+    expect((await userForSessionToken(next.token))?.id).toBe(user.id);
+  });
+
+  it("does not touch other sessions of the user when replacing one", async () => {
+    const user = await upsertUser({ id: "ident!5", name: "Ola", email: null, slackId: null });
+    const laptop = await createSession(user.id);
+    const phone = await createSession(user.id);
+    await createSession(user.id, null, phone.token);
+    expect(await userForSessionToken(laptop.token)).not.toBeNull();
+  });
+
+  it("sets the session cookie httpOnly, lax, path /, secure in production", () => {
+    const expires = new Date(Date.now() + 1000);
+    vi.stubEnv("NODE_ENV", "production");
+    expect(sessionCookieOptions(expires)).toEqual({ httpOnly: true, sameSite: "lax", secure: true, path: "/", expires });
+    vi.stubEnv("NODE_ENV", "development");
+    expect(sessionCookieOptions(expires).secure).toBe(false);
+    vi.unstubAllEnvs();
   });
 });

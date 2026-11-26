@@ -13,6 +13,8 @@ import {
 } from "@/server/files-paths";
 import { HttpError } from "@/server/http";
 import { getProjectForUser, type ProjectRow } from "@/server/projects";
+import { rateLimiter } from "@/server/rate-limit";
+import { isSecretFile, SECRET_FILE_CODE } from "@/server/secret-files";
 import { getServerForUser, withServerSession } from "@/server/servers";
 import { SshError, shellQuote, type ExecOptions, type ExecResult } from "@/server/ssh/connection";
 
@@ -46,6 +48,10 @@ export type FileSession = {
  * the client is never left writing into a closed channel.
  * Exit codes are mapped in EXIT_ERRORS below.
  *
+ * `secret` is true for a release's top-level .env once every link is resolved,
+ * so the .env refusal holds under any name (a link in shared/, say) and not
+ * just for the paths secret-files.ts spells out.
+ *
  * `wr_ok` is the one place that decides where a change may land, after every
  * link is resolved: inside shared/ only. A release folder (where `current`
  * points) is deliberately not allowed, so neither current/ nor a link planted
@@ -78,6 +84,12 @@ parent_of() {
   [ -d "$PR" ] || die 33
 }
 exists() { [ -e "$1" ] || [ -L "$1" ]; }
+secret() {
+  rest=\${1#"$rr"/releases/}
+  [ "$rest" != "$1" ] || return 1
+  case "$rest" in */*/*) return 1;; */.env) return 0;; esac
+  return 1
+}
 `;
 }
 
@@ -102,6 +114,7 @@ exit 0
 resolve_existing "$2"
 real=$RL
 [ -f "$real" ] || die 34
+secret "$real" && die 41
 size=$(stat -c %s -- "$real" 2>/dev/null) || die 50
 printf '%s\\n' "$size"
 head -c "$3" -- "$real" | base64 | tr -d '\\n'
@@ -113,6 +126,7 @@ exit 0
 resolve_existing "$2"
 real=$RL
 [ -f "$real" ] || die 34
+secret "$real" && die 41
 size=$(stat -c %s -- "$real" 2>/dev/null) || die 50
 [ "$size" -le "$3" ] || die 35
 printf '%s\\n' "$size"
@@ -186,6 +200,9 @@ export function buildCommand(script: string, args: readonly string[]): string {
 // ---------------------------------------------------------------------------
 // Errors
 
+const SECRET_FILE_MESSAGE =
+  "This file holds the project's environment variable values, so it is not shown here. Change the values in the project's settings.";
+
 const EXIT_ERRORS: Record<number, [status: number, code: string, message: string]> = {
   10: [404, "no_folder", "This project has no folder on your container yet. Deploy it first."],
   20: [403, "outside_scope", "That path leaves the project folder."],
@@ -198,6 +215,7 @@ const EXIT_ERRORS: Record<number, [status: number, code: string, message: string
   37: [409, "is_folder", "That path is a folder."],
   38: [409, "exists", "Something with that name already exists."],
   40: [502, "unsupported", "This container's tools are too limited to list files."],
+  41: [403, SECRET_FILE_CODE, SECRET_FILE_MESSAGE],
 };
 
 function remoteError(code: number): HttpError {
@@ -417,6 +435,21 @@ export async function deletePath(
 
 type ProjectFilesCtx = { session: FileSession; root: string; projectId: string };
 
+/** Each list, read or download opens an SSH connection to the user's container, so they are counted per user. */
+export const FILE_READ_LIMIT = { limit: 120, windowMs: 60_000 } as const;
+
+export function enforceFileReadRate(userId: string): void {
+  const r = rateLimiter().check(`fileRead:${userId}`, FILE_READ_LIMIT.limit, FILE_READ_LIMIT.windowMs);
+  if (r.allowed) return;
+  const s = r.retryAfterSeconds;
+  throw new HttpError(
+    429,
+    `Too many file requests. Wait ${s} second${s === 1 ? "" : "s"} and try again.`,
+    "rate_limited",
+    { "Retry-After": String(s) }
+  );
+}
+
 /** Turn transport failures into the API's error shape. */
 function sshToHttp(err: unknown): never {
   if (err instanceof SshError) {
@@ -460,15 +493,24 @@ async function guarded<T>(
 }
 
 export function listProjectDir(userId: string, projectId: string, path: string) {
+  enforceFileReadRate(userId);
   return guarded(userId, projectId, () => normalizePath(path), (c) => listDir(c.session, c.root, path));
 }
 
+/** Path rules for reading, plus the same `.env` refusal the API has (secret-files.ts). */
+function checkReadable(path: string) {
+  normalizePath(path);
+  if (isSecretFile(path)) throw new HttpError(403, SECRET_FILE_MESSAGE, SECRET_FILE_CODE);
+}
+
 export function readProjectFile(userId: string, projectId: string, path: string) {
-  return guarded(userId, projectId, () => normalizePath(path), (c) => readFile(c.session, c.root, path));
+  enforceFileReadRate(userId);
+  return guarded(userId, projectId, () => checkReadable(path), (c) => readFile(c.session, c.root, path));
 }
 
 export function downloadProjectFile(userId: string, projectId: string, path: string, limit: number = DOWNLOAD_LIMIT) {
-  return guarded(userId, projectId, () => normalizePath(path), (c) => downloadFile(c.session, c.root, path, limit));
+  enforceFileReadRate(userId);
+  return guarded(userId, projectId, () => checkReadable(path), (c) => downloadFile(c.session, c.root, path, limit));
 }
 
 /** Who made a change, when it was an API access token and not the browser. Added to the audit entry. */

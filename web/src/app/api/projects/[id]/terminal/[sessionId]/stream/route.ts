@@ -1,4 +1,5 @@
 import type { NextRequest } from "next/server";
+import { requireProjectFeature } from "@/server/permission-guards";
 import { authed, handle, notFound } from "@/server/http";
 import { isSessionId, terminals, type CloseReason } from "@/server/terminal";
 
@@ -27,6 +28,8 @@ const encoder = new TextEncoder();
 export const GET = handle<Ctx>(async (req: NextRequest, { params }) => {
   const user = await authed();
   const { id, sessionId } = await params;
+  // The terminal switch is read on every call, so turning it off stops input and output at once.
+  await requireProjectFeature(user.id, id, "terminal");
   if (!isSessionId(sessionId)) throw notFound("Terminal session not found");
 
   let controller: ReadableStreamDefaultController<Uint8Array> | null = null;

@@ -161,11 +161,16 @@ export const ENV_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/;
 /** Variables that would break the service or let a project hijack its unit. */
 export const RESERVED_ENV = new Set(["PORT", "HOST", "PATH", "HOME", "NEST_DEPLOY"]);
 
-/** systemd EnvironmentFile syntax: KEY="value" with C-style escapes. */
+/**
+ * systemd EnvironmentFile syntax: KEY="value" with C-style escapes. An empty
+ * value is left out: KEY="" would set the variable to an empty string and mask
+ * a default the app expects when it is unset.
+ */
 export function renderEnvFile(vars: Record<string, string>): string {
   const lines: string[] = [];
   for (const [k, v] of Object.entries(vars)) {
     if (!ENV_KEY.test(k)) throw new Error(`Invalid environment variable name: ${k}`);
+    if (v === "") continue;
     const escaped = v
       .replace(/\\/g, "\\\\")
       .replace(/"/g, '\\"')

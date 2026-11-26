@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowClockwiseIcon, CubeFocusIcon, TrashIcon } from "@phosphor-icons/react";
 import { api } from "@/components/api";
+import { ConnectionAlert } from "@/components/connection-alert";
 import { ContainerBodySkeleton } from "@/components/container-skeleton";
 import { TypedConfirmDialog } from "@/components/container-typed-confirm";
 import { PageHeader } from "@/components/page-header";
@@ -621,13 +622,7 @@ export function ContainerView({ servers }: { servers: ContainerServer[] }) {
       {load.status === "loading" ? (
         <ContainerBodySkeleton label={`Reading ${serverLabel}…`} />
       ) : load.status === "error" ? (
-        <Alert tone="error" role="alert" title="Could not read the container">
-          <p>{load.message.replace(/[.]$/, "")}. Nothing was changed.</p>
-          <Button type="button" variant="outline" onClick={retry} className="mt-3">
-            <ArrowClockwiseIcon aria-hidden="true" />
-            Try again
-          </Button>
-        </Alert>
+        <ConnectionAlert message={load.message} onRetry={retry} />
       ) : (
         <Body inventory={load.inventory} canRemove={canRemove} onRemove={remove} />
       )}

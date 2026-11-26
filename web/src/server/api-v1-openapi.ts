@@ -90,8 +90,10 @@ export function buildOpenApi(): Json {
       operationId: ep.id,
       tags: [ep.tag],
       summary: ep.summary,
-      description: `${ep.description}\n\nRequires the \`${ep.scope}\` scope. Counts toward the ${ep.bucket} rate limit.`,
-      security: [{ bearerAuth: [ep.scope] }],
+      description: `${ep.description}\n\n${
+        ep.scope ? `Requires the \`${ep.scope}\` scope.` : "Any valid token can call this; it needs no scope."
+      } Counts toward the ${ep.bucket} rate limit.`,
+      security: [{ bearerAuth: ep.scope ? [ep.scope] : [] }],
       ...(params.length ? { parameters: params } : {}),
       ...(body ? { requestBody: body } : {}),
       responses: {

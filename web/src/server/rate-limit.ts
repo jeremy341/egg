@@ -41,6 +41,12 @@ export class SlidingWindowLimiter {
     return { allowed: true };
   }
 
+  /** True when `key` has used up `limit` in the window. Records nothing. */
+  isFull(key: string, limit: number, windowMs: number): boolean {
+    const cutoff = this.now() - windowMs;
+    return (this.hits.get(key)?.filter((t) => t > cutoff).length ?? 0) >= limit;
+  }
+
   get size(): number {
     return this.hits.size;
   }
@@ -61,11 +67,17 @@ export class SlidingWindowLimiter {
   }
 }
 
-/** The limits for the container features. Per user, per minute. */
+/**
+ * The limits for the container features (per user, per minute) and for the
+ * unauthenticated front doors (per client address, per minute): `signIn` for the
+ * sign-in routes and `badToken` for access tokens that do not check out.
+ */
 export const RATE_LIMITS = {
   terminalInput: { limit: 300, windowMs: 60_000, what: "terminal input" },
   fileWrite: { limit: 60, windowMs: 60_000, what: "file changes" },
   orphanRemoval: { limit: 10, windowMs: 60_000, what: "leftover removals" },
+  signIn: { limit: 20, windowMs: 60_000, what: "sign-in attempts" },
+  badToken: { limit: 60, windowMs: 60_000, what: "unrecognised access tokens" },
 } as const;
 
 export type RateBucket = keyof typeof RATE_LIMITS;
@@ -78,16 +90,40 @@ export function rateLimiter(): SlidingWindowLimiter {
   return (g[KEY] ??= new SlidingWindowLimiter());
 }
 
-/** Count one request for this user in this bucket, or throw 429 with a Retry-After header. */
-export function enforceRateLimit(bucket: RateBucket, userId: string): void {
-  const { limit, windowMs, what } = RATE_LIMITS[bucket];
-  const result = rateLimiter().check(`${bucket}:${userId}`, limit, windowMs);
-  if (result.allowed) return;
-  const seconds = result.retryAfterSeconds;
-  throw new HttpError(
+/**
+ * The caller's address, or null when no proxy header says. The right-most
+ * X-Forwarded-For entry is the one our own proxy appended; the left-most is
+ * whatever the client wrote, so it is never trusted.
+ */
+export function clientIp(headers: Headers): string | null {
+  const last = headers.get("x-forwarded-for")?.split(",").pop()?.trim();
+  return last || headers.get("x-real-ip")?.trim() || null;
+}
+
+function tooMany(what: string, retryAfterSeconds: number) {
+  const seconds = retryAfterSeconds;
+  return new HttpError(
     429,
     `Too many requests for ${what}. Wait ${seconds} second${seconds === 1 ? "" : "s"} and try again.`,
     "rate_limited",
     { "Retry-After": String(seconds) }
   );
+}
+
+/** Throw 429 if this key is already at the cap, without counting anything. */
+export function assertRateRoom(bucket: RateBucket, key: string): void {
+  const { limit, windowMs, what } = RATE_LIMITS[bucket];
+  const limiter = rateLimiter();
+  if (!limiter.isFull(`${bucket}:${key}`, limit, windowMs)) return;
+  // A full key refuses without recording, so ask the limiter for the wait time.
+  const probe = limiter.check(`${bucket}:${key}`, limit, windowMs);
+  if (!probe.allowed) throw tooMany(what, probe.retryAfterSeconds);
+}
+
+/** Count one request for this user in this bucket, or throw 429 with a Retry-After header. */
+export function enforceRateLimit(bucket: RateBucket, userId: string): void {
+  const { limit, windowMs, what } = RATE_LIMITS[bucket];
+  const result = rateLimiter().check(`${bucket}:${userId}`, limit, windowMs);
+  if (result.allowed) return;
+  throw tooMany(what, result.retryAfterSeconds);
 }

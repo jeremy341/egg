@@ -56,12 +56,13 @@ export function SectionHead({ id, title, children }: { id: string; title: string
   );
 }
 
-/** Small label above a figure inside a frame. */
-export function FrameLabel({ id, children }: { id?: string; children: React.ReactNode }) {
+/** Small label above a figure inside a frame. Level 4 when it sits under a frame that already has an h3. */
+export function FrameLabel({ id, level = 3, children }: { id?: string; level?: 3 | 4; children: React.ReactNode }) {
+  const Heading = level === 4 ? "h4" : "h3";
   return (
-    <h3 id={id} className="text-label text-muted-foreground">
+    <Heading id={id} className="text-label text-muted-foreground">
       {children}
-    </h3>
+    </Heading>
   );
 }
 

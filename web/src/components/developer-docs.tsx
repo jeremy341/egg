@@ -1,20 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CheckIcon, CopyIcon } from "@phosphor-icons/react";
+import Link from "next/link";
+import { ArrowRightIcon, CheckIcon, CopyIcon } from "@phosphor-icons/react";
 import { Swap } from "@/components/motion/swap";
-import { Card } from "@/components/settings-ui";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-import {
-  TOKEN_CANNOT,
-  TOKEN_LIMITED,
-  TOKEN_PLACEHOLDER,
-  curlExample,
-  mcpConfigSnippet,
-  mcpUrl,
-  openApiUrl,
-} from "@/lib/developer";
+import { TOKEN_PLACEHOLDER, meExample, mcpUrl, openApiUrl } from "@/lib/developer";
 
 /**
  * A Copy button. The announcement sits in its own live region so it is read
@@ -78,111 +69,104 @@ export function CopyButton({
   );
 }
 
-/** A block of code that scrolls sideways inside itself, with a Copy button. */
-export function CodeBlock({ code, label }: { code: string; label: string }) {
+/**
+ * A block of code with a bar above it that names it and holds Copy. Long
+ * lines wrap so the whole command is readable in a narrow column; Copy gives
+ * the exact text.
+ */
+export function CodeBlock({ code, label, caption }: { code: string; label: string; caption?: string }) {
   return (
-    <div className="relative min-w-0 rounded-md bg-[var(--code-bg)] shadow-border-base">
-      <pre
-        tabIndex={0}
-        aria-label={label}
-        className="overflow-x-auto p-3 pr-24 font-mono text-[12.5px] leading-5 max-sm:pr-3 max-sm:pb-14"
-      >
+    <figure className="min-w-0 overflow-hidden rounded-md bg-[var(--code-bg)] shadow-border-base">
+      <figcaption className="flex items-center justify-between gap-2 border-b py-1 pr-1 pl-3 text-caption text-muted-foreground">
+        {caption ?? label}
+        <CopyButton text={code} label={`Copy: ${label}`} />
+      </figcaption>
+      <pre className="p-3 font-mono text-[12.5px] leading-5 whitespace-pre-wrap [overflow-wrap:anywhere]">
         <code>{code}</code>
       </pre>
-      <div className="absolute top-2 right-2 max-sm:top-auto max-sm:bottom-2">
-        <CopyButton text={code} label={`Copy: ${label}`} />
+    </figure>
+  );
+}
+
+/** A URL with break opportunities after each slash, so it wraps between path parts. */
+function BreakableUrl({ url }: { url: string }) {
+  const parts = url.split("/");
+  return parts.map((part, i) => (
+    <span key={i}>
+      {part}
+      {i < parts.length - 1 ? (
+        <>
+          /<wbr />
+        </>
+      ) : null}
+    </span>
+  ));
+}
+
+/** One address: its name, the URL in full, and Copy. */
+function UrlRow({ name, url, label }: { name: string; url: string; label: string }) {
+  return (
+    <li className="flex items-start gap-3 px-4 py-3">
+      <div className="min-w-0 flex-1">
+        <p className="text-caption text-muted-foreground">{name}</p>
+        <code className="mt-0.5 block font-mono text-[12.5px] leading-5 [overflow-wrap:anywhere]">
+          <BreakableUrl url={url} />
+        </code>
       </div>
-    </div>
+      <CopyButton text={url} label={label} />
+    </li>
   );
 }
 
-function Sub({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
+const DOCS_LINKS = [
+  { href: "/docs/api", label: "Access tokens and the API" },
+  { href: "/docs/api#api-examples", label: "Examples and the TypeScript client" },
+  { href: "/docs/api#api-mcp", label: "Connect an AI agent" },
+] as const;
+
+/**
+ * The developer page keeps only what someone needs while working: the
+ * addresses, a first call, and links into the docs, where the full guide lives.
+ * Its heading sits above the card, like the token groups beside it.
+ */
+export function DeveloperHub({ origin }: { origin: string }) {
   return (
-    <section aria-labelledby={id} className="space-y-2">
-      <h3 id={id} className="font-medium">
-        {title}
-      </h3>
-      {children}
-    </section>
-  );
-}
-
-const body = "max-w-[62ch] text-muted-foreground";
-
-/** The "Use with AI agents and scripts" section. */
-export function DeveloperDocs({ origin }: { origin: string }) {
-  return (
-    <div id="agents" className="scroll-mt-20">
-      <Card
-        id="agents-heading"
-        title="Use with AI agents and scripts"
-        description="Give a script or an AI agent a token and it can work with your projects through the API, without your password."
-      >
-        <div className="space-y-6">
-          <Sub id="agents-can" title="What a token can do">
-            <p className={body}>
-              Only what you tick when you create it: read and, if you allow it, change your projects, deployments,
-              environment variables, domains, alerts and resource use. Secret values are write-only: a token can set an
-              environment variable but never read its value back.
-            </p>
-          </Sub>
-
-          <Sub id="agents-limited" title="What a token can do only under tight limits">
-            <ul className="max-w-[62ch] list-disc space-y-1 pl-5 marker:text-muted-foreground">
-              {TOKEN_LIMITED.map((line) => (
-                <li key={line}>{line}</li>
-              ))}
-            </ul>
-            <p className={body}>
-              These use the same switches as the dashboard. A token never turns a switch on, and it does not sign in
-              again: it can use a switch you turned on with a recent Hack Club sign-in until its 7 days end or you turn
-              the switch off.
-            </p>
-          </Sub>
-
-          <Sub id="agents-cannot" title="What a token cannot do">
-            <p className={body}>These always need you, signed in to the browser. No token can:</p>
-            <ul className="max-w-[62ch] list-disc space-y-1 pl-5 marker:text-muted-foreground">
-              {TOKEN_CANNOT.map((line) => (
-                <li key={line}>{line}</li>
-              ))}
-            </ul>
-          </Sub>
-
-          <Sub id="agents-curl" title="Try it with curl">
-            <p className={body}>
-              Replace <code className="font-mono text-[12.5px] text-foreground">{TOKEN_PLACEHOLDER}</code> with your
-              token. Keep real tokens out of code you share.
-            </p>
-            <CodeBlock code={curlExample(origin)} label="curl example" />
-          </Sub>
-
-          <Sub id="agents-openapi" title="OpenAPI description">
-            <p className={body}>Load this into a client generator or an API tool.</p>
-            <div className="flex items-start gap-2 rounded-md bg-[var(--code-bg)] p-2 pl-3 shadow-border-base">
-              <a
-                href={openApiUrl(origin)}
-                target="_blank"
-                rel="noreferrer"
-                className={cn("link min-w-0 flex-1 break-all py-1 font-mono text-[12.5px] leading-5")}
-              >
-                {openApiUrl(origin)}
-                <span className="sr-only"> (opens in a new tab)</span>
-              </a>
-              <CopyButton text={openApiUrl(origin)} label="Copy the OpenAPI URL" />
-            </div>
-          </Sub>
-
-          <Sub id="agents-mcp" title="Connect an AI agent">
-            <p className={body}>
-              Clients that speak MCP over HTTP can connect to{" "}
-              <code className="font-mono text-[12.5px] break-all text-foreground">{mcpUrl(origin)}</code>. Add this to
-              the client&apos;s config and put your token in the Authorization header.
-            </p>
-            <CodeBlock code={mcpConfigSnippet(origin)} label="MCP client config" />
-          </Sub>
-        </div>
-      </Card>
+    <div>
+      <h2 id="hub-heading" className="mb-2 font-medium">
+        Addresses and first call
+      </h2>
+      <div className="overflow-hidden rounded-lg bg-card shadow-border-small">
+        <ul aria-label="Addresses" className="hairline-y">
+          <UrlRow name="OpenAPI" url={openApiUrl(origin)} label="Copy the OpenAPI URL" />
+          <UrlRow name="MCP" url={mcpUrl(origin)} label="Copy the MCP URL" />
+        </ul>
+        <section aria-labelledby="hub-first" className="border-t px-4 py-3">
+          <h3 id="hub-first" className="text-caption text-muted-foreground">
+            First call
+          </h3>
+          <p className="mt-0.5 mb-3 text-label">
+            Call <code className="font-mono text-[12.5px]">/me</code> first. It needs no permission and tells you what
+            the token can do. Replace <code className="font-mono text-[12.5px]">{TOKEN_PLACEHOLDER}</code> with your
+            token.
+          </p>
+          <CodeBlock code={meExample(origin)} label="First call" caption="Terminal" />
+        </section>
+        <nav aria-label="Developer docs" className="border-t bg-background-subtle">
+          <ul className="hairline-y">
+            {DOCS_LINKS.map((l) => (
+              <li key={l.href}>
+                <Link
+                  href={l.href}
+                  className="flex min-h-10 items-center justify-between gap-3 px-4 py-2 text-label font-medium transition-colors duration-(--dur-fast) hover:bg-muted focus-visible:-outline-offset-2 max-sm:min-h-11"
+                >
+                  {l.label}
+                  <ArrowRightIcon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      </div>
     </div>
   );
 }

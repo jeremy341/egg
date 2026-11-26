@@ -8,6 +8,7 @@ import { Swap } from "@/components/motion/swap";
 import { AlertsCard, DeployHookCard, NotificationsCard, StatusPageCard } from "@/components/project-automation";
 import { PageHeader } from "@/components/page-header";
 import { buildBody, ProjectBuildFields, toBuildForm, type BuildForm } from "@/components/project-build-fields";
+import { EnvImportButton } from "@/components/env-import";
 import { Card, Label } from "@/components/settings-ui";
 import { SettingsNav } from "@/components/settings-nav";
 import { Alert } from "@/components/ui/alert";
@@ -298,6 +299,12 @@ export function ProjectSettings({
                 {envError}
               </Alert>
             ) : null}
+
+            <EnvImportButton
+              projectId={project.id}
+              existing={env.map((v) => v.key)}
+              onImported={setEnv}
+            />
 
             {env.length > 0 ? (
               <ul className="hairline-y mt-4 overflow-hidden rounded-md shadow-border-base">

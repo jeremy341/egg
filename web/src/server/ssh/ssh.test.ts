@@ -1,6 +1,7 @@
 import { writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { utils } from "ssh2";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { NestSession, SshError, shellQuote } from "@/server/ssh/connection";
 import { fingerprintOfPublicKey, generateServerKey } from "@/server/ssh/keys";
@@ -18,6 +19,32 @@ describe("keys", () => {
 
   it("never reuses a key", () => {
     expect(generateServerKey("a").publicKey).not.toBe(generateServerKey("a").publicKey);
+  });
+
+  // ssh2 strips leading zero bytes from the raw ed25519 public key, which corrupts
+  // about 1 key in 256. Every key we hand out must still parse and sign.
+  it("always generates a key that parses back, even when the raw key starts with a zero byte", () => {
+    for (let i = 0; i < 3000; i++) {
+      const key = generateServerKey(`k${i}`);
+      expect(fingerprintOfPublicKey(key.publicKey), key.publicKey).toBe(key.fingerprint);
+      expect(utils.parseKey(key.privateKey)).not.toBeInstanceOf(Error);
+    }
+  });
+});
+
+describe("writeFile", () => {
+  it("refuses a mode that is not octal digits, before anything is sent", async () => {
+    const sent: string[] = [];
+    const session = Object.create(NestSession.prototype) as NestSession;
+    (session as unknown as { exec: (c: string) => Promise<unknown> }).exec = async (c) => {
+      sent.push(c);
+      return { code: 0, stdout: "", stderr: "" };
+    };
+    await expect(session.writeFile("/tmp/x", "a", "644; rm -rf ~")).rejects.toBeInstanceOf(SshError);
+    await expect(session.writeFile("/tmp/x", "a", "$(id)")).rejects.toBeInstanceOf(SshError);
+    expect(sent).toEqual([]);
+    await session.writeFile("/tmp/x", "a", "600");
+    expect(sent).toHaveLength(1);
   });
 });
 
@@ -56,6 +83,16 @@ describe("NestSession against a mock Nest", () => {
     expect(r.code).toBe(3);
     expect(r.stdout.trim()).toBe("hello");
     expect(r.stderr.trim()).toBe("oops");
+    s.close();
+  });
+
+  it("cuts off a command that prints more than the output cap, instead of holding it all in memory", async () => {
+    const s = await connect();
+    await expect(s.exec("yes aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa | head -c 200000", { maxOutputBytes: 10_000 })).rejects.toMatchObject({
+      kind: "exec",
+    });
+    // The connection is still usable afterwards.
+    expect((await s.exec("echo ok", { maxOutputBytes: 10_000 })).stdout.trim()).toBe("ok");
     s.close();
   });
 
