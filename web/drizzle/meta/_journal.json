@@ -386,6 +386,13 @@
       "when": 1795357514741,
       "tag": "0054_remove_project_team",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "6",
+      "when": 1795600000000,
+      "tag": "0055_error_groups",
+      "breakpoints": true
     }
   ]
 }
