@@ -2,7 +2,7 @@
 
 Generated from the Orchard parity manifest (`orchard-parity.json`). Our side: `ENDPOINTS` in `web/src/server/api-v1*.ts`, plus the compact server's three tools in `web/src/server/mcp-compact.ts`. Test-only names are excluded.
 
-Totals: 217 Orchard product tools. Present: 124. Partial: 9. Missing: 0. Not applicable: 84. Ours only: 33.
+Totals: 217 Orchard product tools. Present: 126. Partial: 10. Missing: 0. Not applicable: 81. Ours only: 33.
 
 `present` means an equivalent endpoint exists with the same job. `partial` means it covers part of the job. `missing` means no equivalent yet.
 
@@ -66,7 +66,7 @@ Totals: 217 Orchard product tools. Present: 124. Partial: 9. Missing: 0. Not app
 | [x] `get_image_history` | present | `get_image_history` |
 | [x] `get_ingress` | present | `get_ingress` |
 | [x] `get_killed_container_logs` | present | `get_killed_container_logs` |
-| [-] `get_pod_details` | not applicable | - |
+| [~] `get_pod_details` | partial | `get_project_container` |
 | [-] `get_pod_logs` | not applicable | - |
 | [x] `get_project` | present | `get_project` |
 | [x] `get_repo_branches` | present | `get_repo_branches` |
@@ -84,7 +84,7 @@ Totals: 217 Orchard product tools. Present: 124. Partial: 9. Missing: 0. Not app
 | [-] `list_killed_containers` | not applicable | - |
 | [-] `list_node_pools` | not applicable | - |
 | [x] `list_organizations` | present | `list_organizations` |
-| [-] `list_pods` | not applicable | - |
+| [~] `list_pods` | partial | `list_project_containers` |
 | [x] `list_projects` | present | `list_projects` |
 | [x] `list_services` | present | `list_services` |
 | [-] `list_template_instances` | not applicable | - |
@@ -107,7 +107,7 @@ Totals: 217 Orchard product tools. Present: 124. Partial: 9. Missing: 0. Not app
 | [x] `cancel_build` | present | `cancel_deployment` |
 | [~] `create_deploy_webhook_token` | partial | `rotate_deploy_hook` |
 | [x] `create_deployment` | present | `create_deployment` |
-| [~] `deploy_from_github` | partial | `deploy_branch` |
+| [x] `deploy_from_github` | present | `deploy_from_github_url` |
 | [x] `deploy_from_github_url` | present | `deploy_from_github_url` |
 | [x] `disable_auto_deploy` | present | `disable_auto_deploy` |
 | [x] `enable_auto_deploy` | present | `enable_auto_deploy` |
@@ -264,11 +264,11 @@ Totals: 217 Orchard product tools. Present: 124. Partial: 9. Missing: 0. Not app
 | [x] `get_anomalies` | present | `get_anomalies` |
 | [x] `get_attack_signals` | present | `get_attack_signals` |
 | [x] `get_build_history` | present | `get_build_history` |
-| [~] `get_changes` | partial | `get_changes` |
+| [x] `get_changes` | present | `get_changes` |
 | [x] `get_deploy_verdict` | present | `get_deploy_verdict` |
 | [x] `get_log_context` | present | `get_log_context` |
 | [x] `get_observability_link` | present | `get_observability_link` |
-| [-] `get_pod_health` | not applicable | - |
+| [~] `get_pod_health` | partial | `get_project_health` |
 | [x] `get_request_stats` | present | `get_request_stats` |
 | [x] `get_resource_recommendation` | present | `get_resource_recommendation` |
 | [x] `get_timeline` | present | `get_activity` |

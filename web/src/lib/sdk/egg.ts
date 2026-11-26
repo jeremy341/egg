@@ -318,6 +318,35 @@ export type ResourceQuota = {
   };
 };
 
+export type ProjectContainerSummary = {
+  id: string;
+  name: string;
+  service: string;
+  state: string;
+  restartCount: number;
+  startedAt: string | null;
+};
+
+export type ProjectContainerDetails = ProjectContainerSummary & {
+  image: string;
+  createdAt: string | null;
+};
+
+export type ProjectHealthStatus = {
+  state: "running" | "starting" | "failed" | "stopped" | "not_deployed" | "unknown";
+  detail: string | null;
+  pid: number | null;
+  uptimeSeconds: number | null;
+  memoryMb: number | null;
+  cpuNs: number | null;
+  restarts: number | null;
+  result: string | null;
+  invocationId: string | null;
+  http: { code: number; ms: number | null } | null;
+  lastExit?: { code: number | null; reason: string } | null;
+  checkedAt: string;
+};
+
 type ServiceState = "running" | "starting" | "failed" | "stopped" | "unknown";
 
 export type Inventory = {
@@ -730,6 +759,21 @@ export class Egg {
   /** What runs on a server: project services, leftovers and ports. Needs `container:read`. */
   getContainerInventory(serverId: string): Promise<{ inventory: Inventory }> {
     return this.request("GET", `/servers/${seg(serverId)}/inventory`);
+  }
+
+  /** Docker containers running for a project. Native systemd projects return an empty list. Needs `container:read`. */
+  listProjectContainers(projectId: string): Promise<{ projectId: string; containers: ProjectContainerSummary[] }> {
+    return this.request("GET", `/projects/${seg(projectId)}/containers`);
+  }
+
+  /** Safe details for a full container id returned by listProjectContainers. Needs `container:read`. */
+  getProjectContainer(projectId: string, containerId: string): Promise<{ projectId: string; container: ProjectContainerDetails }> {
+    return this.request("GET", `/projects/${seg(projectId)}/containers/${seg(containerId)}`);
+  }
+
+  /** Existing systemd and HTTP health-check status for a project. Needs `container:read`. */
+  getProjectHealth(projectId: string): Promise<{ projectId: string; status: ProjectHealthStatus; cached: boolean }> {
+    return this.request("GET", `/projects/${seg(projectId)}/health`);
   }
 
   /** Alert thresholds and the last 50 alert events. Needs `alerts:read`. */

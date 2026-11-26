@@ -31,6 +31,7 @@ const PARAMS: Record<string, string> = {
   fingerprint: "FP",
   jobId: "JOB",
   crashId: "CRASH",
+  containerId: "CID",
 };
 
 function recorder() {
@@ -78,6 +79,9 @@ const CLIENT_CALLS: Record<string, Call$> = {
   get_resource_quota: (n) => n.getResourceQuota("P"),
   list_servers: (n) => n.listServers(),
   get_container_inventory: (n) => n.getContainerInventory("S"),
+  list_project_containers: (n) => n.listProjectContainers("P"),
+  get_project_container: (n) => n.getProjectContainer("P", "CID"),
+  get_project_health: (n) => n.getProjectHealth("P"),
   list_env_vars: (n) => n.listEnvNames("P"),
   get_env_vars: (n) => n.getEnvVars("P"),
   set_env_var: (n) => n.setEnvVar("P", "KEY", { value: "v" }),

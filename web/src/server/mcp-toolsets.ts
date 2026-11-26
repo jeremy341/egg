@@ -218,6 +218,11 @@ export const TOOLSET_OF: Record<string, Toolset> = {
   get_attack_signals: "alerts",
   get_resource_recommendation: "servers",
   get_observability_link: "analytics",
+
+  // Project service container views.
+  list_project_containers: "servers",
+  get_project_container: "servers",
+  get_project_health: "servers",
 };
 
 /**

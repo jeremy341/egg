@@ -1,6 +1,6 @@
 {
-  "baseline_present": 124,
-  "baseline_partial": 9,
+  "baseline_present": 126,
+  "baseline_partial": 10,
   "tools": [
     {
       "name": "add_env_vars",
@@ -248,9 +248,8 @@
     {
       "name": "deploy_from_github",
       "source": "apps/server/src/mcp/tools/deployments.ts",
-      "status": "partial",
-      "ours": "deploy_branch",
-      "reason": "Egg deploys the project's configured repository and branch; change the configured repository separately before deploying another source."
+      "status": "present",
+      "ours": "deploy_from_github_url"
     },
     {
       "name": "deploy_from_github_url",
@@ -328,7 +327,7 @@
       "source": "apps/server/src/mcp/tools/query.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Pod/container orchestration is cluster-only; Nest exposes a single user-managed server."
+      "reason": "No exec into a container is exposed. Egg's terminal endpoints are not container-scoped."
     },
     {
       "name": "expand_database_storage",
@@ -395,9 +394,8 @@
     {
       "name": "get_changes",
       "source": "apps/server/src/mcp/tools/observability.ts",
-      "status": "partial",
-      "ours": "get_changes",
-      "reason": "Core deploy actions omit deployment ids, domain removals omit a project target, and dashboard environment removals and replacements omit key names."
+      "status": "present",
+      "ours": "get_changes"
     },
     {
       "name": "get_compose_stack",
@@ -621,23 +619,23 @@
     {
       "name": "get_pod_details",
       "source": "apps/server/src/mcp/tools/query.ts",
-      "status": "not_applicable",
-      "ours": null,
-      "reason": "Pod/container orchestration is cluster-only; Nest exposes a single user-managed server."
+      "status": "partial",
+      "ours": "get_project_container",
+      "reason": "Returns details only for a container in that project's set."
     },
     {
       "name": "get_pod_health",
       "source": "apps/server/src/mcp/tools/observability.ts",
-      "status": "not_applicable",
-      "ours": null,
-      "reason": "Pod/container orchestration is cluster-only; Nest exposes a single user-managed server."
+      "status": "partial",
+      "ours": "get_project_health",
+      "reason": "Uses the main project service's health check. It does not report readiness for each Compose auxiliary."
     },
     {
       "name": "get_pod_logs",
       "source": "apps/server/src/mcp/tools/query.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Pod/container orchestration is cluster-only; Nest exposes a single user-managed server."
+      "reason": "get_deployment_logs gives build and deploy output, not per-container runtime logs. No per-container log streaming is provided."
     },
     {
       "name": "get_project",
@@ -884,7 +882,7 @@
       "source": "apps/server/src/mcp/tools/query.ts",
       "status": "not_applicable",
       "ours": null,
-      "reason": "Pod/container orchestration is cluster-only; Nest exposes a single user-managed server."
+      "reason": "Egg records killed-container output as plain journal lines with no per-container identity, so names, services and kill times cannot be derived."
     },
     {
       "name": "list_node_pools",
@@ -920,9 +918,9 @@
     {
       "name": "list_pods",
       "source": "apps/server/src/mcp/tools/query.ts",
-      "status": "not_applicable",
-      "ours": null,
-      "reason": "Pod/container orchestration is cluster-only; Nest exposes a single user-managed server."
+      "status": "partial",
+      "ours": "list_project_containers",
+      "reason": "Lists one project's production Docker containers. Native systemd projects have no Docker containers, and there is no cluster-wide listing."
     },
     {
       "name": "list_postgres_versions",
@@ -1435,5 +1433,5 @@
     "write_file"
   ],
   "baseline_missing": 0,
-  "baseline_not_applicable": 84
+  "baseline_not_applicable": 81
 }
