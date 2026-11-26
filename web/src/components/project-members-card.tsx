@@ -33,9 +33,9 @@ export function ProjectMembersCard({ projectId }: { projectId: string }) {
   }
 
   useEffect(() => {
+    // The async loader updates state; load reads only projectId.
+    // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
     void load();
-    // load reads only projectId, which is the one prop that changes it.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
   async function act(action: () => Promise<unknown>) {

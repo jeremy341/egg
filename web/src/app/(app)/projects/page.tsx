@@ -222,6 +222,7 @@ async function ProjectsContent() {
           id="account-activity"
           title="Activity across your projects"
           scope="account"
+          // eslint-disable-next-line react-hooks/purity
           heatmap={buildHeatmap(activity, Date.now())}
           caption="Deployments and opened pull requests per UTC day, over all your projects, for the last 365 days."
         />

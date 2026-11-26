@@ -17,7 +17,6 @@ export function CrashPanel({ projectId, lines }: { projectId: string; lines: str
 
   useEffect(() => {
     let live = true;
-    setCrash(null);
     api<{ crash: Crash | null }>(`/api/projects/${projectId}/last-crash`)
       .then((res) => {
         if (live) setCrash(res.crash);

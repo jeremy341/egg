@@ -1012,17 +1012,6 @@ export async function deleteProjectRecords(userId: string, projectId: string) {
     await tx.delete(schema.projects).where(eq(schema.projects.id, project.id));
   });
 }
-      )
-    )
-    .get();
-  if (running) {
-    throw new HttpError(
-      409,
-      "A deployment is still running for this project. Cancel it or wait for it to finish, then delete the project.",
-      "conflict"
-    );
-  }
-}
 
 // ------------------------------------------------------------ clone settings
 

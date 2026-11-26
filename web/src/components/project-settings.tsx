@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { CaretRightIcon, PencilSimpleIcon, TrashIcon } from "@phosphor-icons/react";
 import { api } from "@/components/api";
 import { Swap } from "@/components/motion/swap";
@@ -509,7 +510,7 @@ export function ProjectSettings({
               <p role="alert" className="mt-2 text-label text-foreground">{protectionError}</p>
             ) : null}
             <p className="mt-3 text-label text-muted-foreground">
-              Deleted apps are kept for 30 days. <a href="/projects/trash" className="link">See Recently deleted</a>.
+              Deleted apps are kept for 30 days. <Link href="/projects/trash" className="link">See Recently deleted</Link>.
             </p>
           </Card>
 
