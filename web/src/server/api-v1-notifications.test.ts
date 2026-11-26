@@ -253,12 +253,12 @@ describe("channel CRUD", () => {
     expect(updated.channel.active).toBe(false);
 
     await expect(
-      call("delete_notification_channel", writer(), { channelId: channel.id, confirmChannelId: "different-channel" })
+      call("delete_notification_channel", writer(), { channelId: channel.id, confirmName: "different-channel" })
     ).rejects.toMatchObject({ status: 400, code: "confirmation_failed" });
 
     const deleted = (await call("delete_notification_channel", writer(), {
       channelId: channel.id,
-      confirmChannelId: channel.id,
+      confirmName: channel.host,
     })) as {
       deleted: boolean;
       channelId: string;
@@ -267,7 +267,7 @@ describe("channel CRUD", () => {
     const deleteAudit = (await ctx.db.select().from(schema.auditLog)).find((row) => {
       if (row.userId !== ownerId || row.action !== "webhook.delete" || !row.meta) return false;
       try {
-        return JSON.parse(row.meta).channelId === channel.id;
+        return JSON.parse(row.meta).host === channel.host;
       } catch {
         return false;
       }
@@ -289,7 +289,7 @@ describe("channel CRUD", () => {
       call("update_notification_channel", outsider(), { channelId: channel.id, active: false })
     ).rejects.toMatchObject({ status: 404 });
     await expect(
-      call("delete_notification_channel", outsider(), { channelId: channel.id, confirmChannelId: channel.id })
+      call("delete_notification_channel", outsider(), { channelId: channel.id, confirmName: channel.host })
     ).rejects.toMatchObject({ status: 404 });
     await expect(call("list_notification_deliveries", outsider(), { channelId: channel.id })).rejects.toMatchObject({
       status: 404,
