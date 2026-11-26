@@ -1,1 +1,162 @@
-[]
+[
+  {
+    "orchard": "org list",
+    "source": "org.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "list_organizations",
+    "orchardTool": "list_organizations",
+    "reason": "Egg exposes the organization listing endpoint, but the Egg CLI command has not been added.",
+    "spec": {
+      "summary": "List the organizations available to the signed-in user.",
+      "args": [],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "org get",
+    "source": "org.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "get_organization",
+    "orchardTool": null,
+    "reason": "Egg exposes an organization read endpoint, but the Egg CLI command has not been added.",
+    "spec": {
+      "summary": "Show an organization selected by id or slug, or by the current organization scope.",
+      "args": ["[slug-or-id]"],
+      "flags": ["--org <id-or-slug>"],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "org update",
+    "source": "org.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Change the organization's name, advertised public database address, custom subdomain, or automatic PostgreSQL minor update setting.",
+      "args": ["<slug-or-id>"],
+      "flags": ["--name <value>", "--public-ip <value-or-empty>", "--subdomain <value-or-empty>", "--postgres-auto-update"],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "org avatar set",
+    "source": "org.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Upload an image file as the organization's avatar.",
+      "args": ["<slug-or-id>", "<file>"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "org avatar delete",
+    "source": "org.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Remove the organization's current avatar.",
+      "args": ["<slug-or-id>"],
+      "flags": ["--confirm <organization-name>"],
+      "destructive": true,
+      "confirm": "--confirm must exactly match the organization's name"
+    }
+  },
+  {
+    "orchard": "org backup-settings get",
+    "source": "org.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Show the scoped organization's backup storage settings and whether its access credentials are configured.",
+      "args": [],
+      "flags": ["--org <id-or-slug>"],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "org backup-settings set",
+    "source": "org.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Change the scoped organization's backup storage endpoint, bucket, region, or access credentials; omitted fields stay unchanged and empty values clear them.",
+      "args": [],
+      "flags": ["--org <id-or-slug>", "--endpoint <value-or-empty>", "--bucket <value-or-empty>", "--region <value-or-empty>", "--access-key <value-or-empty>", "--secret-key <value-or-empty>"],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "org registry list",
+    "source": "org_registry.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "list_registry_credentials",
+    "orchardTool": null,
+    "reason": "Egg has an owner-wide registry credential endpoint, but this organization-scoped command is not in the Egg CLI.",
+    "spec": {
+      "summary": "List the scoped organization's default private image registry logins without revealing their passwords.",
+      "args": [],
+      "flags": ["--org <id-or-slug>"],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "org registry set",
+    "source": "org_registry.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "set_registry_credential",
+    "orchardTool": null,
+    "reason": "Egg has an owner-wide registry credential endpoint, but this organization-scoped command is not in the Egg CLI.",
+    "spec": {
+      "summary": "Add or replace a scoped organization's default private image registry login after validating it with the registry.",
+      "args": ["<registry>"],
+      "flags": ["--org <id-or-slug>", "--username <value>", "-u <value>", "--password <value>", "-p <value>", "--password-stdin"],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "org registry remove",
+    "source": "org_registry.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "delete_registry_credential",
+    "orchardTool": null,
+    "reason": "Egg has an owner-wide registry credential endpoint, but this organization-scoped command is not in the Egg CLI.",
+    "spec": {
+      "summary": "Remove one default registry login from the scoped organization by credential id.",
+      "args": ["<id>"],
+      "flags": ["--org <id-or-slug>", "--confirm <registry-host>"],
+      "destructive": true,
+      "confirm": "--confirm must exactly match the credential's registry host"
+    }
+  }
+]

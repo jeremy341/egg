@@ -1,1 +1,194 @@
-[]
+[
+  {
+    "orchard": "member list",
+    "source": "member.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Shows the people in the selected organization with their contact details, role, and join date.",
+      "args": [],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "member invite",
+    "source": "member.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Creates an organization invitation for an email address, assigning the chosen role.",
+      "args": ["email"],
+      "flags": ["--role <role> (default: member)"],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "member remove",
+    "source": "member.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Disables a member's organization access, which also removes access to its projects; the member remains listed and can be re-enabled.",
+      "args": ["memberId"],
+      "flags": ["--yes"],
+      "destructive": true,
+      "confirm": "Confirms disabling the member's organization and project access; --yes skips the prompt."
+    }
+  },
+  {
+    "orchard": "member enable",
+    "source": "member.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Re-enables organization access for a member. Previous project access does not return automatically.",
+      "args": ["memberId"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "member set-role",
+    "source": "member.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Changes a member's organization-level role.",
+      "args": ["memberId", "role"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "member invites list",
+    "source": "member.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Shows invitations for the organization that are still awaiting a response.",
+      "args": [],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "member invites cancel",
+    "source": "member.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Revokes a pending invitation.",
+      "args": ["invitationId"],
+      "flags": ["--yes"],
+      "destructive": true,
+      "confirm": "Confirms revoking the pending invitation; --yes skips the prompt."
+    }
+  },
+  {
+    "orchard": "member invites resend",
+    "source": "member.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Sends a pending invitation again, or rotates its one-time link when the instance cannot send email.",
+      "args": ["invitationId"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "invitation list",
+    "source": "invitation.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Shows invitations awaiting your response, including their organization or project, role, sender, and expiration.",
+      "args": [],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "invitation accept",
+    "source": "invitation.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Accepts one pending invitation and joins its organization or project.",
+      "args": ["id"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "invitation decline",
+    "source": "invitation.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Declines one pending invitation.",
+      "args": ["id"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "invitation accept-all",
+    "source": "invitation.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Accepts every invitation currently awaiting your response, processing each separately.",
+      "args": [],
+      "flags": ["--yes"],
+      "destructive": false,
+      "confirm": "Confirms accepting all pending invitations; --yes skips the prompt. No prompt appears when there are none."
+    }
+  }
+]

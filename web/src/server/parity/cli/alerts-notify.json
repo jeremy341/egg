@@ -1,1 +1,241 @@
-[]
+[
+  {
+    "orchard": "alert list",
+    "source": "alert.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "get_alerts",
+    "orchardTool": null,
+    "reason": "Egg exposes project alert settings and history, but no endpoint lists scoped metric alert rules or inherited rules.",
+    "spec": {
+      "summary": "List metric alert rules for the organization, project, or deployment scope, including inherited rules.",
+      "args": [],
+      "flags": [
+        { "name": "project", "type": "value", "required": false, "description": "Limit the list to a project ID; cannot be combined with deployment." },
+        { "name": "deployment", "type": "value", "required": false, "description": "Limit the list to a deployment ID; cannot be combined with project." }
+      ],
+      "destructive": false
+    }
+  },
+  {
+    "orchard": "alert metrics",
+    "source": "alert.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg has no metric catalogue endpoint or CLI command for the metrics available to alert rules.",
+    "spec": {
+      "summary": "Show supported alert metrics with their labels, units, comparisons, defaults, and any traffic requirement.",
+      "args": [],
+      "flags": [],
+      "destructive": false
+    }
+  },
+  {
+    "orchard": "alert status",
+    "source": "alert.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "get_alerts",
+    "orchardTool": "get_alert_states",
+    "reason": "Egg's alert endpoint reports project alert settings and history, not per-deployment metric rule states and current values.",
+    "spec": {
+      "summary": "Show each metric rule that applies to a deployment, its state, current value, and time in that state.",
+      "args": ["deploymentId"],
+      "flags": [],
+      "destructive": false
+    }
+  },
+  {
+    "orchard": "alert create",
+    "source": "alert.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg has no endpoint for creating threshold-based metric alert rules; notification rules only choose which events a channel receives.",
+    "spec": {
+      "summary": "Create a metric threshold rule at organization, project, or deployment scope, with an optional minimum traffic rate.",
+      "args": [],
+      "flags": [
+        { "name": "metric", "type": "value", "required": true, "description": "Metric identifier from the metric catalogue." },
+        { "name": "comparator", "type": "value", "required": false, "description": "Comparison direction; defaults to greater than." },
+        { "name": "threshold", "type": "value", "required": true, "description": "Threshold in the metric's unit." },
+        { "name": "for", "type": "value", "required": false, "description": "How many seconds the condition must hold; defaults to 300." },
+        { "name": "min-request-rate", "type": "value", "required": false, "description": "Minimum request rate for traffic-based metrics." },
+        { "name": "project", "type": "value", "required": false, "description": "Project scope ID; cannot be combined with deployment." },
+        { "name": "deployment", "type": "value", "required": false, "description": "Deployment scope ID; cannot be combined with project." }
+      ],
+      "destructive": false
+    }
+  },
+  {
+    "orchard": "alert update",
+    "source": "alert.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg has no endpoint for changing a metric alert rule; its notification-rule updates affect event routing instead.",
+    "spec": {
+      "summary": "Change a metric rule's threshold, evaluation window, traffic floor, or enabled state.",
+      "args": ["ruleId"],
+      "flags": [
+        { "name": "threshold", "type": "value", "required": false, "description": "Replace the threshold." },
+        { "name": "for", "type": "value", "required": false, "description": "Replace the evaluation window in seconds." },
+        { "name": "min-request-rate", "type": "value", "required": false, "description": "Replace the minimum request rate." },
+        { "name": "enabled", "type": "flag", "required": false, "description": "Enable the rule; cannot be combined with disabled." },
+        { "name": "disabled", "type": "flag", "required": false, "description": "Disable the rule; cannot be combined with enabled." }
+      ],
+      "destructive": false
+    }
+  },
+  {
+    "orchard": "alert delete",
+    "source": "alert.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg has no metric alert rule deletion endpoint, and the notification-rule deletion endpoint targets a different resource.",
+    "spec": {
+      "summary": "Delete one metric alert rule after confirming the exact rule identifier.",
+      "args": ["ruleId"],
+      "flags": [
+        { "name": "confirm", "type": "value", "required": true, "description": "Must exactly match the alert rule identifier being deleted." }
+      ],
+      "destructive": true,
+      "confirm": "--confirm <ruleId>"
+    }
+  },
+  {
+    "orchard": "notify channel list",
+    "source": "notify.go",
+    "status": "present",
+    "egg": "notify channels list",
+    "endpoint": "get_notifications",
+    "orchardTool": "list_notification_channels",
+    "reason": "Egg already has a notification-list CLI command for a project's configured channel.",
+    "spec": {
+      "summary": "List organization notification channels with their type, enabled state, event count, and project scope; never return a signing secret.",
+      "args": [],
+      "flags": [],
+      "destructive": false
+    }
+  },
+  {
+    "orchard": "notify channel create",
+    "source": "notify.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "create_notification_channel",
+    "orchardTool": "create_notification_channel",
+    "reason": "The channel creation endpoint exists, but Egg has no CLI command to configure a channel and its event rules.",
+    "spec": {
+      "summary": "Create a channel for Discord, Slack, webhook, or email delivery, set its events and optional project scope, and show a webhook signing secret only once at creation.",
+      "args": [],
+      "flags": [
+        { "name": "type", "type": "value", "required": true, "description": "Channel type: discord, slack, webhook, or email." },
+        { "name": "name", "type": "value", "required": true, "description": "Display name for the channel." },
+        { "name": "url", "type": "value", "required": false, "description": "Destination URL for Discord, Slack, or webhook channels." },
+        { "name": "email", "type": "value", "required": false, "description": "Email recipient; repeat for additional recipients." },
+        { "name": "events", "type": "value", "required": true, "description": "Comma-separated events to deliver." },
+        { "name": "project", "type": "value", "required": false, "description": "Project ID scope; repeat for additional projects." }
+      ],
+      "destructive": false
+    }
+  },
+  {
+    "orchard": "notify channel update",
+    "source": "notify.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "update_notification_channel",
+    "orchardTool": "update_notification_channel",
+    "reason": "The update endpoint exists, but Egg has no CLI command for changing channel settings, events, or scope.",
+    "spec": {
+      "summary": "Update only the supplied channel fields, including its name, destination, events, project scope, and enabled state; channel type stays fixed.",
+      "args": ["channelId"],
+      "flags": [
+        { "name": "name", "type": "value", "required": false, "description": "Replace the display name." },
+        { "name": "url", "type": "value", "required": false, "description": "Replace the webhook destination; cannot be combined with email." },
+        { "name": "email", "type": "value", "required": false, "description": "Replace email recipients; repeat as needed and do not combine with url." },
+        { "name": "events", "type": "value", "required": false, "description": "Replace the delivered events." },
+        { "name": "project", "type": "value", "required": false, "description": "Replace project scope with these IDs; cannot be combined with all-projects." },
+        { "name": "all-projects", "type": "flag", "required": false, "description": "Clear project scope so the channel applies to every project." },
+        { "name": "enabled", "type": "flag", "required": false, "description": "Resume delivery; cannot be combined with disabled." },
+        { "name": "disabled", "type": "flag", "required": false, "description": "Pause delivery; cannot be combined with enabled." }
+      ],
+      "destructive": false
+    }
+  },
+  {
+    "orchard": "notify channel delete",
+    "source": "notify.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "delete_notification_channel",
+    "orchardTool": "delete_notification_channel",
+    "reason": "The deletion endpoint exists, but the CLI must pass the exact channel host as confirmName before deleting its history and rules.",
+    "spec": {
+      "summary": "Delete a notification channel and its delivery history after confirming its exact host.",
+      "args": ["channelId"],
+      "flags": [
+        { "name": "confirm", "type": "value", "required": true, "description": "Exact channel host; pass this value as confirmName." }
+      ],
+      "destructive": true,
+      "confirm": "--confirm <host>"
+    }
+  },
+  {
+    "orchard": "notify channel test",
+    "source": "notify.go",
+    "status": "present",
+    "egg": "notify channels test",
+    "endpoint": "test_notification",
+    "orchardTool": "test_notification_channel",
+    "reason": "Egg already has a notification-test CLI command for a project's configured channel.",
+    "spec": {
+      "summary": "Send a sample deployment-success event through a channel and record the delivery attempt.",
+      "args": ["channelId"],
+      "flags": [],
+      "destructive": false
+    }
+  },
+  {
+    "orchard": "notify deliveries",
+    "source": "notify.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "list_notification_deliveries",
+    "orchardTool": "list_notification_deliveries",
+    "reason": "The delivery-history endpoint exists, but Egg has no CLI command to list recent attempts for a channel.",
+    "spec": {
+      "summary": "List recent delivery attempts for a channel, newest first, retaining at most 30 days of history and showing no more than 30 records.",
+      "args": ["channelId"],
+      "flags": [
+        { "name": "limit", "type": "value", "required": false, "description": "Show at most this many records from the server's 30 most recent; defaults to 30." }
+      ],
+      "destructive": false
+    }
+  },
+  {
+    "orchard": "webhook deploy",
+    "source": "webhook.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg can create authenticated deployments but has no endpoint that accepts a standalone hook token to restart or switch an image.",
+    "spec": {
+      "summary": "Trigger a deployment using the supplied hook token without signing in; restart by default or optionally select an image and tag.",
+      "args": ["token"],
+      "flags": [
+        { "name": "image", "type": "value", "required": false, "description": "Switch to this image before restarting an image-based deployment." },
+        { "name": "tag", "type": "value", "required": false, "description": "Image tag to deploy when selecting an image." }
+      ],
+      "destructive": false
+    }
+  }
+]
