@@ -176,7 +176,13 @@ export async function restartService(userId: string, projectId: string) {
   if (res.code !== 0) {
     throw new HttpError(502, "Could not restart the service. It may not be deployed yet.", "upstream");
   }
-  await audit(userId, "project.restart", project.id);
+  const db = await getDb();
+  const deployment = await db
+    .select({ id: schema.deployments.id })
+    .from(schema.deployments)
+    .where(and(eq(schema.deployments.projectId, project.id), eq(schema.deployments.isCurrent, true)))
+    .get();
+  await audit(userId, "project.restart", project.id, deployment ? { deploymentId: deployment.id } : undefined);
 }
 
 export type Usage = {

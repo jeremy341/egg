@@ -191,7 +191,7 @@ const CLIENT_CALLS: Record<string, Call$> = {
   set_shared_env_vars: (n) => n.setSharedEnvVars("ENV", {}),
   delete_shared_env_vars: (n) => n.deleteSharedEnvVars("ENV", {}),
   create_service: (n) => n.createService({}),
-  delete_service: (n) => n.deleteService("SVC"),
+  delete_service: (n) => n.deleteService("SVC", "Public service"),
   set_service_exposure: (n) => n.setServiceExposure("SVC", {}),
   set_service_port_public: (n) => n.setServicePortPublic("SVC", {}),
   get_compose_stack: (n) => n.getComposeStack("P"),
@@ -241,6 +241,13 @@ describe("request bodies and queries of the newer calls", () => {
     await nest.deleteNotificationChannel("HOOK", "hooks.example.com");
     expect(calls[0].init.method).toBe("DELETE");
     expect(JSON.parse(calls[0].init.body!)).toEqual({ confirmName: "hooks.example.com" });
+  });
+
+  it("sends the service name as confirmName when deleting a service", async () => {
+    const { nest, calls } = recorder();
+    await nest.deleteService("SVC", "Public service");
+    expect(calls[0].init.method).toBe("DELETE");
+    expect(JSON.parse(calls[0].init.body!)).toEqual({ confirmName: "Public service" });
   });
 
   it("sends the body of create, update, env and file calls as JSON", async () => {

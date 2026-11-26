@@ -14,6 +14,12 @@ export type AuditLevel = "app" | "organization" | "instance";
  */
 export type AuditScope = { level: AuditLevel; orgId?: string | null };
 
+/** A readable, value-free list of environment variable names for an audit row. */
+export function auditKeyNames(keys: readonly string[]): string | undefined {
+  const names = [...new Set(keys.map((key) => key.trim()).filter(Boolean))].sort();
+  return names.length ? names.join(", ") : undefined;
+}
+
 export async function audit(
   userId: string | null,
   action: string,
@@ -65,6 +71,10 @@ export const LABELS: Record<string, string> = {
   "deploy.redeploy": "Redeployed",
   "deploy.rollback": "Rolled back",
   "deploy.cancel": "Canceled a deployment of",
+  "deployment.start": "Started",
+  "deployment.stop": "Stopped",
+  "deployment.restart": "Restarted",
+  "deployment.scale": "Scaled",
   "deploy.preview_delete": "Deleted a preview deployment of",
   "hook.trigger": "Deployed through the deploy hook for",
   "hook.create": "Created a deploy hook for",

@@ -1,6 +1,6 @@
 ﻿import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
-import { audit } from "@/server/audit";
+import { audit, auditKeyNames } from "@/server/audit";
 import { pickCloneSettings, type CloneSettings } from "@/server/clone-settings";
 import { newId, open, seal } from "@/server/crypto";
 import { getDb, schema, withLockRetry, type Db } from "@/server/db";
@@ -901,7 +901,12 @@ export async function replaceEnvVars(userId: string, projectId: string, raw: unk
     }
     return removedRows;
   }));
-  await audit(userId, "env.replace", project.id, { count: entries.length, deleted: removed.length });
+  const keys = auditKeyNames([...removed.map(({ key }) => key), ...entries.map(({ key }) => key)]);
+  await audit(userId, "env.replace", project.id, {
+    count: entries.length,
+    deleted: removed.length,
+    ...(keys ? { keys } : {}),
+  });
   return removed.map(({ key, target }) => ({ key, target }));
 }
 
@@ -938,12 +943,13 @@ export async function setEnvVarSecret(
 export async function deleteEnvVar(userId: string, projectId: string, envId: string) {
   const project = await getProjectAtLevel(userId, projectId, "edit");
   const db = await getDb();
-  await db.transaction(async (tx) => {
+  const [removed] = await db.transaction(async (tx) => {
     await assertCleanupAllowsWork(tx, userId, project.id);
-    await tx.delete(schema.envVars)
-      .where(and(eq(schema.envVars.id, envId), eq(schema.envVars.projectId, project.id)));
+    return tx.delete(schema.envVars)
+      .where(and(eq(schema.envVars.id, envId), eq(schema.envVars.projectId, project.id)))
+      .returning({ key: schema.envVars.key, target: schema.envVars.target });
   });
-  await audit(userId, "env.delete", project.id);
+  await audit(userId, "env.delete", project.id, removed ? { name: removed.key, target: removed.target } : undefined);
 }
 
 /** Only used by the worker and tests. */
@@ -1090,7 +1096,7 @@ function viaMeta(via: ActionVia): Record<string, string> {
 /** Build the same commit again. */
 export async function redeploy(userId: string, deploymentId: string, via: ActionVia = {}) {
   const { project, dep } = await ownedDeployment(userId, deploymentId);
-  await audit(userId, "deploy.redeploy", project.id, { branch: dep.branch, ...viaMeta(via) });
+  await audit(userId, "deploy.redeploy", project.id, { deploymentId: dep.id, branch: dep.branch, ...viaMeta(via) });
   return enqueueDeployment(project, {
     env: dep.env,
     source: "redeploy",
@@ -1118,6 +1124,7 @@ export async function rollback(userId: string, deploymentId: string, via: Action
     throw new HttpError(409, "That deployment is already live.", "conflict");
   }
   await audit(userId, "deploy.rollback", project.id, {
+    deploymentId: dep.id,
     sha: dep.commitSha?.slice(0, 7) ?? null,
     ...viaMeta(via),
   });
@@ -1161,7 +1168,7 @@ export async function cancelDeployment(userId: string, deploymentId: string, via
     .update(schema.jobs)
     .set({ state: "failed", error: "Canceled" })
     .where(and(eq(schema.jobs.deploymentId, dep.id), eq(schema.jobs.state, "queued")));
-  await audit(userId, "deploy.cancel", project.id, { branch: dep.branch, ...viaMeta(via) });
+  await audit(userId, "deploy.cancel", project.id, { deploymentId: dep.id, branch: dep.branch, ...viaMeta(via) });
 }
 
 export async function ownedDeployment(userId: string, deploymentId: string, level: ProjectLevel = "edit") {

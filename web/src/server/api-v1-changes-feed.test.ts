@@ -1,9 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
 import type { Principal, Scope } from "@/server/api-tokens";
-import { ENDPOINTS, callEndpoint } from "@/server/api-v1";
+import { ENDPOINTS, apiDeployBranch, callEndpoint } from "@/server/api-v1";
 import { upsertUser } from "@/server/auth/session";
 import { schema } from "@/server/db";
-import { createProject, deployBranch } from "@/server/projects";
+import { addDomain, removeDomain } from "@/server/domains";
+import { cancelDeployment, createProject, deleteEnvVar, deployBranch, listEnvVars, redeploy, replaceEnvVars, rollback, setEnvVar } from "@/server/projects";
 import { createServer } from "@/server/servers";
 import { useFreshDb } from "@/server/test/db";
 
@@ -13,6 +15,7 @@ let other: { id: string };
 let projectId: string;
 let theirProjectId: string;
 let deploymentId: string;
+let myServerId: string;
 
 const foundEndpoint = () => {
   const endpoint = ENDPOINTS.find((candidate) => candidate.id === "get_changes");
@@ -51,11 +54,15 @@ async function row(
   await ctx.db.insert(schema.auditLog).values({ userId, action, target, at, meta: JSON.stringify(meta) });
 }
 
+async function clearAuditRows() {
+  await ctx.db.delete(schema.auditLog);
+}
+
 beforeAll(async () => {
   ctx = await useFreshDb();
   me = await upsertUser({ id: "changes-1", name: "Sam", email: null, slackId: null });
   other = await upsertUser({ id: "changes-2", name: "Kim", email: null, slackId: null });
-  const myServerId = (await createServer(me.id, "changes-sam")).id;
+  myServerId = (await createServer(me.id, "changes-sam")).id;
   const theirServerId = (await createServer(other.id, "changes-kim")).id;
   const projectInput = { repoUrl: "https://github.com/sam/app.git", runtime: "node" as const };
   projectId = (
@@ -125,7 +132,111 @@ describe("the project changes feed endpoint", () => {
     expect(page.items.find((item) => item.kind === "deployments")).toMatchObject({ deploymentId });
   });
 
+  it("includes the deployment id written by API deploys", async () => {
+    await clearAuditRows();
+    const deployed = await apiDeployBranch(principal(me.id, ["deployments:write"]), projectId);
+    const page = await run();
+    expect(page.items[0]).toMatchObject({ kind: "deployments", deploymentId: deployed.deployment.id });
+  });
+
+  it("includes the deployment id written by redeploy", async () => {
+    await clearAuditRows();
+    await redeploy(me.id, deploymentId);
+    const page = await run();
+    expect(page.items[0]).toMatchObject({ kind: "deployments", deploymentId });
+  });
+
+  it("includes the deployment id written by cancel", async () => {
+    const queued = await deployBranch(me.id, projectId);
+    await clearAuditRows();
+    await cancelDeployment(me.id, queued.id);
+    const page = await run();
+    expect(page.items[0]).toMatchObject({ kind: "deployments", deploymentId: queued.id });
+  });
+
+  it("includes the deployment id written by rollback", async () => {
+    await ctx.db.update(schema.deployments)
+      .set({ state: "ready", isCurrent: false })
+      .where(eq(schema.deployments.id, deploymentId));
+    await clearAuditRows();
+    await rollback(me.id, deploymentId);
+    const page = await run();
+    expect(page.items[0]).toMatchObject({ kind: "deployments", deploymentId });
+  });
+
+  it("includes lifecycle events with their deployment id", async () => {
+    await clearAuditRows();
+    const actions = ["deployment.start", "deployment.stop", "deployment.restart", "deployment.scale"];
+    for (const [index, action] of actions.entries()) {
+      await row(me.id, action, projectId, new Date(Date.now() + index), { deploymentId });
+    }
+    await row(me.id, "project.restart", projectId, new Date(Date.now() + 10), { deploymentId });
+    const page = await run();
+    expect(page.items.filter((item) => item.kind === "deployments")).toHaveLength(actions.length);
+    expect(page.items.filter((item) => item.kind === "deployments").every((item) => item.deploymentId === deploymentId)).toBe(true);
+    expect(page.items.find((item) => item.kind === "projects")).toMatchObject({ deploymentId });
+  });
+
+  it("includes project-linked domain removals", async () => {
+    await ctx.db.update(schema.servers)
+      .set({ status: "connected", hostKeyFingerprint: "SHA256:test-fixture" })
+      .where(eq(schema.servers.id, myServerId));
+    const { domain } = await addDomain(me.id, {
+      serverId: myServerId,
+      projectId,
+      domain: "changes.example.test",
+      port: 3000,
+    });
+    await clearAuditRows();
+    await removeDomain(me.id, domain.id);
+    const page = await run();
+    expect(page.items).toMatchObject([{ kind: "domains" }]);
+    expect(page.items[0].summary).toContain("changes.example.test");
+  });
+
+  it("includes removed and replaced environment key names without values", async () => {
+    await setEnvVar(me.id, projectId, { key: "REMOVED_KEY", value: "private-remove-value", target: "production" });
+    const [removed] = await listEnvVars(me.id, projectId);
+    await clearAuditRows();
+    await deleteEnvVar(me.id, projectId, removed.id);
+    let page = await run();
+    expect(page.items[0].summary).toContain("REMOVED_KEY");
+    expect(JSON.stringify(page.items)).not.toContain("private-remove-value");
+
+    await setEnvVar(me.id, projectId, { key: "OLD_KEY", value: "private-old-value", target: "all" });
+    await clearAuditRows();
+    await replaceEnvVars(me.id, projectId, [
+      { key: "NEW_KEY", value: "private-new-value", target: "all" },
+    ]);
+    page = await run();
+    expect(page.items[0].summary).toContain("OLD_KEY");
+    expect(page.items[0].summary).toContain("NEW_KEY");
+    expect(JSON.stringify(page.items)).not.toContain("private-new-value");
+  });
+
+  it("shows key names from shared environment replacement audit rows", async () => {
+    await clearAuditRows();
+    await row(me.id, "env.sets.variables.replace", projectId, new Date(), {
+      name: "Shared defaults",
+      keys: "SHARED_OLD, SHARED_NEW",
+      count: 1,
+      deleted: 1,
+    });
+    const page = await run();
+    expect(page.items[0].summary).toContain("SHARED_OLD");
+    expect(page.items[0].summary).toContain("SHARED_NEW");
+  });
+
   it("pages newest-first changes with a bounded limit and cursor", async () => {
+    await clearAuditRows();
+    const base = Date.now() - 60_000;
+    await row(me.id, "project.update", projectId, new Date(base + 4_000), { fields: "port" });
+    await row(me.id, "env.set", projectId, new Date(base + 3_000), {
+      name: "DATABASE_URL\nINJECTED",
+      target: "production",
+      value: "RAW_ENV_VALUE_SHOULD_NEVER_APPEAR",
+    });
+    await row(me.id, "deploy.rollback", projectId, new Date(base + 2_000), { deploymentId, sha: "abc123" });
     const first = await run({ limit: 2 });
     expect(first.items).toHaveLength(2);
     expect(first.nextCursor).toMatch(/^\d{1,15}\.\d{1,12}$/);

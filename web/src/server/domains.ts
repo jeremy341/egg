@@ -184,7 +184,7 @@ export async function removeDomain(userId: string, domainId: string) {
     .get();
   if (!row) throw notFound("Domain not found");
   await db.delete(schema.domains).where(eq(schema.domains.id, row.id));
-  await audit(userId, "domain.remove", null, { domain: row.domain });
+  await audit(userId, "domain.remove", row.projectId, { domain: row.domain });
 }
 
 export const domainPatch = z

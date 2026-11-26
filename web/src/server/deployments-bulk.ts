@@ -75,7 +75,7 @@ export async function deletePreview(userId: string, deploymentId: string) {
   }
   const db = await getDb();
   await db.update(schema.deployments).set({ cleanedUp: true }).where(eq(schema.deployments.id, dep.id));
-  await audit(userId, "deploy.preview_delete", project.id, { branch: dep.branch });
+  await audit(userId, "deploy.preview_delete", project.id, { deploymentId: dep.id, branch: dep.branch });
 }
 
 /** One bulk run stops here even if not every id has been processed yet. */

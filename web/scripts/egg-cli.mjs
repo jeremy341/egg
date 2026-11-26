@@ -595,6 +595,8 @@ const OPERATIONS = {
       confirmName: a.confirmName,
       ...(a.target ? { target: a.target } : {}),
     }),
+  delete_service: (nest, a) =>
+    nest.deleteService(a.serviceId, a.confirmName, { removeFromServer: a.removeFromServer }),
   update_service: (nest, { serviceId, ...input }) => nest.updateService(serviceId, input),
   update_deployment_github_repo: (nest, { deploymentId, ...input }) =>
     nest.updateDeploymentGithubRepo(deploymentId, input),
@@ -784,13 +786,11 @@ const COMMAND_RUNNERS = {
 
   async servicesDelete(nest, [slug], flags, out, deps) {
     const id = await projectId(nest, slug);
-    const data = await requestWithClient(
-      nest,
-      "DELETE",
-      `/services/${encodeURIComponent(id)}`,
-      { removeFromServer: flags.removeFromServer ? true : undefined },
-      { confirmName: flags.confirm }
-    );
+    const data = await callRegisteredOperation(nest, "delete_service", {
+      serviceId: id,
+      confirmName: flags.confirm,
+      removeFromServer: flags.removeFromServer,
+    });
     return printData(data, flags, deps, out, () => `Deleted service ${slug}.\n`);
   },
 

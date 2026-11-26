@@ -776,6 +776,23 @@ describe("expanded CLI contract", () => {
     expect(deleted.calls[1].search).toBe("?removeFromServer=true");
   });
 
+  it("deletes a service through the SDK with its confirmation name and removal option", async () => {
+    const deleted = await egg(
+      ["services", "delete", "my-app", "--confirm", "My app", "--remove-from-server"],
+      {
+        ...PROJECTS,
+        "DELETE /api/v1/services/p_1": reply(200, { deleted: true, projectId: "p_1", removedFromServer: true }),
+      }
+    );
+    expect(deleted.code).toBe(0);
+    expect(deleted.calls[1]).toMatchObject({
+      method: "DELETE",
+      path: "/api/v1/services/p_1",
+      search: "?removeFromServer=true",
+      body: { confirmName: "My app" },
+    });
+  });
+
   it("shows and redeploys an existing deployment", async () => {
     const detail = { ...deployment(), port: 3000, startedAt: null, finishedAt: null };
     const shown = await egg(["deploy", "show", "dep_1"], { "GET /api/v1/deployments/dep_1": reply(200, { deployment: detail }) });

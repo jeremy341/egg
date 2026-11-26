@@ -1011,7 +1011,18 @@ export class Egg {
   updateDeploymentVolumes(deploymentId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/deployments/${seg(deploymentId)}/volumes`, {}, input); }
   listServices(): Promise<unknown> { return this.request("GET", "/services"); }
   createService(input: unknown): Promise<unknown> { return this.request("POST", "/services", {}, input); }
-  deleteService(serviceId: string): Promise<unknown> { return this.request("DELETE", `/services/${seg(serviceId)}`); }
+  deleteService(
+    serviceId: string,
+    confirmName: string,
+    options: { removeFromServer?: boolean } = {},
+  ): Promise<unknown> {
+    return this.request(
+      "DELETE",
+      `/services/${seg(serviceId)}`,
+      { removeFromServer: options.removeFromServer ? true : undefined },
+      { confirmName },
+    );
+  }
   setServiceExposure(serviceId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/services/${seg(serviceId)}/exposure`, {}, input); }
   setServicePortPublic(serviceId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/services/${seg(serviceId)}/port`, {}, input); }
   /** Change a service's port list or internal domain. Needs `projects:write`. */

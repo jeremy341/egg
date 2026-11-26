@@ -65,8 +65,11 @@ function summarize(row: ChangeRow, projectName: string): string {
   // only. A malformed or future meta value can never turn into a secret leak.
   if (row.action.startsWith("env.")) {
     const name = stringMeta(clean, "name");
-    const target = row.action === "env.set" ? stringMeta(clean, "target") : null;
-    const detail = name ? `: ${name}${target ? ` (${target})` : ""}` : "";
+    const target = row.action === "env.set" || row.action === "env.delete" ? stringMeta(clean, "target") : null;
+    const keys = stringMeta(clean, "keys");
+    const detail = name
+      ? `: ${name}${target ? ` (${target})` : ""}${keys ? ` (keys: ${keys})` : ""}`
+      : keys ? `: ${keys}` : "";
     return oneLine(`${label} ${projectName}${detail}`);
   }
 

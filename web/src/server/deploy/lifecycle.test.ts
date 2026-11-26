@@ -41,6 +41,7 @@ vi.mock("@/server/deploy/lifecycle", async (importOriginal) => {
 });
 
 import { GET, POST } from "@/app/api/deployments/[id]/lifecycle/route";
+import { audit } from "@/server/audit";
 import { deploymentVolumes, lifecycleScript, operateDeployment } from "@/server/deploy/lifecycle";
 import { serverDiscriminator } from "@/server/deploy/layout";
 
@@ -86,6 +87,7 @@ describe("deployment lifecycle access", () => {
 
   it("runs the requested action and returns project-scoped volume names", async () => {
     await expect(operateDeployment("owner", "dep", { action: "stop" })).resolves.toMatchObject({ action: "stop", deploymentId: "dep" });
+    expect(audit).toHaveBeenCalledWith("owner", "deployment.stop", "project", { deploymentId: "dep" });
     state.project = { ...state.project, deploymentMode: "compose" };
     state.session.script.mockResolvedValueOnce({ code: 0, stdout: `egg-demo-${serverDiscriminator("server")}_data\negg-other_${"data"}\n`, stderr: "" });
     const volumes = await deploymentVolumes("owner", "dep");

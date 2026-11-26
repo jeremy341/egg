@@ -1,7 +1,7 @@
 import { and, eq, inArray, ne } from "drizzle-orm";
 import { z } from "zod";
 import { assertAccountCanWrite } from "@/server/account-standing";
-import { audit } from "@/server/audit";
+import { audit, auditKeyNames } from "@/server/audit";
 import { newId, open, seal } from "@/server/crypto";
 import { getDb, schema, withLockRetry } from "@/server/db";
 import { HttpError, notFound } from "@/server/http";
@@ -197,7 +197,12 @@ export async function mergeSharedEnvironmentVariables(userId: string, setId: str
       });
     }
   }));
-  await audit(userId, "env.sets.variables.set", setId, { name: environment.name, count: entries.length });
+  const keys = auditKeyNames(entries.map(({ key }) => key));
+  await audit(userId, "env.sets.variables.set", setId, {
+    name: environment.name,
+    count: entries.length,
+    ...(keys ? { keys } : {}),
+  });
   return entries.map(({ key, target }) => ({ key, target }));
 }
 
@@ -236,7 +241,13 @@ export async function replaceSharedEnvironmentVariables(
     }
     return { name: environment.name, deleted: removed };
   }));
-  await audit(userId, "env.sets.variables.replace", setId, { name: result.name, count: entries.length, deleted: result.deleted.length });
+  const keys = auditKeyNames([...result.deleted.map(({ key }) => key), ...entries.map(({ key }) => key)]);
+  await audit(userId, "env.sets.variables.replace", setId, {
+    name: result.name,
+    count: entries.length,
+    deleted: result.deleted.length,
+    ...(keys ? { keys } : {}),
+  });
   return {
     env: entries.map(({ key, target }) => ({ key, target })),
     deleted: result.deleted,
@@ -272,6 +283,12 @@ export async function deleteSharedEnvironmentVariables(
     ));
     return { name: environment.name, deleted: rows.map(({ key, target }) => ({ key, target })) };
   }));
-  await audit(userId, "env.sets.variables.delete", setId, { name: result.name, count: result.deleted.length, target: input.target ?? "all" });
+  const keys = auditKeyNames(result.deleted.map(({ key }) => key));
+  await audit(userId, "env.sets.variables.delete", setId, {
+    name: result.name,
+    count: result.deleted.length,
+    target: input.target ?? "all",
+    ...(keys ? { keys } : {}),
+  });
   return result.deleted;
 }

@@ -156,6 +156,7 @@ export async function apiDeployBranch(
   const created = await deployBranch(p.userId, projectId, branch);
   // The deploy button does not audit; an API deploy always does, with the token that made it.
   await audit(p.userId, auditAction, projectId, {
+    deploymentId: created.id,
     branch: created.branch,
     env: created.env,
     via: "api",
