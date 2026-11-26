@@ -1,3 +1,5 @@
+import { classifyPlainDeployFailure } from "@/lib/plain-deploy-failure";
+
 /**
  * The timeline of one deployment, worked out from what the pipeline already records: the
  * deployment row (state and timestamps), the stage measurements it writes (performance.ts) and
@@ -30,6 +32,8 @@ export type TimelineDeployment = {
   /** Optional for older timeline callers. A null listen port identifies a worker snapshot. */
   listenPort?: number | null;
   workloadKind?: "web" | "worker";
+  /** Known memory ceiling, in MB, for plain failure explanations. */
+  memoryLimitMb?: number | null;
   error: string | null;
   createdAt: When;
   startedAt: When;
@@ -70,6 +74,10 @@ export type TimelineFailure = {
   note: string | null;
   /** What Egg recorded, unchanged. */
   recorded: string | null;
+  /** A plain diagnosis for common app failures, when the logs identify one. */
+  plainMessage: string | null;
+  /** The raw line that supports the plain diagnosis. */
+  plainLine: string | null;
 };
 
 export type Timeline = {
@@ -390,14 +398,28 @@ export function explainFailure(input: {
   port?: number;
   listenPort?: number | null;
   workloadKind?: "web" | "worker";
+  memoryLimitMb?: number | null;
   stage?: TimelineStageKey;
 }): TimelineFailure {
   const logs = toLogs(input.logs ?? []);
   const worker = input.workloadKind === "worker" || input.listenPort === null;
   const recorded = input.error?.trim() || null;
   const stage = input.stage ?? "preparing";
+  const plain = classifyPlainDeployFailure({
+    lines: [
+      ...(input.error ? input.error.split(/\r?\n/) : []),
+      ...(input.logs ?? []).map((log) => log.message),
+    ],
+    port: input.listenPort ?? input.port,
+    memoryLimitMb: input.memoryLimitMb,
+    stage,
+  });
+  const plainFields = {
+    plainMessage: plain?.plainMessage ?? null,
+    plainLine: plain?.plainLine ?? null,
+  };
   const neutral = "Egg could not finish this deployment. Read the last lines of the log below to see why, then deploy again.";
-  if (!recorded) return { stage, message: neutral, known: false, note: null, recorded: null };
+  if (!recorded) return { stage, message: neutral, known: false, note: null, recorded: null, ...plainFields };
 
   const { text, appRunning } = stripTail(recorded);
   const note = appRunning ? "Your app is still running the release it had before." : null;
@@ -410,7 +432,7 @@ export function explainFailure(input: {
       message: /^The older release/.test(text)
         ? "The older worker release did not stay active. Redeploy from your branch instead of rolling back."
         : "The worker did not stay active. Check its logs and start command, then deploy again.",
-      known: true, note: revertNote ?? note, recorded,
+      known: true, note: revertNote ?? note, recorded, ...plainFields,
     };
   }
 
@@ -423,12 +445,13 @@ export function explainFailure(input: {
       known: true,
       note: revertNote ?? note,
       recorded,
+      ...plainFields,
     };
   }
   if (AS_WRITTEN.some((re) => re.test(text))) {
-    return { stage, message: clip(text, 320), known: true, note: revertNote ?? note, recorded };
+    return { stage, message: clip(text, 320), known: true, note: revertNote ?? note, recorded, ...plainFields };
   }
-  return { stage, message: neutral, known: false, note: revertNote ?? note, recorded };
+  return { stage, message: neutral, known: false, note: revertNote ?? note, recorded, ...plainFields };
 }
 
 function revertOutcome(logs: LogView[]): "restored" | "failed" | "unknown" | null {
@@ -521,7 +544,7 @@ export function buildTimeline(dep: TimelineDeployment, metricsIn: TimelineMetric
   const buildLog = findLog(logs, MARK.buildStart);
   const waitHealthLog = findLog(logs, worker ? MARK.waitWorker : MARK.waitHealth);
   const revertLog = rollback ? undefined : findLog(logs, MARK.reverting);
-  const failureHint = failedState || canceled ? explainFailure({ error: dep.error, logs: logsIn, port: dep.port, listenPort: dep.listenPort, workloadKind: dep.workloadKind }) : null;
+  const failureHint = failedState || canceled ? explainFailure({ error: dep.error, logs: logsIn, port: dep.port, listenPort: dep.listenPort, workloadKind: dep.workloadKind, memoryLimitMb: dep.memoryLimitMb }) : null;
 
   let reached = 0;
   // A deployment that ended before it ever started (startedAt unset) failed while still queued.
@@ -637,7 +660,7 @@ export function buildTimeline(dep: TimelineDeployment, metricsIn: TimelineMetric
 
   // The failure, and the line for a polite live region.
   const failedKey = stages.find((s) => s.status === "failed")?.key ?? stages[Math.min(reached, stages.length - 1)].key;
-  const failure = failedState ? explainFailure({ error: dep.error, logs: logsIn, port: dep.port, listenPort: dep.listenPort, workloadKind: dep.workloadKind, stage: failedKey }) : null;
+  const failure = failedState ? explainFailure({ error: dep.error, logs: logsIn, port: dep.port, listenPort: dep.listenPort, workloadKind: dep.workloadKind, memoryLimitMb: dep.memoryLimitMb, stage: failedKey }) : null;
   const canceledWhy = canceled ? explainCancel(dep.error) : null;
   const currentIndex = stages.findIndex((s) => s.status === "current");
 

@@ -20,6 +20,15 @@ function portFromAddressInUseLine(line: string): number | null {
   return Number.isInteger(port) && port >= 1 && port <= 65535 ? port : null;
 }
 
+function memoryLimitFromLines(lines: string[]): number | null {
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const match = lines[i].match(/\b(?:capped at|memory (?:limit|cap|max(?:imum)?)(?:\s+of)?)\s*[:=]?\s*([\d,]+)\s*(?:MB|MiB)\b/i);
+    const limit = Number(match?.[1]?.replace(/,/g, ""));
+    if (Number.isInteger(limit) && limit > 0) return limit;
+  }
+  return null;
+}
+
 export function classifyPlainDeployFailure(input: {
   lines: string[];
   port?: number | null;
@@ -42,11 +51,14 @@ export function classifyPlainDeployFailure(input: {
     /\b(?:oom[- ]?kill|killed by (?:the )?oom killer|out of memory|(?:exit(?:ed)?|code|status)\s*(?:code|status)?\s*[=:]?\s*(?:137|9))\b/i,
   );
   if (oomLine) {
-    const configuredLimit = Number.isFinite(input.memoryLimitMb) && (input.memoryLimitMb ?? 0) > 0
-      ? `${input.memoryLimitMb} MB`
-      : "the configured limit";
+    const providedLimit = typeof input.memoryLimitMb === "number" && Number.isInteger(input.memoryLimitMb) && input.memoryLimitMb > 0
+      ? input.memoryLimitMb
+      : null;
+    const configuredLimit = providedLimit ?? (input.stage === "building" ? memoryLimitFromLines(input.lines) : null);
     return {
-      plainMessage: `The app ran out of memory. Its configured limit is ${configuredLimit}.`,
+      plainMessage: configuredLimit === null
+        ? "Memory ran out. The configured limit is not recorded in these deploy details."
+        : `Memory ran out. The configured limit is ${configuredLimit} MB.`,
       plainLine: oomLine,
     };
   }
@@ -67,7 +79,7 @@ export function classifyPlainDeployFailure(input: {
 
   const emptyStartLine = latestLine(
     input.lines,
-    /empty start command|start command.{0,30}\b(?:empty|not set|missing|blank)\b|nothing to run|no start command/i,
+    /empty start command|start command.{0,30}\b(?:empty|not set|missing|blank)\b|nothing to run|no start command|set a start command/i,
   );
   if (emptyStartLine) {
     return { plainMessage: "The start command is empty.", plainLine: emptyStartLine };
