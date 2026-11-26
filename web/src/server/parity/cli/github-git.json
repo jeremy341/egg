@@ -6,7 +6,7 @@
     "egg": null,
     "endpoint": "get_github_status",
     "orchardTool": "get_github_status",
-    "reason": "Egg has the read endpoint, but its CLI does not yet expose GitHub connection status.",
+    "reason": "needs SDK method getGithubStatus() without a project ID; the available method requires one.",
     "spec": {
       "summary": "Report whether GitHub is connected and which app installations are available.",
       "args": [],
@@ -94,7 +94,7 @@
     "egg": null,
     "endpoint": "get_github_status",
     "orchardTool": "list_github_deploy_targets",
-    "reason": "Egg returns installation details through get_github_status, but its CLI has no installation-list command.",
+    "reason": "needs SDK method getGithubStatus() without a project ID; the available method requires one.",
     "spec": {
       "summary": "List GitHub App installations visible to the linked account.",
       "args": [],
@@ -106,11 +106,11 @@
   {
     "orchard": "github repos",
     "source": "github.go",
-    "status": "missing",
-    "egg": null,
+    "status": "partial",
+    "egg": "github repos",
     "endpoint": "list_github_repos",
     "orchardTool": "list_github_repos",
-    "reason": "Egg has the repository-list endpoint, but its CLI does not yet expose it.",
+    "reason": "Egg's listGithubRepos method has no pagination input for the --all behavior.",
     "spec": {
       "summary": "List repositories available as deployment sources.",
       "args": [],
@@ -133,7 +133,7 @@
     "egg": null,
     "endpoint": "get_repo_branches",
     "orchardTool": "get_repo_branches",
-    "reason": "Egg has the branch-list endpoint, but its CLI does not yet expose it.",
+    "reason": "needs SDK method getRepoBranches(ownerRepo); the available method cannot select a repository.",
     "spec": {
       "summary": "List the branches of a GitHub repository.",
       "args": ["owner/repo"],
@@ -149,7 +149,7 @@
     "egg": null,
     "endpoint": "get_repo_dockerfiles",
     "orchardTool": "get_repo_dockerfiles",
-    "reason": "Egg has the repository file-search endpoint, but its CLI does not yet expose it.",
+    "reason": "needs SDK method getRepoDockerfiles(ownerRepo, branch); the available method cannot select either.",
     "spec": {
       "summary": "Find Dockerfiles in a GitHub repository.",
       "args": ["owner/repo"],
@@ -168,11 +168,10 @@
   {
     "orchard": "github dockerfile-info",
     "source": "github.go",
-    "status": "missing",
-    "egg": null,
+    "status": "present",
+    "egg": "github dockerfile-info",
     "endpoint": "get_repo_contents",
     "orchardTool": null,
-    "reason": "Egg can read the Dockerfile through get_repo_contents, but its CLI has no command that summarizes Dockerfile build metadata.",
     "spec": {
       "summary": "Inspect a repository Dockerfile and report build metadata.",
       "args": ["owner/repo", "dockerfile-path"],
@@ -191,11 +190,11 @@
   {
     "orchard": "github contents",
     "source": "github.go",
-    "status": "missing",
-    "egg": null,
+    "status": "partial",
+    "egg": "github contents",
     "endpoint": "get_repo_contents",
     "orchardTool": "get_repo_contents",
-    "reason": "Egg has the repository contents endpoint, but its CLI does not yet expose it.",
+    "reason": "The CLI parser requires every positional argument, so it cannot make the second path positional optional.",
     "spec": {
       "summary": "List files and directories at a repository path.",
       "args": ["owner/repo", "path (optional)"],

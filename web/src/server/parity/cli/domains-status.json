@@ -6,7 +6,7 @@
     "egg": "domains list",
     "endpoint": "list_domains",
     "orchardTool": "list_ingresses",
-    "reason": "Egg lists owned domain records and their status, but it does not list Orchard host and path routes.",
+    "reason": "Egg lists owned domain records and their status, but it does not list host and path routes or filter routes by deployment.",
     "spec": {
       "summary": "List public routes, including their host, path, deployment, TLS state, and protection mode.",
       "args": [],
@@ -20,11 +20,11 @@
   {
     "orchard": "domain get",
     "source": "domain.go",
-    "status": "missing",
-    "egg": null,
+    "status": "partial",
+    "egg": "domains get",
     "endpoint": "get_ingress",
     "orchardTool": "get_ingress",
-    "reason": "Egg has an endpoint for domain details but no CLI command, and its details do not include configured host and path routes.",
+    "reason": "Egg's endpoint returns domain details but does not include the configured host and path route fields.",
     "spec": {
       "summary": "Show one route's host, destination, TLS state, protection, address, deployment, and project.",
       "args": ["domain-id"],
@@ -58,11 +58,11 @@
   {
     "orchard": "domain update",
     "source": "domain.go",
-    "status": "missing",
-    "egg": null,
+    "status": "partial",
+    "egg": "domains update",
     "endpoint": "update_ingress",
     "orchardTool": "update_ingress",
-    "reason": "Egg has an endpoint and no CLI command; the endpoint changes domain ownership or port but does not edit route hosts, paths, or TLS.",
+    "reason": "Egg's endpoint can change domain ownership or port, but cannot edit route hosts, paths, TLS, or redirects.",
     "spec": {
       "summary": "Change a route's host, path, destination port, TLS, or redirect settings.",
       "args": ["domain-id"],
@@ -82,10 +82,10 @@
     "orchard": "domain delete",
     "source": "domain.go",
     "status": "partial",
-    "egg": "domains remove",
+    "egg": "domains delete",
     "endpoint": "remove_domain",
     "orchardTool": "delete_ingress",
-    "reason": "Egg removes its domain record but leaves Nest's host and path route in place; deletion also needs confirmation with the exact domain name.",
+    "reason": "Egg removes its domain record but leaves Nest's host and path route in place; the CLI requires confirmation with the exact domain name.",
     "spec": {
       "summary": "Remove a route and stop traffic to its host and path.",
       "args": ["domain-id"],
@@ -99,11 +99,11 @@
   {
     "orchard": "domain protection get",
     "source": "domain.go",
-    "status": "missing",
-    "egg": null,
+    "status": "present",
+    "egg": "domains protection get",
     "endpoint": "get_ingress_protection",
     "orchardTool": "get_ingress_protection",
-    "reason": "Egg exposes domain protection through the API but has no CLI command to read its mode and path exclusions.",
+    "reason": null,
     "spec": {
       "summary": "Read the protection mode and excluded paths applied to the project served by a domain.",
       "args": ["domain-id"],
@@ -115,11 +115,11 @@
   {
     "orchard": "domain protection set",
     "source": "domain.go",
-    "status": "missing",
-    "egg": null,
+    "status": "present",
+    "egg": "domains protection set",
     "endpoint": "set_ingress_protection",
     "orchardTool": "set_ingress_protection",
-    "reason": "Egg exposes protection changes through the API but has no CLI command for the domain's access settings.",
+    "reason": null,
     "spec": {
       "summary": "Set the domain's access mode and optional password.",
       "args": ["domain-id"],
@@ -154,7 +154,7 @@
     "egg": null,
     "endpoint": null,
     "orchardTool": null,
-    "reason": "Egg has no CLI command or organization-level endpoint for listing status pages.",
+    "reason": "needs SDK method listStatusPages",
     "spec": {
       "summary": "List an organization's status pages with their public address and visibility.",
       "args": [],
@@ -166,11 +166,11 @@
   {
     "orchard": "status-page show",
     "source": "statuspage.go",
-    "status": "missing",
-    "egg": null,
+    "status": "partial",
+    "egg": "status-page show",
     "endpoint": "get_status_page",
     "orchardTool": null,
-    "reason": "Egg's endpoint reports whether a project's page is published and its URL, but the CLI and public page details are missing.",
+    "reason": "Egg's endpoint reports publication and URL for a project page, requiring a project slug or id; it cannot resolve a public page by slug or host or return its condition and components.",
     "spec": {
       "summary": "Read a public page's overall condition and component health by slug or host.",
       "args": ["slug?"],
@@ -188,7 +188,7 @@
     "egg": null,
     "endpoint": null,
     "orchardTool": null,
-    "reason": "Egg has no organization-level endpoint for listing the apps and databases that can appear on a status page.",
+    "reason": "needs SDK method listStatusPageOptions",
     "spec": {
       "summary": "List eligible apps and databases for status-page components.",
       "args": [],
@@ -204,7 +204,7 @@
     "egg": null,
     "endpoint": null,
     "orchardTool": null,
-    "reason": "Egg has no endpoint for creating organization status pages with selected components.",
+    "reason": "needs SDK method createStatusPage",
     "spec": {
       "summary": "Create an organization status page with its title, address, visibility, and ordered components.",
       "args": [],
@@ -227,7 +227,7 @@
     "egg": null,
     "endpoint": null,
     "orchardTool": null,
-    "reason": "Egg has no endpoint to update an organization status page's identity, address, visibility, or components.",
+    "reason": "needs SDK method updateStatusPage",
     "spec": {
       "summary": "Change a page's title, slug, description, host, visibility, or component list.",
       "args": ["page-id"],
@@ -252,7 +252,7 @@
     "egg": null,
     "endpoint": null,
     "orchardTool": null,
-    "reason": "Egg has no endpoint for deleting an organization status page and its host.",
+    "reason": "needs SDK method deleteStatusPage",
     "spec": {
       "summary": "Delete a status page and remove its configured host.",
       "args": ["page-id"],
