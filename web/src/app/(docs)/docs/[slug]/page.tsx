@@ -2,6 +2,8 @@ import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { LoadingRegion, Skeleton, SkeletonText } from "@/components/ui/skeleton";
 import { CONTENT } from "../_content";
+import { CopyMarkdownButton } from "../_components/copy-markdown";
+import { CopyPromptButton } from "../_components/copy-prompt";
 import { OnThisPage } from "../_components/on-this-page";
 import { PrevNext } from "../_components/prev-next";
 import { ARTICLE } from "../_components/prose";
@@ -54,6 +56,10 @@ async function DocsPageContent({ params }: Props) {
     <div data-docs-page={slug} className="min-[1280px]:grid min-[1280px]:grid-cols-[minmax(0,680px)_minmax(0,1fr)_216px] min-[1536px]:grid-cols-[minmax(0,780px)_minmax(0,1fr)_216px] min-[1280px]:gap-12">
       {/* The article and the rail sit on the page with space between them; the rail has no box. */}
       <article id="docs-article" data-docs-body tabIndex={-1} className={cn(ARTICLE, "scroll-mt-32 outline-none")}>
+        <div className="mb-6 flex flex-wrap items-center justify-end gap-2">
+          <CopyPromptButton slug={slug} />
+          <CopyMarkdownButton slug={slug} />
+        </div>
         {content()}
         <PrevNext sectionId={slug} />
       </article>
