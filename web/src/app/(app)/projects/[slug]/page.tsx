@@ -12,6 +12,8 @@ import { CommitLink } from "@/components/commit-link";
 import { DeployButton } from "@/components/deploy-button";
 import { RollbackButton } from "@/components/rollback-button";
 import { ProjectResources } from "@/components/project-resources";
+import { ActivityHeatmap } from "@/components/activity-heatmap";
+import { RightSizeCard } from "@/components/right-size-card";
 import { PageHeader } from "@/components/page-header";
 import { ServiceCard } from "@/components/service-status";
 import { ProjectOverviewSkeleton } from "@/components/skeletons/project-overview";
@@ -21,9 +23,12 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PixelAvatar } from "@/components/ui/pixel-avatar";
+import { buildHeatmap } from "@/lib/heatmap";
 import type { UiState } from "@/lib/status";
 import { requireUser } from "@/server/auth/current";
-import { deploymentViews, projectMetrics, projectViews, serverViews } from "@/server/queries";
+import { currentProblems } from "@/server/current-problems";
+import { projectDailyActivity } from "@/server/heatmap";
+import { deploymentViews, projectMetrics, projectRightSize, projectViews, serverViews } from "@/server/queries";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -73,10 +78,13 @@ async function ProjectContent({ params }: Props) {
   const project = (await projectViews(user.id)).find((p) => p.slug === slug);
   if (!project) notFound();
 
-  const [history, servers, metrics] = await Promise.all([
+  const [history, servers, metrics, activity, rightSize, problems] = await Promise.all([
     deploymentViews(user.id, { projectId: project.id }),
     serverViews(user.id),
     projectMetrics(user.id, project.id),
+    projectDailyActivity(project.id),
+    projectRightSize(user.id, project.id),
+    currentProblems(user.id, project.id),
   ]);
   const server = servers.find((s) => s.id === project.serverId);
 
@@ -160,6 +168,26 @@ async function ProjectContent({ params }: Props) {
           </>
         }
       />
+      {problems.length > 0 ? (
+        <section
+          aria-labelledby="problems-heading"
+          className="overflow-hidden rounded-lg bg-card shadow-border-small"
+        >
+          <div className="border-b px-4 py-3">
+            <h2 id="problems-heading" className="text-title-3">
+              Current problems
+            </h2>
+          </div>
+          <ul className="divide-y">
+            {problems.map((p) => (
+              <li key={p.kind} className="px-4 py-3 text-[13px]">
+                <p className="font-medium">{p.title}</p>
+                <p className="text-muted-foreground">{p.detail}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {latest?.state === "error" ? (
         <Alert tone="error" role="status">
@@ -295,6 +323,8 @@ async function ProjectContent({ params }: Props) {
 
       {live ? <ServiceCard projectId={project.id} workloadKind={project.workloadKind} /> : null}
       {live ? <ProjectResources points={metrics} /> : null}
+      {live ? <RightSizeCard suggestion={rightSize} /> : null}
+      {live ? <RightSizeCard suggestion={rightSize} /> : null}
 
       <div className="grid gap-4 md:grid-cols-2">
         <section aria-labelledby="domains-heading" className="h-full rounded-lg bg-card p-4 shadow-border-small">
@@ -359,6 +389,16 @@ async function ProjectContent({ params }: Props) {
             <p className="text-muted-foreground">Not checked yet.</p>
           )}
         </section>
+      </div>
+
+      <div className="rounded-lg bg-card p-4 shadow-border-small">
+        <ActivityHeatmap
+          id="project-activity"
+          title="Activity"
+          scope="project"
+          heatmap={buildHeatmap(activity, Date.now())}
+          caption="Deployments and opened pull requests per UTC day, over the last 365 days. Pull requests are counted from the day this feature started recording them."
+        />
       </div>
 
       <section aria-labelledby="branches-heading">

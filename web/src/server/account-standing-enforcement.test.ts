@@ -14,6 +14,7 @@ import { endpoint } from "@/server/api-v1-kit";
 import { createProject, enqueueDeployment, setEnvVar, updateProject, type NewDeployment } from "@/server/projects";
 import type { ProjectRow } from "@/server/projects";
 import { POST as reportPost } from "@/app/api/security-reports/route";
+import { createServer } from "@/server/servers";
 
 vi.mock("@/server/auth/current", () => ({ getCurrentUser: vi.fn(), requireUser: vi.fn() }));
 
@@ -21,6 +22,8 @@ let ctx: Awaited<ReturnType<typeof useFreshDb>>;
 let person: Awaited<ReturnType<typeof upsertUser>>;
 let graced: Awaited<ReturnType<typeof upsertUser>>;
 let blocked: Awaited<ReturnType<typeof upsertUser>>;
+let owner: Awaited<ReturnType<typeof upsertUser>>;
+let ownedProject: string;
 
 const SUSPENDED_AT = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000);
 const PAST_END = new Date(SUSPENDED_AT.getTime() + GRACE_PERIOD_MS);
@@ -38,8 +41,20 @@ beforeAll(async () => {
   person = await upsertUser({ id: "enforce-person", name: "Person", email: null, slackId: null });
   graced = await upsertUser({ id: "enforce-graced", name: "Graced", email: null, slackId: null });
   blocked = await upsertUser({ id: "enforce-blocked", name: "Blocked", email: null, slackId: null });
+  // A real project owned by an account that is then blocked, so settings writes reach the guard.
+  owner = await upsertUser({ id: "enforce-owner", name: "Owner", email: null, slackId: null });
+  const serverId = (await createServer(owner.id, "enforce-owner-server")).id;
+  ownedProject = (await createProject(owner.id, {
+    repoUrl: "https://github.com/example/demo",
+    runtime: "node",
+    startCommand: "node server.js",
+    serverId,
+    name: "Owned Demo",
+    port: 3400,
+  })).id;
   await suspend(ctx.db, graced.id, FUTURE_END);
   await suspend(ctx.db, blocked.id, PAST_END);
+  await suspend(ctx.db, owner.id, PAST_END);
   process.env.SECURITY_REPORT_ADMIN_ID = person.id;
 });
 afterAll(async () => {
@@ -58,8 +73,8 @@ describe("suspended accounts: service-level writes", () => {
   });
 
   it("project settings and environment variables are refused after the grace period", async () => {
-    await expect(updateProject(blocked.id, "missing-project", { name: "x" })).rejects.toMatchObject(refusedAsSuspended);
-    await expect(setEnvVar(blocked.id, "missing-project", { key: "A", value: "b" })).rejects.toMatchObject(refusedAsSuspended);
+    await expect(updateProject(owner.id, ownedProject, { name: "x" })).rejects.toMatchObject(refusedAsSuspended);
+    await expect(setEnvVar(owner.id, ownedProject, { key: "A", value: "b", target: "all" })).rejects.toMatchObject(refusedAsSuspended);
   });
 
   it("a deployment (including a webhook-triggered one) is refused after the grace period", async () => {

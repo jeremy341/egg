@@ -91,8 +91,9 @@ describe("security page layout", () => {
     const report = /<section id="report"[\s\S]*?<\/section>/.exec(html)![0];
     expect(report).toContain('href="/security/reports"');
     expect(report).toContain("/security/advisories/new");
-    // The form asks the server whether the inbox is on before it shows itself.
-    expect(text(report)).toContain("Checking the private inbox");
+    // Reporting happens in the app, behind sign-in; the public page links to it.
+    expect(report).toContain('href="/security/report"');
+    expect(text(report)).toContain("sign in with Hack Club");
   });
 
   it("uses the pixel face on every heading and no app theme class", () => {

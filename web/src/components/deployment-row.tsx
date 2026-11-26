@@ -50,7 +50,7 @@ export function DeploymentRow({
   demo?: boolean;
   /**
    * A row of the public homepage feed (implies the demo layout). The whole row opens the commit on
-   * GitHub in a new tab, and no author is shown because the feed does not carry one.
+   * GitHub in a new tab. The owner's public name is shown as text in place of the avatar.
    */
   live?: boolean;
   selected?: boolean;
@@ -163,7 +163,9 @@ export function DeploymentRow({
         </div>
         <p className="flex shrink-0 items-center justify-end gap-2 text-muted-foreground max-[1399px]:min-w-0 max-[1399px]:justify-self-end max-sm:col-start-3">
           <span className="tabular whitespace-nowrap">{deployment.age}</span>
-          {live ? null : (
+          {live ? (
+            deployment.author ? <span className="max-w-[16ch] truncate text-label">{deployment.author}</span> : null
+          ) : (
             <Avatar size="sm" className="max-sm:hidden">
               <AvatarFallback className="text-[10px] uppercase">
                 {(deployment.author ?? "?").slice(0, 2)}

@@ -34,7 +34,7 @@ export function feedRowsToViews(rows: readonly FeedRow[], now = Date.now()): Dep
     sha: r.sha,
     commit: r.message,
     pr: null,
-    author: null,
+    author: r.by,
     age: timeAgo(r.at, now),
     duration: "",
     durationMs: null,

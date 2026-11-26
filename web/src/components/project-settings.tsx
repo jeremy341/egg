@@ -7,6 +7,7 @@ import { api } from "@/components/api";
 import { Swap } from "@/components/motion/swap";
 import { GithubBuildCard } from "@/components/github-build-card";
 import { HomepageFeedCard } from "@/components/homepage-feed-card";
+import { StatisticsCard } from "@/components/statistics-card";
 import { AlertsCard, DeployHookCard, NotificationsCard, StatusPageCard } from "@/components/project-automation";
 import { ScheduledJobsCard } from "@/components/scheduled-jobs-card";
 import { PageHeader } from "@/components/page-header";
@@ -24,6 +25,7 @@ import { PixelAvatar } from "@/components/ui/pixel-avatar";
 import type { ProjectView } from "@/server/queries";
 import { cn } from "@/lib/utils";
 import { CleanupCard } from "@/components/cleanup-card";
+import { AlertRulesCard } from "@/components/alert-rules-card";
 import { HostingOptions, StartCommandHelp, runtimeHint, type TargetCapabilities } from "@/components/hosting-options";
 import { ContainerDeploymentFields, containerConfigurationError, containerDeploymentBody, defaultContainerForm } from "@/components/container-deployment-fields";
 
@@ -198,6 +200,19 @@ export function ProjectSettings({
   const [removeRemote, setRemoteRemoval] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [protectedNow, setProtectedNow] = useState(project.deletionProtected);
+  const [protectionError, setProtectionError] = useState<string | null>(null);
+
+  async function setProtection(on: boolean) {
+    setProtectionError(null);
+    try {
+      await api(`/api/projects/${project.id}`, { method: "PATCH", body: { deletionProtected: on } });
+      setProtectedNow(on);
+      router.refresh();
+    } catch (err) {
+      setProtectionError(err instanceof Error ? err.message : "Could not change deletion protection");
+    }
+  }
 
   async function destroy() {
     setDeleting(true);
@@ -457,9 +472,12 @@ export function ProjectSettings({
 
             <NotificationsCard project={project} />
 
+            <StatisticsCard projectId={project.id} />
+
             <Advanced open={autoOpen} onOpenChange={setAutoOpen}>
               <div className="space-y-6">
                 <AlertsCard project={project} />
+                <AlertRulesCard project={project} />
                 <StatusPageCard project={project} />
                 <HomepageFeedCard project={project} />
               </div>
@@ -468,6 +486,27 @@ export function ProjectSettings({
 
           <Section id="section-danger" title="Danger zone">
           <CleanupCard name={project.slug} projectId={project.id} />
+
+          <Card
+            id="protection-heading"
+            title="Deletion protection"
+            description="While this is on, the app cannot be deleted. Turn it off here first."
+          >
+            <label className="touch-target inline-flex min-h-10 items-center gap-2 sm:min-h-8">
+              <input
+                type="checkbox"
+                checked={protectedNow}
+                onChange={(e) => void setProtection(e.target.checked)}
+              />
+              Protect this app from deletion
+            </label>
+            {protectionError ? (
+              <p role="alert" className="mt-2 text-label text-foreground">{protectionError}</p>
+            ) : null}
+            <p className="mt-3 text-label text-muted-foreground">
+              Deleted apps are kept for 30 days. <a href="/projects/trash" className="link">See Recently deleted</a>.
+            </p>
+          </Card>
 
           <Card
             id="danger-heading"
@@ -505,7 +544,7 @@ export function ProjectSettings({
               <div>
                 <p className="font-medium">Deleted</p>
                 <ul className="mt-1 list-disc space-y-0.5 pl-4 text-muted-foreground">
-                  <li>The project in Egg, with its deployment history, logs and environment variables</li>
+                  <li>The project in Egg moves to Recently deleted and is removed for good after 30 days. Deployment history and environment variables can be restored; logs and analytics cannot</li>
                   {removeRemote ? (
                     <li>On your container: the service, its scheduled jobs, previews and all releases</li>
                   ) : null}
