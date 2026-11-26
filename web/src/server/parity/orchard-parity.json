@@ -29,9 +29,8 @@
     {
       "name": "cancel_build",
       "source": "apps/server/src/mcp/tools/deployments.ts",
-      "status": "partial",
-      "ours": "cancel_deployment",
-      "reason": "Egg cancellation targets a deployment record; it does not expose a separate build object or build-specific cancellation state."
+      "status": "present",
+      "ours": "cancel_deployment"
     },
     {
       "name": "cancel_database_operation",
