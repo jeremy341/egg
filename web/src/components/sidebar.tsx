@@ -6,7 +6,6 @@ import { usePathname } from "next/navigation";
 import {
   ArrowUpRightIcon,
   BookOpenIcon,
-  ShieldWarningIcon,
   MagnifyingGlassIcon,
 } from "@phosphor-icons/react";
 import { useFind } from "@/components/find-palette";
@@ -16,11 +15,12 @@ import {
   NavList,
   NavListSkeleton,
   navItemClass,
-  navItemCurrent,
   navItemIdle,
 } from "@/components/nav-list";
 import { ServerSwitcher } from "@/components/server-switcher";
 import { UserMenu } from "@/components/user-menu";
+import { DocsSidebarNav } from "@/app/(app)/docs/_components/docs-sidebar";
+import { DOCS_ITEM } from "@/lib/nav";
 import { cn } from "@/lib/utils";
 
 export function FindButton({ className }: { className?: string }) {
@@ -44,10 +44,11 @@ export function FindButton({ className }: { className?: string }) {
   );
 }
 
-/** Desktop sidebar: 256px, fixed to the viewport, sits left of the page. */
+/** Desktop sidebar: 256px, fixed to the viewport, sits left of the page. Shows the docs pages on docs routes. */
 export function Sidebar() {
-  const pathname = usePathname();
-  const onReport = pathname.startsWith("/security/report");
+  // On a docs route the project and team links give way to the docs pages, from 1280px.
+  // Below that the docs section bar holds the list, so the usual links stay.
+  const onDocs = DOCS_ITEM.active(usePathname());
   return (
     <aside
       aria-label="Sidebar"
@@ -72,9 +73,16 @@ export function Sidebar() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-2 pt-3">
-        <Suspense fallback={<NavListSkeleton />}>
-          <NavList />
-        </Suspense>
+        {onDocs ? (
+          <div className="hidden min-[1280px]:block">
+            <DocsSidebarNav />
+          </div>
+        ) : null}
+        <div className={onDocs ? "min-[1280px]:hidden" : undefined}>
+          <Suspense fallback={<NavListSkeleton />}>
+            <NavList />
+          </Suspense>
+        </div>
       </div>
 
       <div className="flex flex-col gap-0.5 border-t p-2">
@@ -93,14 +101,6 @@ export function Sidebar() {
           />
           <span className="sr-only">(opens in a new tab)</span>
         </a>
-        <Link
-          href="/security/report"
-          aria-current={onReport ? "page" : undefined}
-          className={cn(navItemClass, onReport ? navItemCurrent : navItemIdle)}
-        >
-          <ShieldWarningIcon aria-hidden="true" className="size-4 shrink-0" />
-          Report a vulnerability
-        </Link>
         <UserMenu />
       </div>
     </aside>

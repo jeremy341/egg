@@ -24,12 +24,12 @@ export type KindFilter = "all" | Exclude<ActivityKind, "other">;
 
 /** Action name prefixes per kind. An action that matches none is "other" and only shows under All. */
 export const KIND_PREFIXES: Record<Exclude<ActivityKind, "other">, readonly string[]> = {
-  projects: ["project.", "env.", "analytics.", "statistics.", "status.", "job.", "adoption.", "homepage_feed."],
+  projects: ["project.", "env.", "analytics.", "status.", "job.", "adoption.", "homepage_feed."],
   deployments: ["deploy.", "hook.", "build_token.", "build_credentials."],
   domains: ["domain."],
   servers: ["server.", "container."],
-  access: ["token.", "account.", "auth.", "webhook.", "admin.", "security_report.", "provider.", "key.", "registry.", "org."],
-  monitoring: ["monitor.", "alert_rule."],
+  access: ["token.", "account.", "auth.", "webhook.", "admin.", "security_report.", "provider."],
+  monitoring: ["monitor."],
   terminal: ["terminal.", "file."],
 };
 
@@ -414,12 +414,9 @@ const ACTION_FIELD_LABELS: Record<string, Record<string, string>> = {
   "env.delete": { name: "Variable" },
   "project.create": { name: "Project name" },
   "project.delete": { name: "Project name" },
-  "project.restore": { name: "Project name" },
   "token.create": { name: "Token name" },
   "token.update": { name: "New name", scopes: "New scopes" },
   "account.sessions_revoke_all": { count: "Browsers signed out" },
-  "key.create": { repo: "Repository" },
-  "key.rotate": { removedRemote: "Removed from GitHub" },
 };
 
 function fieldValue(key: string, value: Scalar): string {
@@ -508,10 +505,6 @@ export function fallbackTargetName(action: string, m: Record<string, Scalar>): s
   if (action.startsWith("domain.")) return s("domain");
   if (action === "project.create" || action === "project.delete" || action === "token.create") return s("name");
   if (action === "server.rotate_key") return s("server");
-  // Key rows vanish with their project; the record still names the key or the project it lived under.
-  if (action === "key.create") return s("project") ?? s("name");
-  if (action === "key.rotate") return s("project");
-  if (action === "key.revoke") return s("name");
   return null;
 }
 
@@ -520,8 +513,6 @@ const TARGET_FROM_META: Record<string, string> = {
   "project.delete": "name",
   "project.create": "name",
   "token.create": "name",
-  "key.create": "name",
-  "key.revoke": "name",
 };
 
 /**

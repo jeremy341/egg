@@ -1,5 +1,5 @@
 import { authed, handle, ok } from "@/server/http";
-import { getProjectAtLevel } from "@/server/projects";
+import { getProjectForUser } from "@/server/projects";
 import { detectRoot } from "@/server/root-detect";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -8,7 +8,7 @@ type Ctx = { params: Promise<{ id: string }> };
 export const GET = handle<Ctx>(async (req, { params }) => {
   const user = await authed();
   const { id } = await params;
-  const project = await getProjectAtLevel(user.id, id, "view");
+  const project = await getProjectForUser(user.id, id);
   const root = req.nextUrl.searchParams.get("root") ?? project.rootDir;
   return ok({ detection: await detectRoot(project, root) });
 });

@@ -1,6 +1,6 @@
 import { decodeCursor, parseEnv, parseRange, parseStatus } from "@/server/deployment-page";
 import { authed, handle, HttpError, ok } from "@/server/http";
-import { getProjectAtLevel } from "@/server/projects";
+import { getReadableProject } from "@/server/projects";
 import { deploymentPage } from "@/server/queries";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -13,7 +13,7 @@ type Ctx = { params: Promise<{ id: string }> };
 export const GET = handle<Ctx>(async (req, { params }) => {
   const user = await authed();
   const { id } = await params;
-  await getProjectAtLevel(user.id, id, "view");
+  await getReadableProject(user.id, id);
   const q = req.nextUrl.searchParams;
   const cursor = q.get("cursor");
   if (cursor && !decodeCursor(cursor)) throw new HttpError(400, "That cursor is not valid.", "bad_cursor");

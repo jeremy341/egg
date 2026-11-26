@@ -19,7 +19,6 @@ const EVENT_LABEL: Record<string, string> = {
   "deployment.started": "started",
   "deployment.succeeded": "succeeded",
   "deployment.failed": "failed",
-  "deploy.regressed": "regressed",
   "webhook.test": "test",
 };
 

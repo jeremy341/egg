@@ -36,8 +36,7 @@ export async function readObjectBody(req: Request): Promise<Record<string, unkno
 export function webhookRoute(
   scope: Scope,
   bucket: Bucket,
-  fn: (principal: Principal, req: NextRequest, webhookId: string | undefined) => Promise<{ data: unknown; status?: number }>,
-  sensitive = false
+  fn: (principal: Principal, req: NextRequest, webhookId: string | undefined) => Promise<{ data: unknown; status?: number }>
 ) {
   return handle<Ctx>(
     async (req, ctx) => {
@@ -52,7 +51,7 @@ export function webhookRoute(
       const run = async (): Promise<Response> => {
         try {
           const { data, status } = await fn(principal, req, webhookId);
-          // Secret-bearing callbacks must pass sensitive=true; only the no-replay marker is kept.
+          // Secrets can appear in these responses: never cache them.
           return jsonResponse(data, status ?? 200);
         } catch (err) {
           if (idemKey !== null && err instanceof HttpError) return httpErrorResponse(err);
@@ -67,7 +66,6 @@ export function webhookRoute(
         scope: principal.tokenId,
         key: idemKey,
         fingerprint: fingerprintOf(req.method, req.nextUrl.pathname + req.nextUrl.search, text),
-        sensitive,
         run,
       });
     },

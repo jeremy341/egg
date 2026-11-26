@@ -198,37 +198,6 @@ export async function notifyDeploymentFinished(deploymentId: string, fetcher: Fe
 }
 
 /**
- * Tell the project's channel that a deploy made the app slower or less reliable.
- * The history row is written either way, like the other alerts. Never throws.
- */
-export async function notifyDeployRegressed(deploymentId: string, reasons: string[], fetcher: Fetcher = fetch) {
-  try {
-    const db = await getDb();
-    const dep = await db.select().from(schema.deployments).where(eq(schema.deployments.id, deploymentId)).get();
-    if (!dep) return;
-    const project = await db.select().from(schema.projects).where(eq(schema.projects.id, dep.projectId)).get();
-    if (!project) return;
-    const now = new Date();
-    const muted = isMuted(project, now);
-    const title = `${project.name} is slower or less reliable since a deploy`;
-    const detail = reasons.join(" ").slice(0, 300);
-    await db.insert(schema.alertEvents).values({
-      id: newId(),
-      projectId: project.id,
-      type: "deploy",
-      message: `${title}. ${detail}`.slice(0, 400),
-      firedAt: now,
-      muted,
-    });
-    if (muted || !project.alertOnDeploy || !project.notifyUrlEnc) return;
-    const { url, kind } = parseNotifyUrl(open(project.notifyUrlEnc, context(project.id)));
-    await post(url, kind, { title, detail, link: appLink(`/projects/${project.slug}/deployments/${dep.id}`) }, fetcher);
-  } catch (err) {
-    console.warn("regression notification failed", err instanceof Error ? err.message : err);
-  }
-}
-
-/**
  * Tell the project's webhook that the live app stopped answering, or came back.
  * Never throws: a broken webhook must not stop the monitor.
  */

@@ -61,10 +61,10 @@ describe("toolset membership", () => {
     for (const set of Object.values(TOOLSET_OF)) expect(TOOLSETS).toContain(set);
   });
 
-  it("marks one-time deploy-hook and webhook secrets as sensitive", () => {
-    expect([...SENSITIVE_TOOLS]).toEqual(["rotate_deploy_hook", "create_notification_channel"]);
+  it("marks only the deploy-hook rotation as returning a secret", () => {
+    expect([...SENSITIVE_TOOLS]).toEqual(["rotate_deploy_hook"]);
     const sensitive = TOOLS.filter((t) => t._meta?.["egg/sensitive"] === true).map((t) => t.name);
-    expect(sensitive).toEqual(["rotate_deploy_hook", "create_notification_channel"]);
+    expect(sensitive).toEqual(["rotate_deploy_hook"]);
   });
 });
 
@@ -107,17 +107,6 @@ describe("toolset filtering over HTTP", () => {
   it("lists every toolset when the parameter is absent, as before", async () => {
     const names = await listed("", allScopes);
     expect(names.sort()).toEqual(ENDPOINTS.map((e) => e.id).sort());
-  });
-
-
-  it("lists jobs and notification channels through their own toolsets", async () => {
-    const names = await listed("?toolsets=jobs,notifications", allScopes);
-    expect(names).toContain("create_job");
-    expect(names).toContain("list_jobs");
-    expect(names).toContain("create_notification_channel");
-    expect(names).toContain("test_notification_channel");
-    expect(names).not.toContain("add_env_vars");
-    for (const name of names) expect(["core", "jobs", "notifications"]).toContain(TOOLSET_OF[name]);
   });
 
   it("refuses to run a tool outside the named toolsets, as if it did not exist", async () => {
@@ -205,10 +194,10 @@ describe("tools the token cannot run are not listed", () => {
 });
 
 describe("sensitive tools", () => {
-  it("marks the one-time secret tools with egg/sensitive in tools/list", async () => {
+  it("marks rotate_deploy_hook with egg/sensitive in tools/list, and no other tool", async () => {
     const tools = await toolsList("", allScopes);
     const flagged = tools.filter((t) => t._meta && t._meta["egg/sensitive"] === true).map((t) => t.name);
-    expect(flagged).toEqual(["rotate_deploy_hook", "create_notification_channel"]);
+    expect(flagged).toEqual(["rotate_deploy_hook"]);
   });
 
   it("keeps the mark when the tool is narrowed into the list", async () => {

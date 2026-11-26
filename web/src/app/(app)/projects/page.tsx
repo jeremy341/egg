@@ -1,15 +1,12 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { GitBranchIcon } from "@phosphor-icons/react/dist/ssr";
-import { ActivityHeatmap } from "@/components/activity-heatmap";
 import { FactLine, toneOf, type PixelTone } from "@/components/pixel-kit";
 import { ProjectsView } from "@/components/projects-view";
 import { ProjectsSkeleton } from "@/components/skeletons/projects";
 import { StatusDot, StatusIndicator } from "@/components/status-dot";
 import { UsageCard } from "@/components/usage-card";
-import { buildHeatmap } from "@/lib/heatmap";
 import { requireUser } from "@/server/auth/current";
-import { accountDailyActivity } from "@/server/heatmap";
 import { alertOverview } from "@/server/notify";
 import { deploymentViews, projectViews, serverViews } from "@/server/queries";
 
@@ -87,12 +84,11 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 
 async function ProjectsContent() {
   const user = await requireUser();
-  const [projects, servers, recent, alerts, activity] = await Promise.all([
+  const [projects, servers, recent, alerts] = await Promise.all([
     projectViews(user.id),
     serverViews(user.id),
     deploymentViews(user.id, { limit: 5 }),
     alertOverview(user.id),
-    accountDailyActivity(user.id),
   ]);
   const down = projects.filter((p) => p.monitor === "down");
   const failing = projects.filter((p) => p.state === "error" && p.monitor !== "down");
@@ -215,17 +211,6 @@ async function ProjectsContent() {
             </SideCard>
           ) : null}
         </aside>
-      </div>
-
-      <div className="rounded-lg bg-card p-4 shadow-border-small">
-        <ActivityHeatmap
-          id="account-activity"
-          title="Activity across your projects"
-          scope="account"
-          // eslint-disable-next-line react-hooks/purity
-          heatmap={buildHeatmap(activity, Date.now())}
-          caption="Deployments and opened pull requests per UTC day, over all your projects, for the last 365 days."
-        />
       </div>
     </div>
   );

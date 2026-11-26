@@ -44,10 +44,6 @@ UNIT_DIR=<printed by pnpm fake-nest>
 | `NEST_HOST`, `NEST_PORT` | no | Defaults `hackclub.app` and `22`. Only change for testing. |
 | `UNIT_DIR` | no | Where systemd units are written on the container. Default `/etc/systemd/system`. |
 
-## Shared project environment values
-
-The owner-only `GET`, `POST`, and `DELETE /api/projects/:id/shared-env` endpoints manage encrypted values in the existing environment vault. Pass `environment=all`, `production`, or `preview` to list or delete values; POST accepts `{ "environment": "production", "key": "API_TOKEN", "value": "..." }`. Listing returns decrypted values, so keep responses private. Values are authenticated with the project, key, and environment as encryption context and are used by deployments for that same environment.
-
 Builds stop after 15 minutes. That cap is a constant in the code, not a setting.
 
 ## Hack Club Auth

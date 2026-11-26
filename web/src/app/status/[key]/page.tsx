@@ -57,7 +57,6 @@ async function Content({ params }: Props) {
   return (
     <div className={cn(column, "motion-enter")}>
       <h1 className="text-title-1">{status.name}</h1>
-      <p className="text-label text-muted-foreground">Run by {status.owner}</p>
 
       <section aria-labelledby="now" className="mt-8 rounded-lg bg-card p-6 shadow-border-small">
         <h2 id="now" className="sr-only">

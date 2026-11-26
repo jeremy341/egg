@@ -5,7 +5,7 @@ import { MAX_ARCHIVE_BYTES } from "@/server/deploy/build";
 import { UPLOAD_WAIT_MS } from "@/server/builds/uploads";
 import { config } from "@/server/config";
 import { authed, handle, HttpError } from "@/server/http";
-import { getProjectAtLevel } from "@/server/projects";
+import { getProjectForUser } from "@/server/projects";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -16,7 +16,7 @@ type Ctx = { params: Promise<{ id: string }> };
 export const GET = handle<Ctx>(async (_req, { params }) => {
   const user = await authed();
   const { id } = await params;
-  const project = await getProjectAtLevel(user.id, id, "view");
+  const project = await getProjectForUser(user.id, id);
   let workflow: string;
   try {
     workflow = buildWorkflow({

@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { NextRequest } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { createApiToken, SCOPES, type Scope } from "@/server/api-tokens";
@@ -44,7 +45,10 @@ import { GET as listProjectsRoute, POST as createProjectRoute } from "@/app/api/
 import { DELETE as deleteProjectRoute, PATCH as updateProjectRoute } from "@/app/api/v1/projects/[projectId]/route";
 import { PATCH as dashboardPatchRoute } from "@/app/api/projects/[id]/route";
 import { GET as getDeploymentRoute } from "@/app/api/v1/deployments/[deploymentId]/route";
+import { GET as listDeploymentsRoute } from "@/app/api/v1/projects/[projectId]/deployments/route";
 import { GET as deploymentLogsRoute } from "@/app/api/v1/deployments/[deploymentId]/logs/route";
+import { GET as rolloutRoute } from "@/app/api/v1/deployments/[deploymentId]/rollout/route";
+import { POST as restartRoute } from "@/app/api/v1/projects/[projectId]/restart/route";
 import { GET as listEnvRoute } from "@/app/api/v1/projects/[projectId]/env/route";
 import { DELETE as deleteEnvRoute, PUT as setEnvRoute } from "@/app/api/v1/projects/[projectId]/env/[key]/route";
 import { GET as listDomainsRoute, POST as addDomainRoute } from "@/app/api/v1/domains/route";
@@ -62,11 +66,6 @@ import { GET as listServersRoute } from "@/app/api/v1/servers/route";
 import { GET as inventoryRoute } from "@/app/api/v1/servers/[serverId]/inventory/route";
 import { GET as usageHistoryRoute } from "@/app/api/v1/servers/[serverId]/usage/history/route";
 import { GET as activityRoute } from "@/app/api/v1/activity/route";
-import { GET as searchLogsRoute } from "@/app/api/v1/projects/[projectId]/logs/search/route";
-import { GET as logContextRoute } from "@/app/api/v1/projects/[projectId]/logs/context/route";
-import { GET as projectErrorsRoute } from "@/app/api/v1/projects/[projectId]/errors/route";
-import { POST as triageErrorRoute } from "@/app/api/v1/projects/[projectId]/errors/[fingerprint]/route";
-import { fingerprintOf } from "@/server/error-fingerprint";
 
 let ctx: Awaited<ReturnType<typeof useFreshDb>>;
 let me: { id: string };
@@ -77,7 +76,6 @@ let projectId: string;
 let theirProjectId: string;
 let deploymentId: string;
 let theirDeploymentId: string;
-let errorFingerprint: string;
 let domainId: string;
 let theirDomainId: string;
 
@@ -170,14 +168,6 @@ beforeAll(async () => {
   theirProjectId = (await createProject(other.id, { ...base, serverId: theirServerId, name: "Theirs", slug: "theirs", port: 3001 })).id;
   deploymentId = (await deployBranch(me.id, projectId)).id;
   theirDeploymentId = (await deployBranch(other.id, theirProjectId)).id;
-  errorFingerprint = fingerprintOf("TypeError: Sample failure", "src/app.js");
-  await ctx.db.insert(schema.analyticsErrors).values({
-    projectId,
-    at: new Date(),
-    message: "TypeError: Sample failure",
-    file: "src/app.js",
-    line: 3,
-  });
   domainId = newId();
   theirDomainId = newId();
   await ctx.db.insert(schema.domains).values([
@@ -256,7 +246,6 @@ type Spec = {
   path: (i: Ids) => string;
   params: (i: Ids) => Record<string, string>;
   body?: (i: Ids) => unknown;
-  query?: (i: Ids) => string;
   /** The call should be refused (404) when the ids belong to someone else. */
   owned?: boolean;
 };
@@ -277,10 +266,8 @@ const SPECS: Record<string, Spec> = {
   delete_project: { scope: "projects:write", handler: deleteProjectRoute, method: "DELETE", path: proj(""), params: projParams, owned: true },
   get_deployment: { scope: "deployments:read", handler: getDeploymentRoute, method: "GET", path: (i) => `/deployments/${i.deploymentId}`, params: (i) => ({ deploymentId: i.deploymentId }), owned: true },
   get_deployment_logs: { scope: "deployments:read", handler: deploymentLogsRoute, method: "GET", path: (i) => `/deployments/${i.deploymentId}/logs`, params: (i) => ({ deploymentId: i.deploymentId }), owned: true },
-  search_logs: { scope: "logs:read", handler: searchLogsRoute, method: "GET", path: proj("/logs/search"), params: projParams, owned: true },
-  get_log_context: { scope: "logs:read", handler: logContextRoute, method: "GET", path: proj("/logs/context"), params: projParams, query: () => "?at=1795514400000", owned: true },
-  list_deployment_errors: { scope: "analytics:read", handler: projectErrorsRoute, method: "GET", path: proj("/errors"), params: projParams, owned: true },
-  triage_deployment_error: { scope: "projects:write", handler: triageErrorRoute, method: "POST", path: (i) => `/projects/${i.projectId}/errors/${errorFingerprint}`, params: (i) => ({ projectId: i.projectId, fingerprint: errorFingerprint }), body: () => ({ action: "assign", assigneeId: null }), owned: true },
+  restart_service: { scope: "deployments:write", handler: restartRoute, method: "POST", path: proj("/restart"), params: projParams, owned: true },
+  get_rollout: { scope: "deployments:read", handler: rolloutRoute, method: "GET", path: (i) => `/deployments/${i.deploymentId}/rollout`, params: (i) => ({ deploymentId: i.deploymentId }), owned: true },
   list_env_vars: { scope: "env:read", handler: listEnvRoute, method: "GET", path: proj("/env"), params: projParams, owned: true },
   set_env_var: { scope: "env:write", handler: setEnvRoute, method: "PUT", path: proj("/env/NEW_KEY"), params: (i) => ({ projectId: i.projectId, key: "NEW_KEY" }), body: () => ({ value: "x" }), owned: true },
   delete_env_var: { scope: "env:write", handler: deleteEnvRoute, method: "DELETE", path: proj("/env/API_KEY"), params: (i) => ({ projectId: i.projectId, key: "API_KEY" }), owned: true },
@@ -305,7 +292,7 @@ const SPECS: Record<string, Spec> = {
 };
 
 const callSpec = (spec: Spec, ids: Ids, secret: string | null) =>
-  run(spec.handler, req(`${spec.path(ids)}${spec.query?.(ids) ?? ""}`, { method: spec.method, secret, body: spec.body?.(ids) }), spec.params(ids));
+  run(spec.handler, req(spec.path(ids), { method: spec.method, secret, body: spec.body?.(ids) }), spec.params(ids));
 
 const FIRST = ["get_me", "list_projects", "get_project", "list_deployments", "deploy_branch", "redeploy", "cancel_deployment", "rollback_deployment", "get_logs", "list_domains", "get_server_usage"];
 
@@ -352,13 +339,8 @@ describe("authentication and scopes", () => {
 
   it("answers 403 naming the scope when a token lacks it, before doing anything", async () => {
     const before = await counts();
-    const withoutByScope = new Map<Scope, string>();
     for (const [id, spec] of Object.entries(SPECS)) {
-      let without = withoutByScope.get(spec.scope);
-      if (!without) {
-        without = await token(ALL.filter((s) => s !== spec.scope));
-        withoutByScope.set(spec.scope, without);
-      }
+      const without = await token(ALL.filter((s) => s !== spec.scope));
       const res = await callSpec(spec, mine, without);
       const e = await errorOf(res);
       expect(res.status, id).toBe(403);
@@ -385,7 +367,6 @@ describe("ownership", () => {
     const before = await counts();
     for (const [id, spec] of Object.entries(SPECS)) {
       if (!spec.owned) continue;
-      rateLimiter().clear();
       const res = await callSpec(spec, theirs, secret);
       expect(await errorOf(res), id).toMatchObject({ status: 404, code: "not_found" });
     }
@@ -393,7 +374,6 @@ describe("ownership", () => {
     const ghost: Ids = { projectId: "no-such-id", deploymentId: "no-such-id", serverId: "no-such-id", domainId: "no-such-id" };
     for (const [id, spec] of Object.entries(SPECS)) {
       if (!spec.owned || id === "create_project" || id === "add_domain") continue;
-      rateLimiter().clear();
       const res = await callSpec(spec, ghost, secret);
       expect(await errorOf(res), `ghost ${id}`).toMatchObject({ status: 404, code: "not_found" });
     }
@@ -590,54 +570,6 @@ describe("create, change and delete a project", () => {
   });
 });
 
-describe("runtime query endpoints", () => {
-  it("searches problem lines in one project service and returns an older-page cursor", async () => {
-    const secret = await token(["logs:read"]);
-    scriptReply = () => ({ code: 0, stdout: [
-      "2026-11-24T10:00:00+00:00 nest app[123]: INFO ready",
-      "2026-11-24T10:00:01+00:00 nest app[123]: ERROR boom first",
-      "2026-11-24T10:00:02+00:00 nest app[123]: ERROR boom second",
-    ].join("\n") });
-    const get = (query: string) => run(searchLogsRoute, req(`/projects/${projectId}/logs/search${query}`, { secret }), { projectId });
-    const page = await (await get("?q=boom&level=problems&limit=1")).json();
-    expect(page.lines).toEqual(["2026-11-24T10:00:02+00:00 nest app[123]: ERROR boom second"]);
-    expect(page.older).toMatch(/^\d+\.\d+$/);
-    const older = await (await get(`?q=boom&level=problems&limit=1&before=${page.older}`)).json();
-    expect(older.lines).toEqual(["2026-11-24T10:00:01+00:00 nest app[123]: ERROR boom first"]);
-    expect(Buffer.byteLength(JSON.stringify(page))).toBeLessThanOrEqual(40 * 1024);
-  });
-
-  it("reads log context inside the requested timestamp window", async () => {
-    const secret = await token(["logs:read"]);
-    const at = Date.parse("2026-11-24T10:00:00.000Z");
-    scriptReply = () => ({ code: 0, stdout: "before\nneedle\nafter\n" });
-    const res = await run(logContextRoute, req(`/projects/${projectId}/logs/context?at=${at}&beforeSeconds=30&afterSeconds=45`, { secret }), { projectId });
-    expect(res.status).toBe(200);
-    expect((await res.json()).lines).toEqual(["before", "needle", "after"]);
-    const command = session.script.mock.calls.at(-1)?.[0] as string;
-    expect(command).toContain("--since '2026-11-24T09:59:30.000Z'");
-    expect(command).toContain("--until '@1795514445'");
-  });
-
-  it("lists and triages project client-error groups with separate read and write scopes", async () => {
-    const reader = await token(["analytics:read"]);
-    const listed = await run(projectErrorsRoute, req(`/projects/${projectId}/errors?status=open&limit=5`, { secret: reader }), { projectId });
-    expect(listed.status).toBe(200);
-    expect(await listed.json()).toMatchObject({
-      source: "client-analytics",
-      groups: [{ fingerprint: errorFingerprint, message: "TypeError: Sample failure", status: "open" }],
-      truncated: false,
-    });
-
-    const writer = await token(["projects:write"]);
-    const triaged = await run(triageErrorRoute, req(`/projects/${projectId}/errors/${errorFingerprint}`, { secret: writer, method: "POST", body: { action: "resolve" } }), { projectId, fingerprint: errorFingerprint });
-    expect(triaged.status).toBe(200);
-    expect(await triaged.json()).toEqual({ status: "resolved", assigneeId: null });
-    const missingAssignee = await run(triageErrorRoute, req(`/projects/${projectId}/errors/${errorFingerprint}`, { secret: writer, method: "POST", body: { action: "assign" } }), { projectId, fingerprint: errorFingerprint });
-    expect((await errorOf(missingAssignee)).status).toBe(400);
-  });
-});
-
 // ------------------------------------------------------------ build output
 
 describe("deployment detail and build output", () => {
@@ -666,20 +598,6 @@ describe("deployment detail and build output", () => {
     for (const bad of ["?limit=0", "?limit=1001", "?after=-1", "?after=x"]) expect((await get(bad)).status, bad).toBe(400);
     expect(sshWasUsed()).toBe(false);
   });
-
-  it("caps build log response bytes and marks the clipped message", async () => {
-    await ctx.db.update(schema.deploymentLogs)
-      .set({ message: "x".repeat(100_000) })
-      .where(and(eq(schema.deploymentLogs.deploymentId, deploymentId), eq(schema.deploymentLogs.message, "Build failed")));
-    const secret = await token(["deployments:read"]);
-    const res = await run(deploymentLogsRoute, req(`/deployments/${deploymentId}/logs?limit=500`, { secret }), { deploymentId });
-    const bodyText = await res.text();
-    const body = JSON.parse(bodyText);
-    expect(Buffer.byteLength(bodyText)).toBeLessThanOrEqual(40 * 1024);
-    expect(body.truncated).toBe(true);
-    expect(body.lines.at(-1).message.length).toBeLessThan(100_000);
-    expect(body.nextAfter).toBe(body.lines.at(-1).id);
-  });
 });
 
 // ------------------------------------------------------- environment variables
@@ -688,7 +606,12 @@ describe("environment variables", () => {
   it("lists names and targets only", async () => {
     const res = await run(listEnvRoute, req(`/projects/${projectId}/env`, { secret: await token(["env:read"]) }), { projectId });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ env: [{ key: "API_KEY", target: "production" }] });
+    const body = await res.json();
+    // The old field is untouched; the page fields are added next to it.
+    expect(body.env).toEqual([{ key: "API_KEY", target: "production" }]);
+    expect(body.items).toEqual(body.env);
+    expect(body.total).toBe(1);
+    expect(body.nextCursor).toBeNull();
   });
 
   it("sets a variable write-only, stores it sealed, audits it with the token, and never echoes the value", async () => {
@@ -1073,6 +996,149 @@ describe("the activity log", () => {
     });
     const text = await (await run(activityRoute, req("/activity?limit=5", { secret }))).text();
     for (const leak of ["PLANTEDWEBHOOKSECRET", "egg_aaaa", "hunter2"]) expect(text).not.toContain(leak);
+  });
+});
+
+// ---------------------------------------------------------- cursor pagination
+
+type Page<T> = { items: T[]; total: number; nextCursor: string | null };
+
+const listPage = async <T>(
+  handler: Handler,
+  path: string,
+  secret: string,
+  params: Record<string, string> = {}
+): Promise<Page<T> & Record<string, T[]>> => {
+  const res = await run(handler, req(path, { secret }), params);
+  expect(res.status).toBe(200);
+  return (await res.json()) as Page<T> & Record<string, T[]>;
+};
+
+/** Follow nextCursor until it runs out, checking that no row repeats. */
+const walk = async <T>(get: (cursor: string | null) => Promise<Page<T>>, key: (item: T) => string) => {
+  const seen: string[] = [];
+  let cursor: string | null = null;
+  let pages = 0;
+  do {
+    const page = await get(cursor);
+    expect(page.items.length).toBeLessThanOrEqual(2);
+    seen.push(...page.items.map(key));
+    cursor = page.nextCursor;
+    pages++;
+  } while (cursor && pages < 50);
+  expect(cursor).toBeNull();
+  expect(new Set(seen).size, "a row was returned twice").toBe(seen.length);
+  return seen;
+};
+
+const pagedPath = (path: string, cursor: string | null) =>
+  `${path}?limit=2${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
+
+describe("cursor pagination on the list endpoints", () => {
+  it("declares limit, cursor, items, total and nextCursor on every MCP list tool", () => {
+    for (const id of ["list_projects", "list_deployments", "list_domains", "list_env_vars", "list_servers", "get_activity"]) {
+      const ep = ENDPOINTS.find((e) => e.id === id)!;
+      expect(ep.query.limit, `${id}.limit`).toBeDefined();
+      expect(ep.query.cursor, `${id}.cursor`).toBeDefined();
+      const shape = (ep.response as z.ZodObject<z.ZodRawShape>).shape;
+      for (const field of ["items", "total", "nextCursor"]) {
+        expect(shape[field], `${id}.${field}`).toBeDefined();
+      }
+    }
+  });
+
+  it("pages deployments newest first by creation time and id, with no repeats and an exact total", async () => {
+    const secret = await token(["deployments:read"]);
+    for (let i = 0; i < 3; i++) await deployBranch(me.id, projectId);
+    const path = `/projects/${projectId}/deployments`;
+    const all = await listPage<{ id: string }>(listDeploymentsRoute, `${path}?limit=100`, secret, { projectId });
+    expect(all.items.length).toBeGreaterThan(3);
+    expect(all.total).toBe(all.items.length);
+    expect(all.deployments.map((d) => d.id)).toEqual(all.items.map((d) => d.id));
+
+    const seen = await walk<{ id: string }>(
+      (cursor) => listPage(listDeploymentsRoute, pagedPath(path, cursor), secret, { projectId }),
+      (d) => d.id
+    );
+    expect(seen).toEqual(all.items.map((d) => d.id));
+    const bad = await run(listDeploymentsRoute, req(`${path}?cursor=not-a-cursor`, { secret }), { projectId });
+    expect((await errorOf(bad)).code).toBe("bad_cursor");
+  });
+
+  it("adds a page to projects without changing the full list in projects", async () => {
+    const secret = await token(["projects:read"]);
+    for (let i = 0; i < 3; i++) {
+      await createProject(me.id, { serverId: myServerId, name: `Page ${i}`, repoUrl: "https://github.com/sam/page.git", runtime: "node", port: 3960 + i });
+    }
+    const all = await listPage<{ id: string }>(listProjectsRoute, "/projects?limit=100", secret);
+    expect(all.items).toEqual(all.projects);
+    expect(all.total).toBe(all.projects.length);
+    expect(all.items.length).toBeGreaterThan(3);
+
+    const seen = await walk<{ id: string }>(
+      (cursor) => listPage(listProjectsRoute, pagedPath("/projects", cursor), secret),
+      (p) => p.id
+    );
+    expect(seen).toEqual(all.items.map((p) => p.id));
+    expect((await run(listProjectsRoute, req("/projects?cursor=abc", { secret }))).status).toBe(400);
+  });
+
+  it("adds a page to domains without changing the full list in domains", async () => {
+    const secret = await token(["domains:read"]);
+    const now = new Date();
+    for (let i = 0; i < 3; i++) {
+      await ctx.db.insert(schema.domains).values({
+        id: newId(), userId: me.id, serverId: myServerId, projectId,
+        domain: `page-${i}.example.com`, port: 3000, status: "pending", createdAt: new Date(now.getTime() + i), updatedAt: now,
+      });
+    }
+    const all = await listPage<{ id: string }>(listDomainsRoute, "/domains?limit=100", secret);
+    expect(all.items).toEqual(all.domains);
+    expect(all.total).toBe(all.domains.length);
+
+    const seen = await walk<{ id: string }>(
+      (cursor) => listPage(listDomainsRoute, pagedPath("/domains", cursor), secret),
+      (d) => d.id
+    );
+    expect(seen).toEqual(all.items.map((d) => d.id));
+    expect((await run(listDomainsRoute, req("/domains?cursor=abc", { secret }))).status).toBe(400);
+  });
+
+  it("pages environment names in a stable order, without returning values", async () => {
+    const secret = await token(["env:read"]);
+    await setEnvVar(me.id, projectId, { key: "PAGE_A", value: "v", target: "all" });
+    await setEnvVar(me.id, projectId, { key: "PAGE_A", value: "v", target: "preview" });
+    await setEnvVar(me.id, projectId, { key: "PAGE_B", value: "v", target: "production" });
+    const path = `/projects/${projectId}/env`;
+    const all = await listPage<{ key: string; target: string }>(listEnvRoute, `${path}?limit=100`, secret, { projectId });
+    expect(all.items).toEqual(all.env);
+    expect(all.total).toBe(all.env.length);
+    const keys = all.env.map((e) => `${e.key}|${e.target}`);
+    expect(keys).toEqual([...keys].sort());
+
+    const seen = await walk<{ key: string; target: string }>(
+      (cursor) => listPage(listEnvRoute, pagedPath(path, cursor), secret, { projectId }),
+      (e) => `${e.key}|${e.target}`
+    );
+    expect(seen).toEqual(keys);
+    expect((await run(listEnvRoute, req(`${path}?cursor=abc`, { secret }), { projectId })).status).toBe(400);
+  });
+
+  it("adds a page to servers without changing the full list in servers", async () => {
+    const secret = await token(["container:read"]);
+    await createServer(me.id, "sam-page-1");
+    await createServer(me.id, "sam-page-2");
+    const all = await listPage<{ id: string }>(listServersRoute, "/servers?limit=100", secret);
+    expect(all.items).toEqual(all.servers);
+    expect(all.total).toBe(all.servers.length);
+    expect(all.items.length).toBeGreaterThanOrEqual(3);
+
+    const seen = await walk<{ id: string }>(
+      (cursor) => listPage(listServersRoute, pagedPath("/servers", cursor), secret),
+      (s) => s.id
+    );
+    expect(seen).toEqual(all.items.map((s) => s.id));
+    expect((await run(listServersRoute, req("/servers?cursor=abc", { secret }))).status).toBe(400);
   });
 });
 

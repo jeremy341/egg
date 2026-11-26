@@ -82,37 +82,10 @@ async function enforceRequestMaintenance(req: NextRequest) {
     const { bearerFrom, principalFor } = await import("@/server/api-tokens");
     userId = (await principalFor(bearerFrom(req)))?.userId ?? null;
   } else {
-    // Direct route-handler calls (tests, scripts) have no Next request scope,
-    // so session lookup cannot run. There is no user to check in that case.
-    try {
-      userId = (await getCurrentUser())?.id ?? null;
-    } catch {
-      userId = null;
-    }
+    userId = (await getCurrentUser())?.id ?? null;
   }
   const { isInstanceAdmin } = await import("@/server/admin-identity");
   if (!(await isInstanceAdmin(userId))) throw maintenanceError();
-}
-
-/** Suspended accounts after their grace period: the account's own writes are refused, reads are not. */
-async function enforceAccountWrites(req: NextRequest) {
-  const { accountExemptRequest, assertAccountCanWrite } = await import("@/server/account-standing");
-  const path = new URL(req.url).pathname;
-  if (accountExemptRequest(path, req.method.toUpperCase())) return;
-  let userId: string | null = null;
-  if (path.startsWith("/api/v1/")) {
-    const { bearerFrom, principalFor } = await import("@/server/api-tokens");
-    userId = (await principalFor(bearerFrom(req)))?.userId ?? null;
-  } else {
-    // Direct route-handler calls (tests, scripts) have no Next request scope,
-    // so session lookup cannot run. There is no user to check in that case.
-    try {
-      userId = (await getCurrentUser())?.id ?? null;
-    } catch {
-      userId = null;
-    }
-  }
-  if (userId) await assertAccountCanWrite(userId);
 }
 
 /** Wrap a route handler: same-origin check plus uniform JSON errors. */
@@ -124,7 +97,6 @@ export function handle<C = unknown>(
     try {
       if (!options.skipOriginCheck) assertSameOrigin(req);
       await enforceRequestMaintenance(req);
-      await enforceAccountWrites(req);
       return await fn(req, ctx);
     } catch (err) {
       // Let Next.js control-flow errors (dynamic-API bailouts, redirects) through.

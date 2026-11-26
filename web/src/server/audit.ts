@@ -5,21 +5,11 @@ import { getDb, schema } from "@/server/db";
  * Who did what. Written next to the change itself and never allowed to break
  * it: if the log cannot be written, the action still goes through.
  */
-export type AuditLevel = "app" | "organization" | "instance";
-
-/**
- * Which scope an entry belongs to. Defaults to "app". An "organization" entry
- * names its organization in `orgId`. Entries are kept for AUDIT_KEEP_DAYS
- * (audit-retention.ts).
- */
-export type AuditScope = { level: AuditLevel; orgId?: string | null };
-
 export async function audit(
   userId: string | null,
   action: string,
   target?: string | null,
-  meta?: Record<string, string | number | boolean | null>,
-  scope: AuditScope = { level: "app" }
+  meta?: Record<string, string | number | boolean | null>
 ) {
   try {
     const db = await getDb();
@@ -28,8 +18,6 @@ export async function audit(
       action,
       target: target ?? null,
       meta: meta ? JSON.stringify(meta) : null,
-      level: scope.level,
-      orgId: scope.orgId ?? null,
       at: new Date(),
     });
   } catch (err) {
@@ -42,18 +30,10 @@ export const LABELS: Record<string, string> = {
   "project.create": "Created project",
   "project.update": "Changed settings for",
   "project.delete": "Deleted project",
-  "project.purge": "Removed for good after 30 days in Recently deleted:",
-  "project.restore": "Restored from Recently deleted:",
-  "alert_rule.create": "Added an alert rule to",
   "project.restart": "Restarted",
-  "registry.create": "Added a registry login",
-  "registry.update": "Changed a registry login",
-  "registry.remove": "Removed a registry login",
-  "project.image": "Changed the image source of",
   "project.workflow.publish": "Opened a pull request that adds the build workflow to",
   "env.set": "Saved environment variable on",
   "env.delete": "Removed environment variable from",
-  "env.replace": "Replaced environment variables on",
   "deploy.redeploy": "Redeployed",
   "deploy.rollback": "Rolled back",
   "deploy.cancel": "Canceled a deployment of",
@@ -79,20 +59,6 @@ export const LABELS: Record<string, string> = {
   "account.cleanup_cancel_failed": "Dropped a failed cleanup after acknowledging possibly-unremoved projects",
   "admin.maintenance": "Changed maintenance settings",
   "admin.grant": "Made someone an administrator",
-  "admin.ban": "Banned an account",
-  "admin.unban": "Lifted a ban on an account",
-  "org.create": "Created organization",
-  "org.rename": "Renamed organization",
-  "org.leave": "Left organization",
-  "org.invite": "Invited someone to an organization",
-  "org.invite.resend": "Sent a new invitation for an organization",
-  "org.invite.cancel": "Cancelled an invitation to an organization",
-  "org.join": "Joined an organization",
-  "project.move": "Moved a project between organizations",
-  "project.transfer.request": "Asked to hand over ownership of",
-  "project.transfer.accept": "Accepted ownership of",
-  "project.transfer.decline": "Declined ownership of",
-  "project.transfer.cancel": "Cancelled an ownership handover of",
   "admin.revoke": "Removed an administrator",
   "security_report.list": "Viewed the security report inbox",
   "security_report.read": "Read a security report",
@@ -105,7 +71,6 @@ export const LABELS: Record<string, string> = {
   "analytics.enable": "Turned on analytics for",
   "analytics.disable": "Turned off analytics for",
   "analytics.settings": "Changed what analytics records for",
-  "statistics.settings": "Changed which statistics show for",
   "status.enable": "Published a status page for",
   "status.disable": "Unpublished the status page for",
   "homepage_feed.enable": "Showed on the Egg homepage the deployments of",
@@ -120,9 +85,6 @@ export const LABELS: Record<string, string> = {
   "token.create": "Created an access token",
   "token.revoke": "Revoked an access token",
   "token.update": "Edited an access token",
-  "key.create": "Created SSH key",
-  "key.revoke": "Revoked SSH key",
-  "key.rotate": "Replaced an SSH key for",
   "auth.reauth": "Confirmed sign-in with Hack Club",
   "deploy.trigger": "Started a deployment of",
   "deploy.reconcile": "Recovered a missed GitHub deployment of",

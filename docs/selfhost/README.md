@@ -438,7 +438,6 @@ Most names in the tables below are read in `web/src/server/config.ts`, which val
 | `HACKCLUB_CLIENT_ID`, `HACKCLUB_CLIENT_SECRET` | empty | Hack Club Auth app credentials. Both must be set for the Hack Club button to work. | You want Hack Club sign-in, or more than one account. |
 | `DEV_LOGIN` | `0` | `1` shows a fake sign-in with a name field. Works only with `pnpm dev`; ignored in a production build. | Developing Egg only. |
 | `SECURITY_REPORT_ADMIN_ID` | empty | The exact database id of the instance administrator. Turns on `/admin` and the private report inbox for that account. | You want an administrator account. |
-| `EMAIL_WEBHOOK_URL` | none | An https endpoint that receives sign-in and security events. Egg sends a signed POST; a failed delivery is dropped, so do not rely on it for alerts. | You want an external event sink. |
 
 ### Behind a proxy
 
@@ -811,14 +810,3 @@ Restart Egg after the transaction. If the deployment had already been canceled, 
 ## What does not work yet without Hack Club or Nest
 
 The list of gaps, ranked, with the file and line for each, is in [docs/design/self-host-gaps.md](../design/self-host-gaps.md).
-
-## Protecting deployed project addresses
-
-Project owners can configure access protection in the project's **Access protection** settings. The setting applies to requests for that project's valid custom domains:
-
-- **Off** allows requests without credentials.
-- **Shared password** accepts the password through `X-Egg-Access-Password` or a Bearer authorization value.
-- **Username and password** uses standard HTTP Basic authentication.
-- **Egg sign-in** accepts the project's signed `egg_access` session cookie.
-
-Excluded paths skip the credential check. An exact path such as `/health` matches only that path; a suffix such as `/api/public/**` matches that path and its descendants. The hostname must resolve to a valid custom domain assigned to a project. The owner-only `GET /api/projects/{id}/ingress-protection` endpoint reports `enabled` and `mode`; it never returns the password or its hash.

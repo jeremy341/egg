@@ -1,14 +1,14 @@
 import { readJsonLimited } from "@/server/body-limit";
 import { authed, handle, ok } from "@/server/http";
 import { deleteProject } from "@/server/project-delete";
-import { getProjectAtLevel, updateProject, projectResponse } from "@/server/projects";
+import { getProjectForUser, updateProject, projectResponse } from "@/server/projects";
 
 type Ctx = { params: Promise<{ id: string }> };
 
 export const GET = handle<Ctx>(async (_req, { params }) => {
   const user = await authed();
   const { id } = await params;
-  return ok({ project: projectResponse(await getProjectAtLevel(user.id, id, "view")) });
+  return ok({ project: projectResponse(await getProjectForUser(user.id, id)) });
 });
 
 export const PATCH = handle<Ctx>(async (req, { params }) => {
