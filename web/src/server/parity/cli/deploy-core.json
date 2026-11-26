@@ -1,1 +1,353 @@
-[]
+[
+  {
+    "orchard": "deploy list",
+    "source": "deploy.go",
+    "status": "present",
+    "egg": "deploy list",
+    "endpoint": "list_deployments",
+    "orchardTool": "list_deployments",
+    "reason": "Egg can list deployments for a selected project.",
+    "spec": {
+      "summary": "List deployments in the selected project, or in the active project scope when one is configured.",
+      "args": [],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "deploy get",
+    "source": "deploy.go",
+    "status": "present",
+    "egg": "deploy show",
+    "endpoint": "get_deployment",
+    "orchardTool": "get_deployment",
+    "reason": "Egg can show one deployment by its id.",
+    "spec": {
+      "summary": "Show deployment details and optionally keep refreshing them while watching the deployment.",
+      "args": ["id"],
+      "flags": [
+        { "name": "watch", "type": "flag", "required": false, "description": "Refresh the detail view until interrupted; requires a terminal." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "deploy create",
+    "source": "deploy.go",
+    "status": "partial",
+    "egg": "deploy",
+    "endpoint": "deploy_branch",
+    "orchardTool": "create_deployment",
+    "reason": "Egg deploys a project's configured repository and branch but does not expose image and full source-configuration options.",
+    "spec": {
+      "summary": "Create a deployment from an image or repository source, with optional build, runtime, resource and environment settings.",
+      "args": [],
+      "flags": [
+        { "name": "name", "type": "value", "required": true, "description": "Name for the deployment." },
+        { "name": "image", "type": "value", "required": false, "description": "Container image source; choose exactly one source option." },
+        { "name": "pull-policy", "type": "value", "required": false, "description": "Image pull behavior for image-based deployments." },
+        { "name": "github", "type": "value", "required": false, "description": "GitHub repository and optional branch; choose exactly one source option." },
+        { "name": "git", "type": "value", "required": false, "description": "Configured Git provider used with repo." },
+        { "name": "repo", "type": "value", "required": false, "description": "Repository URL and optional branch; requires git." },
+        { "name": "dockerfile", "type": "value", "required": false, "description": "Dockerfile path within the repository." },
+        { "name": "target", "type": "value", "required": false, "description": "Build stage to use from a multi-stage Dockerfile." },
+        { "name": "railpack", "type": "flag", "required": false, "description": "Build the repository with Railpack." },
+        { "name": "build-root", "type": "flag", "required": false, "description": "Use the repository root as the build context." },
+        { "name": "root", "type": "value", "required": false, "description": "Application directory within the repository." },
+        { "name": "install-cmd", "type": "value", "required": false, "description": "Override the detected install step." },
+        { "name": "build-cmd", "type": "value", "required": false, "description": "Override the detected build step." },
+        { "name": "start-cmd", "type": "value", "required": false, "description": "Override the detected start step." },
+        { "name": "output-dir", "type": "value", "required": false, "description": "Serve the built static files from this directory." },
+        { "name": "auto-url", "type": "flag", "required": false, "description": "Generate a protected URL when a port is available." },
+        { "name": "port", "type": "value", "required": false, "description": "Container port to expose." },
+        { "name": "replicas", "type": "value", "required": false, "description": "Number of deployment replicas." },
+        { "name": "env", "type": "value", "required": false, "description": "Environment variable in KEY=VALUE form; repeatable." },
+        { "name": "env-file", "type": "value", "required": false, "description": "Read environment variables from a dotenv file." },
+        { "name": "cpu", "type": "value", "required": false, "description": "Requested CPU in millicores." },
+        { "name": "memory", "type": "value", "required": false, "description": "Requested memory as bytes or a unit-bearing value." },
+        { "name": "wait", "type": "flag", "required": false, "description": "Wait for the deployment or source build to finish." },
+        { "name": "timeout", "type": "value", "required": false, "description": "Maximum time to wait when wait is enabled." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "deploy delete",
+    "source": "deploy.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "delete_deployment",
+    "orchardTool": "delete_deployment",
+    "reason": "The deployment delete API exists, but Egg has no deployment delete command and the port needs exact-name confirmation.",
+    "spec": {
+      "summary": "Permanently remove a deployment and its associated runtime resources.",
+      "args": ["id"],
+      "flags": [
+        { "name": "confirm-name", "type": "value", "required": true, "description": "Must exactly match the target deployment name." }
+      ],
+      "destructive": true,
+      "confirm": "deployment name"
+    }
+  },
+  {
+    "orchard": "deploy scale",
+    "source": "deploy.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": "scale_deployment",
+    "reason": "Egg services have no replica count; Egg's scale operation changes CPU and memory limits.",
+    "spec": {
+      "summary": "Set the deployment's replica count and optionally wait for it to become live.",
+      "args": ["id", "replicas"],
+      "flags": [
+        { "name": "wait", "type": "flag", "required": false, "description": "Wait for the deployment to become live after scaling." },
+        { "name": "timeout", "type": "value", "required": false, "description": "Maximum time to wait when wait is enabled." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "deploy stop",
+    "source": "deploy.go",
+    "status": "partial",
+    "egg": "ops stop",
+    "endpoint": "stop_deployment",
+    "orchardTool": "stop_deployment",
+    "reason": "Egg can stop a service but does not hold incoming pushes until it is started again.",
+    "spec": {
+      "summary": "Stop the deployment at zero replicas and hold new pushes until it is started.",
+      "args": ["id"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "deploy start",
+    "source": "deploy.go",
+    "status": "partial",
+    "egg": "ops start",
+    "endpoint": "start_deployment",
+    "orchardTool": "start_deployment",
+    "reason": "Egg can start a stopped service but does not expose rebuild-before-start or rollout-wait behavior.",
+    "spec": {
+      "summary": "Start a stopped deployment, optionally rebuilding its latest held source update first.",
+      "args": ["id"],
+      "flags": [
+        { "name": "build", "type": "flag", "required": false, "description": "Rebuild from source before starting." },
+        { "name": "wait", "type": "flag", "required": false, "description": "Wait for the service or source build to become ready." },
+        { "name": "timeout", "type": "value", "required": false, "description": "Maximum time to wait when wait is enabled." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "deploy restart",
+    "source": "deploy.go",
+    "status": "present",
+    "egg": "ops restart",
+    "endpoint": "restart_deployment",
+    "orchardTool": "restart_deployment",
+    "reason": "Egg can restart a production service without creating a new build.",
+    "spec": {
+      "summary": "Restart the deployment's running pods and optionally wait for them to return to a live state.",
+      "args": ["id"],
+      "flags": [
+        { "name": "wait", "type": "flag", "required": false, "description": "Wait for the deployment to become live after restarting." },
+        { "name": "timeout", "type": "value", "required": false, "description": "Maximum time to wait when wait is enabled." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "deploy rebuild",
+    "source": "deploy.go",
+    "status": "partial",
+    "egg": "deploy redeploy",
+    "endpoint": "redeploy",
+    "orchardTool": "rebuild_deployment",
+    "reason": "Egg rebuilds the same earlier commit, while this command rebuilds the configured source.",
+    "spec": {
+      "summary": "Trigger a new source build for the deployment and optionally wait for that build to finish.",
+      "args": ["id"],
+      "flags": [
+        { "name": "wait", "type": "flag", "required": false, "description": "Wait for the build to finish." },
+        { "name": "timeout", "type": "value", "required": false, "description": "Maximum time to wait when wait is enabled." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "deploy rollback",
+    "source": "deploy.go",
+    "status": "partial",
+    "egg": "deploy rollback",
+    "endpoint": "rollback_deployment",
+    "orchardTool": "rollback_to_previous",
+    "reason": "Egg can target an earlier deployment but does not select an image-history entry within the deployment or restore bound databases.",
+    "spec": {
+      "summary": "Roll production back to the previous release or a chosen image-history entry, optionally restoring bound databases and waiting for readiness.",
+      "args": ["id", "historyId?"],
+      "flags": [
+        { "name": "restore-databases", "type": "flag", "required": false, "description": "Restore bound databases to checkpoints from before the current release." },
+        { "name": "wait", "type": "flag", "required": false, "description": "Wait for the rollback deployment to become live." },
+        { "name": "timeout", "type": "value", "required": false, "description": "Maximum time to wait when wait is enabled." },
+        { "name": "confirm-name", "type": "value", "required": true, "description": "Must exactly match the target deployment name." }
+      ],
+      "destructive": true,
+      "confirm": "deployment name"
+    }
+  },
+  {
+    "orchard": "deploy cancel",
+    "source": "deploy.go",
+    "status": "present",
+    "egg": "deploy cancel",
+    "endpoint": "cancel_deployment",
+    "orchardTool": "cancel_build",
+    "reason": "Egg can cancel a deployment that is still queued or running.",
+    "spec": {
+      "summary": "Cancel an in-progress deployment build.",
+      "args": ["id"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "deploy logs",
+    "source": "deploy.go",
+    "status": "partial",
+    "egg": "deploy logs",
+    "endpoint": "get_deployment_logs",
+    "orchardTool": "get_deployment_logs",
+    "reason": "Egg's deployment log command reads build output, while runtime pod logs and the per-pod tail control are not available.",
+    "spec": {
+      "summary": "Read recent runtime pod logs by default or build logs when requested, with optional live following.",
+      "args": ["id"],
+      "flags": [
+        { "name": "build", "type": "flag", "required": false, "description": "Read build output instead of runtime logs." },
+        { "name": "follow", "type": "flag", "required": false, "description": "Continue printing new log lines until interrupted; also accepts -f." },
+        { "name": "tail", "type": "value", "required": false, "description": "Recent line count to fetch for each pod; defaults to 100." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "deploy pods",
+    "source": "deploy.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "list_project_containers",
+    "orchardTool": "list_pods",
+    "reason": "The API can list project containers, but Egg has no CLI command and cannot report Kubernetes pod and node details.",
+    "spec": {
+      "summary": "List pods for a deployment and optionally query live cluster state for usage and warnings.",
+      "args": ["id"],
+      "flags": [
+        { "name": "live", "type": "flag", "required": false, "description": "Read live cluster state including usage and warnings." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "deploy metrics",
+    "source": "deploy.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "get_deployment_metrics",
+    "orchardTool": "get_deployment_metrics",
+    "reason": "A partial metrics endpoint exists, but Egg has no CLI command and samples are not attributed to individual releases.",
+    "spec": {
+      "summary": "Show CPU, memory and network measurements for the deployment over the most recent hour.",
+      "args": ["id"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "deploy icon set",
+    "source": "deploy.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg has no per-deployment picture feature or upload endpoint.",
+    "spec": {
+      "summary": "Set a deployment's app picture from a local image file.",
+      "args": ["id", "file"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "deploy releases",
+    "source": "deploy_releases.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "list_releases",
+    "orchardTool": "list_releases",
+    "reason": "Egg's release history endpoint is project-scoped and the CLI has no deployment release-list command.",
+    "spec": {
+      "summary": "List a deployment's releases from newest to oldest.",
+      "args": ["id"],
+      "flags": [
+        { "name": "limit", "type": "value", "required": false, "description": "Maximum number of releases to show; defaults to 20." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "deploy status",
+    "source": "rollout.go",
+    "status": "partial",
+    "egg": "deploy rollout",
+    "endpoint": "get_rollout",
+    "orchardTool": "get_deployment_rollout",
+    "reason": "Egg reports current rollout progress but omits release and time pins plus detailed failure diagnosis.",
+    "spec": {
+      "summary": "Report whether the deployment is live, its rollout phase and the cause of failures, optionally waiting for a terminal result.",
+      "args": ["id"],
+      "flags": [
+        { "name": "release", "type": "value", "required": false, "description": "Limit the evaluation to a particular release." },
+        { "name": "since", "type": "value", "required": false, "description": "Ignore changes observed before this server timestamp." },
+        { "name": "wait", "type": "flag", "required": false, "description": "Wait until the rollout reaches a terminal phase." },
+        { "name": "timeout", "type": "value", "required": false, "description": "Maximum time to wait when wait is enabled." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "overview",
+    "source": "overview.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg does not model Orchard's organization-wide dashboard of projects, deployments and managed databases.",
+    "spec": {
+      "summary": "Show a scoped organization's projects, deployments and databases, optionally across organizations or with recent builds.",
+      "args": [],
+      "flags": [
+        { "name": "builds", "type": "flag", "required": false, "description": "Include recent active and completed builds." },
+        { "name": "all", "type": "flag", "required": false, "description": "Include every organization the user belongs to." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  }
+]

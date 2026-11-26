@@ -1,1 +1,181 @@
-[]
+[
+  {
+    "orchard": "observe overview",
+    "source": "observe.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg has pageview statistics but no endpoint for a combined deployment health and runtime summary, and no matching CLI command.",
+    "spec": {
+      "summary": "Show a deployment snapshot with age, pod and restart counts, resource use, request volume, errors, and latency.",
+      "args": [
+        { "name": "deploymentId", "required": true, "description": "Deployment to summarize." }
+      ],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "observe logs",
+    "source": "observe.go",
+    "status": "partial",
+    "egg": "logs",
+    "endpoint": "get_deployment_logs",
+    "orchardTool": "get_deployment_logs",
+    "reason": "Egg's logs command can follow deployment build output, but it does not provide the filtered structured runtime log stream this command reads.",
+    "spec": {
+      "summary": "Read recent structured runtime entries for a deployment, with optional severity and text filters, and optionally keep emitting new entries.",
+      "args": [
+        { "name": "deploymentId", "required": true, "description": "Deployment whose runtime logs to read." }
+      ],
+      "flags": [
+        { "name": "level", "type": "value", "required": false, "description": "Keep entries at the selected severity." },
+        { "name": "search", "type": "value", "required": false, "description": "Keep entries containing this text." },
+        { "name": "tail", "type": "value", "required": false, "description": "Maximum recent lines to scan; defaults to 200 and is capped at 20,000." },
+        { "name": "follow", "type": "flag", "required": false, "description": "Poll or subscribe for new entries until interrupted." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "observe http",
+    "source": "observe.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "get_deployment_http_metrics",
+    "orchardTool": "get_deployment_http_metrics",
+    "reason": "Egg has this endpoint but it reports pageview counts rather than request errors and latency, and the CLI has no matching command.",
+    "spec": {
+      "summary": "Show a deployment's recent request rate, error rate, and average and maximum latency for the last hour.",
+      "args": [
+        { "name": "deploymentId", "required": true, "description": "Deployment whose HTTP traffic to summarize." }
+      ],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "observe errors",
+    "source": "observe.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "get_anomalies",
+    "orchardTool": "list_deployment_errors",
+    "reason": "Egg exposes client-error and resource anomaly summaries, but the CLI lacks this command and grouped deployment runtime errors with time-window trends.",
+    "spec": {
+      "summary": "List grouped deployment errors with counts, recent trends, last-seen times, and representative messages.",
+      "args": [
+        { "name": "deploymentId", "required": true, "description": "Deployment whose error groups to inspect." }
+      ],
+      "flags": [
+        { "name": "window", "type": "value", "required": false, "description": "Look-back duration; defaults to one hour and must be at least one minute." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "observe runtime",
+    "source": "observe.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg has no endpoint or CLI command that identifies a deployment's detected language, framework, and version.",
+    "spec": {
+      "summary": "Show the detected runtime language, framework, version, confidence, and evidence source for a deployment.",
+      "args": [
+        { "name": "deploymentId", "required": true, "description": "Deployment whose runtime to inspect." }
+      ],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "observe capabilities",
+    "source": "observe.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg has no endpoint or CLI command that reports which observability signals are available for a deployment.",
+    "spec": {
+      "summary": "Report whether logs, container and HTTP metrics, access logs, custom metrics, traces, and runtime details are available.",
+      "args": [
+        { "name": "deploymentId", "required": true, "description": "Deployment whose available signals to inspect." }
+      ],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "observe activity",
+    "source": "observe.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "get_activity",
+    "orchardTool": "get_timeline",
+    "reason": "Egg's activity endpoint exists, but the CLI has no deployment-scoped feed command or its category and pagination filters.",
+    "spec": {
+      "summary": "List the newest audit, build, release, pod, and error entries for one deployment, with cursor-based paging.",
+      "args": [
+        { "name": "deploymentId", "required": true, "description": "Deployment whose activity to list." }
+      ],
+      "flags": [
+        { "name": "kinds", "type": "value", "required": false, "description": "Comma-separated activity categories; omit to include every category." },
+        { "name": "limit", "type": "value", "required": false, "description": "Entries per page; defaults to 50." },
+        { "name": "cursor", "type": "value", "required": false, "description": "Continue from a cursor returned by an earlier page." },
+        { "name": "all", "type": "flag", "required": false, "description": "Fetch successive pages, up to the 100-page safety limit." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "events tail",
+    "source": "events.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "get_changes",
+    "orchardTool": null,
+    "reason": "Egg exposes a paged project changes feed, but has no CLI command or endpoint for organization-wide live event delivery and replay.",
+    "spec": {
+      "summary": "Continuously emit organization events, optionally filter by type, and resume after reconnecting from a supplied event identifier.",
+      "args": [],
+      "flags": [
+        { "name": "types", "type": "value", "required": false, "description": "Comma-separated event types to include; omit to include all types." },
+        { "name": "since-id", "type": "value", "required": false, "description": "Replay events newer than this identifier before switching to live delivery." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "audit list",
+    "source": "audit.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "get_audit_log",
+    "orchardTool": "get_audit_log",
+    "reason": "Egg's audit endpoint exists, but the CLI lacks a command and the endpoint still needs organization and deployment scope alignment.",
+    "spec": {
+      "summary": "List newest organization audit entries, optionally scoped to a deployment or filtered by action, with cursor-based paging.",
+      "args": [],
+      "flags": [
+        { "name": "deployment", "type": "value", "required": false, "description": "Limit results to one deployment; otherwise use the organization feed." },
+        { "name": "action", "type": "value", "required": false, "description": "Keep entries with this exact action name." },
+        { "name": "limit", "type": "value", "required": false, "description": "Entries per page; defaults to 50." },
+        { "name": "cursor", "type": "value", "required": false, "description": "Continue from a cursor returned by an earlier page." },
+        { "name": "all", "type": "flag", "required": false, "description": "Fetch successive pages, up to the 100-page safety limit." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  }
+]

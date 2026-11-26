@@ -1,1 +1,226 @@
-[]
+[
+  {
+    "orchard": "use",
+    "source": "use.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg's CLI has no command to save a default org, project, or environment in local client configuration.",
+    "spec": {
+      "summary": "Resolve an org, project, or environment and save its id and display name as the machine-local default scope for later commands.",
+      "args": ["org|project|env", "id-or-slug"],
+      "flags": ["--project"],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "context show",
+    "source": "use.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg's CLI has no local context view for the active connection and default scope.",
+    "spec": {
+      "summary": "Show the active connection and its machine-local org, project, and environment defaults, including a linked project override when present.",
+      "args": [],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "context clear",
+    "source": "use.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg's CLI has no command to clear machine-local default scope settings.",
+    "spec": {
+      "summary": "Clear the active connection's saved org, project, and environment defaults without deleting the connection or its credentials.",
+      "args": [],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "context list",
+    "source": "use.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "List locally saved server connections with their URL, active state, sign-in state, and saved org.",
+      "args": [],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "context use",
+    "source": "use.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Select a locally saved server connection by name, or interactively choose one, for subsequent commands.",
+      "args": ["name?"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "context current",
+    "source": "use.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Print the active locally saved connection name and API URL.",
+      "args": [],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "context rename",
+    "source": "use.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Rename a locally saved server connection while keeping its URL, token, and active selection.",
+      "args": ["old-name", "new-name"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "context remove",
+    "source": "use.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Remove a locally saved server connection and its stored token, selecting another saved connection if needed.",
+      "args": ["name"],
+      "flags": ["--confirm"],
+      "destructive": true,
+      "confirm": "--confirm <exact-context-name>"
+    }
+  },
+  {
+    "orchard": "claude import",
+    "source": "claude.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg does not import or manage Claude Code instructions, agents, commands, skills, or MCP server configuration.",
+    "spec": {
+      "summary": "Scan Claude Code configuration files and MCP server settings, let the user select items, and upload those items to the account; dry run reports the selection without uploading.",
+      "args": [],
+      "flags": ["--from", "--dir", "--dry-run", "--only", "--yes"],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "claude list",
+    "source": "claude.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg does not store or distribute imported Claude Code configuration items.",
+    "spec": {
+      "summary": "List imported Claude Code items with their kind, name, enabled state, size, and update time.",
+      "args": [],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "claude remove",
+    "source": "claude.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg does not store imported Claude Code items to remove.",
+    "spec": {
+      "summary": "Delete one imported account item identified by its kind and name.",
+      "args": ["kind/name"],
+      "flags": ["--confirm"],
+      "destructive": true,
+      "confirm": "--confirm <exact-kind/name>"
+    }
+  },
+  {
+    "orchard": "api",
+    "source": "api.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "compact:call_api",
+    "orchardTool": "call_api",
+    "reason": "Egg's compact API tool is available, but Egg's CLI has no raw request command with token redaction and exact-target confirmation.",
+    "spec": {
+      "summary": "Call an API operation by operation id or method and path; allow GET and non-destructive requests, require exact-target confirmation for destructive requests, and never print bearer tokens.",
+      "args": ["operationId | METHOD path"],
+      "flags": ["--data", "--path-param", "--query", "--confirm"],
+      "destructive": true,
+      "confirm": "--confirm <exact-resource-name>"
+    }
+  },
+  {
+    "orchard": "api search",
+    "source": "api.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "compact:search_api",
+    "orchardTool": "search_api",
+    "reason": "Egg's compact API search tool exists, but Egg's CLI has no command to search API operations.",
+    "spec": {
+      "summary": "Search API operation descriptions using one or more terms and optionally refresh the cached specification.",
+      "args": ["query..."],
+      "flags": ["--limit", "--refresh"],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "api describe",
+    "source": "api.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "compact:describe_operation",
+    "orchardTool": "describe_operation",
+    "reason": "Egg's compact operation description tool exists, but Egg's CLI has no command to describe API operations.",
+    "spec": {
+      "summary": "Show an API operation's parameters, request body, and response shape using its operation id or method and path.",
+      "args": ["operationId | METHOD path"],
+      "flags": ["--refresh"],
+      "destructive": false,
+      "confirm": null
+    }
+  }
+]

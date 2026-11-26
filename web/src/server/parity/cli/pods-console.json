@@ -1,1 +1,218 @@
-[]
+[
+  {
+    "orchard": "pod list",
+    "source": "pod.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "list_project_containers",
+    "orchardTool": "list_pods",
+    "reason": "Egg has project-scoped container listing, but its CLI command is not implemented and the endpoint does not list cluster-wide Kubernetes pods.",
+    "spec": {
+      "summary": "List the pods in the selected namespace.",
+      "args": [],
+      "flags": [
+        { "name": "namespace", "type": "value", "required": false, "description": "Namespace to list; otherwise use the scoped project's namespace." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "pod get",
+    "source": "pod.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "get_project_container",
+    "orchardTool": "get_pod_details",
+    "reason": "Egg can read safe details for a project container, but the CLI command and a pod-name-to-container lookup are missing.",
+    "spec": {
+      "summary": "Show one pod's status, address, node, start time, and container restart details.",
+      "args": ["name"],
+      "flags": [
+        { "name": "namespace", "type": "value", "required": false, "description": "Namespace containing the pod; otherwise use the scoped project's namespace." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "pod logs",
+    "source": "pod.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": "get_pod_logs",
+    "reason": "Egg does not provide per-container runtime logs or a per-container streaming endpoint.",
+    "spec": {
+      "summary": "Read a pod's runtime logs, optionally selecting a container, older instance, line count, or continuous follow mode.",
+      "args": ["name"],
+      "flags": [
+        { "name": "namespace", "type": "value", "required": false, "description": "Namespace containing the pod; otherwise use the scoped project's namespace." },
+        { "name": "container", "type": "value", "required": false, "description": "Container name within the pod." },
+        { "name": "tail", "type": "value", "required": false, "description": "Maximum number of recent lines to return." },
+        { "name": "previous", "type": "flag", "required": false, "description": "Read logs from the prior terminated container instance." },
+        { "name": "follow", "type": "flag", "required": false, "description": "Keep polling for additional log lines." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "pod delete",
+    "source": "pod.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg has no endpoint for deleting or killing an individual container.",
+    "spec": {
+      "summary": "Delete a pod so its controller can recreate it.",
+      "args": ["name"],
+      "flags": [
+        { "name": "namespace", "type": "value", "required": false, "description": "Namespace containing the pod; otherwise use the scoped project's namespace." },
+        { "name": "confirm", "type": "value", "required": true, "description": "Must exactly match the pod name to authorize deletion." }
+      ],
+      "destructive": true,
+      "confirm": "exact pod name"
+    }
+  },
+  {
+    "orchard": "pod exec",
+    "source": "pod.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": "exec_in_pod",
+    "reason": "Egg has no endpoint for running a command inside a container.",
+    "spec": {
+      "summary": "Run a one-time command in a pod and return its output and success state.",
+      "args": ["name", "command..."],
+      "flags": [
+        { "name": "namespace", "type": "value", "required": false, "description": "Namespace containing the pod; otherwise use the scoped project's namespace." },
+        { "name": "container", "type": "value", "required": false, "description": "Container in the pod; otherwise use its first container." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "pod shell",
+    "source": "pod.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg does not expose an interactive session or shell inside a container.",
+    "spec": {
+      "summary": "Open an interactive shell in a pod's container.",
+      "args": ["name"],
+      "flags": [
+        { "name": "namespace", "type": "value", "required": false, "description": "Namespace containing the pod; otherwise use the scoped project's namespace." },
+        { "name": "container", "type": "value", "required": false, "description": "Container in the pod; otherwise use its first container." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "console",
+    "source": "console.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "This opens a language REPL inside a running container, which Egg cannot support without container execution or interactive sessions.",
+    "spec": {
+      "summary": "Open a language-specific REPL in a running pod for a deployment.",
+      "args": ["deployment-id"],
+      "flags": [
+        { "name": "pod", "type": "value", "required": false, "description": "Pod to use; otherwise choose a ready pod." },
+        { "name": "repl", "type": "value", "required": false, "description": "REPL command; otherwise infer one from the app language." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "up",
+    "source": "up.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg's deployment API builds configured repository sources; this local-directory flow needs an endpoint for build-context upload and deployment creation.",
+    "spec": {
+      "summary": "Package a local directory, upload its build context, start a deployment, and optionally wait for it to become live.",
+      "args": ["directory?"],
+      "flags": [
+        { "name": "name", "type": "value", "required": false, "description": "Deployment name; default to the directory name." },
+        { "name": "dockerfile", "type": "value", "required": false, "description": "Dockerfile path relative to the source directory." },
+        { "name": "railpack", "type": "flag", "required": false, "description": "Use Railpack even when a Dockerfile is present." },
+        { "name": "port", "type": "value", "required": false, "description": "Application port; infer it from the build or use the default." },
+        { "name": "detach", "type": "flag", "required": false, "description": "Start the build without following its output." },
+        { "name": "wait", "type": "flag", "required": false, "description": "Wait for the deployment to become live." },
+        { "name": "timeout", "type": "value", "required": false, "description": "Maximum time to wait for the deployment." },
+        { "name": "root", "type": "value", "required": false, "description": "Application directory within a monorepo." },
+        { "name": "install-cmd", "type": "value", "required": false, "description": "Override the detected dependency installation command." },
+        { "name": "build-cmd", "type": "value", "required": false, "description": "Override the detected build command." },
+        { "name": "start-cmd", "type": "value", "required": false, "description": "Override the detected start command." },
+        { "name": "output-dir", "type": "value", "required": false, "description": "Serve the built static files from this directory." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "ui",
+    "source": "ui.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "It launches a client-side terminal dashboard, which has no matching Egg API action.",
+    "spec": {
+      "summary": "Launch the interactive terminal dashboard.",
+      "args": [],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "open",
+    "source": "open.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": "get_deployment",
+    "reason": "It opens an application or dashboard URL in the user's local browser, and Egg has no API operation for that browser action.",
+    "spec": {
+      "summary": "Open a deployment's application URL, or its dashboard page, in the default browser.",
+      "args": ["deployment-id?"],
+      "flags": [
+        { "name": "dash", "type": "flag", "required": false, "description": "Open the deployment dashboard instead of the application URL." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "top",
+    "source": "top.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "get_project_health",
+    "orchardTool": "get_pod_health",
+    "reason": "Egg can read project health, but the CLI command and live pod resource, traffic, and database metrics needed for this view are missing.",
+    "spec": {
+      "summary": "Monitor live pod resources and traffic for an app, or database activity, with an optional one-shot snapshot.",
+      "args": ["id"],
+      "flags": [
+        { "name": "db", "type": "flag", "required": false, "description": "Treat the id as a database." },
+        { "name": "once", "type": "flag", "required": false, "description": "Print one snapshot and exit instead of opening the live monitor." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  }
+]
