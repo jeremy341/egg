@@ -154,6 +154,19 @@ export type Analytics = {
 
 export type UsagePoint = { at: string; cpu: number | null; mem: number | null; disk: number | null };
 export type UsageHistory = { serverId: string; hours: number; sampled: boolean; points: UsagePoint[] };
+export type DeploymentMetricSample = {
+  at: string;
+  cpuPercent: number | null;
+  memoryMb: number | null;
+  restarts: number;
+};
+export type DeploymentMetrics = {
+  deploymentId: string;
+  projectId: string;
+  window: number;
+  bucket: number;
+  samples: DeploymentMetricSample[];
+};
 
 export type AlertSettings = {
   diskPct: number;
@@ -507,6 +520,17 @@ export class Egg {
   /** Needs `deployments:read`. */
   getDeployment(deploymentId: string): Promise<{ deployment: DeploymentDetail }> {
     return this.request("GET", `/deployments/${seg(deploymentId)}`);
+  }
+
+  /** Bucketed CPU, memory and restart counts from the project's service samples. Needs `deployments:read`. */
+  getDeploymentMetrics(
+    deploymentId: string,
+    options: { window?: number; bucket?: number } = {},
+  ): Promise<DeploymentMetrics> {
+    return this.request("GET", `/deployments/${seg(deploymentId)}/metrics`, {
+      window: options.window,
+      bucket: options.bucket,
+    });
   }
 
   /** Queue a deployment of a branch (default: the production branch). Needs `deployments:write`. */

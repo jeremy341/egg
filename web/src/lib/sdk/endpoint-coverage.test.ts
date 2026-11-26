@@ -59,6 +59,7 @@ const CLIENT_CALLS: Record<string, Call$> = {
   get_rollout: (n) => n.rollout("D", { wait: true }),
   restart_service: (n) => n.restartService("P"),
   get_deployment: (n) => n.getDeployment("D"),
+  get_deployment_metrics: (n) => n.getDeploymentMetrics("D", { window: 12, bucket: 15 }),
   get_deployment_logs: (n) => n.getDeploymentLogs("D"),
   list_releases: (n) => n.listReleases("P"),
   analyze_deployment_resources: (n) => n.analyzeDeploymentResources("D"),
