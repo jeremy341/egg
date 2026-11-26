@@ -1,1 +1,398 @@
-[]
+[
+  {
+    "orchard": "github status",
+    "source": "github.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "get_github_status",
+    "orchardTool": "get_github_status",
+    "reason": "Egg has the read endpoint, but its CLI does not yet expose GitHub connection status.",
+    "spec": {
+      "summary": "Report whether GitHub is connected and which app installations are available.",
+      "args": [],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "github link",
+    "source": "github.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Start the browser-based flow for linking a GitHub account.",
+      "args": [],
+      "flags": [
+        {
+          "name": "open",
+          "type": "flag",
+          "required": false,
+          "description": "Open the account-linking page in a browser."
+        }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "github unlink",
+    "source": "github.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Disconnect the linked GitHub account.",
+      "args": [],
+      "flags": [
+        {
+          "name": "confirm",
+          "type": "value",
+          "required": true,
+          "description": "Must exactly match the linked GitHub account name."
+        }
+      ],
+      "destructive": true,
+      "confirm": {
+        "flag": "confirm",
+        "matches": "the linked GitHub account name exactly"
+      }
+    }
+  },
+  {
+    "orchard": "github install",
+    "source": "github.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Retrieve the GitHub App installation page.",
+      "args": [],
+      "flags": [
+        {
+          "name": "open",
+          "type": "flag",
+          "required": false,
+          "description": "Open the installation page in a browser."
+        }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "github installations",
+    "source": "github.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "get_github_status",
+    "orchardTool": "list_github_deploy_targets",
+    "reason": "Egg returns installation details through get_github_status, but its CLI has no installation-list command.",
+    "spec": {
+      "summary": "List GitHub App installations visible to the linked account.",
+      "args": [],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "github repos",
+    "source": "github.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "list_github_repos",
+    "orchardTool": "list_github_repos",
+    "reason": "Egg has the repository-list endpoint, but its CLI does not yet expose it.",
+    "spec": {
+      "summary": "List repositories available as deployment sources.",
+      "args": [],
+      "flags": [
+        {
+          "name": "all",
+          "type": "flag",
+          "required": false,
+          "description": "Fetch additional pages when using the fallback repository listing."
+        }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "github branches",
+    "source": "github.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "get_repo_branches",
+    "orchardTool": "get_repo_branches",
+    "reason": "Egg has the branch-list endpoint, but its CLI does not yet expose it.",
+    "spec": {
+      "summary": "List the branches of a GitHub repository.",
+      "args": ["owner/repo"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "github dockerfiles",
+    "source": "github.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "get_repo_dockerfiles",
+    "orchardTool": "get_repo_dockerfiles",
+    "reason": "Egg has the repository file-search endpoint, but its CLI does not yet expose it.",
+    "spec": {
+      "summary": "Find Dockerfiles in a GitHub repository.",
+      "args": ["owner/repo"],
+      "flags": [
+        {
+          "name": "branch",
+          "type": "value",
+          "required": false,
+          "description": "Branch to search; defaults to the repository's default branch."
+        }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "github dockerfile-info",
+    "source": "github.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "get_repo_contents",
+    "orchardTool": null,
+    "reason": "Egg can read the Dockerfile through get_repo_contents, but its CLI has no command that summarizes Dockerfile build metadata.",
+    "spec": {
+      "summary": "Inspect a repository Dockerfile and report build metadata.",
+      "args": ["owner/repo", "dockerfile-path"],
+      "flags": [
+        {
+          "name": "branch",
+          "type": "value",
+          "required": false,
+          "description": "Branch to inspect; defaults to the repository's default branch."
+        }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "github contents",
+    "source": "github.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "get_repo_contents",
+    "orchardTool": "get_repo_contents",
+    "reason": "Egg has the repository contents endpoint, but its CLI does not yet expose it.",
+    "spec": {
+      "summary": "List files and directories at a repository path.",
+      "args": ["owner/repo", "path (optional)"],
+      "flags": [
+        {
+          "name": "branch",
+          "type": "value",
+          "required": false,
+          "description": "Branch to read; defaults to the repository's default branch."
+        }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "git list",
+    "source": "git.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "List configured connections to external Git providers.",
+      "args": [],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "git add",
+    "source": "git.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Add a named connection to an external Git provider.",
+      "args": [],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "git remove",
+    "source": "git.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Remove a named external Git provider connection.",
+      "args": ["name"],
+      "flags": [
+        {
+          "name": "confirm",
+          "type": "value",
+          "required": true,
+          "description": "Must exactly match the provider connection name being removed."
+        }
+      ],
+      "destructive": true,
+      "confirm": {
+        "flag": "confirm",
+        "matches": "the provider connection name exactly"
+      }
+    }
+  },
+  {
+    "orchard": "git webhook",
+    "source": "git.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Show deployment webhook setup details for a named provider.",
+      "args": ["name"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "git repos",
+    "source": "git.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg supports GitHub App repository access, not named connections to arbitrary Git hosts.",
+    "spec": {
+      "summary": "List repositories visible through a named external Git provider.",
+      "args": ["name"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "git branches",
+    "source": "git.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg supports GitHub App repository access, not named connections to arbitrary Git hosts.",
+    "spec": {
+      "summary": "List branches in a repository visible through a named external Git provider.",
+      "args": ["name", "owner/repo"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "git detect",
+    "source": "git.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg supports GitHub App repository access, not named connections to arbitrary Git hosts.",
+    "spec": {
+      "summary": "Suggest build settings for a repository visible through a named external Git provider.",
+      "args": ["name", "owner/repo"],
+      "flags": [
+        {
+          "name": "branch",
+          "type": "value",
+          "required": false,
+          "description": "Branch to inspect; defaults to the repository's default branch."
+        }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "link",
+    "source": "link.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg CLI has no directory-scoped project context command; this local link stores only project, organization and environment identifiers and slugs.",
+    "spec": {
+      "summary": "Associate the current directory tree with a project and optionally report the link already in effect.",
+      "args": [],
+      "flags": [
+        {
+          "name": "status",
+          "type": "flag",
+          "required": false,
+          "description": "Report the current directory's nearest project link."
+        },
+        {
+          "name": "no-gitignore",
+          "type": "flag",
+          "required": false,
+          "description": "Skip adding the local link directory to the repository ignore file."
+        }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "unlink",
+    "source": "link.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg CLI has no command to remove a directory-scoped project context; the local link contains only project, organization and environment identifiers and slugs.",
+    "spec": {
+      "summary": "Remove the project context link that applies to the current directory.",
+      "args": [],
+      "flags": [
+        {
+          "name": "confirm",
+          "type": "value",
+          "required": true,
+          "description": "Must exactly match the linked project's name."
+        }
+      ],
+      "destructive": true,
+      "confirm": {
+        "flag": "confirm",
+        "matches": "the linked project's exact name"
+      }
+    }
+  }
+]

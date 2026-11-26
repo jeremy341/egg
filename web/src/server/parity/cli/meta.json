@@ -1,1 +1,98 @@
-[]
+[
+  {
+    "orchard": "version",
+    "source": "version.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg has no registered version command and does not print its build version through the CLI.",
+    "spec": {
+      "summary": "Prints the CLI build version as text or JSON.",
+      "args": [],
+      "flags": ["--output", "-o"],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "root",
+    "source": "root.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Running Egg without a subcommand returns a usage error instead of printing command usage.",
+    "spec": {
+      "summary": "The bare CLI entry point displays the command usage and available commands.",
+      "args": [],
+      "flags": ["--output", "-o", "--yes", "-y", "--org", "--project", "--env", "--context", "--help", "--version"],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "commands",
+    "source": "commands.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg help lists registered commands, but no Egg command emits Orchard's complete text and JSON command tree.",
+    "spec": {
+      "summary": "Lists the CLI command tree, with accepted flags, in readable or structured form.",
+      "args": [],
+      "flags": ["--output", "-o"],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "exit-codes",
+    "source": "exitcodes.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg help documents only part of Orchard's stable exit-code table, and Egg has no matching command.",
+    "spec": {
+      "summary": "Shows the stable process exit codes and the failure class each one represents.",
+      "args": [],
+      "flags": ["--output", "-o"],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "licenses",
+    "source": "licenses.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg has no command that prints its bundled dependency notices and license texts.",
+    "spec": {
+      "summary": "Prints the license notices for open-source packages included in the CLI.",
+      "args": [],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "doctor",
+    "source": "doctor.go",
+    "status": "partial",
+    "egg": "doctor",
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg checks whether the local machine can run Egg, while Orchard inspects server isolation and can run a cluster self-test.",
+    "spec": {
+      "summary": "Reports server isolation and security checks, with an optional active cluster self-test.",
+      "args": [],
+      "flags": ["--selftest", "--timeout", "--output", "-o", "--yes", "-y", "--org", "--project", "--env", "--context"],
+      "destructive": true,
+      "confirm": "The self-test prompts before creating temporary cluster resources; --yes skips that prompt."
+    }
+  }
+]

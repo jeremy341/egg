@@ -1,1 +1,266 @@
-[]
+[
+  {
+    "orchard": "domain list",
+    "source": "domain.go",
+    "status": "partial",
+    "egg": "domains list",
+    "endpoint": "list_domains",
+    "orchardTool": "list_ingresses",
+    "reason": "Egg lists owned domain records and their status, but it does not list Orchard host and path routes.",
+    "spec": {
+      "summary": "List public routes, including their host, path, deployment, TLS state, and protection mode.",
+      "args": [],
+      "flags": [
+        { "name": "deployment", "type": "value", "required": false, "description": "Limit the results to one deployment." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "domain get",
+    "source": "domain.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "get_ingress",
+    "orchardTool": "get_ingress",
+    "reason": "Egg has an endpoint for domain details but no CLI command, and its details do not include configured host and path routes.",
+    "spec": {
+      "summary": "Show one route's host, destination, TLS state, protection, address, deployment, and project.",
+      "args": ["domain-id"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "domain create",
+    "source": "domain.go",
+    "status": "partial",
+    "egg": "domains add",
+    "endpoint": "add_domain",
+    "orchardTool": "create_ingress",
+    "reason": "Egg can register a hostname with a server and port, but it cannot create a configured host and path route with TLS settings.",
+    "spec": {
+      "summary": "Add a host and path route to a deployment, with a target port and optional TLS.",
+      "args": [],
+      "flags": [
+        { "name": "deployment", "type": "value", "required": true, "description": "Deployment that receives this route." },
+        { "name": "host", "type": "value", "required": true, "description": "Fully qualified domain name for the route." },
+        { "name": "path", "type": "value", "required": false, "description": "URL path prefix; defaults to the root path." },
+        { "name": "service-port", "type": "value", "required": false, "description": "Deployment port that receives traffic; defaults to port 80." },
+        { "name": "tls", "type": "flag", "required": false, "description": "Provision TLS for the host; enabled by default." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "domain update",
+    "source": "domain.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "update_ingress",
+    "orchardTool": "update_ingress",
+    "reason": "Egg has an endpoint and no CLI command; the endpoint changes domain ownership or port but does not edit route hosts, paths, or TLS.",
+    "spec": {
+      "summary": "Change a route's host, path, destination port, TLS, or redirect settings.",
+      "args": ["domain-id"],
+      "flags": [
+        { "name": "host", "type": "value", "required": false, "description": "Replace the route host." },
+        { "name": "path", "type": "value", "required": false, "description": "Replace the URL path prefix." },
+        { "name": "service-port", "type": "value", "required": false, "description": "Change the destination port." },
+        { "name": "tls", "type": "flag", "required": false, "description": "Set whether TLS is provisioned for the host." },
+        { "name": "redirect-to", "type": "value", "required": false, "description": "Set the destination for a redirect route." },
+        { "name": "redirect-status", "type": "value", "required": false, "description": "Set the redirect response code." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "domain delete",
+    "source": "domain.go",
+    "status": "partial",
+    "egg": "domains remove",
+    "endpoint": "remove_domain",
+    "orchardTool": "delete_ingress",
+    "reason": "Egg removes its domain record but leaves Nest's host and path route in place; deletion also needs confirmation with the exact domain name.",
+    "spec": {
+      "summary": "Remove a route and stop traffic to its host and path.",
+      "args": ["domain-id"],
+      "flags": [
+        { "name": "confirm", "type": "value", "required": true, "description": "Must exactly match the route's domain name." }
+      ],
+      "destructive": true,
+      "confirm": "--confirm <domain>"
+    }
+  },
+  {
+    "orchard": "domain protection get",
+    "source": "domain.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "get_ingress_protection",
+    "orchardTool": "get_ingress_protection",
+    "reason": "Egg exposes domain protection through the API but has no CLI command to read its mode and path exclusions.",
+    "spec": {
+      "summary": "Read the protection mode and excluded paths applied to the project served by a domain.",
+      "args": ["domain-id"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "domain protection set",
+    "source": "domain.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "set_ingress_protection",
+    "orchardTool": "set_ingress_protection",
+    "reason": "Egg exposes protection changes through the API but has no CLI command for the domain's access settings.",
+    "spec": {
+      "summary": "Set the domain's access mode and optional password.",
+      "args": ["domain-id"],
+      "flags": [
+        { "name": "mode", "type": "value", "required": true, "description": "Protection mode to apply." },
+        { "name": "password", "type": "value", "required": false, "description": "New password, required when the mode uses password protection." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "domain validate-dns",
+    "source": "domain.go",
+    "status": "partial",
+    "egg": "domains validate",
+    "endpoint": "verify_domain",
+    "orchardTool": "validate_dns",
+    "reason": "Egg checks DNS and certificate readiness for a registered domain, while this command validates the supplied host against the cluster.",
+    "spec": {
+      "summary": "Check whether the host's DNS points to the cluster and report readiness details.",
+      "args": ["host"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "status-page list",
+    "source": "statuspage.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg has no CLI command or organization-level endpoint for listing status pages.",
+    "spec": {
+      "summary": "List an organization's status pages with their public address and visibility.",
+      "args": [],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "status-page show",
+    "source": "statuspage.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "get_status_page",
+    "orchardTool": null,
+    "reason": "Egg's endpoint reports whether a project's page is published and its URL, but the CLI and public page details are missing.",
+    "spec": {
+      "summary": "Read a public page's overall condition and component health by slug or host.",
+      "args": ["slug?"],
+      "flags": [
+        { "name": "host", "type": "value", "required": false, "description": "Resolve the public page by host when no slug is supplied." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "status-page options",
+    "source": "statuspage.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg has no organization-level endpoint for listing the apps and databases that can appear on a status page.",
+    "spec": {
+      "summary": "List eligible apps and databases for status-page components.",
+      "args": [],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "status-page create",
+    "source": "statuspage.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg has no endpoint for creating organization status pages with selected components.",
+    "spec": {
+      "summary": "Create an organization status page with its title, address, visibility, and ordered components.",
+      "args": [],
+      "flags": [
+        { "name": "title", "type": "value", "required": false, "description": "Page title." },
+        { "name": "slug", "type": "value", "required": false, "description": "Path slug for the public page." },
+        { "name": "description", "type": "value", "required": false, "description": "Short text shown beneath the title." },
+        { "name": "subdomain", "type": "value", "required": false, "description": "Host under the apps domain." },
+        { "name": "private", "type": "flag", "required": false, "description": "Create the page as hidden." },
+        { "name": "component", "type": "value", "required": false, "description": "Add a deployment or database component; repeat to preserve display order." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "status-page update",
+    "source": "statuspage.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg has no endpoint to update an organization status page's identity, address, visibility, or components.",
+    "spec": {
+      "summary": "Change a page's title, slug, description, host, visibility, or component list.",
+      "args": ["page-id"],
+      "flags": [
+        { "name": "title", "type": "value", "required": false, "description": "Replace the page title." },
+        { "name": "slug", "type": "value", "required": false, "description": "Replace the public path slug." },
+        { "name": "description", "type": "value", "required": false, "description": "Replace the short page description." },
+        { "name": "subdomain", "type": "value", "required": false, "description": "Set the page host under the apps domain." },
+        { "name": "no-subdomain", "type": "flag", "required": false, "description": "Remove the page's configured host." },
+        { "name": "public", "type": "flag", "required": false, "description": "Make the page public; cannot be used with private." },
+        { "name": "private", "type": "flag", "required": false, "description": "Hide the page; cannot be used with public." },
+        { "name": "component", "type": "value", "required": false, "description": "Replace the ordered components; repeat for each deployment or database." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "status-page delete",
+    "source": "statuspage.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg has no endpoint for deleting an organization status page and its host.",
+    "spec": {
+      "summary": "Delete a status page and remove its configured host.",
+      "args": ["page-id"],
+      "flags": [
+        { "name": "confirm", "type": "value", "required": true, "description": "Must exactly match the status page's title." }
+      ],
+      "destructive": true,
+      "confirm": "--confirm <page-title>"
+    }
+  }
+]
