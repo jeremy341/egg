@@ -1,0 +1,122 @@
+import Link from "next/link";
+import {
+  ArrowFatLineUpIcon,
+  EyeIcon,
+  GitBranchIcon,
+  GitCommitIcon,
+} from "@phosphor-icons/react/dist/ssr";
+import { DeploymentActions } from "@/components/deployment-actions";
+import { StatusDot } from "@/components/status-dot";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  isCurrentProduction,
+  projectName,
+  type Deployment,
+} from "@/lib/mock";
+import { cn } from "@/lib/utils";
+
+function EnvPill({ deployment }: { deployment: Deployment }) {
+  const current = isCurrentProduction(deployment);
+  const Icon = deployment.env === "Preview" ? EyeIcon : ArrowFatLineUpIcon;
+  return (
+    <span
+      className={cn(
+        "inline-flex h-6 items-center gap-1.5 rounded-full px-2 text-[12px] font-medium tracking-[-0.02em]",
+        current
+          ? "bg-[var(--ds-blue-700)] text-white"
+          : "shadow-border-base bg-background"
+      )}
+    >
+      <Icon className="size-3.5" weight={current ? "fill" : "regular"} />
+      {deployment.env}
+    </span>
+  );
+}
+
+/**
+ * One deployment. A grid on md and up, a stacked card on phones.
+ * The whole row is one link (stretched over the commit text); the actions
+ * menu sits above it.
+ */
+export function DeploymentRow({
+  deployment,
+  showProject = true,
+}: {
+  deployment: Deployment;
+  showProject?: boolean;
+}) {
+  const href = `/projects/${deployment.projectSlug}/deployments/${deployment.id}`;
+
+  return (
+    <li
+      className={cn(
+        "relative grid grid-cols-[minmax(0,1fr)] gap-x-4 gap-y-3 px-4 py-3 transition-colors hover:bg-[var(--ds-gray-100)]/60",
+        showProject
+          ? "md:grid-cols-[150px_minmax(0,1fr)_110px_120px_minmax(0,160px)_88px_32px]"
+          : "md:grid-cols-[minmax(0,1fr)_110px_120px_minmax(0,160px)_88px_32px]",
+        "md:items-center"
+      )}
+    >
+      {showProject ? (
+        <p className="relative z-10 hidden min-w-0 md:block">
+          <Link
+            href={`/projects/${deployment.projectSlug}`}
+            className="truncate font-medium tracking-[-0.02em] hover:underline"
+          >
+            {projectName(deployment.projectSlug)}
+          </Link>
+        </p>
+      ) : null}
+
+      <div className="flex min-w-0 items-center justify-between gap-3 md:contents">
+        <p className="min-w-0 truncate">
+          {showProject ? (
+            <span className="mr-2 font-medium tracking-[-0.02em] md:hidden">
+              {projectName(deployment.projectSlug)}
+            </span>
+          ) : null}
+          <Link
+            href={href}
+            className="after:absolute after:inset-0 after:content-['']"
+          >
+            {deployment.commit}
+          </Link>
+        </p>
+        <StatusDot
+          state={deployment.state}
+          className="shrink-0 md:order-none"
+        />
+      </div>
+
+      <div className="flex min-w-0 items-center justify-between gap-3 md:contents">
+        <div className="flex min-w-0 flex-1 items-center gap-3 md:contents">
+          <span className="md:order-none">
+            <EnvPill deployment={deployment} />
+          </span>
+          <p className="flex min-w-0 flex-1 items-center gap-3 font-mono text-[13px] text-muted-foreground">
+            <span className="flex items-center gap-1">
+              <GitCommitIcon className="size-4 shrink-0" />
+              {deployment.id}
+            </span>
+            <span className="flex min-w-0 items-center gap-1">
+              <GitBranchIcon className="size-4 shrink-0" />
+              <span className="truncate">{deployment.branch}</span>
+            </span>
+          </p>
+        </div>
+        <p className="flex shrink-0 items-center justify-end gap-2 text-muted-foreground">
+          <span className="whitespace-nowrap">{deployment.age}</span>
+          <Avatar size="sm">
+            <AvatarFallback className="text-[10px] uppercase">
+              {deployment.author.slice(0, 2)}
+            </AvatarFallback>
+          </Avatar>
+        </p>
+      </div>
+
+      <div className="relative z-10 hidden justify-self-end md:block">
+        <DeploymentActions id={deployment.id} />
+      </div>
+    </li>
+  );
+}
