@@ -2,7 +2,6 @@ import { sql } from "drizzle-orm";
 import {
   index,
   integer,
-  primaryKey,
   real,
   sqliteTable,
   text,
@@ -556,6 +555,8 @@ export const userPreferences = sqliteTable("user_preferences", {
   analyticsDefaults: text("analytics_defaults").notNull().default("{}"),
   /** JSON object of per-chapter marks, see src/lib/onboarding-marks.ts */
   onboarding: text("onboarding").notNull().default("{}"),
+  /** Show the display name on public status pages and the homepage feed. Off shows "Someone". */
+  showNamePublic: integer("show_name_public", { mode: "boolean" }).notNull().default(true),
   updatedAt: ts("updated_at").notNull(),
 });
 
@@ -749,28 +750,6 @@ export const analyticsErrors = sqliteTable(
 );
 
 /**
- * Triage state of an error group. Groups are computed from `analytics_errors`
- * by fingerprint (see server/error-fingerprint.ts); this row only holds what a
- * person decided. No message or query string is stored here. A group with no
- * row is open and unassigned.
- */
-export const analyticsErrorGroups = sqliteTable(
-  "analytics_error_groups",
-  {
-    id: integer("id").primaryKey({ autoIncrement: true }),
-    projectId: text("project_id")
-      .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
-    fingerprint: text("fingerprint").notNull(),
-    status: text("status", { enum: ["open", "resolved", "ignored"] }).notNull().default("open"),
-    /** The project member this group is assigned to, or null. */
-    assigneeId: text("assignee_id"),
-    updatedAt: ts("updated_at").notNull(),
-  },
-  (t) => [uniqueIndex("analytics_error_groups_project_fp_idx").on(t.projectId, t.fingerprint)]
-);
-
-/**
  * Heartbeats for the live view: one row a minute from each open, visible page,
  * with the salted retention code. Deleted after an hour.
  */
@@ -802,13 +781,6 @@ export const projectSamples = sqliteTable(
     /** Total CPU time the service has used, in nanoseconds. Used to work out cpuPercent. */
     cpuNs: real("cpu_ns"),
     restarts: integer("restarts"),
-    /**
-     * Exit status and systemd's reason (exit-code, signal, oom-kill, ...) of the
-     * service's last main process, kept when it was not a clean exit. Only the
-     * status and the reason are kept, never the program's output.
-     */
-    exitCode: integer("exit_code"),
-    exitReason: text("exit_reason"),
   },
   (t) => [index("project_samples_idx").on(t.projectId, t.at)]
 );
@@ -901,6 +873,38 @@ export const githubWebhookEvents = sqliteTable("github_webhook_events", {
   /** Legacy SQL column name; now stores the digest of event type plus signed body. */
   eventHash: text("body_hash").primaryKey(),
   receivedAt: ts("received_at").notNull(),
+});
+
+/**
+ * Every pull_request webhook event for a project, recorded from the day this
+ * shipped (GitHub is not backfilled). `action` is the GitHub action as sent;
+ * the activity heatmap counts "opened". Kept apart from deployments so a PR
+ * that never builds still shows up.
+ */
+export const pullRequestEvents = sqliteTable("pull_request_events", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  action: text("action").notNull(),
+  number: integer("number").notNull(),
+  createdAt: ts("created_at").notNull(),
+}, (t) => [index("pull_request_events_project_idx").on(t.projectId, t.createdAt)]);
+
+/**
+ * Per-project switches for the statistics section. Every switch defaults to off;
+ * a project with no row has everything off. Visitors is the same data as the
+ * analytics pages, shown on the statistics section only when this is on.
+ */
+export const projectStatistics = sqliteTable("project_statistics", {
+  projectId: text("project_id")
+    .primaryKey()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  deployCount: integer("deploy_count", { mode: "boolean" }).notNull().default(false),
+  deploySuccess: integer("deploy_success", { mode: "boolean" }).notNull().default(false),
+  buildTime: integer("build_time", { mode: "boolean" }).notNull().default(false),
+  visitors: integer("visitors", { mode: "boolean" }).notNull().default(false),
+  updatedAt: ts("updated_at").notNull(),
 });
 
 /** Local-mode credential hash; the recovery secret remains in the owner's private environment. */
@@ -1012,125 +1016,3 @@ export const adoptionPlans = sqliteTable("adoption_plans", {
   createdAt: ts("created_at").notNull(), expiresAt: ts("expires_at").notNull(),
   confirmedAt: ts("confirmed_at"), error: text("error"),
 });
-
-// --- OAuth 2.1 / PKCE (oauth-anchor) ---
-
-/**
- * A registered OAuth client. `client_id` is the public identifier (prefixed
- * `eggcli_`) and is safe to store in the clear; `client_secret_hash` is a
- * SHA-256 hash, so the secret is shown only once at registration.
- * `redirect_uris` and `scopes` are JSON arrays.
- */
-export const oauthClients = sqliteTable(
-  "oauth_clients",
-  {
-    id: text("id").primaryKey(),
-    userId: text("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    name: text("name").notNull(),
-    clientId: text("client_id").notNull().unique(),
-    clientSecretHash: text("client_secret_hash").notNull(),
-    /** JSON array of exact redirect URIs, matched literally at token time. */
-    redirectUris: text("redirect_uris").notNull(),
-    /** JSON array of scope strings this client may request. */
-    scopes: text("scopes").notNull(),
-    createdAt: ts("created_at").notNull(),
-  },
-  (t) => [index("oauth_clients_user_idx").on(t.userId)]
-);
-
-/**
- * A short-lived, single-use authorization code (10 minutes). Only the SHA-256
- * hash of the code is stored; `code_challenge` is the PKCE S256 challenge.
- */
-export const oauthGrants = sqliteTable(
-  "oauth_grants",
-  {
-    id: text("id").primaryKey(),
-    clientId: text("client_id").notNull(),
-    userId: text("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    codeHash: text("code_hash").notNull().unique(),
-    scopes: text("scopes").notNull(),
-    codeChallenge: text("code_challenge").notNull(),
-    redirectUri: text("redirect_uri").notNull(),
-    expiresAt: ts("expires_at").notNull(),
-    usedAt: ts("used_at"),
-  },
-  (t) => [index("oauth_grants_user_idx").on(t.userId)]
-);
-
-/**
- * An issued access token (1 day). Only its SHA-256 hash is stored and looked
- * up; the raw token (prefixed `egg_oauth_`) is shown only once.
- */
-export const oauthTokens = sqliteTable(
-  "oauth_tokens",
-  {
-    id: text("id").primaryKey(),
-    clientId: text("client_id").notNull(),
-    userId: text("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    tokenHash: text("token_hash").notNull().unique(),
-    scopes: text("scopes").notNull(),
-    expiresAt: ts("expires_at").notNull(),
-    createdAt: ts("created_at").notNull(),
-    /** The refresh-token family this access token belongs to, so revoking the family revokes it too. */
-    familyId: text("family_id"),
-  },
-  (t) => [index("oauth_tokens_user_idx").on(t.userId), index("oauth_tokens_family_idx").on(t.familyId)]
-);
-
-/**
- * A refresh token (30 days from the first grant of its family). Only the hash
- * is stored. Every use rotates it: the presented row gets `used_at` and a new
- * row joins the same family. Presenting a row that is already used means the
- * token leaked, so the whole family and its access tokens are revoked.
- */
-export const oauthRefreshTokens = sqliteTable(
-  "oauth_refresh_tokens",
-  {
-    id: text("id").primaryKey(),
-    familyId: text("family_id").notNull(),
-    clientId: text("client_id").notNull(),
-    userId: text("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    tokenHash: text("token_hash").notNull().unique(),
-    scopes: text("scopes").notNull(),
-    /** Absolute: rotation carries this forward, so a family cannot be kept alive forever. */
-    expiresAt: ts("expires_at").notNull(),
-    usedAt: ts("used_at"),
-    createdAt: ts("created_at").notNull(),
-  },
-  (t) => [index("oauth_refresh_tokens_family_idx").on(t.familyId), index("oauth_refresh_tokens_user_idx").on(t.userId)]
-);
-
-/**
- * One Idempotency-Key answer, per (token, key). A row is a claim while `state` is
- * pending, then holds the first answer for replay. A sensitive answer is stored
- * with an empty body, so a repeat is refused and no secret is kept. A row expires
- * 24 hours after it was claimed. `claimId` lets only the request that made the
- * claim finish or release it.
- */
-export const idempotencyKeys = sqliteTable(
-  "idempotency_keys",
-  {
-    /** The token id that made the first request, so one token never replays another's answer. */
-    scope: text("scope").notNull(),
-    key: text("key").notNull(),
-    claimId: text("claim_id").notNull(),
-    fingerprint: text("fingerprint").notNull(),
-    state: text("state", { enum: ["pending", "done"] }).notNull(),
-    status: integer("status"),
-    body: text("body").notNull().default(""),
-    headers: text("headers").notNull().default("[]"),
-    sensitive: integer("sensitive", { mode: "boolean" }).notNull().default(false),
-    createdAt: ts("created_at").notNull(),
-    expiresAt: ts("expires_at").notNull(),
-  },
-  (t) => [primaryKey({ columns: [t.scope, t.key] }), index("idempotency_keys_expires_idx").on(t.expiresAt)]
-);

@@ -382,21 +382,10 @@ describe("logs, domains and usage", () => {
     scriptReply = () => ({ code: 0, stdout: "line one\nline two\nline three\n" });
     const res = await run(logs, req(`/projects/${projectId}/logs?lines=2`, { secret }), { projectId });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ projectId, lines: ["line two", "line three"], truncated: false });
+    expect(await res.json()).toEqual({ projectId, lines: ["line two", "line three"] });
     for (const bad of ["0", "1001", "x"]) {
       expect((await run(logs, req(`/projects/${projectId}/logs?lines=${bad}`, { secret }), { projectId })).status, bad).toBe(400);
     }
-  });
-
-  it("caps runtime log response bytes while preserving a useful tail", async () => {
-    const secret = await token(["logs:read"]);
-    scriptReply = () => ({ code: 0, stdout: Array.from({ length: 400 }, (_, i) => `line-${i}-` + "x".repeat(100)).join("\n") });
-    const res = await run(logs, req(`/projects/${projectId}/logs?lines=400`, { secret }), { projectId });
-    const bodyText = await res.text();
-    const body = JSON.parse(bodyText);
-    expect(Buffer.byteLength(bodyText)).toBeLessThanOrEqual(40 * 1024);
-    expect(body.truncated).toBe(true);
-    expect(body.lines.at(-1)).toContain("line-399");
   });
 
   it("does not leak container errors from the log read", async () => {
