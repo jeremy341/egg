@@ -529,6 +529,16 @@ export class Egg {
     return this.request("POST", `/deployments/${seg(deploymentId)}/rollback`);
   }
 
+  /** The state of one deployment. With `wait`, holds up to 60 seconds for it to finish. Needs `deployments:read`. */
+  rollout(deploymentId: string, options: { wait?: boolean } = {}): Promise<{ rollout: { deployment: Deployment; done: boolean; waitedMs: number } }> {
+    return this.request("GET", `/deployments/${seg(deploymentId)}/rollout`, options.wait ? { wait: "1" } : {});
+  }
+
+  /** Restart the production service of a project. Needs `deployments:write` and owner access. */
+  restartService(projectId: string): Promise<{ restarted: boolean; projectId: string }> {
+    return this.request("POST", `/projects/${seg(projectId)}/restart`);
+  }
+
   // --------------------------------------------------------------------- logs
 
   /** The newest runtime log lines, oldest first, 1 to 1000 (default 200). Needs `logs:read`. */
