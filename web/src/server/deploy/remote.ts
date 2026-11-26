@@ -519,8 +519,9 @@ export function serviceStatus(args: { unit: string; port: number | null; path: s
   return (
     `unit=${shellQuote(args.unit)}\nport=${Number(args.port)}\npath=${shellQuote(path)}\n` +
     `echo "EGG_ACTIVE=$(systemctl is-active "$unit" 2>/dev/null || true)"\n` +
-    `systemctl show "$unit" -p LoadState -p ActiveState -p SubState -p MainPID -p NRestarts ` +
-    `-p MemoryCurrent -p CPUUsageNSec -p ActiveEnterTimestampMonotonic 2>/dev/null | sed 's/^/EGG_/' || true\n` +
+    `systemctl show "$unit" -p LoadState -p ActiveState -p SubState -p MainPID -p NRestarts -p InvocationID ` +
+    `-p MemoryCurrent -p CPUUsageNSec -p ActiveEnterTimestampMonotonic -p ExecMainStatus -p Result 2>/dev/null | sed 's/^/EGG_/' || true\n` +
+    `echo "EGG_RESULT=$(systemctl show "$unit" -p Result --value 2>/dev/null || true)"\n` +
     `echo "EGG_UPTIME=$(cut -d' ' -f1 /proc/uptime 2>/dev/null || true)"\n` +
     (args.port === null ? "" : `if command -v curl >/dev/null 2>&1; then\n` +
     `  echo "EGG_HTTP=$(curl -s -o /dev/null -w '%{http_code} %{time_total}' --max-time 3 "http://127.0.0.1:$port$path" || true)"\n` +
@@ -586,6 +587,7 @@ export function dockerCreateCommand(a: {
   envFile: string;
   hostPort: number | null;
   containerPort: number | null;
+  portMappings?: Array<{ hostPort: number; containerPort: number; protocol: "TCP" | "UDP" }>;
   /** Aux services from the Compose file are reached on this network. */
   network?: string | null;
   /** Named volumes of the main Compose service, under their Compose project prefix. */
@@ -598,7 +600,16 @@ export function dockerCreateCommand(a: {
   pidsLimit?: number;
 }) {
   if (!DOCKER_NAME.test(a.container)) throw new Error("The container name is not valid.");
-  const port = a.hostPort != null && a.containerPort != null;
+  const portMappings = a.portMappings ?? (a.hostPort != null && a.containerPort != null
+    ? [{ hostPort: a.hostPort, containerPort: a.containerPort, protocol: "TCP" as const }]
+    : []);
+  for (const mapping of portMappings) {
+    if (!Number.isInteger(mapping.hostPort) || mapping.hostPort < 1 || mapping.hostPort > 65535 ||
+      !Number.isInteger(mapping.containerPort) || mapping.containerPort < 1 || mapping.containerPort > 65535) {
+      throw new Error("A port mapping is outside the valid range.");
+    }
+  }
+  const primaryContainerPort = portMappings[0]?.containerPort ?? a.containerPort;
   const limits = [
     ...(Number.isFinite(a.memoryMb) && Number(a.memoryMb) > 0 ? [`--memory=${Math.floor(Number(a.memoryMb))}m`] : []),
     ...(Number.isFinite(a.cpus) && Number(a.cpus) > 0 ? [`--cpus=${Math.max(0.1, Number(Number(a.cpus).toFixed(2)))}`] : []),
@@ -610,8 +621,11 @@ export function dockerCreateCommand(a: {
     // systemd owns the restarts; docker's own policy stays out of the way.
     "--restart=no",
     ...limits,
-    ...(port ? ["-p", `127.0.0.1:${a.hostPort}:${a.containerPort}`] : []),
-    ...(a.containerPort != null ? ["-e", `PORT=${a.containerPort}`, "-e", "HOST=0.0.0.0"] : []),
+    ...portMappings.flatMap((mapping) => [
+      "-p",
+      `127.0.0.1:${mapping.hostPort}:${mapping.containerPort}${mapping.protocol === "UDP" ? "/udp" : ""}`,
+    ]),
+    ...(primaryContainerPort != null ? ["-e", `PORT=${primaryContainerPort}`, "-e", "HOST=0.0.0.0"] : []),
     "--env-file", a.envFile,
     ...(a.volumes ?? []).flatMap((v) => ["-v", v]),
     ...(a.network ? ["--network", a.network] : []),

@@ -21,6 +21,7 @@ describe("parseServiceStatus", () => {
     "EGG_SubState=running",
     "EGG_MainPID=4242",
     "EGG_NRestarts=2",
+    "EGG_RESULT=success",
     "EGG_MemoryCurrent=88080384",
     "EGG_CPUUsageNSec=2500000000",
     "EGG_ActiveEnterTimestampMonotonic=1000000000",
@@ -35,12 +36,25 @@ describe("parseServiceStatus", () => {
       detail: "running",
       pid: 4242,
       uptimeSeconds: 1, // 1000.5 s since boot minus 1000 s when it started, rounded
+      invocationId: null, // the sample unit prints no InvocationID
       memoryMb: 84,
       cpuNs: 2_500_000_000,
       restarts: 2,
+      result: "success",
       http: { code: 200, ms: 12 },
+      lastExit: null,
       checkedAt: at.toISOString(),
     });
+  });
+
+  it("keeps the last exit when it was not clean", () => {
+    const s = parseServiceStatus("EGG_ActiveState=activating\nEGG_SubState=auto-restart\nEGG_Result=oom-kill\nEGG_ExecMainStatus=137");
+    expect(s.lastExit).toEqual({ code: 137, reason: "oom-kill" });
+  });
+
+  it("leaves the last exit null after a clean exit", () => {
+    const s = parseServiceStatus("EGG_ActiveState=active\nEGG_Result=success\nEGG_ExecMainStatus=0");
+    expect(s.lastExit).toBeNull();
   });
 
   it("calls a service that failed, failed", () => {

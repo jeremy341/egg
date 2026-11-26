@@ -20,6 +20,8 @@
     "test:watch": "vitest",
     "db:generate": "drizzle-kit generate",
     "typecheck": "next typegen && tsc --noEmit",
+    "docs:generate": "tsx --tsconfig tsconfig.json scripts/generate-docs-markdown.ts",
+    "quickstart": "node scripts/quickstart.mjs",
     "audit:prod": "pnpm audit --prod --audit-level high",
     "compose:up": "docker compose -f ../compose.yaml --project-directory .. up -d --build",
     "backup": "sh ../deploy/backup.sh",

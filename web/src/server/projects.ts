@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+﻿import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { audit } from "@/server/audit";
 import { pickCloneSettings, type CloneSettings } from "@/server/clone-settings";
@@ -6,17 +6,22 @@ import { newId, open, seal } from "@/server/crypto";
 import { getDb, schema, withLockRetry, type Db } from "@/server/db";
 import { isUniqueViolation } from "@/server/db/errors";
 import { pageLimit, selectDeploymentPage, type DeploymentFilter } from "@/server/deployment-page";
-import { BUILD_LOCATIONS, RUNTIMES, WORKLOAD_KINDS, DEPLOYMENT_MODES } from "@/server/db/schema";
+import { BUILD_LOCATIONS, DEPLOY_STRATEGIES, PULL_POLICIES, RUNTIMES, WORKLOAD_KINDS, DEPLOYMENT_MODES } from "@/server/db/schema";
+import { strategyRefusal } from "@/server/deploy/strategy";
+import { IMAGE_REF_MAX, parseImageRef } from "@/server/deploy/image-ref";
 import { assertCloneUrl, BuildError } from "@/server/deploy/build";
 import { isValidSlug, slugify } from "@/server/deploy/layout";
 import { ENV_KEY, RESERVED_ENV } from "@/server/deploy/runtime";
-import { assertInstallationOwned, GithubError } from "@/server/github/app";
+import { normalizeInternalDomain, servicePortsForProject, servicePortsSchema, type ServicePort } from "@/server/service-config";
+import { assertInstallationOwned, GithubError, verifyGithubRepositoryBranch } from "@/server/github/app";
 import { HttpError, notFound } from "@/server/http";
 import { moveDomainsToPort } from "@/server/domains";
 import { getServerForUser } from "@/server/servers";
 import { assertCleanupAllowsWork } from "@/server/cleanup-guards";
 import { maintenanceBlocksUser } from "@/server/maintenance";
+import { assertAccountCanWrite } from "@/server/account-standing";
 import { projectReadableBy } from "@/server/project-roles";
+import { assertProjectAccess, type ProjectLevel } from "@/server/permissions";
 import { forgetDeliveriesForDeployments } from "@/server/webhooks";
 import { providerClientForUser, publicProviderClient, repositoryNameFromUrl, validateProviderSource } from "@/server/providers/connections";
 import { genericGitEnvironment } from "@/server/providers/generic";
@@ -77,10 +82,22 @@ export const branch = z
   .regex(/^[A-Za-z0-9._/-]+$/, "Branch names may use letters, digits, . _ - and /")
   .refine((v) => !v.startsWith("-") && !v.includes(".."), "Invalid branch name");
 
+/** Image apps default to port 80. Source apps run as a user, so they must use 1024 or higher (checked per app). */
+export const IMAGE_DEFAULT_PORT = 80;
+const SOURCE_MIN_PORT = 1024;
+
+/** Checks an image reference and returns it trimmed, ready to store. */
+export function checkImageRef(raw: string | null | undefined): string {
+  if (!raw) throw new HttpError(400, "An image app needs an image reference, such as nginx:1.27.", "validation");
+  const parsed = parseImageRef(raw);
+  if (!parsed.ok) throw new HttpError(400, parsed.reason, "validation");
+  return raw.trim();
+}
+
 const port = z
   .number()
   .int()
-  .min(1024)
+  .min(1)
   .max(65535)
   .refine(
     (p) => p < PREVIEW_PORT_MIN || p > PREVIEW_PORT_MAX,
@@ -91,16 +108,23 @@ export const createProjectInput = z.object({
   serverId: z.string().min(1),
   name: z.string().trim().min(1).max(60),
   slug: z.string().trim().toLowerCase().optional(),
-  repoUrl: z.string().trim().max(300),
+  /** Empty for an image app, which has no repository. */
+  repoUrl: z.string().trim().max(300).default(""),
   repoFullName: z.string().trim().max(200).nullable().optional(),
   sourceProvider: z.enum(["github", "gitlab", "forgejo", "codeberg", "generic"]).default("github"),
   providerConnectionId: z.string().min(1).max(64).nullable().optional(),
   installationId: z.number().int().positive().nullable().optional(),
   productionBranch: branch.default("main"),
   rootDir,
-  runtime: z.enum(RUNTIMES),
+  /** Required for source projects. An image app runs as the "command" runtime, which only records the choice. */
+  runtime: z.enum(RUNTIMES).optional(),
   workloadKind: z.enum(WORKLOAD_KINDS).default("web"),
   deploymentMode: z.enum(DEPLOYMENT_MODES).default("native"),
+  deployStrategy: z.enum(DEPLOY_STRATEGIES).default("rolling"),
+  /** Image mode only: the image reference, such as nginx:1.27 or ghcr.io/owner/app:1.2.0. */
+  imageRef: z.string().trim().max(IMAGE_REF_MAX).nullable().optional(),
+  /** Image mode only: when Docker pulls the image. Defaults to "auto". */
+  pullPolicy: z.enum(PULL_POLICIES).optional(),
   /** Dockerfile path relative to the repository root; used only in "dockerfile" mode. */
   dockerfilePath: repoFilePath.nullable().optional(),
   /** Compose file path relative to the repository root; used only in "compose" mode. */
@@ -142,12 +166,29 @@ export const updateProjectInput = createProjectInput
     autoDeploy: createProjectInput.shape.autoDeploy.removeDefault(),
     workloadKind: createProjectInput.shape.workloadKind.removeDefault(),
     deploymentMode: createProjectInput.shape.deploymentMode.removeDefault(),
+    deployStrategy: createProjectInput.shape.deployStrategy.removeDefault(),
+    /** Refuses deletion (and moving to the trash) while on. Set from the app's settings. */
+    deletionProtected: z.boolean(),
   })
   .partial();
 
+export const updateGithubRepositoryInput = z.object({
+  repoFullName: z
+    .string()
+    .trim()
+    .min(3)
+    .max(200)
+    .regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/, "Use a GitHub repository full name like owner/name.")
+    .describe("The GitHub repository full name, owner/name. Omit to keep the project's current repository.")
+    .optional(),
+  productionBranch: branch
+    .describe("The production branch to deploy. Omit to keep the project's current branch.")
+    .optional(),
+}).strict();
+
 export type CreateProjectInput = z.infer<typeof createProjectInput>;
 
-async function assertOwned(userId: string, projectId: string): Promise<ProjectRow> {
+export async function assertOwned(userId: string, projectId: string): Promise<ProjectRow> {
   const db = await getDb();
   const row = await db
     .select()
@@ -159,6 +200,20 @@ async function assertOwned(userId: string, projectId: string): Promise<ProjectRo
 }
 export const getProjectForUser = assertOwned;
 
+/**
+ * Load a project at the level the user holds (permissions.ts): view, edit or
+ * admin. Owners, organization owners and admins, and project members with the
+ * role for that level all pass. Anyone else gets 404; a missing level gets 403.
+ * Callers still on getProjectForUser are owner-only until they move here.
+ */
+export async function getProjectAtLevel(userId: string, projectId: string, level: ProjectLevel): Promise<ProjectRow> {
+  await assertProjectAccess(userId, projectId, level);
+  const db = await getDb();
+  const row = await db.select().from(schema.projects).where(eq(schema.projects.id, projectId)).get();
+  if (!row) throw notFound("Project not found");
+  return row;
+}
+
 /** Explicitly scoped read access; callers must not return this row directly. */
 export async function getReadableProject(userId: string, projectId: string): Promise<ProjectRow> {
   const db = await getDb();
@@ -169,7 +224,7 @@ export async function getReadableProject(userId: string, projectId: string): Pro
 
 /** Owner-only alias kept for the deploy actions that used to allow developer members. */
 async function getDevelopableProject(userId: string, projectId: string): Promise<ProjectRow> {
-  return assertOwned(userId, projectId);
+  return getProjectAtLevel(userId, projectId, "edit");
 }
 
 export async function listProjects(userId: string) {
@@ -210,9 +265,16 @@ async function assertGithubLinks(
 }
 
 export async function createProject(userId: string, raw: unknown): Promise<ProjectRow> {
+  await assertAccountCanWrite(userId);
   const input = createProjectInput.parse(raw);
+  const isImage = input.deploymentMode === "image";
+  if (!isImage && !input.repoUrl) throw new HttpError(400, "Enter the repository URL.", "validation");
+  if (!isImage && !input.runtime) throw new HttpError(400, "Choose a runtime.", "validation");
+  if (!isImage && (input.imageRef != null || input.pullPolicy !== undefined)) throw new HttpError(400, "Image settings apply only to image apps.", "validation");
+  const imageRef = isImage ? checkImageRef(input.imageRef) : null;
   if (input.port !== undefined && input.listenPort !== undefined && input.port !== input.listenPort) throw new HttpError(400, "Port and listenPort must agree.", "validation");
-  const selectedPort = input.listenPort !== undefined ? input.listenPort : input.port;
+  const selectedPort = input.listenPort !== undefined ? input.listenPort : (input.port ?? (isImage ? IMAGE_DEFAULT_PORT : undefined));
+  if (selectedPort != null && selectedPort < SOURCE_MIN_PORT && !isImage) throw new HttpError(400, "Ports below 1024 need a container image. Choose 1024 or higher.", "validation");
   if (input.workloadKind === "web" && selectedPort == null) throw new HttpError(400, "A web project needs a port.", "validation");
   if (input.workloadKind === "worker" && input.runtime === "static") throw new HttpError(400, "Static sites need a web workload.", "validation");
   if (input.deploymentMode === "dockerfile" && !input.dockerfilePath) throw new HttpError(400, "A Dockerfile project needs the Dockerfile path.", "validation");
@@ -222,7 +284,10 @@ export async function createProject(userId: string, raw: unknown): Promise<Proje
   await getServerForUser(userId, input.serverId);
   let providerRepoName = input.repoFullName ?? null;
 
-  if (input.sourceProvider === "github") {
+  if (isImage) {
+    // An image app has no repository to check; the reference was checked above.
+    providerRepoName = null;
+  } else if (input.sourceProvider === "github") {
     if (input.providerConnectionId) throw new HttpError(400, "GitHub uses an installation, not a provider connection.", "validation");
     try { assertCloneUrl(input.repoUrl); } catch (e) {
       if (e instanceof BuildError) throw new HttpError(400, e.message, "validation");
@@ -302,15 +367,18 @@ export async function createProject(userId: string, raw: unknown): Promise<Proje
       installationId: input.installationId ?? null,
       productionBranch: input.productionBranch,
       rootDir: input.rootDir,
-      runtime: input.runtime,
+      runtime: input.runtime ?? "command",
       workloadKind: input.workloadKind,
       deploymentMode: input.deploymentMode,
+      deployStrategy: input.deployStrategy,
+      imageRef,
+      pullPolicy: input.pullPolicy ?? "auto",
       // Container settings only mean something in Docker modes; native projects
       // store none, so switching modes never leaves stale file paths behind.
       dockerfilePath: input.deploymentMode === "dockerfile" ? input.dockerfilePath ?? null : null,
       composeFilePath: input.deploymentMode === "compose" ? input.composeFilePath ?? null : null,
       composeService: input.deploymentMode === "compose" ? input.composeService ?? null : null,
-      containerPort: input.deploymentMode === "native" ? null : input.containerPort ?? null,
+      containerPort: isImage ? (selectedPort ?? null) : input.deploymentMode === "native" ? null : input.containerPort ?? null,
       installCommand: input.installCommand || null,
       buildCommand: input.buildCommand || null,
       startCommand: input.startCommand || null,
@@ -320,7 +388,7 @@ export async function createProject(userId: string, raw: unknown): Promise<Proje
       port: selectedPort ?? 0,
       listenPort: selectedPort ?? null,
       healthPath: input.healthPath,
-      autoDeploy: input.sourceProvider !== "github" || input.adopted ? false : input.autoDeploy,
+      autoDeploy: isImage || input.sourceProvider !== "github" || input.adopted ? false : input.autoDeploy,
       createdAt: now,
       updatedAt: now,
     }).catch((err: unknown) => {
@@ -372,8 +440,9 @@ async function assertPortFree(tx: Tx, serverId: string, port: number, message: s
 }
 
 export async function updateProject(userId: string, projectId: string, raw: unknown) {
+  await assertAccountCanWrite(userId);
   const input = updateProjectInput.parse(raw);
-  const project = await assertOwned(userId, projectId);
+  const project = await getProjectAtLevel(userId, projectId, "edit");
   if (input.autoDeploy && project.sourceProvider !== "github" && !project.providerWebhookSecretEnc) throw new HttpError(400, "Configure a provider webhook before enabling automatic deployments.", "validation");
   if (input.workloadKind && input.workloadKind !== project.workloadKind) throw new HttpError(400, "Create a separate project to change between a web service and a worker.", "validation");
   if (input.port !== undefined && input.listenPort !== undefined && input.port !== input.listenPort) throw new HttpError(400, "Port and listenPort must agree.", "validation");
@@ -383,10 +452,21 @@ export async function updateProject(userId: string, projectId: string, raw: unkn
   if (project.workloadKind === "web" && portTouched && selectedPort === null) throw new HttpError(400, "A web project needs a port.", "validation");
   if (project.workloadKind === "worker" && input.runtime === "static") throw new HttpError(400, "Static sites need a web workload.", "validation");
   const selectedMode = input.deploymentMode ?? project.deploymentMode;
+  const isImage = selectedMode === "image";
+  if (isImage) {
+    if (input.autoDeploy) throw new HttpError(400, "Image apps deploy when you ask. There is no push to watch.", "validation");
+    if (input.imageRef !== undefined) checkImageRef(input.imageRef);
+    else if (!project.imageRef) throw new HttpError(400, "An image app needs an image reference, such as nginx:1.27.", "validation");
+  } else if (input.imageRef != null || input.pullPolicy !== undefined) {
+    throw new HttpError(400, "Image settings apply only to image apps.", "validation");
+  }
+  if (selectedPort != null && selectedPort < SOURCE_MIN_PORT && !isImage) throw new HttpError(400, "Ports below 1024 need a container image. Choose 1024 or higher.", "validation");
   if (selectedMode === "dockerfile" && (input.dockerfilePath ?? project.dockerfilePath) == null) throw new HttpError(400, "A Dockerfile project needs the Dockerfile path.", "validation");
   if (selectedMode === "compose" && (input.composeFilePath ?? project.composeFilePath) == null) throw new HttpError(400, "A Compose project needs the Compose file path.", "validation");
   if (selectedMode === "compose" && (input.composeService ?? project.composeService) == null) throw new HttpError(400, "A Compose project needs the service to run.", "validation");
   if (selectedMode !== "native" && (input.buildLocation ?? project.buildLocation) === "github") throw new HttpError(400, "Container projects build their image on your server. GitHub build settings are for native projects.", "validation");
+  const refusal = strategyRefusal({ strategy: input.deployStrategy ?? project.deployStrategy, hasVolume: project.hasVolumes && selectedMode === "compose" });
+  if (refusal) throw new HttpError(400, refusal, "validation");
   const db = await getDb();
 
   const clean = Object.fromEntries(
@@ -395,6 +475,30 @@ export async function updateProject(userId: string, projectId: string, raw: unkn
   if (portTouched) {
     if (selectedPort != null) { clean.port = selectedPort; clean.listenPort = selectedPort; }
     else if (project.workloadKind === "worker") { clean.port = 0; clean.listenPort = null; }
+    if (project.servicePorts != null) {
+      const ports = servicePortsForProject(project);
+      if (selectedPort == null) {
+        clean.servicePorts = JSON.stringify([]);
+      } else {
+        const primary = ports[0] ?? {
+          containerPort: project.containerPort ?? selectedPort,
+          servicePort: selectedPort,
+          protocol: "TCP" as const,
+        };
+        ports[0] = {
+          ...primary,
+          containerPort: project.deploymentMode === "native" ? selectedPort : primary.containerPort,
+          servicePort: selectedPort,
+        };
+        clean.servicePorts = JSON.stringify(ports);
+      }
+    }
+  }
+  if (!isImage) {
+    // Image settings only mean something for an image app. A registry login is kept by its owner, not by the app.
+    clean.imageRef = null;
+    clean.pullPolicy = "auto";
+    clean.registryCredentialId = null;
   }
   if (selectedMode === "native") {
     // Container settings only mean something in Docker modes; keep the stored
@@ -403,6 +507,15 @@ export async function updateProject(userId: string, projectId: string, raw: unkn
     clean.composeFilePath = null;
     clean.composeService = null;
     clean.containerPort = null;
+    if (project.servicePorts != null || clean.servicePorts != null) {
+      const currentPorts = typeof clean.servicePorts === "string"
+        ? servicePortsSchema.parse(JSON.parse(clean.servicePorts))
+        : servicePortsForProject(project);
+      clean.servicePorts = JSON.stringify(currentPorts.map((port) => ({
+        ...port,
+        containerPort: port.servicePort,
+      })));
+    }
   }
   const newPort = selectedPort != null && selectedPort !== project.port ? selectedPort : null;
   await withLockRetry(() => db.transaction(async (tx) => {
@@ -443,7 +556,192 @@ export async function updateProject(userId: string, projectId: string, raw: unkn
     if (newPort !== null) await moveDomainsToPort(tx, project.id, newPort);
   }));
   await audit(userId, "project.update", project.id, { fields: Object.keys(clean).join(", ") });
-  return assertOwned(userId, projectId);
+  return getProjectAtLevel(userId, projectId, "edit");
+}
+
+/** Replace a service's listener list and/or its recorded internal DNS name. */
+export async function updateServiceConfiguration(
+  userId: string,
+  projectId: string,
+  changes: { ports?: ServicePort[]; internalDomain?: string | null }
+) {
+  await assertAccountCanWrite(userId);
+  if (changes.ports === undefined && changes.internalDomain === undefined) {
+    throw new HttpError(400, "Send ports, domain, or both to change.", "validation");
+  }
+
+  const project = await getProjectAtLevel(userId, projectId, "edit");
+  const ports = changes.ports === undefined ? undefined : servicePortsSchema.parse(changes.ports);
+  const internalDomain = changes.internalDomain === undefined
+    ? undefined
+    : changes.internalDomain === null ? null : normalizeInternalDomain(changes.internalDomain);
+  const db = await getDb();
+  const clean: Partial<typeof schema.projects.$inferInsert> = {};
+  let portsChanged = false;
+  let newPort: number | null = null;
+
+  if (ports !== undefined) {
+    if (project.workloadKind === "web" && ports.length === 0) {
+      throw new HttpError(400, "A web service needs at least one exposed port.", "validation");
+    }
+    if (project.deploymentMode === "native" && ports.some((port) => port.containerPort !== port.servicePort)) {
+      throw new HttpError(400, "Native Egg services listen on their configured port directly, so containerPort and servicePort must match.", "validation");
+    }
+    if (project.deploymentMode !== "image" && ports.some((port) => port.servicePort < SOURCE_MIN_PORT)) {
+      throw new HttpError(400, "Ports below 1024 need a container image. Choose 1024 or higher.", "validation");
+    }
+    if (ports.length === 0) {
+      clean.port = 0;
+      clean.listenPort = null;
+      clean.containerPort = null;
+    } else {
+      const primary = ports[0]!;
+      clean.port = primary.servicePort;
+      clean.listenPort = primary.servicePort;
+      clean.containerPort = project.deploymentMode === "native" ? null : primary.containerPort;
+      newPort = primary.servicePort !== project.port ? primary.servicePort : null;
+    }
+    clean.servicePorts = JSON.stringify(ports);
+    portsChanged = project.servicePorts === null || JSON.stringify(ports) !== JSON.stringify(servicePortsForProject(project));
+  }
+  if (internalDomain !== undefined) clean.internalDomain = internalDomain;
+
+  await withLockRetry(() => db.transaction(async (tx) => {
+    await assertCleanupAllowsWork(tx, userId, projectId);
+    if (portsChanged) {
+      if (ports?.length === 0) {
+        const linked = await tx.select({ id: schema.domains.id }).from(schema.domains).where(eq(schema.domains.projectId, project.id));
+        if (linked.length > 0) {
+          throw new HttpError(409, "Detach this service's domains before removing its last port.", "conflict");
+        }
+      }
+      const active = await tx
+        .select({ id: schema.deployments.id })
+        .from(schema.deployments)
+        .where(and(
+          eq(schema.deployments.projectId, project.id),
+          inArray(schema.deployments.state, ["queued", "building", "deploying"]),
+        ))
+        .get();
+      if (active) {
+        throw new HttpError(409, "A deployment is still running for this service. Wait for it to finish before changing its ports.", "conflict");
+      }
+      if (ports && ports.length > 0) {
+        const requested = new Set(ports.map((port) => port.servicePort));
+        const existingProjects = await tx.select().from(schema.projects).where(eq(schema.projects.serverId, project.serverId));
+        for (const existing of existingProjects) {
+          if (existing.id === project.id) continue;
+          if (servicePortsForProject(existing).some((port) => requested.has(port.servicePort))) {
+            throw new HttpError(409, "One of those ports is already used by another project on this server.", "conflict");
+          }
+        }
+        const deployments = await tx
+          .select({ projectId: schema.deployments.projectId, env: schema.deployments.env, port: schema.deployments.port })
+          .from(schema.deployments)
+          .innerJoin(schema.projects, eq(schema.deployments.projectId, schema.projects.id))
+          .where(eq(schema.projects.serverId, project.serverId));
+        if (deployments.some((deployment) =>
+          deployment.port > 0 && requested.has(deployment.port) &&
+          (deployment.projectId !== project.id || deployment.env === "preview")
+        )) {
+          throw new HttpError(409, "One of those ports is still used by a deployment on this server.", "conflict");
+        }
+      }
+      if (newPort !== null) {
+        await assertPortFree(tx, project.serverId, newPort, `Port ${newPort} is already used on this server.`, project.id);
+      }
+    }
+    if (internalDomain) {
+      const existing = await tx
+        .select({ id: schema.projects.id })
+        .from(schema.projects)
+        .where(and(eq(schema.projects.serverId, project.serverId), eq(schema.projects.internalDomain, internalDomain)))
+        .get();
+      if (existing && existing.id !== project.id) {
+        throw new HttpError(409, "That internal domain is already assigned to another service on this server.", "conflict");
+      }
+    }
+    await tx
+      .update(schema.projects)
+      .set({ ...clean, updatedAt: new Date() })
+      .where(eq(schema.projects.id, project.id))
+      .catch((err: unknown) => {
+        if (isUniqueViolation(err)) {
+          if (internalDomain) throw new HttpError(409, "That internal domain is already assigned to another service on this server.", "conflict");
+          throw new HttpError(409, "One of those ports is already used on this server.", "conflict");
+        }
+        throw err;
+      });
+    if (newPort !== null) await moveDomainsToPort(tx, project.id, newPort);
+  }));
+
+  await audit(userId, "project.update", project.id, {
+    fields: [ports !== undefined ? "ports" : null, internalDomain !== undefined ? "domain" : null].filter(Boolean).join(", "),
+  });
+  return getProjectAtLevel(userId, projectId, "edit");
+}
+
+/** Change a project's GitHub source after checking repository access and the selected branch. */
+export async function updateProjectGithubRepository(userId: string, projectId: string, raw: unknown) {
+  await assertAccountCanWrite(userId);
+  const input = updateGithubRepositoryInput.parse(raw);
+  if (input.repoFullName === undefined && input.productionBranch === undefined) {
+    throw new HttpError(400, "Set a GitHub repository or production branch to change.", "validation");
+  }
+
+  const project = await getProjectForUser(userId, projectId);
+  if (project.sourceProvider !== "github" || project.deploymentMode === "image") {
+    throw new HttpError(400, "This project does not use a GitHub repository.", "validation");
+  }
+  const repoFullName = input.repoFullName ?? project.repoFullName;
+  if (!repoFullName) {
+    throw new HttpError(400, "Set a GitHub repository before changing its production branch.", "validation");
+  }
+  if (project.installationId) {
+    try {
+      await assertInstallationOwned(userId, project.installationId);
+    } catch (error) {
+      if (error instanceof GithubError) throw new HttpError(403, error.message, "forbidden");
+      throw error;
+    }
+  }
+
+  const productionBranch = input.productionBranch ?? project.productionBranch;
+  let repository: { fullName: string; cloneUrl: string };
+  try {
+    repository = await verifyGithubRepositoryBranch(
+      project.installationId,
+      repoFullName,
+      productionBranch,
+    );
+  } catch (error) {
+    if (error instanceof GithubError) {
+      if (error.status === 403) throw new HttpError(403, "GitHub denied access to that repository.", "github");
+      if (error.status === 404) {
+        throw new HttpError(400, "That repository and branch are not available through the project's GitHub connection.", "validation");
+      }
+      throw new HttpError(502, "Could not verify the repository and branch with GitHub.", "github");
+    }
+    throw error;
+  }
+
+  const changes: Partial<typeof schema.projects.$inferInsert> = {};
+  if (project.repoFullName !== repository.fullName) changes.repoFullName = repository.fullName;
+  if (project.repoUrl !== repository.cloneUrl) changes.repoUrl = repository.cloneUrl;
+  if (project.productionBranch !== productionBranch) changes.productionBranch = productionBranch;
+  const fields = Object.keys(changes);
+  if (fields.length === 0) return project;
+
+  const db = await getDb();
+  await withLockRetry(() => db.transaction(async (tx) => {
+    await assertCleanupAllowsWork(tx, userId, projectId);
+    await tx
+      .update(schema.projects)
+      .set({ ...changes, updatedAt: new Date() })
+      .where(eq(schema.projects.id, project.id));
+  }));
+  await audit(userId, "project.update", project.id, { fields: fields.join(", ") });
+  return getProjectForUser(userId, projectId);
 }
 
 // ------------------------------------------------------------ environment
@@ -461,10 +759,12 @@ export const envInput = z.object({
 
 export async function setEnvVar(userId: string, projectId: string, raw: unknown) {
   const input = envInput.parse(raw);
-  const project = await assertOwned(userId, projectId);
+  const project = await getProjectAtLevel(userId, projectId, "edit");
   const db = await getDb();
 
   await withLockRetry(() => db.transaction(async (tx) => {
+    // Checked inside the write, so a ban that lands just before it is still refused.
+    await assertAccountCanWrite(userId, { db: tx });
     await assertCleanupAllowsWork(tx, userId, project.id);
     const valueEnc = seal(input.value, `env:${project.id}:${input.key}:${input.target}`);
     // Only a genuinely new variable consumes the 100-variable budget. The
@@ -511,7 +811,7 @@ export async function setEnvVar(userId: string, projectId: string, raw: unknown)
 
 /** Names and targets only. Values are never sent back to the browser. */
 export async function listEnvVars(userId: string, projectId: string) {
-  const project = await assertOwned(userId, projectId);
+  const project = await getProjectAtLevel(userId, projectId, "view");
   const db = await getDb();
   const rows = await db
     .select({ id: schema.envVars.id, key: schema.envVars.key, target: schema.envVars.target })
@@ -521,8 +821,122 @@ export async function listEnvVars(userId: string, projectId: string) {
   return rows;
 }
 
-export async function deleteEnvVar(userId: string, projectId: string, envId: string) {
+const envBatchInput = z.array(envInput).max(100).superRefine((entries, ctx) => {
+  const seen = new Set<string>();
+  entries.forEach((entry, index) => {
+    const key = entry.key + "\u0000" + entry.target;
+    if (seen.has(key)) ctx.addIssue({ code: "custom", path: [index, "key"], message: "Each key and target may appear once." });
+    seen.add(key);
+  });
+});
+
+/** Merge a batch of variables atomically under the project's 100-variable cap. */
+export async function mergeEnvVars(userId: string, projectId: string, raw: unknown) {
+  const entries = envBatchInput.parse(raw);
   const project = await assertOwned(userId, projectId);
+  const db = await getDb();
+
+  await withLockRetry(() => db.transaction(async (tx) => {
+    await assertCleanupAllowsWork(tx, userId, project.id);
+    const existing = await tx
+      .select({ key: schema.envVars.key, target: schema.envVars.target })
+      .from(schema.envVars)
+      .where(eq(schema.envVars.projectId, project.id));
+    const existingKeys = new Set(existing.map((entry) => entry.key + "\u0000" + entry.target));
+    const added = entries.filter((entry) => !existingKeys.has(entry.key + "\u0000" + entry.target)).length;
+    if (existing.length + added > 100) {
+      throw new HttpError(400, "A project can have up to 100 variables.", "limit");
+    }
+
+    for (const entry of entries) {
+      const valueEnc = seal(entry.value, "env:" + project.id + ":" + entry.key + ":" + entry.target);
+      await tx.insert(schema.envVars).values({
+        id: newId(),
+        projectId: project.id,
+        key: entry.key,
+        valueEnc,
+        target: entry.target,
+        createdAt: new Date(),
+      }).onConflictDoUpdate({
+        target: [schema.envVars.projectId, schema.envVars.key, schema.envVars.target],
+        set: { valueEnc },
+      });
+    }
+  }));
+
+  for (const entry of entries) await audit(userId, "env.set", project.id, { name: entry.key, target: entry.target });
+  return entries.map(({ key, target }) => ({ key, target }));
+}
+
+/** Replace the complete environment in one checked transaction. */
+export async function replaceEnvVars(userId: string, projectId: string, raw: unknown) {
+  const entries = envBatchInput.parse(raw);
+  const project = await assertOwned(userId, projectId);
+  const db = await getDb();
+  const removed = await withLockRetry(() => db.transaction(async (tx) => {
+    await assertCleanupAllowsWork(tx, userId, project.id);
+    const existing = await tx
+      .select({ key: schema.envVars.key, target: schema.envVars.target, secret: schema.envVars.secret })
+      .from(schema.envVars)
+      .where(eq(schema.envVars.projectId, project.id));
+    const existingByKey = new Map(existing.map((entry) => [entry.key + "\u0000" + entry.target, entry]));
+    const desired = new Set(entries.map((entry) => entry.key + "\u0000" + entry.target));
+    const removedRows = existing.filter((entry) => !desired.has(entry.key + "\u0000" + entry.target));
+
+    await tx.delete(schema.envVars).where(eq(schema.envVars.projectId, project.id));
+    if (entries.length > 0) {
+      const createdAt = new Date();
+      await tx.insert(schema.envVars).values(entries.map((entry) => {
+        const existing = existingByKey.get(entry.key + "\u0000" + entry.target);
+        return {
+          id: newId(),
+          projectId: project.id,
+          key: entry.key,
+          valueEnc: seal(entry.value, "env:" + project.id + ":" + entry.key + ":" + entry.target),
+          target: entry.target,
+          ...(existing ? { secret: existing.secret } : {}),
+          createdAt,
+        };
+      }));
+    }
+    return removedRows;
+  }));
+  await audit(userId, "env.replace", project.id, { count: entries.length, deleted: removed.length });
+  return removed.map(({ key, target }) => ({ key, target }));
+}
+
+/** Mark one project variable's value as secret or explicitly readable. */
+export async function setEnvVarSecret(
+  userId: string,
+  projectId: string,
+  key: string,
+  target: "all" | "production" | "preview",
+  secret: boolean,
+) {
+  const project = await getProjectAtLevel(userId, projectId, "edit");
+  const db = await getDb();
+  const updated = await withLockRetry(() => db.transaction(async (tx) => {
+    await assertAccountCanWrite(userId, { db: tx });
+    await assertCleanupAllowsWork(tx, userId, project.id);
+    const rows = await tx
+      .update(schema.envVars)
+      .set({ secret })
+      .where(and(
+        eq(schema.envVars.projectId, project.id),
+        eq(schema.envVars.key, key),
+        eq(schema.envVars.target, target),
+      ))
+      .returning({ key: schema.envVars.key, target: schema.envVars.target, secret: schema.envVars.secret });
+    const row = rows[0];
+    if (!row) throw notFound("Environment variable not found");
+    return row;
+  }));
+  await audit(userId, "env.secret", project.id, { name: key, target, secret });
+  return updated;
+}
+
+export async function deleteEnvVar(userId: string, projectId: string, envId: string) {
+  const project = await getProjectAtLevel(userId, projectId, "edit");
   const db = await getDb();
   await db.transaction(async (tx) => {
     await assertCleanupAllowsWork(tx, userId, project.id);
@@ -595,6 +1009,10 @@ export async function enqueueDeployment(
   // networks and named volumes are keyed by project name, so a preview would
   // overwrite the live stack. Refuse when the deployment is queued, not after
   // the build has run. Production and rollbacks are unaffected.
+  // Image apps: the deploy step that pulls and runs a prebuilt image is not built yet, so nothing is queued.
+  if (project.deploymentMode === "image") {
+    throw new HttpError(400, "Deploying a prebuilt image is not available yet. The image settings are saved; the deploy step is still to come.", "validation");
+  }
   if (jobType === "deploy" && input.env === "preview" && project.deploymentMode === "compose") {
     throw new HttpError(400, "Pull request previews are not available for Compose projects. Deploy the branch to production instead.", "validation");
   }
@@ -605,6 +1023,8 @@ export async function enqueueDeployment(
       throw notFound("Project not found");
     }
     await assertCleanupAllowsWork(tx, project.userId, project.id);
+    // Every deployment, rollback and webhook or hook trigger lands here, so the owner's standing is checked inside the write.
+    await assertAccountCanWrite(project.userId, { db: tx });
     if (await maintenanceBlocksUser(project.userId, tx)) throw new HttpError(503, "Maintenance is active. New deployments are paused.", "maintenance");
     // A port is what production uses: the worker's listen port, or the web project's port.
     // Previews are web traffic (PRs); a worker preview stays portless and is checked as a process.
@@ -744,7 +1164,7 @@ export async function cancelDeployment(userId: string, deploymentId: string, via
   await audit(userId, "deploy.cancel", project.id, { branch: dep.branch, ...viaMeta(via) });
 }
 
-export async function ownedDeployment(userId: string, deploymentId: string) {
+export async function ownedDeployment(userId: string, deploymentId: string, level: ProjectLevel = "edit") {
   const db = await getDb();
   const dep = await db
     .select()
@@ -752,12 +1172,14 @@ export async function ownedDeployment(userId: string, deploymentId: string) {
     .where(eq(schema.deployments.id, deploymentId))
     .get();
   if (!dep) throw notFound("Deployment not found");
-  const project = await assertOwned(userId, dep.projectId);
+  const project = await getProjectAtLevel(userId, dep.projectId, level);
   return { dep, project };
 }
 
-/** Both read and action access are owner-only since team collaboration was removed. */
-export const readableDeployment = ownedDeployment;
+/** Read access to one deployment: any role that can view the project. Actions use ownedDeployment (edit). */
+export function readableDeployment(userId: string, deploymentId: string) {
+  return ownedDeployment(userId, deploymentId, "view");
+}
 
 
 export async function listDeployments(userId: string, projectId?: string, limit = 50) {
@@ -800,49 +1222,57 @@ export async function deploymentLogs(userId: string, deploymentId: string, after
     .limit(limit);
 }
 
+/** Refused while deletion protection is on. Checked before a project is moved to the trash or removed. */
+export function assertDeletable(project: Pick<ProjectRow, "deletionProtected">) {
+  if (project.deletionProtected) {
+    throw new HttpError(
+      409,
+      "Deletion protection is on for this app. Turn it off in the app's settings, then delete it.",
+      "deletion_protected"
+    );
+  }
+}
+
+/** Refuses while a deployment or a stop is still running for the project. Runs inside the caller's transaction. */
+export async function assertProjectIdle(tx: Pick<Db, "select">, projectId: string) {
+  const activeJob = await tx
+    .select({ id: schema.jobs.id })
+    .from(schema.jobs)
+    .innerJoin(schema.deployments, eq(schema.jobs.deploymentId, schema.deployments.id))
+    .where(and(eq(schema.deployments.projectId, projectId), eq(schema.jobs.state, "running")))
+    .get();
+  if (activeJob) {
+    throw new HttpError(409, "A deployment is still stopping for this project. Wait for it to finish, then delete the project.", "conflict");
+  }
+  // The worker would keep writing a service and folders for a project that no longer exists.
+  const running = await tx
+    .select({ id: schema.deployments.id })
+    .from(schema.deployments)
+    .where(
+      and(
+        eq(schema.deployments.projectId, projectId),
+        inArray(schema.deployments.state, ["queued", "building", "deploying"])
+      )
+    )
+    .get();
+  if (running) {
+    throw new HttpError(
+      409,
+      "A deployment is still running for this project. Cancel it or wait for it to finish, then delete the project.",
+      "conflict"
+    );
+  }
+}
+
 /** Delete a project's records (deployments, logs and env vars cascade). */
 export async function deleteProjectRecords(userId: string, projectId: string) {
-  const project = await assertOwned(userId, projectId);
+  const project = await getProjectAtLevel(userId, projectId, "admin");
   const db = await getDb();
   await db.transaction(async (tx) => {
     await assertCleanupAllowsWork(tx, userId, projectId);
-    const activeJob = await tx
-      .select({ id: schema.jobs.id })
-      .from(schema.jobs)
-      .innerJoin(schema.deployments, eq(schema.jobs.deploymentId, schema.deployments.id))
-      .where(and(eq(schema.deployments.projectId, project.id), eq(schema.jobs.state, "running")))
-      .get();
-    if (activeJob) {
-      throw new HttpError(409, "A deployment is still stopping for this project. Wait for it to finish, then delete the project.", "conflict");
-    }
-    // The worker would keep writing a service and folders for a project that no longer exists.
-    const running = await tx
-      .select({ id: schema.deployments.id })
-      .from(schema.deployments)
-      .where(
-        and(
-          eq(schema.deployments.projectId, project.id),
-          inArray(schema.deployments.state, ["queued", "building", "deploying"])
-        )
-      )
-      .get();
-    if (running) {
-      throw new HttpError(
-        409,
-        "A deployment is still running for this project. Cancel it or wait for it to finish, then delete the project.",
-        "conflict"
-      );
-    }
-    const deployments = await tx
-      .select({ id: schema.deployments.id })
-      .from(schema.deployments)
-      .where(eq(schema.deployments.projectId, project.id));
+    await assertProjectIdle(tx, project.id);
     await tx.delete(schema.projects).where(eq(schema.projects.id, project.id));
-    // The cascade removes the deployments; their delivery history survives by
-    // design, so the links that would now point at nothing are forgotten here.
-    await forgetDeliveriesForDeployments(tx, deployments.map((d) => d.id));
   });
-  await audit(userId, "project.delete", null, { name: project.name });
 }
 
 // ------------------------------------------------------------ clone settings

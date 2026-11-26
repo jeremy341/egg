@@ -42,6 +42,8 @@ export const TOKEN_SCOPES = [
   "projects:write",
   "deployments:read",
   "deployments:write",
+  "jobs:read",
+  "jobs:write",
   "logs:read",
   "env:read",
   "env:write",

@@ -175,6 +175,7 @@ export function SettingsForm({
   const [branchError, setBranchError] = useState<string | null>(null);
   const saving = useRef(0);
   const ids = useId();
+  const showNameId = `${ids}-show-name`;
 
   /** Save one or more fields. The look is applied before the answer comes back. */
   async function change(group: Group, patch: Partial<Preferences>, opts: { refresh?: boolean } = {}) {
@@ -203,6 +204,7 @@ export function SettingsForm({
       // Appearance already changed on this device; the account keeps the old value.
       const accountOnly =
         patch.displayName !== undefined ||
+        patch.showNamePublic !== undefined ||
         patch.defaultBranch !== undefined ||
         patch.avatar !== undefined ||
         patch.analyticsDefaults !== undefined;
@@ -217,6 +219,7 @@ export function SettingsForm({
         setPrefs((p) => ({
           ...p,
           displayName: before.displayName,
+          showNamePublic: before.showNamePublic,
           defaultBranch: before.defaultBranch,
           avatar: before.avatar,
           analyticsDefaults: before.analyticsDefaults,
@@ -357,6 +360,26 @@ export function SettingsForm({
               />
             </Field>
           </form>
+
+          <div>
+            <label htmlFor={showNameId} className="flex min-h-11 cursor-pointer items-start gap-3 py-1">
+              <input
+                id={showNameId}
+                type="checkbox"
+                role="switch"
+                name="showNamePublic"
+                className="mt-1"
+                checked={prefs.showNamePublic}
+                aria-describedby={`${showNameId}-hint`}
+                onChange={(e) => void change("profile", { showNamePublic: e.target.checked }, { refresh: true })}
+              />
+              <span className="min-w-0 font-medium tracking-[-0.02em]">Show my name on public pages</span>
+            </label>
+            <p id={`${showNameId}-hint`} className="max-w-[60ch] pl-7 text-label text-muted-foreground">
+              Public status pages and the Egg homepage show your display name. With this off they say &ldquo;Someone&rdquo;.
+              Your Hack Club name is never shown on public pages.
+            </p>
+          </div>
 
           <Fieldset legend="Character" hint="A small pixel character beside your name. There are no uploads." hintId={`${ids}-char-hint`}>
             <div className="grid grid-cols-4 gap-2 sm:max-w-[420px]">

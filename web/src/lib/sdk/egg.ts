@@ -1,4 +1,4 @@
-/**
+﻿/**
  * A small client for the Egg API, in one file with no dependencies.
  * Copy this file into your own project, or import it from here.
  *
@@ -142,6 +142,8 @@ export type Domain = {
 
 /** Names only. Values are never returned by the API. */
 export type EnvName = { key: string; target: "all" | "production" | "preview" };
+/** Values are present only for variables explicitly marked non-secret. */
+export type EnvVarValue = EnvName & { secret: boolean; value?: string };
 
 export type Analytics = {
   days: number;
@@ -154,6 +156,19 @@ export type Analytics = {
 
 export type UsagePoint = { at: string; cpu: number | null; mem: number | null; disk: number | null };
 export type UsageHistory = { serverId: string; hours: number; sampled: boolean; points: UsagePoint[] };
+export type DeploymentMetricSample = {
+  at: string;
+  cpuPercent: number | null;
+  memoryMb: number | null;
+  restarts: number;
+};
+export type DeploymentMetrics = {
+  deploymentId: string;
+  projectId: string;
+  window: number;
+  bucket: number;
+  samples: DeploymentMetricSample[];
+};
 
 export type AlertSettings = {
   diskPct: number;
@@ -190,6 +205,15 @@ export type ActivityItem = {
 };
 export type ActivityPage = { items: ActivityItem[]; nextCursor: string | null; total: number | null };
 export type ActivityQuery = { kind?: string; range?: string; limit?: number; cursor?: string };
+export type ProjectChange = {
+  time: string;
+  kind: "projects" | "deployments" | "domains" | "servers" | "access" | "monitoring" | "terminal";
+  actor: string;
+  summary: string;
+  deploymentId?: string;
+};
+export type ProjectChangesPage = { items: ProjectChange[]; nextCursor: string | null };
+export type ProjectChangesQuery = { limit?: number; cursor?: string };
 
 export type Server = {
   id: string;
@@ -273,6 +297,25 @@ export type ProjectResources = {
   cpuPeakPercent: number | null;
   restarts: number | null;
   points: { at: string; memMb: number | null; cpuPercent: number | null }[];
+};
+
+export type ResourceQuota = {
+  project: {
+    id: string;
+    slug: string;
+    name: string;
+    cpuLimitCores: number | null;
+    memoryLimitMb: number | null;
+    cpuUsagePercent: number | null;
+    memoryUsageMb: number | null;
+  };
+  server: {
+    serviceCount: number;
+    memoryTotalMb: number | null;
+    memoryUsedMb: number | null;
+    diskTotalMb: number | null;
+    diskUsedMb: number | null;
+  };
 };
 
 type ServiceState = "running" | "starting" | "failed" | "stopped" | "unknown";
@@ -509,9 +552,25 @@ export class Egg {
     return this.request("GET", `/deployments/${seg(deploymentId)}`);
   }
 
+  /** Bucketed CPU, memory and restart counts from the project's service samples. Needs `deployments:read`. */
+  getDeploymentMetrics(
+    deploymentId: string,
+    options: { window?: number; bucket?: number } = {},
+  ): Promise<DeploymentMetrics> {
+    return this.request("GET", `/deployments/${seg(deploymentId)}/metrics`, {
+      window: options.window,
+      bucket: options.bucket,
+    });
+  }
+
   /** Queue a deployment of a branch (default: the production branch). Needs `deployments:write`. */
   deploy(projectId: string, options: { branch?: string } = {}): Promise<{ deployment: Deployment }> {
     return this.request("POST", `/projects/${seg(projectId)}/deployments`, {}, options.branch ? { branch: options.branch } : {});
+  }
+
+  /** Change a project's GitHub source from a repository URL and queue its production branch. Needs `projects:write` and `deployments:write`. */
+  deployFromGithubUrl(projectId: string, githubUrl: string): Promise<{ project: Project; deployment: Deployment }> {
+    return this.request("POST", `/projects/${seg(projectId)}/deploy-from-github-url`, {}, { githubUrl });
   }
 
   /** Build the same commit again. Needs `deployments:write`. */
@@ -527,6 +586,16 @@ export class Egg {
   /** Point production back at an earlier deployment. Changes what is live. Needs `deployments:write`. */
   rollback(deploymentId: string): Promise<{ deployment: Deployment }> {
     return this.request("POST", `/deployments/${seg(deploymentId)}/rollback`);
+  }
+
+  /** The state of one deployment. With `wait`, holds up to 60 seconds for it to finish. Needs `deployments:read`. */
+  rollout(deploymentId: string, options: { wait?: boolean } = {}): Promise<{ rollout: { deployment: Deployment; done: boolean; waitedMs: number } }> {
+    return this.request("GET", `/deployments/${seg(deploymentId)}/rollout`, options.wait ? { wait: "1" } : {});
+  }
+
+  /** Restart the production service of a project. Needs `deployments:write` and owner access. */
+  restartService(projectId: string): Promise<{ restarted: boolean; projectId: string }> {
+    return this.request("POST", `/projects/${seg(projectId)}/restart`);
   }
 
   // --------------------------------------------------------------------- logs
@@ -618,8 +687,9 @@ export class Egg {
   }
 
   /**
-   * Create or replace one variable. The value is write-only: it is never returned
-   * and never put in an error. It reaches the app at the next deploy. Needs `env:write`.
+   * Create or replace one variable. The value is omitted from this write's response
+   * and errors. `getEnvVars` returns it only after it is explicitly marked non-secret.
+   * It reaches the app at the next deploy. Needs `env:write`.
    */
   setEnvVar(projectId: string, key: string, input: { value: string; target?: EnvTarget }): Promise<{ env: EnvName }> {
     return this.request("PUT", `/projects/${seg(projectId)}/env/${seg(key)}`, {}, input);
@@ -652,6 +722,11 @@ export class Egg {
     return this.request("GET", `/projects/${seg(projectId)}/resources`, { hours: options.hours });
   }
 
+  /** CPU and memory limits and latest project/server usage. Needs `resources:read`. */
+  getResourceQuota(projectId: string): Promise<ResourceQuota> {
+    return this.request("GET", `/projects/${seg(projectId)}/resources/quota`);
+  }
+
   /** What runs on a server: project services, leftovers and ports. Needs `container:read`. */
   getContainerInventory(serverId: string): Promise<{ inventory: Inventory }> {
     return this.request("GET", `/servers/${seg(serverId)}/inventory`);
@@ -667,6 +742,11 @@ export class Egg {
   /** One page of the activity log, newest first. Needs `activity:read`. */
   getActivity(query: ActivityQuery = {}): Promise<ActivityPage> {
     return this.request("GET", "/activity", { kind: query.kind, range: query.range, limit: query.limit, cursor: query.cursor });
+  }
+
+  /** One page of a project's change-type entries, newest first. Needs `activity:read`. */
+  getChanges(projectId: string, query: ProjectChangesQuery = {}): Promise<ProjectChangesPage> {
+    return this.request("GET", `/projects/${seg(projectId)}/changes`, { limit: query.limit, cursor: query.cursor });
   }
 
   /** Every activity entry that matches, page by page, following `nextCursor`. */
@@ -755,4 +835,218 @@ export class Egg {
   deleteFile(projectId: string, path: string, options: { recursive?: boolean } = {}): Promise<{ path: string }> {
     return this.request("DELETE", `/projects/${seg(projectId)}/files`, { path, recursive: options.recursive ? true : undefined });
   }
+
+  // -------------------------------------------------------------- agent API
+
+  find(q: string): Promise<unknown> {
+    return this.request("GET", "/find", { q });
+  }
+  searchLogs(projectId: string, q: string): Promise<unknown> {
+    return this.request("GET", `/projects/${seg(projectId)}/logs/search`, { q });
+  }
+  getLogContext(projectId: string, line: number): Promise<unknown> {
+    return this.request("GET", `/projects/${seg(projectId)}/logs/context`, { line });
+  }
+  listDeploymentErrors(projectId: string): Promise<unknown> {
+    return this.request("GET", `/projects/${seg(projectId)}/errors`);
+  }
+  triageDeploymentError(projectId: string, fingerprint: string, input: unknown): Promise<unknown> {
+    return this.request("POST", `/projects/${seg(projectId)}/errors/${seg(fingerprint)}`, {}, input);
+  }
+  diagnoseDeployment(deploymentId: string): Promise<unknown> {
+    return this.request("GET", `/deployments/${seg(deploymentId)}/diagnosis`);
+  }
+  getDeploymentNextSteps(deploymentId: string): Promise<unknown> {
+    return this.request("GET", `/deployments/${seg(deploymentId)}/next-steps`);
+  }
+  listGithubRepos(): Promise<unknown> {
+    return this.request("GET", "/github/repos");
+  }
+  getGithubStatus(projectId: string): Promise<unknown> {
+    return this.request("GET", "/github/status", { projectId });
+  }
+  listEnvVars(projectId: string): Promise<unknown> {
+    return this.request("GET", `/projects/${seg(projectId)}/env`);
+  }
+  getEnvVars(projectId: string): Promise<{ env: EnvVarValue[] }> {
+    return this.request("GET", `/projects/${seg(projectId)}/env/values`);
+  }
+  setEnvVarSecret(
+    projectId: string,
+    key: string,
+    target: EnvTarget,
+    input: { secret: boolean },
+  ): Promise<{ env: { key: string; target: EnvTarget; secret: boolean } }> {
+    return this.request(
+      "PATCH",
+      `/projects/${seg(projectId)}/env/${seg(key)}/${seg(target)}/secret`,
+      {},
+      input,
+    );
+  }
+  addEnvVars(projectId: string, input: unknown): Promise<unknown> {
+    return this.request("POST", `/projects/${seg(projectId)}/env`, {}, input);
+  }
+  setEnvVars(projectId: string, input: unknown): Promise<unknown> {
+    return this.request("PUT", `/projects/${seg(projectId)}/env`, {}, input);
+  }
+  deleteEnvVars(projectId: string, input: unknown): Promise<unknown> {
+    return this.request("DELETE", `/projects/${seg(projectId)}/env`, {}, input);
+  }
+  listDeployWebhookTokens(projectId: string): Promise<unknown> {
+    return this.request("GET", `/projects/${seg(projectId)}/hook`);
+  }
+  listJobs(projectId: string): Promise<unknown> {
+    return this.request("GET", `/projects/${seg(projectId)}/jobs`);
+  }
+  getJob(projectId: string, jobId: string): Promise<unknown> {
+    return this.request("GET", `/projects/${seg(projectId)}/jobs/${seg(jobId)}`);
+  }
+  createJob(projectId: string, input: unknown): Promise<unknown> {
+    return this.request("POST", `/projects/${seg(projectId)}/jobs`, {}, input);
+  }
+  updateJob(projectId: string, jobId: string, input: unknown): Promise<unknown> {
+    return this.request("PATCH", `/projects/${seg(projectId)}/jobs/${seg(jobId)}`, {}, input);
+  }
+  runJob(projectId: string, jobId: string): Promise<unknown> {
+    return this.request("POST", `/projects/${seg(projectId)}/jobs/${seg(jobId)}/run`, {}, {});
+  }
+  listJobRuns(projectId: string, jobId: string): Promise<unknown> {
+    return this.request("GET", `/projects/${seg(projectId)}/jobs/${seg(jobId)}/runs`);
+  }
+  getJobRunLogs(projectId: string, jobId: string, runId: string): Promise<unknown> {
+    return this.request("GET", `/projects/${seg(projectId)}/jobs/${seg(jobId)}/runs/${seg(runId)}/logs`);
+  }
+  deleteJob(projectId: string, jobId: string): Promise<unknown> {
+    return this.request("DELETE", `/projects/${seg(projectId)}/jobs/${seg(jobId)}`, {}, {});
+  }
+  listNotificationChannels(): Promise<unknown> {
+    return this.request("GET", "/notification-channels");
+  }
+  createNotificationChannel(input: unknown): Promise<unknown> {
+    return this.request("POST", "/notification-channels", {}, input);
+  }
+  listNotificationRules(): Promise<unknown> {
+    return this.request("GET", "/notification-rules");
+  }
+  createNotificationRule(channelId: string, input: unknown): Promise<unknown> {
+    return this.request("POST", `/notification-channels/${seg(channelId)}/rules`, {}, input);
+  }
+  testNotificationChannel(channelId: string): Promise<unknown> {
+    return this.request("POST", `/notification-channels/${seg(channelId)}/test`, {}, {});
+  }
+
+  // ------------------------------------------------- second parity pass
+  getAuditLog(q: Query = {}): Promise<unknown> { return this.request("GET", "/audit-log", q); }
+  listRegistryCredentials(): Promise<unknown> { return this.request("GET", "/registry-credentials"); }
+  setRegistryCredential(input: unknown): Promise<unknown> { return this.request("PUT", "/registry-credentials", {}, input); }
+  deleteRegistryCredential(credentialId: string, input: unknown): Promise<unknown> {
+    return this.request("DELETE", `/registry-credentials/${seg(credentialId)}`, {}, input);
+  }
+  startDeployment(deploymentId: string): Promise<unknown> { return this.request("POST", `/deployments/${seg(deploymentId)}/start`, {}, {}); }
+  stopDeployment(deploymentId: string): Promise<unknown> { return this.request("POST", `/deployments/${seg(deploymentId)}/stop`, {}, {}); }
+  restartDeployment(deploymentId: string): Promise<unknown> { return this.request("POST", `/deployments/${seg(deploymentId)}/restart`, {}, {}); }
+  scaleDeployment(deploymentId: string, input: unknown): Promise<unknown> { return this.request("POST", `/deployments/${seg(deploymentId)}/scale`, {}, input); }
+  getVolumes(deploymentId: string): Promise<unknown> { return this.request("GET", `/deployments/${seg(deploymentId)}/volumes`); }
+  getJobRun(projectId: string, jobId: string, runId: string): Promise<unknown> {
+    return this.request("GET", `/projects/${seg(projectId)}/jobs/${seg(jobId)}/runs/${seg(runId)}`);
+  }
+  cancelJobRun(projectId: string, jobId: string, runId: string): Promise<unknown> {
+    return this.request("POST", `/projects/${seg(projectId)}/jobs/${seg(jobId)}/runs/${seg(runId)}/cancel`, {}, {});
+  }
+  replaceJobSteps(projectId: string, jobId: string, input: unknown): Promise<unknown> {
+    return this.request("PUT", `/projects/${seg(projectId)}/jobs/${seg(jobId)}/steps`, {}, input);
+  }
+  getBuildLogs(deploymentId: string, q: Query = {}): Promise<unknown> { return this.request("GET", `/deployments/${seg(deploymentId)}/build-logs`, q); }
+  getBuildHistory(projectId: string, q: Query = {}): Promise<unknown> { return this.request("GET", `/projects/${seg(projectId)}/builds`, q); }
+  getKilledContainerLogs(projectId: string, q: Query = {}): Promise<unknown> { return this.request("GET", `/projects/${seg(projectId)}/logs/killed`, q); }
+  listCrashReports(projectId: string, q: Query = {}): Promise<unknown> { return this.request("GET", `/projects/${seg(projectId)}/crash-reports`, q); }
+  getCrashReport(crashId: string): Promise<unknown> { return this.request("GET", `/crash-reports/${seg(crashId)}`); }
+  getRepoBranches(): Promise<unknown> { return this.request("GET", "/github/branches"); }
+  getRepoContents(q: Query = {}): Promise<unknown> { return this.request("GET", "/github/contents", q); }
+  getRepoDockerfiles(): Promise<unknown> { return this.request("GET", "/github/dockerfiles"); }
+  detectRepoConfig(): Promise<unknown> { return this.request("GET", "/github/config"); }
+  listGithubDeployTargets(): Promise<unknown> { return this.request("GET", "/github/deploy-targets"); }
+  getNotificationChannel(channelId: string): Promise<unknown> { return this.request("GET", `/notification-channels/${seg(channelId)}`); }
+  updateNotificationChannel(channelId: string, input: unknown): Promise<unknown> {
+    return this.request("PATCH", `/notification-channels/${seg(channelId)}`, {}, input);
+  }
+  /** Delete a notification channel. `confirmName` must be the channel host exactly. Needs `webhooks:write`. */
+  deleteNotificationChannel(channelId: string, confirmName: string): Promise<unknown> {
+    return this.request("DELETE", `/notification-channels/${seg(channelId)}`, {}, { confirmName });
+  }
+  updateNotificationRule(channelId: string, ruleId: string, input: unknown): Promise<unknown> {
+    return this.request("PATCH", `/notification-channels/${seg(channelId)}/rules/${seg(ruleId)}`, {}, input);
+  }
+  deleteNotificationRule(channelId: string, ruleId: string): Promise<unknown> {
+    return this.request("DELETE", `/notification-channels/${seg(channelId)}/rules/${seg(ruleId)}`);
+  }
+  listNotificationDeliveries(channelId: string): Promise<unknown> {
+    return this.request("GET", `/notification-channels/${seg(channelId)}/deliveries`);
+  }
+  replayNotificationChannel(channelId: string, deliveryId: string): Promise<unknown> {
+    return this.request("POST", `/notification-channels/${seg(channelId)}/deliveries/${seg(deliveryId)}/replay`, {}, {});
+  }
+  getAutoDeployStatus(projectId: string): Promise<unknown> { return this.request("GET", `/projects/${seg(projectId)}/auto-deploy`); }
+  enableAutoDeploy(projectId: string): Promise<unknown> { return this.request("PUT", `/projects/${seg(projectId)}/auto-deploy`, {}, {}); }
+  disableAutoDeploy(projectId: string): Promise<unknown> { return this.request("DELETE", `/projects/${seg(projectId)}/auto-deploy`); }
+  getIngress(domainId: string): Promise<unknown> { return this.request("GET", `/domains/${seg(domainId)}`); }
+  updateIngress(domainId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/domains/${seg(domainId)}`, {}, input); }
+  getIngressProtection(domainId: string): Promise<unknown> { return this.request("GET", `/domains/${seg(domainId)}/protection`); }
+  setIngressProtection(domainId: string, input: unknown): Promise<unknown> {
+    return this.request("PUT", `/domains/${seg(domainId)}/protection`, {}, input);
+  }
+
+  // ------------------------------------------------- third parity pass
+  createDeployment(input: unknown): Promise<unknown> { return this.request("POST", "/deployments", {}, input); }
+  deleteDeployment(deploymentId: string): Promise<unknown> { return this.request("DELETE", `/deployments/${seg(deploymentId)}`); }
+  renameDeployment(deploymentId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/deployments/${seg(deploymentId)}/name`, {}, input); }
+  retryDeploymentApply(deploymentId: string): Promise<unknown> { return this.request("POST", `/deployments/${seg(deploymentId)}/retry-apply`, {}, {}); }
+  updateDeploymentBuildConfig(deploymentId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/deployments/${seg(deploymentId)}/build-config`, {}, input); }
+  updateDeploymentHealthCheck(deploymentId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/deployments/${seg(deploymentId)}/health-check`, {}, input); }
+  updateDeploymentImage(deploymentId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/deployments/${seg(deploymentId)}/image`, {}, input); }
+  updateDeploymentPullPolicy(deploymentId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/deployments/${seg(deploymentId)}/pull-policy`, {}, input); }
+  updateDeploymentResources(deploymentId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/deployments/${seg(deploymentId)}/resources`, {}, input); }
+  updateDeploymentStrategy(deploymentId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/deployments/${seg(deploymentId)}/strategy`, {}, input); }
+  updateDeploymentVolumes(deploymentId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/deployments/${seg(deploymentId)}/volumes`, {}, input); }
+  listServices(): Promise<unknown> { return this.request("GET", "/services"); }
+  createService(input: unknown): Promise<unknown> { return this.request("POST", "/services", {}, input); }
+  deleteService(serviceId: string): Promise<unknown> { return this.request("DELETE", `/services/${seg(serviceId)}`); }
+  setServiceExposure(serviceId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/services/${seg(serviceId)}/exposure`, {}, input); }
+  setServicePortPublic(serviceId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/services/${seg(serviceId)}/port`, {}, input); }
+  /** Change a service's port list or internal domain. Needs `projects:write`. */
+  updateService(serviceId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/services/${seg(serviceId)}`, {}, input); }
+  /** Point a deployment at another GitHub repository or branch. Needs `projects:write`. */
+  updateDeploymentGithubRepo(deploymentId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/deployments/${seg(deploymentId)}/github-repo`, {}, input); }
+  /** Shared environment sets (named variable groups) for the signed-in user. */
+  listEnvironments(): Promise<unknown> { return this.request("GET", "/environments"); }
+  createEnvironment(input: unknown): Promise<unknown> { return this.request("POST", "/environments", {}, input); }
+  renameEnvironment(environmentId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/environments/${seg(environmentId)}`, {}, input); }
+  deleteEnvironment(environmentId: string, confirmName: string): Promise<unknown> { return this.request("DELETE", `/environments/${seg(environmentId)}`, {}, { confirmName }); }
+  setDefaultEnvironment(environmentId: string): Promise<unknown> { return this.request("PUT", `/environments/${seg(environmentId)}/default`); }
+  getSharedEnvVars(environmentId: string): Promise<unknown> { return this.request("GET", `/environments/${seg(environmentId)}/variables`); }
+  addSharedEnvVars(environmentId: string, input: unknown): Promise<unknown> { return this.request("POST", `/environments/${seg(environmentId)}/variables`, {}, input); }
+  setSharedEnvVars(environmentId: string, input: unknown): Promise<unknown> { return this.request("PUT", `/environments/${seg(environmentId)}/variables`, {}, input); }
+  deleteSharedEnvVars(environmentId: string, input: unknown): Promise<unknown> { return this.request("DELETE", `/environments/${seg(environmentId)}/variables`, {}, input); }
+  getComposeStack(projectId: string): Promise<unknown> { return this.request("GET", `/compose-stacks/${seg(projectId)}`); }
+  listComposeStacks(): Promise<unknown> { return this.request("GET", "/compose-stacks"); }
+  listComposeReleases(projectId: string): Promise<unknown> { return this.request("GET", `/compose-stacks/${seg(projectId)}/releases`); }
+  /** Releases recorded for a project. Needs `deployments:read`. */
+  listReleases(projectId: string): Promise<unknown> { return this.request("GET", `/projects/${seg(projectId)}/releases`); }
+  /** Resource analysis for one deployment. Needs `resources:read`. */
+  analyzeDeploymentResources(deploymentId: string): Promise<unknown> { return this.request("GET", `/deployments/${seg(deploymentId)}/resource-analysis`); }
+  /** Volumes attached to one deployment. Needs `deployments:read`. */
+  getDeploymentVolumes(deploymentId: string): Promise<unknown> { return this.request("GET", `/deployments/${seg(deploymentId)}/deployment-volumes`); }
+  redeployComposeStack(projectId: string): Promise<unknown> { return this.request("POST", `/compose-stacks/${seg(projectId)}/redeploy`, {}, {}); }
+  listOrganizations(): Promise<unknown> { return this.request("GET", "/organizations"); }
+  getOrganization(orgId: string): Promise<unknown> { return this.request("GET", `/organizations/${seg(orgId)}`); }
+  getImageHistory(projectId: string): Promise<unknown> { return this.request("GET", `/projects/${seg(projectId)}/image-history`); }
+  listBuildRuns(projectId: string): Promise<unknown> { return this.request("GET", `/projects/${seg(projectId)}/build-runs`); }
+  getDeployVerdict(deploymentId: string): Promise<unknown> { return this.request("GET", `/deployments/${seg(deploymentId)}/verdict`); }
+  getDeploymentHttpMetrics(deploymentId: string): Promise<unknown> { return this.request("GET", `/deployments/${seg(deploymentId)}/http-metrics`); }
+  getRequestStats(projectId: string): Promise<unknown> { return this.request("GET", `/projects/${seg(projectId)}/request-stats`); }
+  getAnomalies(projectId: string): Promise<unknown> { return this.request("GET", `/projects/${seg(projectId)}/anomalies`); }
+  getAttackSignals(projectId: string): Promise<unknown> { return this.request("GET", `/projects/${seg(projectId)}/attack-signals`); }
+  getResourceRecommendation(projectId: string): Promise<unknown> { return this.request("GET", `/projects/${seg(projectId)}/resource-recommendation`); }
+  getObservabilityLink(projectId: string): Promise<unknown> { return this.request("GET", `/projects/${seg(projectId)}/observability-link`); }
 }

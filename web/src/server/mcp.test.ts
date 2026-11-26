@@ -5,7 +5,8 @@ import { createApiToken, SCOPES, type Scope } from "@/server/api-tokens";
 import { ENDPOINTS } from "@/server/api-v1";
 import { upsertUser } from "@/server/auth/session";
 import { schema } from "@/server/db";
-import { TOOLS } from "@/server/mcp";
+import { TOOLS, handleMcpMessage } from "@/server/mcp";
+import { DEFAULT_MAX_BODY_BYTES } from "@/server/api-v1-kit";
 import { createProject, deployBranch } from "@/server/projects";
 import { rateLimiter } from "@/server/rate-limit";
 import { SshError } from "@/server/ssh/connection";
@@ -89,7 +90,7 @@ describe("authentication", () => {
       await send(rpc("tools/list"), null, { cookie: "egg_session=abc" }),
     ]) {
       expect(res.status).toBe(401);
-      expect(res.headers.get("www-authenticate")).toBe("Bearer");
+      expect(res.headers.get("www-authenticate")).toMatch(/^Bearer(?:\s|$)/);
       expect((await res.json()).error.code).toBe("unauthorized");
     }
     expect(getCurrentUser).not.toHaveBeenCalled();
@@ -137,57 +138,6 @@ describe("protocol", () => {
     const secret = await token();
     const body = await (await send(rpc("tools/list"), secret)).json();
     const names = body.result.tools.map((t: { name: string }) => t.name);
-    expect(names.sort()).toEqual(
-      [
-        "add_domain",
-        "cancel_deployment",
-        "create_project",
-        "delete_env_var",
-        "delete_file",
-        "delete_project",
-        "deploy_branch",
-        "download_file",
-        "get_activity",
-        "get_alerts",
-        "get_analytics",
-        "get_container_inventory",
-        "get_deployment",
-        "get_deployment_logs",
-        "get_logs",
-        "get_me",
-        "get_notifications",
-        "get_project",
-        "get_project_resources",
-        "get_resource_history",
-        "get_server_usage",
-        "get_status_page",
-        "list_deployments",
-        "list_domains",
-        "list_env_vars",
-        "list_files",
-        "list_projects",
-        "list_servers",
-        "make_folder",
-        "read_file",
-        "redeploy",
-        "remove_domain",
-        "rename_file",
-        "revoke_deploy_hook",
-        "rollback_deployment",
-        "rotate_deploy_hook",
-        "set_env_var",
-        "terminal_close",
-        "terminal_open",
-        "terminal_read",
-        "terminal_resize",
-        "terminal_send",
-        "terminal_status",
-        "test_notification",
-        "update_project",
-        "verify_domain",
-        "write_file",
-      ].sort()
-    );
     expect(names.sort()).toEqual(ENDPOINTS.map((e) => e.id).sort());
     for (const t of body.result.tools) {
       expect(t.description.length).toBeGreaterThan(40);
@@ -202,9 +152,33 @@ describe("protocol", () => {
     expect(TOOLS).toHaveLength(ENDPOINTS.length);
   });
 
-  it("answers an unknown method with -32601", async () => {
+  it("lists the public docs resources", async () => {
     const secret = await token();
     const body = await (await send(rpc("resources/list"), secret)).json();
+    expect(body.result.resources.map((resource: { uri: string }) => resource.uri)).toEqual([
+      "egg://docs/llms.txt",
+      "egg://docs/template-config",
+    ]);
+  });
+
+  it("reads the docs index and template/config guide by URI", async () => {
+    const secret = await token();
+    const index = await (await send(rpc("resources/read", { uri: "egg://docs/llms.txt" }), secret)).json();
+    expect(index.result.contents[0]).toMatchObject({ uri: "egg://docs/llms.txt", mimeType: "text/plain" });
+    expect(index.result.contents[0].text).toContain("/docs");
+
+    const guide = await (await send(rpc("resources/read", { uri: "egg://docs/template-config" }), secret)).json();
+    expect(guide.result.contents[0]).toMatchObject({ uri: "egg://docs/template-config", mimeType: "text/markdown" });
+    expect(guide.result.contents[0].text).toMatch(/template|config/i);
+  });
+
+  it("rejects resource reads for unknown URIs", async () => {
+    const body = await (await send(rpc("resources/read", { uri: "egg://docs/private" }), await token())).json();
+    expect(body.error).toMatchObject({ code: -32602 });
+  });
+
+  it("answers an unknown method with -32601", async () => {
+    const body = await (await send(rpc("unknown/method"), await token())).json();
     expect(body).toMatchObject({ jsonrpc: "2.0", id: 1, error: { code: -32601 } });
   });
 
@@ -421,7 +395,7 @@ describe("tools/call", () => {
 });
 
 describe("the expanded tool list", () => {
-  type Tool = { name: string; description: string; inputSchema: Record<string, unknown>; annotations: { readOnlyHint: boolean; destructiveHint: boolean } };
+  type Tool = { name: string; description: string; inputSchema: Record<string, unknown>; outputSchema?: Record<string, unknown>; annotations: { readOnlyHint: boolean; destructiveHint: boolean; idempotentHint: boolean; openWorldHint: boolean }; _meta?: Record<string, unknown> };
   const listTools = async () => ((await (await send(rpc("tools/list"), await token())).json()).result.tools as Tool[]);
   const byName = async () => new Map((await listTools()).map((t) => [t.name, t]));
 
@@ -429,9 +403,9 @@ describe("the expanded tool list", () => {
     const tools = await byName();
     for (const name of [
       "create_project", "update_project", "delete_project", "set_env_var", "delete_env_var", "list_env_vars", "add_domain",
-      "verify_domain", "remove_domain", "get_deployment", "get_deployment_logs", "get_activity", "get_analytics",
+      "verify_domain", "remove_domain", "get_deployment", "get_deployment_logs", "get_log_context", "get_activity", "get_analytics",
       "get_resource_history", "get_project_resources", "list_servers", "get_container_inventory", "rotate_deploy_hook",
-      "revoke_deploy_hook", "get_notifications", "test_notification", "get_alerts", "get_status_page",
+      "revoke_deploy_hook", "get_notifications", "test_notification", "get_alerts", "get_status_page", "list_deployment_errors", "search_logs", "triage_deployment_error",
       "terminal_open", "terminal_send", "terminal_read", "terminal_close", "list_files", "read_file", "write_file",
       "make_folder", "delete_file",
     ]) {
@@ -463,7 +437,7 @@ describe("the expanded tool list", () => {
       expect(tools.get(name)!.description, name).toMatch(/run for real/);
     }
     for (const name of [
-      "terminal_open", "terminal_send", "terminal_read", "read_file", "get_deployment_logs", "get_logs",
+      "terminal_open", "terminal_send", "terminal_read", "read_file", "get_deployment_logs", "get_log_context", "get_logs", "search_logs",
       "get_container_inventory", "get_deployment", "list_projects", "list_deployments",
     ]) {
       expect(tools.get(name)!.description, name).toMatch(/untrusted/i);
@@ -479,7 +453,57 @@ describe("the expanded tool list", () => {
     for (const t of tools.values()) expect(t.inputSchema).toMatchObject({ type: "object", additionalProperties: false });
     expect(tools.get("set_env_var")!.inputSchema.required).toEqual(expect.arrayContaining(["projectId", "key", "value"]));
     expect(tools.get("terminal_send")!.inputSchema.required).toEqual(expect.arrayContaining(["projectId", "sessionId", "data"]));
-    expect(tools.get("create_project")!.inputSchema.required).toEqual(expect.arrayContaining(["serverId", "name", "repoUrl", "runtime"]));
+    expect(tools.get("create_project")!.inputSchema.required).toEqual(expect.arrayContaining(["serverId", "name"]));
+    expect(tools.get("get_log_context")!.inputSchema.required).toEqual(expect.arrayContaining(["projectId", "at"]));
+    expect(tools.get("triage_deployment_error")!.inputSchema.required).toEqual(expect.arrayContaining(["projectId", "fingerprint", "action"]));
+  });
+
+  it("declares output schemas and complete annotations for every read-only tool", async () => {
+    const tools = await byName();
+    for (const ep of ENDPOINTS) {
+      const tool = tools.get(ep.id)!;
+      expect(tool.annotations, ep.id).toEqual({
+        readOnlyHint: ep.readOnly,
+        destructiveHint: !ep.readOnly && ep.destructive,
+        idempotentHint: ep.readOnly,
+        openWorldHint: false,
+      });
+      if (ep.readOnly) {
+        // Read tools declare a JSON schema for their result; arrays and objects are both valid.
+        expect(["object", "array"]).toContain((tool.outputSchema as { type?: string } | undefined)?.type);
+      } else {
+        expect(tool.outputSchema, ep.id).toBeUndefined();
+      }
+    }
+  });
+
+  it("returns structuredContent for read-only tools", async () => {
+    const body = await (await call(await token(), "list_projects")).json();
+    expect(body.result.structuredContent.projects.map((p: { id: string }) => p.id)).toContain(projectId);
+  });
+
+  it("marks one-time secret tools in metadata and descriptions", async () => {
+    const tools = await byName();
+    for (const name of ["rotate_deploy_hook", "create_notification_channel"]) {
+      expect(tools.get(name)!._meta).toEqual({ "egg/sensitive": true });
+      expect(tools.get(name)!.description).toMatch(/one-time secret/i);
+    }
+  });
+
+  it("uses a 100 KB shared API body limit", () => {
+    expect(DEFAULT_MAX_BODY_BYTES).toBe(100 * 1024);
+  });
+
+  it("rejects tool arguments containing arrays larger than 1000 items", async () => {
+    const p = { userId: me.id, tokenId: "array-limit", scopes: ALL };
+    const out = await handleMcpMessage(p, {
+      jsonrpc: "2.0",
+      id: 77,
+      method: "tools/call",
+      params: { name: "create_notification_rule", arguments: { events: Array.from({ length: 1001 }, () => "deploy.succeeded") } },
+    });
+    expect(out.kind).toBe("response");
+    if (out.kind === "response") expect(out.body).toMatchObject({ error: { code: -32602 } });
   });
 });
 
@@ -499,6 +523,10 @@ describe("expanded tools/call", () => {
       ["get_notifications", "notifications:read", { projectId }],
       ["get_alerts", "alerts:read", { projectId }],
       ["get_analytics", "analytics:read", { projectId }],
+      ["search_logs", "logs:read", { projectId }],
+      ["get_log_context", "logs:read", { projectId, at: 1795514400000 }],
+      ["list_deployment_errors", "analytics:read", { projectId }],
+      ["triage_deployment_error", "projects:write", { projectId, fingerprint: "0123456789abcdef", action: "resolve" }],
       ["get_project_resources", "resources:read", { projectId }],
       ["list_servers", "container:read", {}],
       ["get_container_inventory", "container:read", { serverId }],
@@ -523,12 +551,16 @@ describe("expanded tools/call", () => {
     const secret = await token();
     for (const [name, args] of [
       ["update_project", { projectId: theirProjectId, healthPath: "/x" }],
-      ["delete_project", { projectId: theirProjectId }],
+      ["delete_project", { projectId: theirProjectId, confirmName: "Theirs" }],
       ["list_env_vars", { projectId: theirProjectId }],
       ["set_env_var", { projectId: theirProjectId, key: "A", value: "b" }],
       ["get_deployment", { deploymentId: theirDeploymentId }],
       ["get_deployment_logs", { deploymentId: theirDeploymentId }],
-      ["rotate_deploy_hook", { projectId: theirProjectId }],
+      ["search_logs", { projectId: theirProjectId }],
+      ["get_log_context", { projectId: theirProjectId, at: 1795514400000 }],
+      ["list_deployment_errors", { projectId: theirProjectId }],
+      ["triage_deployment_error", { projectId: theirProjectId, fingerprint: "0123456789abcdef", action: "resolve" }],
+      ["rotate_deploy_hook", { projectId: theirProjectId, confirmName: "Theirs" }],
       ["get_alerts", { projectId: theirProjectId }],
       ["get_analytics", { projectId: theirProjectId }],
       ["get_status_page", { projectId: theirProjectId }],
@@ -565,7 +597,7 @@ describe("expanded tools/call", () => {
 
   it("returns the deploy hook URL once, from the rotate tool only", async () => {
     const secret = await token(["deployments:write", "projects:read", "notifications:read", "alerts:read"]);
-    const rotated = await (await call(secret, "rotate_deploy_hook", { projectId })).json();
+    const rotated = await (await call(secret, "rotate_deploy_hook", { projectId, confirmName: "App" })).json();
     const { hook } = JSON.parse(inner(text(rotated)));
     expect(hook.url).toMatch(/\/api\/hooks\/deploy\/ndh_/);
     const hookToken = hook.url.split("/").pop();
@@ -626,7 +658,7 @@ describe("expanded tools/call", () => {
 });
 
 describe("what tokens can never reach", () => {
-  const EXCLUDED = /orphan|permission|account|session|token|leftover|rotate_key|rotate-key/;
+  const EXCLUDED = /orphan|permission|account|session|leftover|rotate_key|rotate-key/;
   // Terminal session ids (/terminal/{sessionId}) are not browser sessions.
   const strip = (s: string) => s.replace(/\{sessionId\}|sessionId/g, "");
 

@@ -1,0 +1,1439 @@
+{
+  "baseline_present": 124,
+  "baseline_partial": 9,
+  "tools": [
+    {
+      "name": "add_env_vars",
+      "source": "apps/server/src/mcp/tools/configuration.ts",
+      "status": "present",
+      "ours": "add_env_vars"
+    },
+    {
+      "name": "add_shared_env_vars",
+      "source": "apps/server/src/mcp/tools/environments.ts",
+      "status": "present",
+      "ours": "add_shared_env_vars"
+    },
+    {
+      "name": "analyze_deployment_resources",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "present",
+      "ours": "analyze_deployment_resources"
+    },
+    {
+      "name": "call_api",
+      "source": "apps/server/src/mcp/compact/compact-server.ts",
+      "status": "present",
+      "ours": "compact:call_api"
+    },
+    {
+      "name": "cancel_build",
+      "source": "apps/server/src/mcp/tools/deployments.ts",
+      "status": "present",
+      "ours": "cancel_deployment"
+    },
+    {
+      "name": "cancel_database_operation",
+      "source": "apps/server/src/mcp/tools/database-recovery.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "cancel_job_run",
+      "source": "apps/server/src/mcp/tools/jobs.ts",
+      "status": "present",
+      "ours": "cancel_job_run"
+    },
+    {
+      "name": "clear_database_backup_schedule",
+      "source": "apps/server/src/mcp/tools/resources.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "create_checkpoint",
+      "source": "apps/server/src/mcp/tools/database-recovery.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL checkpoints. Egg has no managed database service, so there is nothing to checkpoint (decision recorded in docs/design/orchard-comparison.md)."
+    },
+    {
+      "name": "create_database",
+      "source": "apps/server/src/mcp/tools/resources.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "create_database_backup",
+      "source": "apps/server/src/mcp/tools/resources.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "create_database_user",
+      "source": "apps/server/src/mcp/tools/database-recovery.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "create_deploy_webhook_token",
+      "source": "apps/server/src/mcp/tools/deployments.ts",
+      "status": "partial",
+      "ours": "rotate_deploy_hook",
+      "reason": "Egg has one rotatable deploy hook per project, rather than multiple deployment-scoped tokens with stable token IDs."
+    },
+    {
+      "name": "create_deployment",
+      "source": "apps/server/src/mcp/tools/deployments.ts",
+      "status": "present",
+      "ours": "create_deployment"
+    },
+    {
+      "name": "create_environment",
+      "source": "apps/server/src/mcp/tools/environments.ts",
+      "status": "present",
+      "ours": "create_environment"
+    },
+    {
+      "name": "create_ingress",
+      "source": "apps/server/src/mcp/tools/configuration.ts",
+      "status": "partial",
+      "ours": "add_domain",
+      "reason": "add_domain records a hostname with project/port metadata and instructs the owner to map it in the Nest dashboard; Egg does not create configured host/path routes."
+    },
+    {
+      "name": "create_job",
+      "source": "apps/server/src/mcp/tools/jobs.ts",
+      "status": "present",
+      "ours": "create_job"
+    },
+    {
+      "name": "create_notification_channel",
+      "source": "apps/server/src/mcp/tools/notifications.ts",
+      "status": "present",
+      "ours": "create_notification_channel"
+    },
+    {
+      "name": "create_notification_rule",
+      "source": "apps/server/src/mcp/tools/notifications.ts",
+      "status": "present",
+      "ours": "create_notification_rule"
+    },
+    {
+      "name": "create_project",
+      "source": "apps/server/src/mcp/tools/resources.ts",
+      "status": "present",
+      "ours": "create_project"
+    },
+    {
+      "name": "create_sandbox_session",
+      "source": "grafts/greenhouse/mcp/src/tools.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Greenhouse sandbox sessions require Orchard’s cluster; this API targets the user’s Nest server."
+    },
+    {
+      "name": "create_sandbox_session_pr",
+      "source": "grafts/greenhouse/mcp/src/tools.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Greenhouse sandbox sessions require Orchard’s cluster; this API targets the user’s Nest server."
+    },
+    {
+      "name": "create_service",
+      "source": "apps/server/src/mcp/tools/configuration.ts",
+      "status": "present",
+      "ours": "create_service"
+    },
+    {
+      "name": "delete_database",
+      "source": "apps/server/src/mcp/tools/dangerous.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "delete_database_user",
+      "source": "apps/server/src/mcp/tools/database-recovery.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "delete_deploy_webhook_token",
+      "source": "apps/server/src/mcp/tools/dangerous.ts",
+      "status": "partial",
+      "ours": "revoke_deploy_hook",
+      "reason": "Egg has one rotatable deploy hook per project, rather than multiple deployment-scoped tokens with stable token IDs."
+    },
+    {
+      "name": "delete_deployment",
+      "source": "apps/server/src/mcp/tools/dangerous.ts",
+      "status": "present",
+      "ours": "delete_deployment"
+    },
+    {
+      "name": "delete_env_vars",
+      "source": "apps/server/src/mcp/tools/dangerous.ts",
+      "status": "present",
+      "ours": "delete_env_vars"
+    },
+    {
+      "name": "delete_environment",
+      "source": "apps/server/src/mcp/tools/dangerous.ts",
+      "status": "present",
+      "ours": "delete_environment"
+    },
+    {
+      "name": "delete_ingress",
+      "source": "apps/server/src/mcp/tools/dangerous.ts",
+      "status": "partial",
+      "ours": "remove_domain",
+      "reason": "remove_domain deletes only Egg's domain record. It leaves the Nest dashboard mapping and DNS record in place, so it cannot delete a configured host/path route."
+    },
+    {
+      "name": "delete_job",
+      "source": "apps/server/src/mcp/tools/jobs.ts",
+      "status": "present",
+      "ours": "delete_job"
+    },
+    {
+      "name": "delete_notification_channel",
+      "source": "apps/server/src/mcp/tools/dangerous.ts",
+      "status": "present",
+      "ours": "delete_notification_channel"
+    },
+    {
+      "name": "delete_notification_rule",
+      "source": "apps/server/src/mcp/tools/notifications.ts",
+      "status": "present",
+      "ours": "delete_notification_rule"
+    },
+    {
+      "name": "delete_project",
+      "source": "apps/server/src/mcp/tools/dangerous.ts",
+      "status": "present",
+      "ours": "delete_project"
+    },
+    {
+      "name": "delete_registry_credential",
+      "source": "apps/server/src/mcp/tools/configuration.ts",
+      "status": "present",
+      "ours": "delete_registry_credential"
+    },
+    {
+      "name": "delete_service",
+      "source": "apps/server/src/mcp/tools/dangerous.ts",
+      "status": "present",
+      "ours": "delete_service"
+    },
+    {
+      "name": "delete_shared_env_vars",
+      "source": "apps/server/src/mcp/tools/environments.ts",
+      "status": "present",
+      "ours": "delete_shared_env_vars"
+    },
+    {
+      "name": "delete_template_instance",
+      "source": "apps/server/src/mcp/tools/dangerous.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Orchard template registry/instances are cluster-managed; this API has no cluster template service."
+    },
+    {
+      "name": "deploy_from_github",
+      "source": "apps/server/src/mcp/tools/deployments.ts",
+      "status": "partial",
+      "ours": "deploy_branch",
+      "reason": "Egg deploys the project's configured repository and branch; change the configured repository separately before deploying another source."
+    },
+    {
+      "name": "deploy_from_github_url",
+      "source": "apps/server/src/mcp/tools/deployments.ts",
+      "status": "present",
+      "ours": "deploy_from_github_url"
+    },
+    {
+      "name": "deploy_template",
+      "source": "apps/server/src/mcp/tools/resources.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Orchard template registry/instances are cluster-managed; this API has no cluster template service."
+    },
+    {
+      "name": "describe_operation",
+      "source": "apps/server/src/mcp/compact/compact-server.ts",
+      "status": "present",
+      "ours": "compact:describe_operation"
+    },
+    {
+      "name": "detect_repo_config",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "present",
+      "ours": "detect_repo_config"
+    },
+    {
+      "name": "diagnose_database",
+      "source": "apps/server/src/mcp/tools/database-recovery.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "diagnose_deployment",
+      "source": "apps/server/src/mcp/tools/observability.ts",
+      "status": "present",
+      "ours": "diagnose_deployment"
+    },
+    {
+      "name": "disable_auto_deploy",
+      "source": "apps/server/src/mcp/tools/deployments.ts",
+      "status": "present",
+      "ours": "disable_auto_deploy"
+    },
+    {
+      "name": "disable_database_deletion_protection",
+      "source": "apps/server/src/mcp/tools/dangerous.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "disable_database_public",
+      "source": "apps/server/src/mcp/tools/resources.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "enable_auto_deploy",
+      "source": "apps/server/src/mcp/tools/deployments.ts",
+      "status": "present",
+      "ours": "enable_auto_deploy"
+    },
+    {
+      "name": "enable_database_public",
+      "source": "apps/server/src/mcp/tools/resources.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "exec_in_pod",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Pod/container orchestration is cluster-only; Nest exposes a single user-managed server."
+    },
+    {
+      "name": "expand_database_storage",
+      "source": "apps/server/src/mcp/tools/resources.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "find",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "present",
+      "ours": "find"
+    },
+    {
+      "name": "fork_database",
+      "source": "apps/server/src/mcp/tools/database-recovery.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "get_alert_states",
+      "source": "apps/server/src/mcp/tools/observability.ts",
+      "status": "present",
+      "ours": "get_alerts"
+    },
+    {
+      "name": "get_anomalies",
+      "source": "apps/server/src/mcp/tools/observability.ts",
+      "status": "present",
+      "ours": "get_anomalies"
+    },
+    {
+      "name": "get_attack_signals",
+      "source": "apps/server/src/mcp/tools/observability.ts",
+      "status": "present",
+      "ours": "get_attack_signals"
+    },
+    {
+      "name": "get_audit_log",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "present",
+      "ours": "get_audit_log"
+    },
+    {
+      "name": "get_auto_deploy_status",
+      "source": "apps/server/src/mcp/tools/deployments.ts",
+      "status": "present",
+      "ours": "get_auto_deploy_status"
+    },
+    {
+      "name": "get_build_history",
+      "source": "apps/server/src/mcp/tools/observability.ts",
+      "status": "present",
+      "ours": "get_build_history"
+    },
+    {
+      "name": "get_build_logs",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "present",
+      "ours": "get_build_logs"
+    },
+    {
+      "name": "get_changes",
+      "source": "apps/server/src/mcp/tools/observability.ts",
+      "status": "partial",
+      "ours": "get_changes",
+      "reason": "Core deploy actions omit deployment ids, domain removals omit a project target, and dashboard environment removals and replacements omit key names."
+    },
+    {
+      "name": "get_compose_stack",
+      "source": "apps/server/src/mcp/tools/compose.ts",
+      "status": "present",
+      "ours": "get_compose_stack"
+    },
+    {
+      "name": "get_current_user",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "present",
+      "ours": "get_me"
+    },
+    {
+      "name": "get_database",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "get_database_activity",
+      "source": "apps/server/src/mcp/tools/database-recovery.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "get_database_backup_schedule",
+      "source": "apps/server/src/mcp/tools/resources.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "get_database_connection",
+      "source": "apps/server/src/mcp/tools/resources.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "get_database_limits",
+      "source": "apps/server/src/mcp/tools/resources.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "get_database_metrics",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "get_database_operation",
+      "source": "apps/server/src/mcp/tools/database-recovery.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "get_database_pooler",
+      "source": "apps/server/src/mcp/tools/database-recovery.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "get_database_query_stats",
+      "source": "apps/server/src/mcp/tools/resources.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "get_database_recovery_window",
+      "source": "apps/server/src/mcp/tools/database-recovery.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "get_database_replication",
+      "source": "apps/server/src/mcp/tools/database-recovery.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "get_database_security",
+      "source": "apps/server/src/mcp/tools/database-recovery.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "get_database_settings",
+      "source": "apps/server/src/mcp/tools/resources.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "get_deploy_verdict",
+      "source": "apps/server/src/mcp/tools/observability.ts",
+      "status": "present",
+      "ours": "get_deploy_verdict"
+    },
+    {
+      "name": "get_deployment",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "present",
+      "ours": "get_deployment"
+    },
+    {
+      "name": "get_deployment_http_metrics",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "present",
+      "ours": "get_deployment_http_metrics"
+    },
+    {
+      "name": "get_deployment_logs",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "present",
+      "ours": "get_deployment_logs"
+    },
+    {
+      "name": "get_deployment_metrics",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "partial",
+      "ours": "get_deployment_metrics",
+      "reason": "Samples are tracked per project, not attributed to individual releases."
+    },
+    {
+      "name": "get_deployment_next_steps",
+      "source": "apps/server/src/mcp/tools/deployments.ts",
+      "status": "present",
+      "ours": "get_deployment_next_steps"
+    },
+    {
+      "name": "get_deployment_rollout",
+      "source": "apps/server/src/mcp/tools/rollout.ts",
+      "status": "present",
+      "ours": "get_rollout"
+    },
+    {
+      "name": "get_deployment_volumes",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "present",
+      "ours": "get_deployment_volumes"
+    },
+    {
+      "name": "get_env_vars",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "present",
+      "ours": "get_env_vars"
+    },
+    {
+      "name": "get_github_status",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "present",
+      "ours": "get_github_status"
+    },
+    {
+      "name": "get_image_history",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "present",
+      "ours": "get_image_history"
+    },
+    {
+      "name": "get_ingress",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "present",
+      "ours": "get_ingress"
+    },
+    {
+      "name": "get_ingress_protection",
+      "source": "apps/server/src/mcp/tools/configuration.ts",
+      "status": "present",
+      "ours": "get_ingress_protection"
+    },
+    {
+      "name": "get_job",
+      "source": "apps/server/src/mcp/tools/jobs.ts",
+      "status": "present",
+      "ours": "get_job"
+    },
+    {
+      "name": "get_job_run",
+      "source": "apps/server/src/mcp/tools/jobs.ts",
+      "status": "present",
+      "ours": "get_job_run"
+    },
+    {
+      "name": "get_job_run_logs",
+      "source": "apps/server/src/mcp/tools/jobs.ts",
+      "status": "present",
+      "ours": "get_job_run_logs"
+    },
+    {
+      "name": "get_killed_container_logs",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "present",
+      "ours": "get_killed_container_logs",
+      "reason": "Pod/container orchestration is cluster-only; Nest exposes a single user-managed server."
+    },
+    {
+      "name": "get_log_context",
+      "source": "apps/server/src/mcp/tools/observability.ts",
+      "status": "present",
+      "ours": "get_log_context"
+    },
+    {
+      "name": "get_observability_link",
+      "source": "apps/server/src/mcp/tools/observability.ts",
+      "status": "present",
+      "ours": "get_observability_link"
+    },
+    {
+      "name": "get_pod_details",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Pod/container orchestration is cluster-only; Nest exposes a single user-managed server."
+    },
+    {
+      "name": "get_pod_health",
+      "source": "apps/server/src/mcp/tools/observability.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Pod/container orchestration is cluster-only; Nest exposes a single user-managed server."
+    },
+    {
+      "name": "get_pod_logs",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Pod/container orchestration is cluster-only; Nest exposes a single user-managed server."
+    },
+    {
+      "name": "get_project",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "present",
+      "ours": "get_project"
+    },
+    {
+      "name": "get_project_database_security",
+      "source": "apps/server/src/mcp/tools/database-recovery.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "get_repo_branches",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "present",
+      "ours": "get_repo_branches"
+    },
+    {
+      "name": "get_repo_contents",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "present",
+      "ours": "get_repo_contents"
+    },
+    {
+      "name": "get_repo_dockerfiles",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "present",
+      "ours": "get_repo_dockerfiles"
+    },
+    {
+      "name": "get_request_stats",
+      "source": "apps/server/src/mcp/tools/observability.ts",
+      "status": "present",
+      "ours": "get_request_stats"
+    },
+    {
+      "name": "get_resource_quota",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "partial",
+      "ours": "get_resource_quota",
+      "reason": "Quota data is limited to Egg-managed service limits and recorded project/server measurements; it does not represent cluster quota or remaining quota."
+    },
+    {
+      "name": "get_resource_recommendation",
+      "source": "apps/server/src/mcp/tools/observability.ts",
+      "status": "present",
+      "ours": "get_resource_recommendation"
+    },
+    {
+      "name": "get_sandbox",
+      "source": "grafts/greenhouse/mcp/src/tools.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Greenhouse sandbox sessions require Orchard’s cluster; this API targets the user’s Nest server."
+    },
+    {
+      "name": "get_sandbox_session_diff",
+      "source": "grafts/greenhouse/mcp/src/tools.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Greenhouse sandbox sessions require Orchard’s cluster; this API targets the user’s Nest server."
+    },
+    {
+      "name": "get_sandbox_session_transcript",
+      "source": "grafts/greenhouse/mcp/src/tools.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Greenhouse sandbox sessions require Orchard’s cluster; this API targets the user’s Nest server."
+    },
+    {
+      "name": "get_shared_env_vars",
+      "source": "apps/server/src/mcp/tools/environments.ts",
+      "status": "present",
+      "ours": "get_shared_env_vars"
+    },
+    {
+      "name": "get_template",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Orchard template registry/instances are cluster-managed; this API has no cluster template service."
+    },
+    {
+      "name": "get_template_instance",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Orchard template registry/instances are cluster-managed; this API has no cluster template service."
+    },
+    {
+      "name": "get_template_yaml_guide",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Orchard template registry/instances are cluster-managed; this API has no cluster template service."
+    },
+    {
+      "name": "get_timeline",
+      "source": "apps/server/src/mcp/tools/observability.ts",
+      "status": "present",
+      "ours": "get_activity"
+    },
+    {
+      "name": "get_volumes",
+      "source": "apps/server/src/mcp/tools/observability.ts",
+      "status": "present",
+      "ours": "get_volumes"
+    },
+    {
+      "name": "install_database_extension",
+      "source": "apps/server/src/mcp/tools/resources.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "list_build_runs",
+      "source": "apps/server/src/mcp/tools/rollout.ts",
+      "status": "present",
+      "ours": "list_build_runs"
+    },
+    {
+      "name": "list_checkpoints",
+      "source": "apps/server/src/mcp/tools/database-recovery.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL checkpoints. Egg has no managed database service, so there is nothing to checkpoint (decision recorded in docs/design/orchard-comparison.md)."
+    },
+    {
+      "name": "list_compose_stacks",
+      "source": "apps/server/src/mcp/tools/compose.ts",
+      "status": "present",
+      "ours": "list_compose_stacks"
+    },
+    {
+      "name": "list_database_backups",
+      "source": "apps/server/src/mcp/tools/resources.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "list_database_extensions",
+      "source": "apps/server/src/mcp/tools/resources.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "list_database_operations",
+      "source": "apps/server/src/mcp/tools/database-recovery.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "list_database_restore_tests",
+      "source": "apps/server/src/mcp/tools/database-recovery.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "list_database_users",
+      "source": "apps/server/src/mcp/tools/database-recovery.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "list_databases",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "list_deleted_databases",
+      "source": "apps/server/src/mcp/tools/database-recovery.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "list_deploy_webhook_tokens",
+      "source": "apps/server/src/mcp/tools/deployments.ts",
+      "status": "present",
+      "ours": "list_deploy_webhook_tokens"
+    },
+    {
+      "name": "list_deployment_errors",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "present",
+      "ours": "list_deployment_errors"
+    },
+    {
+      "name": "list_deployments",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "present",
+      "ours": "list_deployments"
+    },
+    {
+      "name": "list_environments",
+      "source": "apps/server/src/mcp/tools/environments.ts",
+      "status": "present",
+      "ours": "list_environments"
+    },
+    {
+      "name": "list_github_deploy_targets",
+      "source": "apps/server/src/mcp/tools/deployments.ts",
+      "status": "present",
+      "ours": "list_github_deploy_targets"
+    },
+    {
+      "name": "list_github_repos",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "present",
+      "ours": "list_github_repos"
+    },
+    {
+      "name": "list_ingresses",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "partial",
+      "ours": "list_domains",
+      "reason": "Egg lists owner domain claims and DNS status with project/port metadata, not configured host/path routing rules; routing remains in the Nest dashboard."
+    },
+    {
+      "name": "list_job_runs",
+      "source": "apps/server/src/mcp/tools/jobs.ts",
+      "status": "present",
+      "ours": "list_job_runs"
+    },
+    {
+      "name": "list_jobs",
+      "source": "apps/server/src/mcp/tools/jobs.ts",
+      "status": "present",
+      "ours": "list_jobs"
+    },
+    {
+      "name": "list_killed_containers",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Pod/container orchestration is cluster-only; Nest exposes a single user-managed server."
+    },
+    {
+      "name": "list_node_pools",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Node pools require cluster capacity management; Nest uses the user’s existing server."
+    },
+    {
+      "name": "list_notification_channels",
+      "source": "apps/server/src/mcp/tools/notifications.ts",
+      "status": "present",
+      "ours": "list_notification_channels"
+    },
+    {
+      "name": "list_notification_deliveries",
+      "source": "apps/server/src/mcp/tools/notifications.ts",
+      "status": "present",
+      "ours": "list_notification_deliveries"
+    },
+    {
+      "name": "list_notification_rules",
+      "source": "apps/server/src/mcp/tools/notifications.ts",
+      "status": "present",
+      "ours": "list_notification_rules"
+    },
+    {
+      "name": "list_organizations",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "present",
+      "ours": "list_organizations"
+    },
+    {
+      "name": "list_pods",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Pod/container orchestration is cluster-only; Nest exposes a single user-managed server."
+    },
+    {
+      "name": "list_postgres_versions",
+      "source": "apps/server/src/mcp/tools/database-recovery.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "list_projects",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "present",
+      "ours": "list_projects"
+    },
+    {
+      "name": "list_registry_credentials",
+      "source": "apps/server/src/mcp/tools/configuration.ts",
+      "status": "present",
+      "ours": "list_registry_credentials"
+    },
+    {
+      "name": "list_releases",
+      "source": "apps/server/src/mcp/tools/rollout.ts",
+      "status": "present",
+      "ours": "list_releases"
+    },
+    {
+      "name": "list_sandbox_sessions",
+      "source": "grafts/greenhouse/mcp/src/tools.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Greenhouse sandbox sessions require Orchard’s cluster; this API targets the user’s Nest server."
+    },
+    {
+      "name": "list_sandboxes",
+      "source": "apps/server/test/grafts.test.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Greenhouse sandbox sessions require Orchard’s cluster; this API targets the user’s Nest server."
+    },
+    {
+      "name": "list_services",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "present",
+      "ours": "list_services"
+    },
+    {
+      "name": "list_template_instances",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Orchard template registry/instances are cluster-managed; this API has no cluster template service."
+    },
+    {
+      "name": "list_templates",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Orchard template registry/instances are cluster-managed; this API has no cluster template service."
+    },
+    {
+      "name": "prompt_sandbox_session",
+      "source": "grafts/greenhouse/mcp/src/tools.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Greenhouse sandbox sessions require Orchard’s cluster; this API targets the user’s Nest server."
+    },
+    {
+      "name": "rebuild_deployment",
+      "source": "apps/server/src/mcp/tools/deployments.ts",
+      "status": "present",
+      "ours": "redeploy"
+    },
+    {
+      "name": "redeploy_compose_stack",
+      "source": "apps/server/src/mcp/tools/compose.ts",
+      "status": "present",
+      "ours": "redeploy_compose_stack"
+    },
+    {
+      "name": "rename_database",
+      "source": "apps/server/src/mcp/tools/resources.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "rename_deployment",
+      "source": "apps/server/src/mcp/tools/deployments.ts",
+      "status": "present",
+      "ours": "rename_deployment"
+    },
+    {
+      "name": "rename_environment",
+      "source": "apps/server/src/mcp/tools/environments.ts",
+      "status": "present",
+      "ours": "rename_environment"
+    },
+    {
+      "name": "replace_job_steps",
+      "source": "apps/server/src/mcp/tools/jobs.ts",
+      "status": "present",
+      "ours": "replace_job_steps"
+    },
+    {
+      "name": "replay_notification_channel",
+      "source": "apps/server/src/mcp/tools/notifications.ts",
+      "status": "present",
+      "ours": "replay_notification_channel"
+    },
+    {
+      "name": "reset_database_query_stats",
+      "source": "apps/server/src/mcp/tools/resources.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "restart_database",
+      "source": "apps/server/src/mcp/tools/resources.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "restart_deployment",
+      "source": "apps/server/src/mcp/tools/deployments.ts",
+      "status": "present",
+      "ours": "restart_deployment"
+    },
+    {
+      "name": "restore_checkpoint",
+      "source": "apps/server/src/mcp/tools/dangerous.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL checkpoints. Egg has no managed database service, so there is nothing to checkpoint (decision recorded in docs/design/orchard-comparison.md)."
+    },
+    {
+      "name": "restore_database",
+      "source": "apps/server/src/mcp/tools/dangerous.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "retry_deployment_apply",
+      "source": "apps/server/src/mcp/tools/deployments.ts",
+      "status": "present",
+      "ours": "retry_deployment_apply"
+    },
+    {
+      "name": "rollback_deployment",
+      "source": "apps/server/src/mcp/tools/deployments.ts",
+      "status": "present",
+      "ours": "rollback_deployment"
+    },
+    {
+      "name": "rollback_to_previous",
+      "source": "apps/server/src/mcp/tools/rollout.ts",
+      "status": "present",
+      "ours": "rollback_deployment"
+    },
+    {
+      "name": "run_job",
+      "source": "apps/server/src/mcp/tools/jobs.ts",
+      "status": "present",
+      "ours": "run_job"
+    },
+    {
+      "name": "scale_database",
+      "source": "apps/server/src/mcp/tools/resources.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "scale_deployment",
+      "source": "apps/server/src/mcp/tools/deployments.ts",
+      "status": "present",
+      "ours": "scale_deployment"
+    },
+    {
+      "name": "search_api",
+      "source": "apps/server/src/mcp/compact/compact-server.ts",
+      "status": "present",
+      "ours": "compact:search_api"
+    },
+    {
+      "name": "search_logs",
+      "source": "apps/server/src/mcp/tools/observability.ts",
+      "status": "present",
+      "ours": "search_logs"
+    },
+    {
+      "name": "set_database_backup_schedule",
+      "source": "apps/server/src/mcp/tools/resources.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "set_database_pooler",
+      "source": "apps/server/src/mcp/tools/database-recovery.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "set_database_protection",
+      "source": "apps/server/src/mcp/tools/database-recovery.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "set_database_replication",
+      "source": "apps/server/src/mcp/tools/database-recovery.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "set_default_environment",
+      "source": "apps/server/src/mcp/tools/environments.ts",
+      "status": "present",
+      "ours": "set_default_environment"
+    },
+    {
+      "name": "set_env_vars",
+      "source": "apps/server/src/mcp/tools/configuration.ts",
+      "status": "present",
+      "ours": "set_env_vars"
+    },
+    {
+      "name": "set_ingress_protection",
+      "source": "apps/server/src/mcp/tools/configuration.ts",
+      "status": "present",
+      "ours": "set_ingress_protection"
+    },
+    {
+      "name": "set_registry_credential",
+      "source": "apps/server/src/mcp/tools/configuration.ts",
+      "status": "present",
+      "ours": "set_registry_credential"
+    },
+    {
+      "name": "set_service_exposure",
+      "source": "apps/server/src/mcp/tools/configuration.ts",
+      "status": "present",
+      "ours": "set_service_exposure"
+    },
+    {
+      "name": "set_service_port_public",
+      "source": "apps/server/src/mcp/tools/configuration.ts",
+      "status": "present",
+      "ours": "set_service_port_public"
+    },
+    {
+      "name": "set_shared_env_vars",
+      "source": "apps/server/src/mcp/tools/environments.ts",
+      "status": "present",
+      "ours": "set_shared_env_vars"
+    },
+    {
+      "name": "start_database",
+      "source": "apps/server/src/mcp/tools/resources.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "start_deployment",
+      "source": "apps/server/src/mcp/tools/deployments.ts",
+      "status": "present",
+      "ours": "start_deployment"
+    },
+    {
+      "name": "start_sandbox",
+      "source": "grafts/greenhouse/mcp/src/tools.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Greenhouse sandbox sessions require Orchard’s cluster; this API targets the user’s Nest server."
+    },
+    {
+      "name": "stop_database",
+      "source": "apps/server/src/mcp/tools/resources.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "stop_deployment",
+      "source": "apps/server/src/mcp/tools/deployments.ts",
+      "status": "present",
+      "ours": "stop_deployment"
+    },
+    {
+      "name": "stop_sandbox",
+      "source": "grafts/greenhouse/mcp/src/tools.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Greenhouse sandbox sessions require Orchard’s cluster; this API targets the user’s Nest server."
+    },
+    {
+      "name": "test_database_backup",
+      "source": "apps/server/src/mcp/tools/database-recovery.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "test_notification_channel",
+      "source": "apps/server/src/mcp/tools/notifications.ts",
+      "status": "present",
+      "ours": "test_notification_channel"
+    },
+    {
+      "name": "triage_deployment_error",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "present",
+      "ours": "triage_deployment_error"
+    },
+    {
+      "name": "undelete_database",
+      "source": "apps/server/src/mcp/tools/database-recovery.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "undo_database_restore",
+      "source": "apps/server/src/mcp/tools/dangerous.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "uninstall_database_extension",
+      "source": "apps/server/src/mcp/tools/resources.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "update_database_minor",
+      "source": "apps/server/src/mcp/tools/database-recovery.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "update_database_resources",
+      "source": "apps/server/src/mcp/tools/resources.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "update_database_settings",
+      "source": "apps/server/src/mcp/tools/resources.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "update_deployment_build_config",
+      "source": "apps/server/src/mcp/tools/configuration.ts",
+      "status": "present",
+      "ours": "update_deployment_build_config"
+    },
+    {
+      "name": "update_deployment_disruption_budget",
+      "source": "apps/server/src/mcp/tools/deployments.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Kubernetes disruption-budget scheduling control; Egg deploys services to a user-owned Nest server without a cluster scheduler."
+    },
+    {
+      "name": "update_deployment_github_repo",
+      "source": "apps/server/src/mcp/tools/deployments.ts",
+      "status": "present",
+      "ours": "update_deployment_github_repo"
+    },
+    {
+      "name": "update_deployment_health_check",
+      "source": "apps/server/src/mcp/tools/configuration.ts",
+      "status": "present",
+      "ours": "update_deployment_health_check"
+    },
+    {
+      "name": "update_deployment_image",
+      "source": "apps/server/src/mcp/tools/configuration.ts",
+      "status": "present",
+      "ours": "update_deployment_image"
+    },
+    {
+      "name": "update_deployment_placement",
+      "source": "apps/server/src/mcp/tools/deployments.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Kubernetes placement and scheduling control; Egg deploys services to a user-owned Nest server without a cluster scheduler."
+    },
+    {
+      "name": "update_deployment_pull_policy",
+      "source": "apps/server/src/mcp/tools/configuration.ts",
+      "status": "present",
+      "ours": "update_deployment_pull_policy"
+    },
+    {
+      "name": "update_deployment_resources",
+      "source": "apps/server/src/mcp/tools/deployments.ts",
+      "status": "present",
+      "ours": "update_deployment_resources"
+    },
+    {
+      "name": "update_deployment_strategy",
+      "source": "apps/server/src/mcp/tools/configuration.ts",
+      "status": "present",
+      "ours": "update_deployment_strategy"
+    },
+    {
+      "name": "update_deployment_volumes",
+      "source": "apps/server/src/mcp/tools/configuration.ts",
+      "status": "present",
+      "ours": "update_deployment_volumes"
+    },
+    {
+      "name": "update_ingress",
+      "source": "apps/server/src/mcp/tools/configuration.ts",
+      "status": "present",
+      "ours": "update_ingress"
+    },
+    {
+      "name": "update_job",
+      "source": "apps/server/src/mcp/tools/jobs.ts",
+      "status": "present",
+      "ours": "update_job"
+    },
+    {
+      "name": "update_notification_channel",
+      "source": "apps/server/src/mcp/tools/notifications.ts",
+      "status": "present",
+      "ours": "update_notification_channel"
+    },
+    {
+      "name": "update_notification_rule",
+      "source": "apps/server/src/mcp/tools/notifications.ts",
+      "status": "present",
+      "ours": "update_notification_rule"
+    },
+    {
+      "name": "update_project",
+      "source": "apps/server/src/mcp/tools/resources.ts",
+      "status": "present",
+      "ours": "update_project"
+    },
+    {
+      "name": "update_service",
+      "source": "apps/server/src/mcp/tools/configuration.ts",
+      "status": "present",
+      "ours": "update_service"
+    },
+    {
+      "name": "upgrade_database",
+      "source": "apps/server/src/mcp/tools/dangerous.ts",
+      "status": "not_applicable",
+      "ours": null,
+      "reason": "Managed PostgreSQL control plane feature; this API manages apps on the user’s Nest server."
+    },
+    {
+      "name": "validate_dns",
+      "source": "apps/server/src/mcp/tools/query.ts",
+      "status": "present",
+      "ours": "verify_domain"
+    }
+  ],
+  "ours_only": [
+    "delete_env_var",
+    "delete_file",
+    "download_file",
+    "get_analytics",
+    "get_container_inventory",
+    "get_crash_report",
+    "get_logs",
+    "get_notification_channel",
+    "get_notifications",
+    "get_organization",
+    "get_project_resources",
+    "get_resource_history",
+    "get_server_usage",
+    "get_status_page",
+    "list_compose_releases",
+    "list_crash_reports",
+    "list_env_vars",
+    "list_files",
+    "list_servers",
+    "make_folder",
+    "read_file",
+    "rename_file",
+    "restart_service",
+    "set_env_var",
+    "set_env_var_secret",
+    "terminal_close",
+    "terminal_open",
+    "terminal_read",
+    "terminal_resize",
+    "terminal_send",
+    "terminal_status",
+    "test_notification",
+    "write_file"
+  ],
+  "baseline_missing": 0,
+  "baseline_not_applicable": 84
+}

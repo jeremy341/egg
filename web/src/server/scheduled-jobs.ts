@@ -372,10 +372,11 @@ async function restoreRemoteToRow(
   else await removeRemote(userId, projectId, jobId);
 }
 
-export async function deleteJob(userId: string, projectId: string, jobId: string) {
+export async function deleteJob(userId: string, projectId: string, jobId: string, confirmName?: string) {
   const project = await getProjectForUser(userId, projectId);
   await withJobLock(jobId, async () => {
     const current = await getJob(project.id, jobId);
+    if (confirmName !== undefined && confirmName !== current.name) throw new HttpError(400, "Type the exact job name to confirm.", "confirmation_failed");
     await onContainer(userId, project.id, async ({ project: p, session, scope }) => {
       const res = await session.script(removeJob({ slug: p.slug, jobId: current.id, unitDir: unitDir(), scope }), { timeoutMs: 60_000 });
       if (res.code !== 0) throw new HttpError(502, "Could not remove the job from your container.", "upstream");
@@ -401,17 +402,23 @@ export async function deleteJob(userId: string, projectId: string, jobId: string
   });
 }
 
-export async function runJob(userId: string, projectId: string, jobId: string) {
+export async function runJob(userId: string, projectId: string, jobId: string, confirmName?: string) {
   const project = await getProjectForUser(userId, projectId);
-  const current = await getJob(project.id, jobId);
-  await onContainer(userId, project.id, async ({ project: p, session, scope }) => {
-    const res = await session.script(runJobNow({ slug: p.slug, jobId: current.id, unitDir: unitDir(), scope }), { timeoutMs: 30_000 });
-    if (res.code === NOT_INSTALLED_EXIT) {
-      throw new HttpError(409, "That job is not on your container any more. Save it again to put it back.", "not_installed");
+  await withJobLock(jobId, async () => {
+    const current = await getJob(project.id, jobId);
+    if (confirmName !== undefined && confirmName !== current.name) {
+      throw new HttpError(400, "Type the exact job name to confirm.", "confirmation_failed");
     }
-    if (res.code !== 0) throw new HttpError(502, "Could not start the job.", "upstream");
+    await onContainer(userId, project.id, async ({ project: p, session, scope }) => {
+      const res = await session.script(runJobNow({ slug: p.slug, jobId: current.id, unitDir: unitDir(), scope }), { timeoutMs: 30_000 });
+      if (res.code === NOT_INSTALLED_EXIT) {
+        throw new HttpError(409, "That job is not on your container any more. Save it again to put it back.", "not_installed");
+      }
+      if (res.code !== 0) throw new HttpError(502, "Could not start the job.", "upstream");
+    });
   });
-  await audit(userId, "job.run", project.id, { job: current.id });
+  await audit(userId, "job.run", project.id, { job: jobId });
+
 }
 
 export type JobState = "running" | "failed" | "ok" | "never" | "missing";

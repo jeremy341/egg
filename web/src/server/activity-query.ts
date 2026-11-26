@@ -45,17 +45,23 @@ type AuditRow = typeof schema.auditLog.$inferSelect;
 
 type Lookups = {
   projects: Map<string, { slug: string; name: string }>;
+  environmentSets: Map<string, string>;
   tokens: Map<string, string>;
   servers: Map<string, string>;
+  keys: Map<string, string>;
 };
 
 async function loadLookups(userId: string): Promise<Lookups> {
   const db = await getDb();
-  const [projects, tokens, servers] = await Promise.all([
+  const [projects, environmentSets, tokens, servers, keys] = await Promise.all([
     db
       .select({ id: schema.projects.id, slug: schema.projects.slug, name: schema.projects.name })
       .from(schema.projects)
       .where(eq(schema.projects.userId, userId)),
+    db
+      .select({ id: schema.sharedEnvSets.id, name: schema.sharedEnvSets.name })
+      .from(schema.sharedEnvSets)
+      .where(eq(schema.sharedEnvSets.userId, userId)),
     db
       .select({ id: schema.apiTokens.id, name: schema.apiTokens.name })
       .from(schema.apiTokens)
@@ -64,11 +70,17 @@ async function loadLookups(userId: string): Promise<Lookups> {
       .select({ id: schema.servers.id, name: schema.servers.nestUsername })
       .from(schema.servers)
       .where(eq(schema.servers.userId, userId)),
+    db
+      .select({ id: schema.sshKeys.id, name: schema.sshKeys.name })
+      .from(schema.sshKeys)
+      .where(eq(schema.sshKeys.userId, userId)),
   ]);
   return {
     projects: new Map(projects.map((p) => [p.id, { slug: p.slug, name: p.name }])),
+    environmentSets: new Map(environmentSets.map((environment) => [environment.id, environment.name])),
     tokens: new Map(tokens.map((t) => [t.id, t.name])),
     servers: new Map(servers.map((s) => [s.id, s.name])),
+    keys: new Map(keys.map((k) => [k.id, k.name])),
   };
 }
 
@@ -104,10 +116,16 @@ function resolveTarget(
   if (id) {
     const project = lookups.projects.get(id);
     if (project) return { name: project.name, href: `/projects/${project.slug}` };
+    const environment = lookups.environmentSets.get(id);
+    if (environment) return { name: environment, href: null };
     const token = lookups.tokens.get(id);
     if (token) return { name: token, href: "/developer" };
     const server = lookups.servers.get(id);
     if (server) return { name: server, href: null };
+    // A key row stays for as long as the account does (revoked ones included), so the
+    // name always resolves while the key exists.
+    const key = lookups.keys.get(id);
+    if (key) return { name: key, href: "/keys" };
     // The row it pointed at is gone. Use the name the action recorded, else say so.
     if (meta) return { name: meta, href: null, gone: true };
     if (row.action.startsWith("token.")) return { name: "(deleted token)", href: null, gone: true };

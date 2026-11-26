@@ -113,7 +113,7 @@ describe("creating and reading webhooks", () => {
     const { webhook, secret } = await createWebhook(sam, { url: URL_OK });
     expect(secret).toMatch(/^whsec_/);
     expect(webhook).toMatchObject({ url: URL_OK, host: "hooks.example.com", active: true, projectId: null });
-    expect(webhook.events).toEqual(["deployment.started", "deployment.succeeded", "deployment.failed"]);
+    expect(webhook.events).toEqual(["deployment.started", "deployment.succeeded", "deployment.failed", "deploy.regressed"]);
 
     const stored = await ctx.db.select().from(schema.webhooks).where(eq(schema.webhooks.id, webhook.id)).get();
     expect(stored?.secretEnc).not.toContain(secret);

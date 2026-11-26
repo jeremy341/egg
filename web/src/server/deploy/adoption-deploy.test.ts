@@ -172,6 +172,8 @@ describe.skipIf(!linuxTestHostAvailable())("the same repo already running by han
 });
 
 describe.skipIf(!linuxTestHostAvailable())("the user's own keys", () => {
+  // These tests run real shell commands against a mock host; give them room
+  // when the full suite shares the machine with several workers.
   it("are byte for byte the same after a deploy", async () => {
     const p = await makeProject("clean");
     mock.writeFile(`${home}/.ssh/config`, "Host gh\n  IdentityFile ~/.ssh/deploy_key\n");
@@ -197,4 +199,4 @@ describe.skipIf(!linuxTestHostAvailable())("the user's own keys", () => {
     const again = await deploy(p);
     expect(again.row.state, again.logs).toBe("ready");
   });
-});
+}, 60_000);
