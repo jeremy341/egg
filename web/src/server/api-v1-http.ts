@@ -1,14 +1,16 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { bearerFrom, principalFor, type Principal } from "@/server/api-tokens";
+import { apiScopesForMcpScopes, bearerFrom, principalFor, type Principal } from "@/server/api-tokens";
 import { callEndpoint, endpointById, enforceApiRate, type Endpoint } from "@/server/api-v1";
 import { fingerprintOf, idempotencyKeyFrom, withIdempotency } from "@/server/api-idempotency";
 import { handle, HttpError } from "@/server/http";
+import { principalForOAuthToken } from "@/server/oauth";
 import { assertRateRoom, clientIp, enforceRateLimit } from "@/server/rate-limit";
 
 /**
- * HTTP glue for the public API and the MCP endpoint. The ONLY credential
- * accepted here is `Authorization: Bearer egg_...`. Cookies are never read, so
- * a signed-in browser session cannot act through the API.
+ * HTTP glue for the public API and the MCP endpoint. The ONLY credentials
+ * accepted here are `Authorization: Bearer egg_...` personal tokens and
+ * `Authorization: Bearer egg_oauth_...` OAuth access tokens. Cookies are never
+ * read, so a signed-in browser session cannot act through the API.
  */
 
 const WWW_AUTHENTICATE = { "WWW-Authenticate": "Bearer" };
@@ -19,7 +21,7 @@ export async function authenticate(req: Request): Promise<Principal> {
   if (secret === null) {
     throw new HttpError(
       401,
-      "Send an access token as an Authorization: Bearer egg_... header.",
+      "Send an access token as an Authorization: Bearer egg_... or egg_oauth_... header.",
       "unauthorized",
       WWW_AUTHENTICATE
     );
@@ -29,7 +31,13 @@ export async function authenticate(req: Request): Promise<Principal> {
   // proxy header there is no way to tell callers apart, so nobody is throttled.
   const ip = clientIp(req.headers);
   if (ip) assertRateRoom("badToken", ip);
-  const principal = await principalFor(secret);
+  // OAuth lookup returns immediately for egg_ secrets, so personal tokens take
+  // the same path as before. Both lookups are hash-based and hide expired and
+  // unknown tokens behind the same null.
+  const oauth = await principalForOAuthToken(secret);
+  const principal: Principal | null = oauth
+    ? { userId: oauth.userId, tokenId: oauth.tokenId, scopes: apiScopesForMcpScopes(oauth.scopes) }
+    : await principalFor(secret);
   if (!principal) {
     if (ip) enforceRateLimit("badToken", ip);
     throw new HttpError(401, "That access token is not valid.", "unauthorized", WWW_AUTHENTICATE);
@@ -149,6 +157,7 @@ export function v1Route(id: string) {
         scope: principal.tokenId,
         key: idemKey,
         fingerprint: fingerprintOf(req.method, req.nextUrl.pathname + req.nextUrl.search, text),
+        sensitive: ep.sensitive === true,
         run,
       });
     },

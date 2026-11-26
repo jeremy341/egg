@@ -5,7 +5,7 @@ import { handleCompactMessage } from "@/server/mcp-compact";
 import { RPC } from "@/server/mcp";
 import { parseMcpView } from "@/server/mcp-toolsets";
 
-const MAX_BODY_BYTES = 64 * 1024;
+const MAX_BODY_BYTES = 100 * 1024;
 
 /**
  * The compact MCP server: one JSON-RPC message in, one JSON response out, three tools

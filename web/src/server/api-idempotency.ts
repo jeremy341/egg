@@ -30,6 +30,8 @@ type Done = {
   status: number;
   body: string;
   headers: [string, string][];
+  /** The answer held a secret and was not kept; a repeat is refused. */
+  sensitive?: boolean;
 };
 type Entry = Pending | Done;
 
@@ -69,6 +71,8 @@ export async function withIdempotency(opts: {
   fingerprint: string;
   run: () => Promise<Response>;
   now?: number;
+  /** The answer contains a secret. It is not stored, so a repeat is refused rather than replayed. */
+  sensitive?: boolean;
 }): Promise<Response> {
   const now = opts.now ?? Date.now();
   const t = table();
@@ -87,6 +91,9 @@ export async function withIdempotency(opts: {
       throw new HttpError(409, "A request with this Idempotency-Key is still in progress. Wait and retry.", "idempotency_in_progress", {
         "Retry-After": "1",
       });
+    }
+    if (live.sensitive) {
+      throw new HttpError(409, "This request already ran and its answer held a secret, so it is not replayed. Check the result with a read call.", "idempotency_secret_not_replayed");
     }
     return new Response(live.body, { status: live.status, headers: [...live.headers, ["Idempotent-Replayed", "true"]] });
   }
@@ -114,7 +121,11 @@ export async function withIdempotency(opts: {
   const body = await res.text();
   const headers = [...res.headers.entries()];
   if (t.get(k) === claim) {
-    t.set(k, { state: "done", fingerprint: opts.fingerprint, expiresAt: claim.expiresAt, status: res.status, body, headers });
+    if (opts.sensitive) {
+      t.set(k, { state: "done", fingerprint: opts.fingerprint, expiresAt: claim.expiresAt, status: res.status, body: "", headers: [], sensitive: true });
+    } else {
+      t.set(k, { state: "done", fingerprint: opts.fingerprint, expiresAt: claim.expiresAt, status: res.status, body, headers });
+    }
   }
   return new Response(body, { status: res.status, headers });
 }

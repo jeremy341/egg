@@ -37,22 +37,29 @@ export type McpTool = {
   title: string;
   description: string;
   inputSchema: Record<string, unknown>;
+  /** JSON Schema of the response for a read-only tool, so clients can validate its structuredContent. */
+  outputSchema?: Record<string, unknown>;
   annotations: { readOnlyHint: boolean; destructiveHint: boolean; idempotentHint: boolean; openWorldHint: boolean };
   /** Extra metadata for the client. `egg/sensitive` marks a result that carries a secret shown once. */
   _meta?: Record<string, unknown>;
 };
 
-function toTool(ep: Endpoint): McpTool {
-  const { $schema, ...inputSchema } = z.toJSONSchema(ep.input, { io: "input", target: "draft-2020-12" }) as Record<
-    string,
-    unknown
-  >;
+/** JSON Schema for a zod type, without `$schema` (MCP supplies its own dialect). */
+function jsonSchemaOf(zod: z.ZodType, io: "input" | "output"): Record<string, unknown> {
+  const { $schema, ...schema } = z.toJSONSchema(zod, { io, target: "draft-2020-12" }) as Record<string, unknown>;
   void $schema;
+  return schema;
+}
+
+function toTool(ep: Endpoint): McpTool {
   return {
     name: ep.id,
     title: ep.summary,
     description: `${ep.description} ${ep.scope ? `Needs the ${ep.scope} scope.` : "Needs no scope."}`,
-    inputSchema,
+    inputSchema: jsonSchemaOf(ep.input, "input"),
+    // Only read-only tools declare an outputSchema: declare one means the tool
+    // must always return structuredContent that validates against it.
+    ...(ep.readOnly ? { outputSchema: jsonSchemaOf(ep.response, "output") } : {}),
     annotations: {
       readOnlyHint: ep.readOnly,
       destructiveHint: !ep.readOnly && ep.destructive,
@@ -149,12 +156,31 @@ export function frameOutput(untrusted: boolean, payload: string): string {
  * injected instructions in as plain, apparently-trusted text. Errors stay
  * results, never crashes.
  */
-function toolResult(ep: Endpoint, payload: string, isError: boolean) {
-  return { content: [{ type: "text", text: frameOutput(ep.untrusted, payload) }], isError };
+function toolResult(ep: Endpoint, outcome: ToolOutcome) {
+  return {
+    // The text content is framed exactly as before; structured output rides alongside it.
+    content: [{ type: "text", text: frameOutput(ep.untrusted, outcome.payload) }],
+    ...(outcome.structuredContent ? { structuredContent: outcome.structuredContent } : {}),
+    isError: outcome.isError,
+  };
 }
 
 /** What running one endpoint produced, before framing. */
-export type ToolOutcome = { payload: string; isError: boolean };
+export type ToolOutcome = {
+  payload: string;
+  isError: boolean;
+  /** The response object, for read-only tools that declared an outputSchema. */
+  structuredContent?: Record<string, unknown>;
+};
+
+/** The response parsed through its own schema, so it has the shape the outputSchema advertises. */
+function structuredContentOf(ep: Endpoint, data: unknown): Record<string, unknown> {
+  const parsed = ep.response.safeParse(data);
+  const value = parsed.success ? parsed.data : data;
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : { value };
+}
 
 /**
  * Run one endpoint for a token: the per-token rate limit first (its 429 is thrown to the route), then the
@@ -165,7 +191,11 @@ export async function runEndpoint(p: Principal, ep: Endpoint, args: unknown): Pr
   enforceApiRate(p, ep.bucket);
   try {
     const data = await callEndpoint(p, ep, args ?? {});
-    return { payload: JSON.stringify(data, null, 2), isError: false };
+    return {
+      payload: JSON.stringify(data, null, 2),
+      isError: false,
+      ...(ep.readOnly ? { structuredContent: structuredContentOf(ep, data) } : {}),
+    };
   } catch (err) {
     // The message of an HttpError can itself carry remote bytes (SSH stderr,
     // inventory/repo text), so it is framed just like a success payload.
@@ -189,7 +219,7 @@ async function callTool(p: Principal, params: unknown, id: RpcId, view: McpView)
   }
 
   const outcome = await runEndpoint(p, ep, args);
-  return rpcResult(id, toolResult(ep, outcome.payload, outcome.isError));
+  return rpcResult(id, toolResult(ep, outcome));
 }
 
 /**
