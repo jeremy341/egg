@@ -1,14 +1,14 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { audit } from "@/server/audit";
 import { assertCleanupAllowsWork } from "@/server/cleanup-guards";
 import { newId } from "@/server/crypto";
 import { getDb, schema } from "@/server/db";
 import { HttpError } from "@/server/http";
-import { deleteProjectRecords, getProjectAtLevel, type ProjectRow } from "@/server/projects";
+import { assertDeletable, assertProjectIdle, getProjectAtLevel, type ProjectRow } from "@/server/projects";
+import { moveProjectToTrash, trashProject } from "@/server/project-trash";
 import { removeProjectFromServer } from "@/server/runtime-info";
 import { getServerForUser } from "@/server/servers";
-import { forgetDeliveriesForDeployments } from "@/server/webhooks";
 
 /** Long enough for one remote removal. A crash leaves the row to expire into the cleanup recovery path. */
 const RESERVATION_LEASE_MS = 10 * 60_000;
@@ -36,8 +36,9 @@ export async function deleteProject(
   opts: ProjectDeleteOptions,
   deps: ProjectDeleteDeps = {}
 ) {
-  if (!opts.remote) return deleteProjectRecords(userId, projectId);
+  if (!opts.remote) return trashProject(userId, projectId);
   const project = await getProjectAtLevel(userId, projectId, "admin");
+  assertDeletable(project);
   const reservation = await reserveProject(userId, project);
   // Keep the lease alive while the removal runs, so a slow server does not make the
   // reservation look abandoned and open it to the cleanup retry flow.
@@ -71,29 +72,9 @@ async function defaultRemoveRemote(userId: string, projectId: string, opts: { de
   });
 }
 
-/** Same refusals as deleteProjectRecords, checked in the same transaction as the reservation. */
+/** Same refusals as trashProject, checked in the same transaction as the reservation. */
 async function assertNoProjectWork(tx: Tx, projectId: string) {
-  const activeJob = await tx
-    .select({ id: schema.jobs.id })
-    .from(schema.jobs)
-    .innerJoin(schema.deployments, eq(schema.jobs.deploymentId, schema.deployments.id))
-    .where(and(eq(schema.deployments.projectId, projectId), eq(schema.jobs.state, "running")))
-    .get();
-  if (activeJob) {
-    throw new HttpError(409, "A deployment is still stopping for this project. Wait for it to finish, then delete the project.", "conflict");
-  }
-  const running = await tx
-    .select({ id: schema.deployments.id })
-    .from(schema.deployments)
-    .where(and(eq(schema.deployments.projectId, projectId), inArray(schema.deployments.state, ["queued", "building", "deploying"])))
-    .get();
-  if (running) {
-    throw new HttpError(
-      409,
-      "A deployment is still running for this project. Cancel it or wait for it to finish, then delete the project.",
-      "conflict"
-    );
-  }
+  await assertProjectIdle(tx, projectId);
 }
 
 type Reservation = { jobId: string; owner: string };
@@ -174,12 +155,7 @@ async function finishDelete(userId: string, project: ProjectRow, reservation: Re
     await tx.update(schema.cleanupItems)
       .set({ state: "done", step: "remote_complete", error: null, updatedAt: now })
       .where(eq(schema.cleanupItems.cleanupJobId, reservation.jobId));
-    const deployments = await tx
-      .select({ id: schema.deployments.id })
-      .from(schema.deployments)
-      .where(eq(schema.deployments.projectId, project.id));
-    await tx.delete(schema.projects).where(and(eq(schema.projects.id, project.id), eq(schema.projects.userId, userId)));
-    await forgetDeliveriesForDeployments(tx, deployments.map((d) => d.id));
+    await moveProjectToTrash(tx, userId, project);
   });
   await audit(userId, "project.delete", null, { name: project.name });
 }

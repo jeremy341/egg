@@ -5,8 +5,10 @@ import {
   GaugeIcon,
   CubeIcon,
   GearSixIcon,
+  ShieldWarningIcon,
   BookOpenTextIcon,
   FolderOpenIcon,
+  KeyIcon,
   TerminalWindowIcon,
   CubeFocusIcon,
   CodeIcon,
@@ -115,6 +117,12 @@ const TEAM_ITEMS: NavItem[] = [
     icon: HardDrivesIcon,
     active: (p) => p.startsWith("/connect"),
   },
+  {
+    href: "/keys",
+    label: "Keys",
+    icon: KeyIcon,
+    active: (p) => p.startsWith("/keys"),
+  },
 ];
 
 const TEAM_TITLES: Record<string, string> = {
@@ -128,6 +136,7 @@ const TEAM_TITLES: Record<string, string> = {
   "/container": "Container",
   "/developer": "Developer",
   "/connect": "Connect a server",
+  "/keys": "Keys",
 };
 
 function projectItems(slug: string): NavItem[] {
@@ -274,6 +283,7 @@ export function findTargets(
     })),
     { href: "/account", label: "Account", group: "Pages", icon: UserCircleIcon },
     { href: "/settings", label: "Settings", group: "Pages", icon: GearSixIcon },
+    { href: "/security/report", label: "Report a vulnerability", group: "Pages", icon: ShieldWarningIcon },
     { href: "/new", label: "New project", group: "Pages", icon: PlusIcon },
     { href: DOCS_ITEM.href, label: DOCS_ITEM.label, group: "Pages", icon: DOCS_ITEM.icon },
     ...projects.map((p) => ({

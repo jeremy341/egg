@@ -11,6 +11,7 @@ const PATHS = [
   "/container",
   "/developer",
   "/connect",
+  "/keys",
   "/docs",
   "/docs/quickstart",
   "/account",
@@ -44,6 +45,20 @@ describe("page titles", () => {
   it("names the connect page the way the sidebar and the page do", () => {
     expect(navFor("/connect").title).toBe("Connect a server");
     expect(navFor("/projects/demo/deployments").title).toBe("Project deployments");
+  });
+
+  it("titles the keys page Keys and lists it in the Find palette", () => {
+    expect(navFor("/keys").title).toBe("Keys");
+    expect(findTargets([]).some((t) => t.href === "/keys" && t.label === "Keys")).toBe(true);
+  });
+});
+
+describe("team nav", () => {
+  it("lists Keys after Connect and marks it current on the keys page", () => {
+    const labels = navFor("/projects").items.map((i) => i.label);
+    expect(labels.slice(-2)).toEqual(["Connect", "Keys"]);
+    const current = navFor("/keys").items.filter((i) => i.active("/keys"));
+    expect(current.map((i) => i.href)).toEqual(["/keys"]);
   });
 });
 

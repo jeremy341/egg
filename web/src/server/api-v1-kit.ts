@@ -57,6 +57,11 @@ export type Endpoint = {
   path: string;
   /** The scope a token needs, or null when any valid token may call it (only `get_me`). */
   scope: Scope | null;
+  /**
+   * The response carries a secret that is shown once. Such a response is never stored for
+   * Idempotency-Key replay: a repeat of the request is refused instead of answered again.
+   */
+  sensitive?: boolean;
   bucket: Bucket;
   /** Success status. */
   status: 200 | 201 | 202;
@@ -106,6 +111,7 @@ export function endpoint<P extends Shape = Empty, Q extends Shape = Empty, B ext
   path: string;
   scope: Scope | null;
   bucket: Bucket;
+  sensitive?: boolean;
   status?: Endpoint["status"];
   tag: Endpoint["tag"];
   summary: string;
@@ -130,6 +136,7 @@ export function endpoint<P extends Shape = Empty, Q extends Shape = Empty, B ext
     path: def.path,
     scope: def.scope,
     bucket: def.bucket,
+    sensitive: def.sensitive,
     status: def.status ?? 200,
     tag: def.tag,
     summary: def.summary,
@@ -169,3 +176,47 @@ export const domainIdInput = z.string().trim().min(1).max(100).describe("The dom
 
 /** A true/false flag that works as a JSON boolean (MCP) and as ?flag=true (REST). */
 export const flagInput = z.union([z.boolean(), z.enum(["true", "false"]).transform((v) => v === "true")]);
+
+/** Maximum serialized size for any API response that contains log lines. */
+export const MAX_LOG_RESPONSE_BYTES = 40 * 1024;
+
+/**
+ * Clip log text as needed so logs stay within the API response budget while
+ * retaining every line's position and paging metadata.
+ */
+export function capLogResponse<T extends string | { message: string }, F extends Record<string, unknown>>(
+  fields: F,
+  lines: T[],
+): F & { lines: T[]; truncated: boolean } {
+  const messageOf = (line: T) => (typeof line === "string" ? line : (line as { message: string }).message);
+  const withMessage = (line: T, message: string): T => {
+    if (typeof line === "string") return message as T;
+    return { ...(line as { message: string }), message } as T;
+  };
+  const response = (candidate: T[], truncated: boolean) => ({ ...fields, lines: candidate, truncated });
+  const size = (candidate: T[], truncated: boolean) =>
+    Buffer.byteLength(JSON.stringify(response(candidate, truncated)), "utf8");
+
+  if (size(lines, false) <= MAX_LOG_RESPONSE_BYTES) {
+    return response(lines, false);
+  }
+
+  let low = 0;
+  let high = 1;
+  let best = lines.map((line) => withMessage(line, ""));
+  for (let attempt = 0; attempt < 24; attempt++) {
+    const ratio = (low + high) / 2;
+    const candidate = lines.map((line) => {
+      const text = messageOf(line);
+      return withMessage(line, text.slice(0, Math.floor(text.length * ratio)));
+    });
+    if (size(candidate, true) <= MAX_LOG_RESPONSE_BYTES) {
+      best = candidate;
+      low = ratio;
+    } else {
+      high = ratio;
+    }
+  }
+
+  return response(best, true);
+}

@@ -7,6 +7,7 @@ import { NavListSkeleton } from "@/components/nav-list";
 import { Sidebar } from "@/components/sidebar";
 import { TopBar, TopBarSkeleton } from "@/components/top-bar";
 import { MaintenanceNotice } from "@/components/maintenance-notice";
+import { AccountStandingBanner } from "@/components/account-standing-banner";
 import {
   LoadingRegion,
   Skeleton,
@@ -78,8 +79,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               </Suspense>
               <main
                 id="main"
-                className="mx-auto w-full max-w-[var(--page-width)] flex-1 px-4 py-6 pb-[calc(96px+env(safe-area-inset-bottom))] lg:px-6 lg:pb-10 has-[[data-docs-page]]:mx-0 has-[[data-docs-page]]:max-w-none has-[[data-docs-page]]:lg:pl-12"
+                className="mx-auto w-full max-w-[var(--page-width)] flex-1 px-4 py-6 pb-[calc(96px+env(safe-area-inset-bottom))] lg:px-6 lg:pb-10"
               >
+                <Suspense fallback={null}>
+                  <AccountStandingBanner />
+                </Suspense>
                 <MaintenanceNotice />
                 {children}
               </main>

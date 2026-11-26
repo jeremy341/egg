@@ -698,6 +698,15 @@ export async function runDeployJob(
       npmLockHash: "npmLockHash" in built ? built.npmLockHash ?? null : null,
     });
     throwIfCanceled(signal);
+    if (composeMode) {
+      // A Compose main service with a named volume must be recreated, never run beside a second copy.
+      // Record what this release mounts, and move the app to "recreate" when it does. Never a refusal:
+      // an existing volume app keeps deploying, under the one strategy that is safe for it.
+      const hasVolume = composeVolumes.length > 0;
+      await db.update(schema.projects)
+        .set({ hasVolumes: hasVolume, ...(hasVolume ? { deployStrategy: "recreate" as const } : {}) })
+        .where(eq(schema.projects.id, project.id));
+    }
     if (!(await setState(deploymentId, "deploying"))) {
       // Canceled while the build ran: nothing was switched, so remove the release folder it made.
       await session

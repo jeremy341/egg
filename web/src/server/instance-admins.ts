@@ -11,9 +11,9 @@ import { instanceAdminId, isInstanceAdmin } from "@/server/admin-identity";
  */
 
 const emailInput = z.object({ email: z.string().trim().toLowerCase().email().max(254) });
-const userIdInput = z.object({ userId: z.string().min(1).max(100) });
+export const userIdInput = z.object({ userId: z.string().min(1).max(100) });
 
-async function requireAdmin(actorId: string, freshSignIn: boolean): Promise<void> {
+export async function requireAdmin(actorId: string, freshSignIn: boolean): Promise<void> {
   if (!(await isInstanceAdmin(actorId))) {
     throw new HttpError(403, "Only an instance administrator can change administrators.", "forbidden");
   }
@@ -61,12 +61,34 @@ export async function grantInstanceAdmin(actorId: string, raw: unknown, freshSig
   const { email } = emailInput.parse(raw);
   const db = await getDb();
   const target = await db
-    .select({ id: schema.users.id, name: schema.users.name })
+    .select({ id: schema.users.id })
     .from(schema.users)
     .where(and(eq(schema.users.email, email), eq(schema.users.emailVerified, true)))
     .get();
   if (!target) {
     throw new HttpError(404, "No account has signed in with that verified email yet.", "not_found");
+  }
+  return grantAdminTo(actorId, target.id);
+}
+
+/** Grant administration to a known account, from the admin users page. Same rules as the email grant. */
+export async function grantInstanceAdminById(actorId: string, raw: unknown, freshSignIn: boolean) {
+  await requireAdmin(actorId, freshSignIn);
+  const { userId } = userIdInput.parse(raw);
+  return grantAdminTo(actorId, userId);
+}
+
+async function grantAdminTo(actorId: string, targetId: string) {
+  const db = await getDb();
+  const target = await db
+    .select({ id: schema.users.id, name: schema.users.name, status: schema.users.status })
+    .from(schema.users)
+    .where(eq(schema.users.id, targetId))
+    .get();
+  if (!target) throw new HttpError(404, "That account does not exist.", "not_found");
+  // A banned account cannot be given administration. Lift the ban first, then grant.
+  if (target.status === "suspended") {
+    throw new HttpError(400, "Lift the ban on this account before making it an administrator.", "invalid");
   }
   const already = await isInstanceAdmin(target.id);
   if (already) return { userId: target.id, name: target.name, changed: false };
