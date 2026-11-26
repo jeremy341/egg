@@ -62,6 +62,20 @@ export class EggError extends Error {
 
 export type DeployState = "queued" | "building" | "deploying" | "ready" | "error" | "canceled";
 
+export type DeployWebhookTokenStatus = {
+  id: string | null;
+  name: string | null;
+  active: boolean;
+  createdAt: string | null;
+};
+
+export type CreatedDeployWebhookToken = {
+  id: string;
+  name: string;
+  secret: string;
+  createdAt: string;
+};
+
 export type Me = {
   user: { name: string };
   token: { name: string; scopes: string[]; expiresAt: string };
@@ -667,6 +681,20 @@ export class Egg {
     return this.request("DELETE", `/projects/${seg(projectId)}/hook`);
   }
 
+  /** Create a separately named deploy-hook token. Its secret is returned once. Needs `deployments:write`. */
+  createDeployWebhookToken(projectId: string, name: string): Promise<{ token: CreatedDeployWebhookToken }> {
+    return this.request("POST", `/projects/${seg(projectId)}/hook/tokens`, {}, { name });
+  }
+
+  /** Delete a named deploy-hook token after confirming its exact name. Needs `deployments:write`. */
+  deleteDeployWebhookToken(
+    projectId: string,
+    tokenId: string,
+    confirmName: string
+  ): Promise<{ deleted: true; tokenId: string; projectId: string }> {
+    return this.request("DELETE", `/projects/${seg(projectId)}/hook/tokens/${seg(tokenId)}`, {}, { confirmName });
+  }
+
   // ------------------------------------------------------------ notifications
 
   /** Whether a Discord or Slack webhook is set. The webhook URL is never returned. Needs `notifications:read`. */
@@ -893,7 +921,7 @@ export class Egg {
   deleteEnvVars(projectId: string, input: unknown): Promise<unknown> {
     return this.request("DELETE", `/projects/${seg(projectId)}/env`, {}, input);
   }
-  listDeployWebhookTokens(projectId: string): Promise<unknown> {
+  listDeployWebhookTokens(projectId: string): Promise<{ tokens: DeployWebhookTokenStatus[] }> {
     return this.request("GET", `/projects/${seg(projectId)}/hook`);
   }
   listJobs(projectId: string): Promise<unknown> {

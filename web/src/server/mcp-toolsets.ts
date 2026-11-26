@@ -50,6 +50,8 @@ export const TOOLSET_OF: Record<string, Toolset> = {
 
   list_deployments: "deployments",
   get_deployment_metrics: "deployments",
+  create_deploy_webhook_token: "deployments",
+  delete_deploy_webhook_token: "deployments",
   get_rollout: "deployments",
   create_project: "deployments",
   deploy_branch: "deployments",
@@ -223,10 +225,14 @@ export const TOOLSET_OF: Record<string, Toolset> = {
 /**
  * Tools whose result carries a secret that is shown once. Marked in the tool list
  * with `_meta: { "egg/sensitive": true }` so a client can keep the result out of
- * logs and transcripts. Deploy-hook URLs and webhook signing secrets cannot be
- * read again after creation or rotation.
+ * logs and transcripts. Deploy-hook URLs, named token secrets and webhook
+ * signing secrets cannot be read again after creation or rotation.
  */
-export const SENSITIVE_TOOLS: ReadonlySet<string> = new Set(["rotate_deploy_hook", "create_notification_channel"]);
+export const SENSITIVE_TOOLS: ReadonlySet<string> = new Set([
+  "rotate_deploy_hook",
+  "create_deploy_webhook_token",
+  "create_notification_channel",
+]);
 
 export const SCOPE_LEVELS = ["full", "read", "deploy"] as const;
 export type ScopeLevel = (typeof SCOPE_LEVELS)[number];

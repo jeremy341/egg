@@ -1,6 +1,6 @@
 {
-  "baseline_present": 124,
-  "baseline_partial": 9,
+  "baseline_present": 126,
+  "baseline_partial": 7,
   "tools": [
     {
       "name": "add_env_vars",
@@ -83,9 +83,8 @@
     {
       "name": "create_deploy_webhook_token",
       "source": "apps/server/src/mcp/tools/deployments.ts",
-      "status": "partial",
-      "ours": "rotate_deploy_hook",
-      "reason": "Egg has one rotatable deploy hook per project, rather than multiple deployment-scoped tokens with stable token IDs."
+      "status": "present",
+      "ours": "create_deploy_webhook_token"
     },
     {
       "name": "create_deployment",
@@ -167,9 +166,8 @@
     {
       "name": "delete_deploy_webhook_token",
       "source": "apps/server/src/mcp/tools/dangerous.ts",
-      "status": "partial",
-      "ours": "revoke_deploy_hook",
-      "reason": "Egg has one rotatable deploy hook per project, rather than multiple deployment-scoped tokens with stable token IDs."
+      "status": "present",
+      "ours": "delete_deploy_webhook_token"
     },
     {
       "name": "delete_deployment",
@@ -1423,6 +1421,8 @@
     "read_file",
     "rename_file",
     "restart_service",
+    "revoke_deploy_hook",
+    "rotate_deploy_hook",
     "set_env_var",
     "set_env_var_secret",
     "terminal_close",
