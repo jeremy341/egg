@@ -1,5 +1,5 @@
 {
-  "baseline_present": 104,
+  "baseline_present": 107,
   "baseline_partial": 10,
   "tools": [
     {
@@ -18,9 +18,8 @@
     {
       "name": "analyze_deployment_resources",
       "source": "apps/server/src/mcp/tools/query.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "analyze_deployment_resources"
     },
     {
       "name": "call_api",
@@ -557,9 +556,8 @@
     {
       "name": "get_deployment_volumes",
       "source": "apps/server/src/mcp/tools/query.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "get_deployment_volumes"
     },
     {
       "name": "get_env_vars",
@@ -959,9 +957,8 @@
     {
       "name": "list_releases",
       "source": "apps/server/src/mcp/tools/rollout.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "list_releases"
     },
     {
       "name": "list_sandbox_sessions",
@@ -1450,6 +1447,6 @@
     "test_notification",
     "write_file"
   ],
-  "baseline_missing": 24,
+  "baseline_missing": 21,
   "baseline_not_applicable": 79
 }
