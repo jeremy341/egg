@@ -325,10 +325,32 @@ export class NestSession {
    * it works even if the bastion does not forward SFTP.
    */
   async uploadFile(localPath: string, remotePath: string, opts: { signal?: AbortSignal } = {}): Promise<void> {
-    const result = await this.exec(
-      `cat > ${shellQuote(remotePath)}.partial && mv ${shellQuote(remotePath)}.partial ${shellQuote(remotePath)}`,
-      { stdinStream: createReadStream(localPath), timeoutMs: 10 * 60_000, signal: opts.signal }
-    );
+    const source = createReadStream(localPath);
+    // A read error (file removed, I/O failure) must fail this upload, not crash the process.
+    // It stops the remote cat the same way an abort does, so no truncated file is moved into place.
+    const sourceFault: { error?: Error } = {};
+    const cancel = new AbortController();
+    source.on("error", (err: Error) => {
+      sourceFault.error = err;
+      cancel.abort();
+    });
+    const onParentAbort = () => cancel.abort();
+    if (opts.signal?.aborted) cancel.abort();
+    else opts.signal?.addEventListener("abort", onParentAbort, { once: true });
+    let result: ExecResult;
+    try {
+      result = await this.exec(
+        `cat > ${shellQuote(remotePath)}.partial && mv ${shellQuote(remotePath)}.partial ${shellQuote(remotePath)}`,
+        { stdinStream: source, timeoutMs: 10 * 60_000, signal: cancel.signal }
+      );
+    } catch (err) {
+      throw sourceFault.error ?? err;
+    } finally {
+      opts.signal?.removeEventListener("abort", onParentAbort);
+      // Release the file descriptor on every settle path, including an early remote exit.
+      source.destroy();
+    }
+    if (sourceFault.error) throw sourceFault.error;
     if (result.code !== 0) {
       throw new SshError(
         `Upload failed (exit ${result.code}): ${result.stderr.trim() || "no output"}`,

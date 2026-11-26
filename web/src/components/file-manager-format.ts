@@ -2,7 +2,9 @@ import { baseName, joinPath, parentPath } from "@/server/files-paths";
 import type { FileEntry } from "@/server/files";
 
 /** Shared by the page and its loading skeleton, so the two cannot drift apart. */
-export const FM_GRID = "grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]";
+// The preview sits beside the table only when there is room for both. Below xl it stacks under the table,
+// so the Name column keeps its width on iPad landscape (about 1024 to 1150 px).
+export const FM_GRID = "grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_24rem]";
 
 const UNITS = ["B", "KB", "MB", "GB"] as const;
 

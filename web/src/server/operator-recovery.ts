@@ -29,13 +29,13 @@ while read -r unit rest; do
   case "$state" in inactive|failed) ;; *) exit 1;; esac
 done <<< "$listing"
 `;
-function adminOnly(userId: string) {
-  if (!isInstanceAdmin(userId)) throw new HttpError(403, "Only the instance administrator can recover jobs.", "forbidden");
+async function adminOnly(userId: string) {
+  if (!(await isInstanceAdmin(userId))) throw new HttpError(403, "Only an instance administrator can recover jobs.", "forbidden");
 }
 
 /** Administrative inspection omits credentials and never changes a guard. */
 export async function inspectRecovery(userId: string) {
-  adminOnly(userId);
+  await adminOnly(userId);
   const db = await getDb();
   const rows = await db.select({ serverId: schema.servers.id, holder: schema.servers.buildLockHolder,
     lockAt: schema.servers.buildLockAt, jobId: schema.jobs.id, jobState: schema.jobs.state,
@@ -57,7 +57,7 @@ export async function inspectRecovery(userId: string) {
 /** The operator must establish the original worker is stopped; heartbeat age alone cannot prove that. */
 export async function recoverBuild(admin: string, serverId: string, raw: unknown,
   connect: (server: ServerRow) => Promise<NestSession> = connectToServer): Promise<void> {
-  adminOnly(admin);
+  await adminOnly(admin);
   const input = inputSchema.parse(raw);
   const db = await getDb();
   const at = new Date(input.lockAt);

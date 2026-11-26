@@ -4,6 +4,7 @@ import { requireUser } from "@/server/auth/current";
 import { isInstanceAdmin } from "@/server/admin-identity";
 import { adminOverview } from "@/server/admin";
 import { AdminDashboard } from "@/components/admin-dashboard";
+import { AdminAdministrators } from "@/components/admin-administrators";
 import { GenericSkeleton } from "@/components/skeletons/generic";
 
 export const metadata = { title: "Instance administration" };
@@ -18,6 +19,11 @@ export default function AdminPage() {
 
 async function AdminContent() {
   const user = await requireUser();
-  if (!isInstanceAdmin(user.id)) notFound();
-  return <AdminDashboard initial={await adminOverview(user.id)} />;
+  if (!(await isInstanceAdmin(user.id))) notFound();
+  return (
+    <div className="space-y-6">
+      <AdminDashboard initial={await adminOverview(user.id)} />
+      <AdminAdministrators />
+    </div>
+  );
 }

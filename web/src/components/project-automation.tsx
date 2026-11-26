@@ -9,6 +9,7 @@ import { Card, Label } from "@/components/settings-ui";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { toast } from "@/components/ui/toast";
@@ -92,25 +93,41 @@ export function DeployHookCard({ project }: { project: ProjectView }) {
         </Alert>
       ) : null}
       <div className="mt-4 flex flex-wrap gap-2">
-        <Button
-          type="button"
-          onClick={() => void create()}
-          loading={busy === "create"}
-          disabled={busy !== null}
-        >
-          {busy === "create" ? (active ? "Making…" : "Creating…") : active ? "Make a new URL" : "Create hook"}
-        </Button>
+        {/* Replacing or revoking a live URL breaks every CI job that calls it, so both ask first. */}
         {active ? (
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => void revoke()}
-            loading={busy === "revoke"}
-            disabled={busy !== null}
-          >
-            {busy === "revoke" ? "Revoking…" : "Revoke"}
+          <>
+            <ConfirmDialog
+              trigger={
+                <Button type="button" disabled={busy !== null} loading={busy === "create"}>
+                  Make a new URL
+                </Button>
+              }
+              tone="destructive"
+              title="Make a new URL?"
+              description="The current URL stops working at once. Update every CI job that calls it."
+              confirmLabel="Make a new URL"
+              pendingLabel="Making…"
+              onConfirm={() => create()}
+            />
+            <ConfirmDialog
+              trigger={
+                <Button type="button" variant="outline" disabled={busy !== null} loading={busy === "revoke"}>
+                  Revoke
+                </Button>
+              }
+              tone="destructive"
+              title="Revoke this hook?"
+              description="Calls to the current URL stop working at once. You can create a new hook later."
+              confirmLabel="Revoke"
+              pendingLabel="Revoking…"
+              onConfirm={() => revoke()}
+            />
+          </>
+        ) : (
+          <Button type="button" onClick={() => void create()} loading={busy === "create"} disabled={busy !== null}>
+            {busy === "create" ? "Creating…" : "Create hook"}
           </Button>
-        ) : null}
+        )}
       </div>
     </Card>
   );
