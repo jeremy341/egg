@@ -34,7 +34,7 @@ beforeAll(async () => {
     { id: "invitee", email: "invitee@example.com" },
     { id: "other", email: "other@example.com" },
   ];
-  await ctx.db.insert(schema.users).values(users.map((u) => ({ id: u.id, hackClubId: u.id, name: u.id, email: u.email, createdAt: t0 })));
+  await ctx.db.insert(schema.users).values(users.map((u) => ({ id: u.id, hackClubId: u.id, name: u.id, email: u.email, emailVerified: true, createdAt: t0 })));
   const created = await createOrganization("owner", "Acme Labs", t0);
   orgId = created.id;
   await ctx.db.insert(schema.orgMembers).values([
@@ -121,8 +121,18 @@ describe("accepting", () => {
     expect(await orgRoleOf("other", orgId)).toBeNull();
   });
 
+  it("refuses an account whose email is matched but not verified", async () => {
+    await ctx.db.insert(schema.users).values({ id: "unver", hackClubId: "unver", name: "unver", email: "unver@example.com", emailVerified: false, createdAt: t0 });
+    const inv = await createInvitation("owner", orgId, { email: "unver@example.com", role: "member" }, t0);
+    if (inv.delivery !== "link") throw new Error("expected link");
+    await expect(acceptInvitation("unver", tokenFrom(inv.link), t0)).rejects.toMatchObject({ status: 403 });
+    expect(await orgRoleOf("unver", orgId)).toBeNull();
+    await ctx.db.update(schema.users).set({ emailVerified: true }).where(eq(schema.users.id, "unver"));
+    await expect(acceptInvitation("unver", tokenFrom(inv.link), t0)).resolves.toMatchObject({ orgId });
+  });
+
   it("does not let two concurrent accepts both succeed", async () => {
-    await ctx.db.insert(schema.users).values({ id: "twin", hackClubId: "twin", name: "twin", email: "twin@example.com", createdAt: t0 });
+    await ctx.db.insert(schema.users).values({ id: "twin", hackClubId: "twin", name: "twin", email: "twin@example.com", emailVerified: true, createdAt: t0 });
     const inv = await createInvitation("owner", orgId, { email: "twin@example.com", role: "member" }, t0);
     if (inv.delivery !== "link") throw new Error("expected link");
     const token = tokenFrom(inv.link);
@@ -153,7 +163,7 @@ describe("expiry", () => {
   it("is valid until 7 days exactly, and expired at 7 days", async () => {
     const inv = await createInvitation("owner", orgId, { email: "exp1@example.com", role: "member" }, t0);
     if (inv.delivery !== "link") throw new Error("expected link");
-    await ctx.db.insert(schema.users).values({ id: "exp1", hackClubId: "exp1", name: "exp1", email: "exp1@example.com", createdAt: t0 });
+    await ctx.db.insert(schema.users).values({ id: "exp1", hackClubId: "exp1", name: "exp1", email: "exp1@example.com", emailVerified: true, createdAt: t0 });
     const token = tokenFrom(inv.link);
     const justBefore = new Date(t0.getTime() + INVITATION_DAYS * DAY - 1);
     const atExpiry = new Date(t0.getTime() + INVITATION_DAYS * DAY);
@@ -162,7 +172,7 @@ describe("expiry", () => {
   });
 
   it("an expired invitation can be replaced by resending, and the old link stays dead", async () => {
-    await ctx.db.insert(schema.users).values({ id: "exp2", hackClubId: "exp2", name: "exp2", email: "exp2@example.com", createdAt: t0 });
+    await ctx.db.insert(schema.users).values({ id: "exp2", hackClubId: "exp2", name: "exp2", email: "exp2@example.com", emailVerified: true, createdAt: t0 });
     const inv = await createInvitation("owner", orgId, { email: "exp2@example.com", role: "member" }, t0);
     if (inv.delivery !== "link") throw new Error("expected link");
     const oldToken = tokenFrom(inv.link);
@@ -177,7 +187,7 @@ describe("expiry", () => {
 
 describe("resend and cancel", () => {
   it("resend rotates the token; the previous link no longer works", async () => {
-    await ctx.db.insert(schema.users).values({ id: "rs", hackClubId: "rs", name: "rs", email: "rs@example.com", createdAt: t0 });
+    await ctx.db.insert(schema.users).values({ id: "rs", hackClubId: "rs", name: "rs", email: "rs@example.com", emailVerified: true, createdAt: t0 });
     const inv = await createInvitation("owner", orgId, { email: "rs@example.com", role: "guest" }, t0);
     if (inv.delivery !== "link") throw new Error("expected link");
     const again = await resendInvitation("admin", inv.id, t0);
@@ -188,7 +198,7 @@ describe("resend and cancel", () => {
   });
 
   it("a cancelled invitation cannot be accepted", async () => {
-    await ctx.db.insert(schema.users).values({ id: "cx", hackClubId: "cx", name: "cx", email: "cx@example.com", createdAt: t0 });
+    await ctx.db.insert(schema.users).values({ id: "cx", hackClubId: "cx", name: "cx", email: "cx@example.com", emailVerified: true, createdAt: t0 });
     const inv = await createInvitation("owner", orgId, { email: "cx@example.com", role: "member" }, t0);
     if (inv.delivery !== "link") throw new Error("expected link");
     await cancelInvitation("admin", inv.id, t0);

@@ -20,8 +20,8 @@ import { assertOrgRole, orgRoleOf } from "@/server/organizations";
  * - A token works once: acceptedAt is set in the same conditional UPDATE that
  *   checks the invitation is still valid, so two concurrent accepts cannot both win.
  * - It expires after 7 days and dies when cancelled.
- * - Accepting requires a signed-in account whose email matches the invited
- *   address. The token alone is not enough.
+ * - Accepting requires a signed-in account whose verified email matches the
+ *   invited address. The token alone is not enough.
  */
 export const INVITATION_DAYS = 7;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -175,10 +175,16 @@ export async function acceptInvitation(userId: string, token: string, now = new 
   const row = await db.select().from(schema.invitations).where(eq(schema.invitations.tokenHash, sha256Hex(token))).get();
   if (!row) throw notFound("Invitation not found");
 
-  const user = await db.select({ email: schema.users.email }).from(schema.users).where(eq(schema.users.id, userId)).get();
+  const user = await db
+    .select({ email: schema.users.email, emailVerified: schema.users.emailVerified })
+    .from(schema.users)
+    .where(eq(schema.users.id, userId))
+    .get();
   if (!user?.email || user.email.trim().toLowerCase() !== row.email) {
     throw new HttpError(403, "This invitation was sent to a different email address.", "forbidden");
   }
+  // An unverified address proves nothing about who is signed in.
+  if (!user.emailVerified) throw new HttpError(403, "Verify your email address before accepting an invitation.", "forbidden");
   if (row.acceptedAt) throw new HttpError(410, "This invitation was already used.", "gone");
   if (row.cancelledAt) throw new HttpError(410, "This invitation was cancelled.", "gone");
   if (row.expiresAt.getTime() <= now.getTime()) throw new HttpError(410, "This invitation has expired. Ask for a new one.", "gone");
