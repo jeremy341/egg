@@ -6,7 +6,6 @@ import { readTextLimited } from "@/server/body-limit";
 import { handle, HttpError } from "@/server/http";
 import {
   createGrant,
-  DEFAULT_MCP_SCOPE,
   getClient,
   MCP_SCOPES,
   summarizeClient,
@@ -75,12 +74,9 @@ async function validateRequest(read: Reader, ctx: RequestContext): Promise<Autho
 
   if (read("response_type") !== "code") fail(ctx, "unsupported_response_type");
 
-  // An omitted scope means the default (mcp:deploy), which the client must hold.
-  // The client can only ask for scopes it registered, so this never widens it.
   const scopeParam = read("scope");
-  const scopes = scopeParam
-    ? [...new Set(scopeParam.split(/\s+/).filter(Boolean))]
-    : [DEFAULT_MCP_SCOPE];
+  if (!scopeParam) fail(ctx, "invalid_scope");
+  const scopes = [...new Set(scopeParam.split(/\s+/).filter(Boolean))];
   const known = MCP_SCOPES as readonly string[];
   if (scopes.length === 0 || scopes.some((scope) => !known.includes(scope))) fail(ctx, "invalid_scope");
   if (scopes.some((scope) => !(client.scopes as readonly string[]).includes(scope))) fail(ctx, "invalid_scope");

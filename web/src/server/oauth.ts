@@ -19,24 +19,16 @@ import { HttpError } from "@/server/http";
  */
 
 export const ACCESS_TOKEN_PREFIX = "egg_oauth_";
-export const REFRESH_TOKEN_PREFIX = "egg_refresh_";
 export const CLIENT_ID_PREFIX = "eggcli_";
 export const CODE_TTL_MS = 10 * 60 * 1000;
 export const TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 export const TOKEN_EXPIRES_IN = TOKEN_TTL_MS / 1000;
-/** Absolute lifetime of a refresh-token family, counted from its first grant. */
-export const REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 export const MAX_CLIENTS_PER_USER = 25;
-
-type Db = Awaited<ReturnType<typeof getDb>>;
-type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 /** Scopes an OAuth client may request, from weakest to strongest. */
 export const OAUTH_SCOPES = ["mcp:read", "mcp:deploy", "mcp:exec"] as const;
 export const MCP_SCOPES = OAUTH_SCOPES;
 export type McpScope = (typeof OAUTH_SCOPES)[number];
-/** Granted when an authorization request omits `scope`. Exec is never a default. */
-export const DEFAULT_MCP_SCOPE: McpScope = "mcp:deploy";
 
 /** Higher rank implies every lower rank. Unknown scopes rank zero. */
 const SCOPE_RANK: Record<string, number> = {
@@ -304,7 +296,6 @@ export async function revokeClient(userId: string, id: string): Promise<boolean>
   // tables have no FK to clients, so remove them before the client itself.
   await db.delete(schema.oauthGrants).where(eq(schema.oauthGrants.clientId, owned.clientId));
   await db.delete(schema.oauthTokens).where(eq(schema.oauthTokens.clientId, owned.clientId));
-  await db.delete(schema.oauthRefreshTokens).where(eq(schema.oauthRefreshTokens.clientId, owned.clientId));
   await db.delete(schema.oauthClients).where(eq(schema.oauthClients.id, id));
   return true;
 }
@@ -373,56 +364,7 @@ export type TokenResponse = {
   token_type: "Bearer";
   expires_in: number;
   scope: string;
-  refresh_token: string;
 };
-
-/**
- * Insert one access token and one refresh token for a family, inside the
- * caller's transaction, so a grant and its tokens commit or fail together.
- */
-async function issueTokens(
-  tx: Tx,
-  args: { clientId: string; userId: string; scopes: McpScope[]; familyId: string; refreshExpiresAt: Date; now: Date }
-): Promise<TokenResponse> {
-  const { clientId, userId, familyId, now } = args;
-  const scopes = JSON.stringify(args.scopes);
-  const accessToken = `${ACCESS_TOKEN_PREFIX}${randomToken(32)}`;
-  const refreshToken = `${REFRESH_TOKEN_PREFIX}${randomToken(32)}`;
-  await tx.insert(schema.oauthTokens).values({
-    id: newId(),
-    clientId,
-    userId,
-    tokenHash: hashToken(accessToken),
-    scopes,
-    expiresAt: new Date(now.getTime() + TOKEN_TTL_MS),
-    createdAt: now,
-    familyId,
-  });
-  await tx.insert(schema.oauthRefreshTokens).values({
-    id: newId(),
-    familyId,
-    clientId,
-    userId,
-    tokenHash: hashToken(refreshToken),
-    scopes,
-    expiresAt: args.refreshExpiresAt,
-    usedAt: null,
-    createdAt: now,
-  });
-  return {
-    access_token: accessToken,
-    token_type: "Bearer" as const,
-    expires_in: TOKEN_EXPIRES_IN,
-    scope: args.scopes.join(" "),
-    refresh_token: refreshToken,
-  };
-}
-
-/** Remove every refresh token and access token that belongs to one family. */
-async function deleteFamily(tx: Tx, familyId: string): Promise<void> {
-  await tx.delete(schema.oauthRefreshTokens).where(eq(schema.oauthRefreshTokens.familyId, familyId));
-  await tx.delete(schema.oauthTokens).where(eq(schema.oauthTokens.familyId, familyId));
-}
 
 /**
  * Exchange an authorization code for an access token. The code is consumed and
@@ -457,15 +399,7 @@ export async function exchangeCode(input: ExchangeCodeInput, now = new Date()): 
       if (grant.usedAt) throw bad("Authorization code has already been used.", "invalid_grant");
       if (grant.expiresAt.getTime() <= now.getTime()) throw bad("Authorization code has expired.", "invalid_grant");
       if (grant.clientId !== input.clientId) throw bad("Authorization code was issued to another client.", "invalid_grant");
-      // Compare canonical forms: the grant stored the normalized URI, so a
-      // client sending the same URI unnormalized (e.g. no trailing slash) must still match.
-      let redirectUri: string;
-      try {
-        redirectUri = validateRedirectUri(input.redirectUri);
-      } catch {
-        throw bad("Redirect URI does not match the authorization request.", "invalid_grant");
-      }
-      if (grant.redirectUri !== redirectUri) throw bad("Redirect URI does not match the authorization request.", "invalid_grant");
+      if (grant.redirectUri !== input.redirectUri) throw bad("Redirect URI does not match the authorization request.", "invalid_grant");
       if (!safeEqual(pkceChallenge(input.codeVerifier), grant.codeChallenge)) {
         throw bad("PKCE verification failed.", "invalid_grant");
       }
@@ -477,149 +411,36 @@ export async function exchangeCode(input: ExchangeCodeInput, now = new Date()): 
         .returning({ id: schema.oauthGrants.id });
       if (used.length === 0) throw bad("Authorization code has already been used.", "invalid_grant");
 
-      return issueTokens(tx, {
+      const scopes = parseScopes(grant.scopes);
+      const accessToken = `${ACCESS_TOKEN_PREFIX}${randomToken(32)}`;
+      await tx.insert(schema.oauthTokens).values({
+        id: newId(),
         clientId: grant.clientId,
         userId: grant.userId,
-        scopes: parseScopes(grant.scopes),
-        familyId: newId(),
-        refreshExpiresAt: new Date(now.getTime() + REFRESH_TTL_MS),
-        now,
+        tokenHash: hashToken(accessToken),
+        scopes: JSON.stringify(scopes),
+        expiresAt: new Date(now.getTime() + TOKEN_TTL_MS),
+        createdAt: now,
       });
+      return {
+        access_token: accessToken,
+        token_type: "Bearer" as const,
+        expires_in: TOKEN_EXPIRES_IN,
+        scope: scopes.join(" "),
+      };
     })
   );
 }
 
-export type RefreshInput = {
-  refreshToken: string;
-  clientId: string;
-  /** Optional, as on code exchange: PKCE is not repeated here, so a secret is checked when given. */
-  clientSecret?: string;
-  /** Space-separated subset of the scopes the refresh token holds. Omitted keeps them all. */
-  scope?: string;
-};
-
-/**
- * Rotate a refresh token. The presented row is marked used and a new one joins
- * its family, so each refresh token works once. Presenting an already-used row
- * (or racing two presentations) means it leaked: the whole family and its
- * access tokens are revoked. A requested scope may narrow the grant, never widen it.
- */
-export async function exchangeRefreshToken(input: RefreshInput, now = new Date()): Promise<TokenResponse> {
-  if (typeof input?.refreshToken !== "string" || !input.refreshToken.startsWith(REFRESH_TOKEN_PREFIX)) {
-    throw bad("Invalid refresh token.", "invalid_grant");
-  }
-  if (typeof input?.clientId !== "string" || !input.clientId) throw bad("Invalid client.", "invalid_client");
-
-  const db = await getDb();
-  const client = await db.select().from(schema.oauthClients).where(eq(schema.oauthClients.clientId, input.clientId)).get();
-  if (!client) throw bad("Invalid client.", "invalid_client");
-  if (input.clientSecret !== undefined && input.clientSecret !== "") {
-    if (!safeEqual(hashToken(input.clientSecret), client.clientSecretHash)) throw bad("Invalid client secret.", "invalid_client");
-  }
-
-  const requested = input.scope ? normalizeScopes(input.scope.split(/\s+/).filter(Boolean)) : null;
-
-  // The family revocation must survive, so the transaction commits it and the
-  // error is thrown only after it returns.
-  const outcome = await withLockRetry(() =>
-    db.transaction(async (tx) => {
-      const row = await tx
-        .select()
-        .from(schema.oauthRefreshTokens)
-        .where(eq(schema.oauthRefreshTokens.tokenHash, hashToken(input.refreshToken)))
-        .get();
-      if (!row || row.clientId !== input.clientId) return { kind: "invalid" as const };
-      if (row.usedAt) {
-        await deleteFamily(tx, row.familyId);
-        return { kind: "reused" as const };
-      }
-      if (row.expiresAt.getTime() <= now.getTime()) return { kind: "expired" as const };
-
-      const held = parseScopes(row.scopes);
-      const wanted = requested ?? held;
-      if (wanted.some((scope) => !held.includes(scope))) return { kind: "widened" as const };
-
-      const rotated = await tx
-        .update(schema.oauthRefreshTokens)
-        .set({ usedAt: now })
-        .where(and(eq(schema.oauthRefreshTokens.id, row.id), isNull(schema.oauthRefreshTokens.usedAt)))
-        .returning({ id: schema.oauthRefreshTokens.id });
-      if (rotated.length === 0) {
-        await deleteFamily(tx, row.familyId);
-        return { kind: "reused" as const };
-      }
-
-      const tokens = await issueTokens(tx, {
-        clientId: row.clientId,
-        userId: row.userId,
-        scopes: wanted,
-        familyId: row.familyId,
-        refreshExpiresAt: row.expiresAt,
-        now,
-      });
-      return { kind: "ok" as const, tokens };
-    })
-  );
-
-  switch (outcome.kind) {
-    case "ok":
-      return outcome.tokens;
-    case "reused":
-      throw bad("Refresh token has already been used, so every token from it was revoked.", "invalid_grant");
-    case "expired":
-      throw bad("Refresh token has expired.", "invalid_grant");
-    case "widened":
-      throw bad("A refresh can narrow the granted scopes, never widen them.", "invalid_scope");
-    default:
-      throw bad("Invalid refresh token.", "invalid_grant");
-  }
-}
-
-/**
- * Revoke a token by its raw value (RFC 7009). Revoking an access token removes
- * that token; revoking a refresh token removes its whole family, including the
- * access tokens issued from it. Unknown tokens are a no-op.
- */
+/** Delete a token by its raw value (RFC 7009). Unknown tokens are a no-op. */
 export async function revokeToken(token: string): Promise<boolean> {
   if (typeof token !== "string" || !token) return false;
   const db = await getDb();
-  const hash = hashToken(token);
-  return withLockRetry(() =>
-    db.transaction(async (tx) => {
-      const access = await tx
-        .delete(schema.oauthTokens)
-        .where(eq(schema.oauthTokens.tokenHash, hash))
-        .returning({ id: schema.oauthTokens.id });
-      if (access.length > 0) return true;
-      const refresh = await tx
-        .select({ familyId: schema.oauthRefreshTokens.familyId })
-        .from(schema.oauthRefreshTokens)
-        .where(eq(schema.oauthRefreshTokens.tokenHash, hash))
-        .get();
-      if (!refresh) return false;
-      await deleteFamily(tx, refresh.familyId);
-      return true;
-    })
-  );
-}
-
-/** The public client id a token was issued to, or null for an unknown token. Used to stop cross-client revocation. */
-export async function clientIdForToken(token: string): Promise<string | null> {
-  if (typeof token !== "string" || !token) return null;
-  const db = await getDb();
-  const hash = hashToken(token);
-  const access = await db
-    .select({ clientId: schema.oauthTokens.clientId })
-    .from(schema.oauthTokens)
-    .where(eq(schema.oauthTokens.tokenHash, hash))
-    .get();
-  if (access) return access.clientId;
-  const refresh = await db
-    .select({ clientId: schema.oauthRefreshTokens.clientId })
-    .from(schema.oauthRefreshTokens)
-    .where(eq(schema.oauthRefreshTokens.tokenHash, hash))
-    .get();
-  return refresh?.clientId ?? null;
+  const removed = await db
+    .delete(schema.oauthTokens)
+    .where(eq(schema.oauthTokens.tokenHash, hashToken(token)))
+    .returning({ id: schema.oauthTokens.id });
+  return removed.length > 0;
 }
 
 export type OAuthPrincipal = {
@@ -643,28 +464,4 @@ export async function principalForOAuthToken(secret: string | null, now = new Da
     .get();
   if (!row || row.expiresAt.getTime() <= now.getTime()) return null;
   return { userId: row.userId, tokenId: row.id, clientId: row.clientId, scopes: parseScopes(row.scopes) };
-}
-
-// ---------------------------------------------------------------------------
-// Discovery (RFC 9728)
-// ---------------------------------------------------------------------------
-
-/** Path of the MCP endpoint, the protected resource this server guards. */
-export const MCP_RESOURCE_PATH = "/api/mcp";
-
-/** Protected-resource metadata: the MCP endpoint, and the issuer that authorizes it. */
-export function protectedResourceMetadata(appUrl: string) {
-  const base = appUrl.replace(/\/+$/, "");
-  return {
-    resource: `${base}${MCP_RESOURCE_PATH}`,
-    authorization_servers: [appUrl],
-    scopes_supported: [...OAUTH_SCOPES],
-    bearer_methods_supported: ["header"],
-  };
-}
-
-/** Where a client finds the protected-resource document, named in the 401 WWW-Authenticate header. */
-export function protectedResourceMetadataUrl(appUrl: string): string {
-  const base = appUrl.replace(/\/+$/, "");
-  return `${base}/.well-known/oauth-protected-resource${MCP_RESOURCE_PATH}`;
 }

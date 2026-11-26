@@ -4,7 +4,7 @@ import { measureBackendRequest } from "@/server/backend-metrics";
 import { readCappedText } from "@/server/api-v1-http";
 import { HttpError } from "@/server/http";
 import { clientIp, rateLimiter } from "@/server/rate-limit";
-import { exchangeCode, exchangeRefreshToken } from "@/server/oauth";
+import { exchangeCode } from "@/server/oauth";
 
 /**
  * RFC 6749 token endpoint for the authorization-code + PKCE flow.
@@ -103,34 +103,6 @@ function basicCredentials(req: NextRequest, fields: Fields): Fields {
   }
 }
 
-/** Per client id (or caller address when none is given). Returns a 429 response, or null when allowed. */
-function tokenRateLimit(req: NextRequest, clientId: string | undefined): Response | null {
-  const key = clientId ?? clientIp(req.headers) ?? "anonymous";
-  const limit = rateLimiter().check(`oauth:token:${key}`, TOKEN_LIMIT, TOKEN_WINDOW_MS);
-  if (limit.allowed) return null;
-  return oauthError(
-    "invalid_request",
-    `Too many token requests. Wait ${limit.retryAfterSeconds} second${limit.retryAfterSeconds === 1 ? "" : "s"} and try again.`,
-    429,
-    { "Retry-After": String(limit.retryAfterSeconds) }
-  );
-}
-
-/** The refresh_token grant: rotate the token and return a new access token, optionally narrowed. */
-async function refreshGrant(req: NextRequest, fields: Fields): Promise<Response> {
-  if (!fields.refresh_token) problem("invalid_request", "A refresh_token is required.");
-  if (!fields.client_id) problem("invalid_request", "A client_id is required.");
-  const limited = tokenRateLimit(req, fields.client_id);
-  if (limited) return limited;
-  const token = await exchangeRefreshToken({
-    refreshToken: fields.refresh_token,
-    clientId: fields.client_id,
-    clientSecret: fields.client_secret,
-    scope: fields.scope,
-  });
-  return NextResponse.json(token, { status: 200, headers: NO_STORE });
-}
-
 type Handler = (req: NextRequest) => Promise<Response>;
 
 /** Uniform OAuth-shaped errors for this endpoint family. */
@@ -156,9 +128,8 @@ export const POST = oauthRoute(async (req: NextRequest) => {
 
   const grantType = fields.grant_type;
   if (!grantType) problem("invalid_request", "Missing grant_type.");
-  if (grantType === "refresh_token") return refreshGrant(req, fields);
   if (grantType !== "authorization_code") {
-    problem("unsupported_grant_type", "Only the authorization_code and refresh_token grants are supported.");
+    problem("unsupported_grant_type", "Only the authorization_code grant is supported.");
   }
   for (const [name, description] of [
     ["code", "An authorization code is required."],
@@ -169,8 +140,16 @@ export const POST = oauthRoute(async (req: NextRequest) => {
     if (!fields[name]) problem("invalid_request", description);
   }
 
-  const limited = tokenRateLimit(req, fields.client_id);
-  if (limited) return limited;
+  const key = fields.client_id ?? clientIp(req.headers) ?? "anonymous";
+  const limit = rateLimiter().check(`oauth:token:${key}`, TOKEN_LIMIT, TOKEN_WINDOW_MS);
+  if (!limit.allowed) {
+    return oauthError(
+      "invalid_request",
+      `Too many token requests. Wait ${limit.retryAfterSeconds} second${limit.retryAfterSeconds === 1 ? "" : "s"} and try again.`,
+      429,
+      { "Retry-After": String(limit.retryAfterSeconds) }
+    );
+  }
 
   // The exchange consumes the code and issues the token in one transaction.
   // client_secret is optional: PKCE alone authenticates public clients.

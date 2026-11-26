@@ -90,7 +90,7 @@ describe("authentication", () => {
       await send(rpc("tools/list"), null, { cookie: "egg_session=abc" }),
     ]) {
       expect(res.status).toBe(401);
-      expect(res.headers.get("www-authenticate")).toMatch(/^Bearer resource_metadata="https?:\/\/[^"]+\/\.well-known\/oauth-protected-resource\/api\/mcp"$/);
+      expect(res.headers.get("www-authenticate")).toBe("Bearer");
       expect((await res.json()).error.code).toBe("unauthorized");
     }
     expect(getCurrentUser).not.toHaveBeenCalled();
@@ -147,13 +147,17 @@ describe("protocol", () => {
         "delete_file",
         "delete_project",
         "deploy_branch",
+        "diagnose_deployment",
         "download_file",
+        "find",
         "get_activity",
         "get_alerts",
         "get_analytics",
         "get_container_inventory",
         "get_deployment",
         "get_deployment_logs",
+        "get_deployment_next_steps",
+        "get_github_status",
         "get_logs",
         "get_me",
         "get_notifications",

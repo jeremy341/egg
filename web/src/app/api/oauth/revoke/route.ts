@@ -4,7 +4,7 @@ import { readCappedText } from "@/server/api-v1-http";
 import { measureBackendRequest } from "@/server/backend-metrics";
 import { safeEqual } from "@/server/crypto";
 import { HttpError } from "@/server/http";
-import { clientIdForToken, getClient, hashToken, revokeToken } from "@/server/oauth";
+import { getClient, hashToken, principalForOAuthToken, revokeToken } from "@/server/oauth";
 import { clientIp, rateLimiter } from "@/server/rate-limit";
 
 /**
@@ -122,8 +122,8 @@ export const POST = oauthRoute(async (req: NextRequest) => {
         problem("invalid_client", "Invalid client secret.");
       }
     }
-    const owner = await clientIdForToken(token);
-    if (owner && owner !== fields.client_id) {
+    const principal = await principalForOAuthToken(token);
+    if (principal && principal.clientId !== fields.client_id) {
       problem("invalid_client", "That token was issued to another client.");
     }
   }

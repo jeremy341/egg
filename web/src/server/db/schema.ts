@@ -1048,33 +1048,6 @@ export const oauthTokens = sqliteTable(
     scopes: text("scopes").notNull(),
     expiresAt: ts("expires_at").notNull(),
     createdAt: ts("created_at").notNull(),
-    /** The refresh-token family this access token belongs to, so revoking the family revokes it too. */
-    familyId: text("family_id"),
   },
-  (t) => [index("oauth_tokens_user_idx").on(t.userId), index("oauth_tokens_family_idx").on(t.familyId)]
-);
-
-/**
- * A refresh token (30 days from the first grant of its family). Only the hash
- * is stored. Every use rotates it: the presented row gets `used_at` and a new
- * row joins the same family. Presenting a row that is already used means the
- * token leaked, so the whole family and its access tokens are revoked.
- */
-export const oauthRefreshTokens = sqliteTable(
-  "oauth_refresh_tokens",
-  {
-    id: text("id").primaryKey(),
-    familyId: text("family_id").notNull(),
-    clientId: text("client_id").notNull(),
-    userId: text("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    tokenHash: text("token_hash").notNull().unique(),
-    scopes: text("scopes").notNull(),
-    /** Absolute: rotation carries this forward, so a family cannot be kept alive forever. */
-    expiresAt: ts("expires_at").notNull(),
-    usedAt: ts("used_at"),
-    createdAt: ts("created_at").notNull(),
-  },
-  (t) => [index("oauth_refresh_tokens_family_idx").on(t.familyId), index("oauth_refresh_tokens_user_idx").on(t.userId)]
+  (t) => [index("oauth_tokens_user_idx").on(t.userId)]
 );
