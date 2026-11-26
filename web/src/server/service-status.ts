@@ -1,7 +1,7 @@
 import { unitName } from "@/server/deploy/layout";
 import { serviceStatus } from "@/server/deploy/remote";
 import { HttpError } from "@/server/http";
-import { getProjectForUser } from "@/server/projects";
+import { getReadableProject } from "@/server/projects";
 import { getServerForUser, withServerSession } from "@/server/servers";
 import { SshError } from "@/server/ssh/connection";
 
@@ -88,8 +88,8 @@ export function parseServiceStatus(stdout: string, at = new Date()): ServiceStat
 
 /** Ask the container how the project's production service is doing right now. */
 export async function fetchServiceStatus(userId: string, projectId: string): Promise<ServiceStatus> {
-  const project = await getProjectForUser(userId, projectId);
-  const server = await getServerForUser(userId, project.serverId);
+  const project = await getReadableProject(userId, projectId);
+  const server = await getServerForUser(project.userId, project.serverId);
   let res;
   try {
     res = await withServerSession(server, (s) =>
@@ -147,7 +147,7 @@ export async function lastKnownServiceStatus(
   opts: { fresh?: boolean; now?: () => number } = {}
 ): Promise<{ status: ServiceStatus; cached: boolean }> {
   const now = opts.now ?? Date.now;
-  const project = await getProjectForUser(userId, projectId);
+  const project = await getReadableProject(userId, projectId);
   const hit = recentReadings.get(project.id);
   if (!opts.fresh && hit && isFresh(hit.at, now())) return { status: hit.status, cached: true };
 

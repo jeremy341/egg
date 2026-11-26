@@ -200,27 +200,30 @@ export async function createWebhook(
       .get();
     if (!project) throw notFound("Project not found");
   }
-  const existing = await db
-    .select({ id: schema.webhooks.id })
-    .from(schema.webhooks)
-    .where(eq(schema.webhooks.userId, userId));
-  if (existing.length >= MAX_WEBHOOKS_PER_USER) {
-    throw new HttpError(409, `You can have up to ${MAX_WEBHOOKS_PER_USER} webhooks. Delete one first.`, "limit");
-  }
-
   const id = newId();
   const secret = newWebhookSecret();
   const now = new Date();
-  await db.insert(schema.webhooks).values({
-    id,
-    userId,
-    projectId: input.projectId ?? null,
-    url: input.url,
-    secretEnc: seal(secret, context(id)),
-    events: JSON.stringify(input.events ?? EVENTS),
-    active: true,
-    createdAt: now,
-    updatedAt: now,
+  // Count and insert in one write transaction (BEGIN IMMEDIATE on libsql): two
+  // concurrent creates cannot both read a below-cap count and both insert.
+  await db.transaction(async (tx) => {
+    const existing = await tx
+      .select({ id: schema.webhooks.id })
+      .from(schema.webhooks)
+      .where(eq(schema.webhooks.userId, userId));
+    if (existing.length >= MAX_WEBHOOKS_PER_USER) {
+      throw new HttpError(409, `You can have up to ${MAX_WEBHOOKS_PER_USER} webhooks. Delete one first.`, "limit");
+    }
+    await tx.insert(schema.webhooks).values({
+      id,
+      userId,
+      projectId: input.projectId ?? null,
+      url: input.url,
+      secretEnc: seal(secret, context(id)),
+      events: JSON.stringify(input.events ?? EVENTS),
+      active: true,
+      createdAt: now,
+      updatedAt: now,
+    });
   });
   await audit(userId, "webhook.create", id, { host: hostOf(input.url) });
   return { webhook: await getWebhook(userId, id), secret };

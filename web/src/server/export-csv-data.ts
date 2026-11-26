@@ -4,7 +4,7 @@ import { queryActivity } from "@/server/activity-query";
 import { getDb, schema } from "@/server/db";
 import { EXPORT_ROW_LIMIT, type DeploymentExportRow } from "@/server/export-csv";
 import { HttpError } from "@/server/http";
-import { getProjectForUser } from "@/server/projects";
+import { getReadableProject } from "@/server/projects";
 import { rateLimiter } from "@/server/rate-limit";
 
 /**
@@ -50,12 +50,12 @@ export async function exportActivity(userId: string, filters: ActivityFilters, n
   return { rows: items.slice(0, EXPORT_ROW_LIMIT), truncated: items.length > EXPORT_ROW_LIMIT || capped };
 }
 
-/** One project's deployments, newest first. 404 unless the user owns it. Only the exported columns are read. */
+/** One project's deployments, newest first. 404 unless the user can read it. Only the exported columns are read. */
 export async function exportDeployments(
   userId: string,
   projectId: string
 ): Promise<Export<DeploymentExportRow> & { slug: string }> {
-  const project = await getProjectForUser(userId, projectId);
+  const project = await getReadableProject(userId, projectId);
   const db = await getDb();
   const d = schema.deployments;
   const rows = await db

@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, lt } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, lt } from "drizzle-orm";
 import { audit } from "@/server/audit";
 import { config } from "@/server/config";
 import { randomToken } from "@/server/crypto";
@@ -22,13 +22,18 @@ export async function enableStatusPage(userId: string, projectId: string) {
   if (project.statusKey) return { key: project.statusKey, url: statusUrl(project.statusKey) };
   const key = randomToken(9);
   const db = await getDb();
-  await db
+  // Claim the key conditionally: two concurrent enables must not hand out two
+  // different URLs where only the last one is actually stored.
+  const claimed = await db
     .update(schema.projects)
     .set({ statusKey: key, updatedAt: new Date() })
-    .where(eq(schema.projects.id, project.id));
-  await audit(userId, "status.enable", project.id);
-  await invalidateStatusPage(key);
-  return { key, url: statusUrl(key) };
+    .where(and(eq(schema.projects.id, project.id), isNull(schema.projects.statusKey)))
+    .returning({ statusKey: schema.projects.statusKey });
+  const storedKey = claimed[0]?.statusKey ?? (await getProjectForUser(userId, projectId)).statusKey;
+  if (!storedKey) throw new Error("Could not enable the status page.");
+  if (claimed.length > 0) await audit(userId, "status.enable", project.id);
+  await invalidateStatusPage(storedKey);
+  return { key: storedKey, url: statusUrl(storedKey) };
 }
 
 export async function disableStatusPage(userId: string, projectId: string) {

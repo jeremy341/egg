@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, lt, sql } from "drizzle-orm";
+import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
 import { getDb, schema } from "@/server/db";
 import { isUniqueViolation } from "@/server/db/errors";
 import { runMonitorPass } from "@/server/monitor";
@@ -91,7 +91,15 @@ export async function recoverStaleJobs(now = new Date()): Promise<number> {
   const stale = await db
     .select()
     .from(schema.jobs)
-    .where(and(eq(schema.jobs.state, "running"), lt(schema.jobs.lockedAt, cutoff)));
+    // A running row with no lock time (legacy pre-lease data) is stale too;
+    // `NULL < cutoff` is never true, which used to hide it from this count while
+    // its project stayed blocked forever by the running-job uniqueness index.
+    .where(
+      and(
+        eq(schema.jobs.state, "running"),
+        or(isNull(schema.jobs.lockedAt), lt(schema.jobs.lockedAt, cutoff))
+      )
+    );
 
   return stale.length;
 }

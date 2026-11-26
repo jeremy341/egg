@@ -131,6 +131,22 @@ describe("queue", () => {
     expect(row?.state).toBe("queued");
     expect(await claimNextJob("replacement-worker")).toBeNull();
   });
+
+  it("counts a running job with no lock time as stale", async () => {
+    // Earlier tests in this file deliberately leave running jobs behind; clear them
+    // so this test can claim its own job on the same project.
+    await ctx.db.update(schema.jobs).set({ state: "done" });
+    const dep = await queueDeploy(b.id);
+    const job = await claimNextJob("unlocked");
+    expect(job).toBeTruthy();
+    await ctx.db
+      .update(schema.jobs)
+      .set({ lockedAt: null })
+      .where(eq(schema.jobs.id, job!.id));
+    expect(await recoverStaleJobs()).toBe(1);
+    const row = await ctx.db.select().from(schema.deployments).where(eq(schema.deployments.id, dep.id)).get();
+    expect(row?.state).toBe("queued");
+  });
 });
 
 // Ceiling for the deployment to settle, and the per-test timeout that leaves room above it

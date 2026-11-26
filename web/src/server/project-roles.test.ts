@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { schema } from "@/server/db";
 import { useFreshDb } from "@/server/test/db";
-import { acceptProjectInvitation, createProjectInvitation, getProjectRole, listProjectInvitations, removeProjectMember, setProjectMemberRole } from "@/server/project-roles";
+import { acceptProjectInvitation, createProjectInvitation, getProjectRole, listProjectInvitations, removeProjectMember, requireProjectRole, setProjectMemberRole } from "@/server/project-roles";
 import { speedSummary } from "@/server/analytics-speed";
 import { deleteEnvVar, deployBranch, listEnvVars, setEnvVar } from "@/server/projects";
 import { deploymentPage, projectMetrics, projectViews } from "@/server/queries";
@@ -26,6 +26,10 @@ beforeAll(async () => {
 afterAll(async () => ctx.cleanup());
 
 describe("project invitations and roles", () => {
+  it("never grants access for an unknown minimum role", async () => {
+    await expect(requireProjectRole("owner", "p", "superadmin" as never)).rejects.toMatchObject({ status: 404 });
+  });
+
   it("rejects mismatch, expiration and replay; stores no bearer token", async () => {
     const created = await createProjectInvitation("owner", "p", { email: " person@example.com ", role: "viewer" }, now);
     expect(JSON.stringify(await listProjectInvitations("owner", "p"))).not.toContain(created.token);

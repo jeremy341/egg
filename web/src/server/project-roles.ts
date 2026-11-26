@@ -44,7 +44,10 @@ export async function getProjectRole(userId: string, projectId: string): Promise
 export async function requireProjectRole(userId: string, projectId: string, minimum: ProjectRole) {
   const role = await getProjectRole(userId, projectId);
   const rank: Record<ProjectRole, number> = { viewer: 1, developer: 2, owner: 3 };
-  if (!role || rank[role] < rank[minimum]) throw notFound("Project not found");
+  // Validate the minimum before comparing: rank[unknown] is undefined and every
+  // number < undefined is false, which used to let an unknown minimum fail open.
+  const minimumRank = rank[minimum];
+  if (!minimumRank || !role || rank[role] < minimumRank) throw notFound("Project not found");
   return role;
 }
 
