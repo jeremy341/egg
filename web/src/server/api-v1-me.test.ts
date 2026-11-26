@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { createApiToken, revokeApiToken } from "@/server/api-tokens";
@@ -54,6 +55,17 @@ describe("GET /api/v1/me", () => {
     const { secret, token } = await createApiToken(sam.id, { name: "gone", scopes: ["logs:read"] });
     await revokeApiToken(sam.id, token.id);
     expect((await get(secret)).status).toBe(401);
+  });
+
+  it("shows the display name the owner chose, not the Hack Club name", async () => {
+    await ctx.db
+      .insert(schema.userPreferences)
+      .values({ userId: sam.id, displayName: "Sammy", updatedAt: new Date() })
+      .onConflictDoUpdate({ target: schema.userPreferences.userId, set: { displayName: "Sammy" } });
+    const { secret } = await createApiToken(sam.id, { name: "named", scopes: ["logs:read"] });
+    const body = (await (await get(secret)).json()) as { user: { name: string } };
+    expect(body.user.name).toBe("Sammy");
+    await ctx.db.delete(schema.userPreferences).where(eq(schema.userPreferences.userId, sam.id));
   });
 
   it("works for a token with any one scope, and says who, which token, what it may do and how much there is", async () => {

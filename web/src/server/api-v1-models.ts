@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Principal } from "@/server/api-tokens";
 import { BUILD_LOCATIONS, DEPLOY_STATES, RUNTIMES, WORKLOAD_KINDS, DEPLOYMENT_MODES } from "@/server/db/schema";
-import { notFound } from "@/server/http";
+import { HttpError, notFound } from "@/server/http";
 import {
   deploymentView,
   deploymentViews,
@@ -18,6 +18,59 @@ import {
  */
 
 const iso = z.string().describe("ISO 8601 time, UTC.");
+
+/**
+ * Opaque cursor for the list endpoints whose rows are already loaded in a
+ * stable order. The prefix keeps a cursor from one endpoint from being passed
+ * to another: those use their own, differently shaped cursors.
+ */
+const LIST_CURSOR_PREFIX = "v1:";
+
+/** Name the last row of a page by its identity, never by its offset. */
+export function encodeListCursor(key: string): string {
+  return LIST_CURSOR_PREFIX + Buffer.from(key, "utf8").toString("base64url");
+}
+
+/** Accept only a cursor this helper made, or null for a malformed one. */
+export function decodeListCursor(raw: unknown): string | null {
+  if (typeof raw !== "string" || !raw.startsWith(LIST_CURSOR_PREFIX)) return null;
+  const encoded = raw.slice(LIST_CURSOR_PREFIX.length);
+  if (!encoded || encoded.length > 300 || !/^[A-Za-z0-9_-]+$/.test(encoded)) return null;
+  const key = Buffer.from(encoded, "base64url").toString("utf8");
+  if (!key || key.length > 200 || encodeListCursor(key) !== raw) return null;
+  return key;
+}
+
+/** The generic page fields every paginated list endpoint returns. */
+export type ListPage<T> = { items: T[]; total: number; nextCursor: string | null };
+
+/**
+ * One page of rows that are already in a stable order. The cursor names the
+ * last row of the previous page by its identity, so inserting or removing rows
+ * before it cannot shift what comes next: no row is repeated or skipped.
+ * `keyOf` must be unique within the list.
+ */
+export function paginateList<T>(
+  rows: T[],
+  options: { limit: number; cursor?: string | null },
+  keyOf: (row: T) => string
+): ListPage<T> {
+  const key = options.cursor ? decodeListCursor(options.cursor) : null;
+  if (options.cursor && key === null) throw new HttpError(400, "That cursor is not valid.", "bad_cursor");
+  let start = 0;
+  if (key !== null) {
+    const at = rows.findIndex((row) => keyOf(row) === key);
+    if (at < 0) throw new HttpError(400, "That cursor is not valid.", "bad_cursor");
+    start = at + 1;
+  }
+  const items = rows.slice(start, start + options.limit);
+  const last = items[items.length - 1];
+  return {
+    items,
+    total: rows.length,
+    nextCursor: start + options.limit < rows.length && last ? encodeListCursor(keyOf(last)) : null,
+  };
+}
 
 export const deploymentSchema = z
   .object({

@@ -23,6 +23,12 @@ export type ServiceStatus = {
   result: string | null;
   /** One request to the health path. Code 0 means nothing answered. */
   http: { code: number; ms: number | null } | null;
+  /**
+   * How the last main process ended, when it was not a clean exit: its exit
+   * status and systemd's reason (exit-code, signal, oom-kill, ...). Null when
+   * the last exit was clean or systemd has none.
+   */
+  lastExit?: { code: number | null; reason: string } | null;
   checkedAt: string;
 };
 
@@ -72,7 +78,11 @@ export function parseServiceStatus(stdout: string, at = new Date()): ServiceStat
   }
 
   const pid = num(kv.get("MainPID"));
+  const exitReason = kv.get("Result") ?? "";
+  const lastExit =
+    exitReason && exitReason !== "success" ? { code: num(kv.get("ExecMainStatus")), reason: exitReason } : null;
   return {
+    lastExit,
     state,
     detail,
     pid: pid && pid > 0 ? pid : null,
@@ -83,7 +93,7 @@ export function parseServiceStatus(stdout: string, at = new Date()): ServiceStat
       return v && /^[0-9]+$/.test(v) && v !== UNSET ? Number(v) : null;
     })(),
     restarts: num(kv.get("NRestarts")),
-    result: kv.get("Result") || null,
+    result: kv.get("RESULT") || null,
     http,
     checkedAt: at.toISOString(),
   };

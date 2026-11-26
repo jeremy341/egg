@@ -34,7 +34,7 @@ describe("hosting setup", () => {
     const html = renderToStaticMarkup(createElement(HostingOptions, {
       prefix: "test", workloadKind: "web", deploymentMode: "native",
       onWorkloadChange() {}, onModeChange() {},
-      capabilities: { deploymentModes: { native: true, dockerfile: false, compose: false },
+      capabilities: { deploymentModes: { native: true, dockerfile: false, compose: false, image: false },
         docker: { available: false, composeAvailable: false, reason: "Docker is not available in this Nest container." }, runtimes: ["node"] },
     }));
     expect(html).toContain("Docker is not available in this Nest container.");

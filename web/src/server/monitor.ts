@@ -281,6 +281,7 @@ async function checkServer(server: typeof schema.servers.$inferSelect, now: Date
       continue;
     }
     // Every check is kept, failed ones too, so the error rate and restart count see crashes.
+    // A service that is not running still gets a row when its last exit was a crash, so the crash is kept.
     const prev = await db
       .select({ at: schema.projectSamples.at, cpuNs: schema.projectSamples.cpuNs })
       .from(schema.projectSamples)
@@ -300,6 +301,8 @@ async function checkServer(server: typeof schema.servers.$inferSelect, now: Date
       cpuNs: status.cpuNs,
       cpuPercent: reading.cpuPercent,
       restarts: status.restarts,
+      exitCode: status.lastExit?.code ?? null,
+      exitReason: status.lastExit?.reason ?? null,
       healthMs: reading.healthMs,
       healthOk: isHealthy(status, null),
     });
