@@ -118,7 +118,7 @@ const CLIENT_CALLS: Record<string, Call$> = {
   list_github_deploy_targets: (n) => n.listGithubDeployTargets(),
   get_notification_channel: (n) => n.getNotificationChannel("HOOK"),
   update_notification_channel: (n) => n.updateNotificationChannel("HOOK", {}),
-  delete_notification_channel: (n) => n.deleteNotificationChannel("HOOK"),
+  delete_notification_channel: (n) => n.deleteNotificationChannel("HOOK", "hooks.example.com"),
   update_notification_rule: (n) => n.updateNotificationRule("HOOK", "RULE", {}),
   delete_notification_rule: (n) => n.deleteNotificationRule("HOOK", "RULE"),
   list_notification_deliveries: (n) => n.listNotificationDeliveries("HOOK"),
@@ -214,6 +214,13 @@ describe("the typed client covers the whole public API", () => {
 });
 
 describe("request bodies and queries of the newer calls", () => {
+  it("sends the channel host as confirmName when deleting a notification channel", async () => {
+    const { nest, calls } = recorder();
+    await nest.deleteNotificationChannel("HOOK", "hooks.example.com");
+    expect(calls[0].init.method).toBe("DELETE");
+    expect(JSON.parse(calls[0].init.body!)).toEqual({ confirmName: "hooks.example.com" });
+  });
+
   it("sends the body of create, update, env and file calls as JSON", async () => {
     const { nest, calls } = recorder();
     await nest.setEnvVar("P", "A B", { value: "secret", target: "preview" });

@@ -98,7 +98,7 @@ export default function AgentApiPage() {
         </P>
         <Example>{deleteProjectExample}</Example>
         <P>
-          Deleting a notification channel uses <C>confirmChannelId</C> with the exact channel ID. Egg audits successful
+          Deleting a notification channel uses <C>confirmName</C> with the exact channel host. Egg audits successful
           deletes with the token that made the request.
         </P>
         <P>
