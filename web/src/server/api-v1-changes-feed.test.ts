@@ -70,7 +70,7 @@ beforeAll(async () => {
   const base = Date.now() - 60_000;
   await row(me.id, "project.update", projectId, new Date(base + 4_000), { fields: "port" });
   await row(me.id, "env.set", projectId, new Date(base + 3_000), {
-    name: "DATABASE_URL",
+    name: "DATABASE_URL\nINJECTED",
     target: "production",
     value: "RAW_ENV_VALUE_SHOULD_NEVER_APPEAR",
   });
@@ -113,6 +113,11 @@ describe("the project changes feed endpoint", () => {
     expect(env).toBeDefined();
     expect(JSON.stringify(env)).not.toContain("RAW_ENV_VALUE_SHOULD_NEVER_APPEAR");
     expect(env).not.toHaveProperty("value");
+  });
+
+  it("keeps summaries on one line", async () => {
+    const page = await run();
+    expect(page.items.every((item) => !/[\r\n]/.test(item.summary))).toBe(true);
   });
 
   it("returns a deployment id only when the audit row names one for this project", async () => {
