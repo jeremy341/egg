@@ -519,7 +519,7 @@ export function serviceStatus(args: { unit: string; port: number | null; path: s
   return (
     `unit=${shellQuote(args.unit)}\nport=${Number(args.port)}\npath=${shellQuote(path)}\n` +
     `echo "EGG_ACTIVE=$(systemctl is-active "$unit" 2>/dev/null || true)"\n` +
-    `systemctl show "$unit" -p LoadState -p ActiveState -p SubState -p MainPID -p NRestarts ` +
+    `systemctl show "$unit" -p LoadState -p ActiveState -p SubState -p MainPID -p NRestarts -p InvocationID ` +
     `-p MemoryCurrent -p CPUUsageNSec -p ActiveEnterTimestampMonotonic -p ExecMainStatus -p Result 2>/dev/null | sed 's/^/EGG_/' || true\n` +
     `echo "EGG_RESULT=$(systemctl show "$unit" -p Result --value 2>/dev/null || true)"\n` +
     `echo "EGG_UPTIME=$(cut -d' ' -f1 /proc/uptime 2>/dev/null || true)"\n` +
