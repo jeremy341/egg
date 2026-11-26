@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import { AgentPanel } from "../_components/agent-panel";
+import { CodeBlock } from "../_components/code-block";
 import { ARTICLE, B, C, Callout, H2, H3, InternalLink, List, P, PageHeader, Table } from "../_components/prose";
 import { docsHref } from "../_data/nav";
 
@@ -8,6 +9,29 @@ export const metadata = {
   description:
     "Let an AI agent read Egg's docs as Markdown, and call Egg's API with an agent spec, idempotency keys and a rollout wait.",
 };
+
+/**
+ * Two whole prompts, built as one line each so CodeBlock copies them verbatim.
+ * They name the docs an agent should fetch instead of letting it guess from
+ * memory. Both point at guides in the Egg repository, which an agent can read
+ * without a running Egg site.
+ */
+const NO_DOMAIN_PROMPT = [
+  "Try Egg without owning a domain. Read docs/selfhost/TRY-WITHOUT-DOMAIN.md in the Egg repository",
+  "(https://github.com/jeremy341/egg) and follow it: clone the repository, run pnpm install and pnpm run setup in web/,",
+  "set APP_URL to http://127.0.0.1.nip.io:3000 with LOCAL_MODE=1 and LOCAL_MODE_ALLOW_REMOTE=1, then start with",
+  "pnpm egg start --dev. Open that exact address, sign in with the recovery key from .env.local, and run pnpm run",
+  "doctor. Tell me the address, the warning to expect, and which features a trial host cannot offer. Keep the login",
+  "page private.",
+].join(" ");
+
+const SETUP_PROMPT = [
+  "Finish setting up Egg after first boot. Read docs/selfhost/FINISHING-SETUP.md in the Egg repository",
+  "(https://github.com/jeremy341/egg) and work through its checklist in order: set the local password, connect a",
+  "server and confirm its host key, leave the container permission switches off, set up the GitHub App only if you",
+  "need private repositories, configure backups, add a status page and notifications, then secure the instance. Ask",
+  "before every write. Cite the in-app /docs page for each step and tell me what is left when you stop.",
+].join(" ");
 
 /**
  * A public page for people who wire an agent to these docs or to Egg itself.
@@ -95,6 +119,35 @@ export default function DocsForAgents() {
           ],
         ]}
       />
+
+      <H2 id="for-agents-prompts" title="Prompts to copy" />
+      <P>
+        The addresses above are enough to write an instruction yourself. Two whole prompts are written out below, so an
+        agent can start from a plain sentence. Each one names a guide in the Egg repository, which the agent reads
+        before it acts, rather than guessing from memory.
+      </P>
+      <P>
+        Put either prompt into the <C>Copy prompt</C> box of your agent, or paste it into a chat. Both ask the agent to
+        report what it did and to stop when a step needs your permission.
+      </P>
+
+      <H3 id="for-agents-prompt-nodomain" title="Try without a domain" />
+      <P>
+        A wildcard DNS name such as <C>127.0.0.1.nip.io</C> looks like a domain but needs no DNS record of your own.
+        This prompt gets a local trial running and names the features a trial host cannot offer.
+      </P>
+      <CodeBlock label="Prompt" code={NO_DOMAIN_PROMPT} />
+
+      <H3 id="for-agents-prompt-setup" title="Finish setup" />
+      <P>
+        A fresh Egg has no password, no deploy target and no integrations. This prompt walks the first-boot checklist
+        in order and asks before each write, so the agent does not act on your instance without permission.
+      </P>
+      <CodeBlock label="Prompt" code={SETUP_PROMPT} />
+      <Callout tone="note" title="The prompts are plain text">
+        Nothing in them needs a browser. The named guides are Markdown files in the repository, so an agent reads the
+        same text a person reads in the file.
+      </Callout>
 
       <H2 id="for-agents-api" title="Call Egg's API" />
       <P>

@@ -905,5 +905,37 @@ export class Egg {
   setIngressProtection(domainId: string, input: unknown): Promise<unknown> {
     return this.request("PUT", `/domains/${seg(domainId)}/protection`, {}, input);
   }
-}
 
+  // ------------------------------------------------- third parity pass
+  createDeployment(input: unknown): Promise<unknown> { return this.request("POST", "/deployments", {}, input); }
+  deleteDeployment(deploymentId: string): Promise<unknown> { return this.request("DELETE", `/deployments/${seg(deploymentId)}`); }
+  renameDeployment(deploymentId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/deployments/${seg(deploymentId)}/name`, {}, input); }
+  retryDeploymentApply(deploymentId: string): Promise<unknown> { return this.request("POST", `/deployments/${seg(deploymentId)}/retry-apply`, {}, {}); }
+  updateDeploymentBuildConfig(deploymentId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/deployments/${seg(deploymentId)}/build-config`, {}, input); }
+  updateDeploymentHealthCheck(deploymentId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/deployments/${seg(deploymentId)}/health-check`, {}, input); }
+  updateDeploymentImage(deploymentId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/deployments/${seg(deploymentId)}/image`, {}, input); }
+  updateDeploymentPullPolicy(deploymentId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/deployments/${seg(deploymentId)}/pull-policy`, {}, input); }
+  updateDeploymentResources(deploymentId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/deployments/${seg(deploymentId)}/resources`, {}, input); }
+  updateDeploymentStrategy(deploymentId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/deployments/${seg(deploymentId)}/strategy`, {}, input); }
+  updateDeploymentVolumes(deploymentId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/deployments/${seg(deploymentId)}/volumes`, {}, input); }
+  listServices(): Promise<unknown> { return this.request("GET", "/services"); }
+  createService(input: unknown): Promise<unknown> { return this.request("POST", "/services", {}, input); }
+  deleteService(serviceId: string): Promise<unknown> { return this.request("DELETE", `/services/${seg(serviceId)}`); }
+  setServiceExposure(serviceId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/services/${seg(serviceId)}/exposure`, {}, input); }
+  setServicePortPublic(serviceId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/services/${seg(serviceId)}/port`, {}, input); }
+  getComposeStack(projectId: string): Promise<unknown> { return this.request("GET", `/compose-stacks/${seg(projectId)}`); }
+  listComposeStacks(): Promise<unknown> { return this.request("GET", "/compose-stacks"); }
+  listComposeReleases(projectId: string): Promise<unknown> { return this.request("GET", `/compose-stacks/${seg(projectId)}/releases`); }
+  redeployComposeStack(projectId: string): Promise<unknown> { return this.request("POST", `/compose-stacks/${seg(projectId)}/redeploy`, {}, {}); }
+  listOrganizations(): Promise<unknown> { return this.request("GET", "/organizations"); }
+  getOrganization(orgId: string): Promise<unknown> { return this.request("GET", `/organizations/${seg(orgId)}`); }
+  getImageHistory(projectId: string): Promise<unknown> { return this.request("GET", `/projects/${seg(projectId)}/image-history`); }
+  listBuildRuns(projectId: string): Promise<unknown> { return this.request("GET", `/projects/${seg(projectId)}/build-runs`); }
+  getDeployVerdict(deploymentId: string): Promise<unknown> { return this.request("GET", `/deployments/${seg(deploymentId)}/verdict`); }
+  getDeploymentHttpMetrics(deploymentId: string): Promise<unknown> { return this.request("GET", `/deployments/${seg(deploymentId)}/http-metrics`); }
+  getRequestStats(projectId: string): Promise<unknown> { return this.request("GET", `/projects/${seg(projectId)}/request-stats`); }
+  getAnomalies(projectId: string): Promise<unknown> { return this.request("GET", `/projects/${seg(projectId)}/anomalies`); }
+  getAttackSignals(projectId: string): Promise<unknown> { return this.request("GET", `/projects/${seg(projectId)}/attack-signals`); }
+  getResourceRecommendation(projectId: string): Promise<unknown> { return this.request("GET", `/projects/${seg(projectId)}/resource-recommendation`); }
+  getObservabilityLink(projectId: string): Promise<unknown> { return this.request("GET", `/projects/${seg(projectId)}/observability-link`); }
+}

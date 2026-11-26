@@ -41,6 +41,12 @@ import { NOTIFICATION_ENDPOINTS } from "@/server/api-v1-notifications";
 import { ENV_ENDPOINTS } from "@/server/api-v1-env";
 import { AUTODEPLOY_ENDPOINTS } from "@/server/api-v1-autodeploy";
 import { DOMAIN_ENDPOINTS } from "@/server/api-v1-domains";
+import { SERVICES_ENDPOINTS } from "@/server/api-v1-services";
+import { DEPLOYMENT_CRUD_ENDPOINTS } from "@/server/api-v1-deployments";
+import { COMPOSE_ENDPOINTS } from "@/server/api-v1-compose";
+import { VERDICT_ENDPOINTS } from "@/server/api-v1-verdict";
+import { IMAGE_ENDPOINTS } from "@/server/api-v1-images";
+import { ORG_ENDPOINTS } from "@/server/api-v1-orgs";
 import { getDb, schema } from "@/server/db";
 import { notFound, zodToHttp } from "@/server/http";
 import {
@@ -454,6 +460,12 @@ export const ENDPOINTS: Endpoint[] = [
   ...ENV_ENDPOINTS,
   ...AUTODEPLOY_ENDPOINTS,
   ...DOMAIN_ENDPOINTS,
+  ...SERVICES_ENDPOINTS,
+  ...DEPLOYMENT_CRUD_ENDPOINTS,
+  ...COMPOSE_ENDPOINTS,
+  ...VERDICT_ENDPOINTS,
+  ...IMAGE_ENDPOINTS,
+  ...ORG_ENDPOINTS,
 ];
 
 export function endpointById(id: string): Endpoint | undefined {
