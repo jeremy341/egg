@@ -78,10 +78,12 @@ describe("the slow SSH buckets on the dashboard routes", () => {
     expect(blocked.headers.get("retry-after")).toMatch(/^\d+$/);
     // The same small bucket, so a flooding user does not get a second allowance under another name.
     expect((await runtimeLogs(req("/api/projects/p/runtime-logs", "GET"), ctx("p"))).status).toBe(429);
-    // Per user, and the restart bucket is a separate allowance.
+    // Every route that opens an SSH session shares this allowance, so a
+    // restart from the flooding user is refused too. Another user has a
+    // separate budget and can still read usage and restart.
+    expect((await restart(req("/api/projects/p/restart", "POST"), ctx("p"))).status).toBe(429);
     auth.user = BOB;
     expect((await usage(req("/api/servers/s/usage", "GET"), ctx("s"))).status).toBe(200);
-    auth.user = ALICE;
     expect((await restart(req("/api/projects/p/restart", "POST"), ctx("p"))).status).toBe(200);
   });
 
