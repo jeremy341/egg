@@ -9,7 +9,6 @@ export const SUMMARIES: Record<string, string> = {
   "run-yourself": "Run your own copy of Egg with or without a Hack Club account: the setups, how sign-in works, where your apps run, and a link to the full guide.",
   "run-locally": "Commands for working on the Egg code: prerequisites, install, the env file, the dev server, development sign-in, demo data, tests, lint and the production build.",
   servers: "Connect your Nest account with its own SSH key, test the link, replace the key or disconnect.",
-  keys: "The three kinds of SSH key on the Keys page: a read-only GitHub deploy key, a git key for your own host and a personal key, with the one-time private key, replacing and revoking.",
   projects: "Link a repository, choose a runtime, set the build and run commands, and see what every app can rely on.",
   "build-github-actions": "Build on GitHub and send the finished release to Egg: the setup steps, the four secrets, the pull request, safety, limits and what each failing check means.",
   "build-on-nest": "Build on your own container under a memory and CPU cap, and when to choose it over GitHub Actions.",
