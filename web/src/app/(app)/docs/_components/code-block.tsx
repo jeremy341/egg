@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { CheckIcon, CopySimpleIcon } from "@phosphor-icons/react";
+import { AgentMarks } from "@/components/agent-marks";
 import { Swap } from "@/components/motion/swap";
 import { toast } from "@/components/ui/toast";
 
@@ -85,14 +85,8 @@ export function CodeBlock({ label, code }: { label: Label; code: string }) {
           onClick={copy}
           className="touch-target pressable inline-flex h-7 items-center gap-1.5 px-2 text-[12px] font-medium text-muted-foreground hover:bg-[var(--ds-gray-alpha-100)] hover:text-foreground max-sm:h-10 max-sm:px-3"
         >
-          <Swap value={copied ? "copied" : "copy"} className="inline-flex items-center gap-1.5">
-            {copied ? (
-              <CheckIcon aria-hidden="true" className="size-3.5" />
-            ) : (
-              <CopySimpleIcon aria-hidden="true" className="size-3.5" />
-            )}
-            {copied ? "Copied" : "Copy"}
-          </Swap>
+          <AgentMarks />
+          <Swap value={copied ? "copied" : "copy"}>{copied ? "Copied" : "Copy"}</Swap>
         </button>
         <span className="sr-only" aria-live="polite">
           {copied ? "Copied" : ""}
