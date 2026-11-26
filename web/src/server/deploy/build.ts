@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
-import { createReadStream, createWriteStream, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statfsSync } from "node:fs";
+import { createWriteStream, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statfsSync } from "node:fs";
 import { spawn } from "node:child_process";
+import { lstat, readdir, statfs } from "node:fs/promises";
 import { Transform } from "node:stream";
 import { pipeline as pipelineStream } from "node:stream/promises";
 import { StringDecoder } from "node:string_decoder";
@@ -32,10 +33,12 @@ export type BuildRequest = {
   env: Record<string, string>;
   log: LogFn;
   signal?: AbortSignal;
+  enableDownloadCache?: boolean;
 };
 
 export type BuildResult = {
   archivePath: string;
+  npmLockHash?: string | null;
   sha256: string;
   sizeBytes: number;
   commit: { sha: string; message: string; author: string };
@@ -269,17 +272,6 @@ export async function ensureRequestedCommit(
   return assertRequestedCommit(requested, actual);
 }
 
-async function sha256File(file: string): Promise<string> {
-  const hash = createHash("sha256");
-  await new Promise<void>((resolve, reject) => {
-    createReadStream(file)
-      .on("data", (d) => hash.update(d))
-      .on("end", () => resolve())
-      .on("error", reject);
-  });
-  return hash.digest("hex");
-}
-
 export type CloneLimits = { maxBytes: number; minFreeBytes: number; intervalMs: number };
 
 const NEARLY_FULL_MESSAGE = "Egg's disk is nearly full, so the repository was not cloned. Try again later.";
@@ -316,6 +308,36 @@ export function directorySize(dir: string, stopAt: number): number {
   return total;
 }
 
+/** Asynchronous traversal keeps large checkouts from blocking unrelated requests. */
+export async function directorySizeAsync(dir: string, stopAt: number): Promise<number> {
+  let total = 0;
+  const pending = [dir];
+  while (pending.length) {
+    const current = pending.pop()!;
+    let names: string[];
+    try { names = await readdir(current); } catch { continue; }
+    for (const name of names) {
+      let info;
+      const full = path.join(current, name);
+      try { info = await lstat(full); } catch { continue; }
+      if (info.isSymbolicLink()) continue;
+      if (info.isDirectory()) pending.push(full);
+      else if (info.isFile()) {
+        total += info.size;
+        if (total > stopAt) return total;
+      }
+    }
+  }
+  return total;
+}
+
+async function nearlyFullErrorAsync(dir: string, minFreeBytes: number): Promise<BuildError | null> {
+  try {
+    const fs = await statfs(dir);
+    return fs.bavail * fs.bsize < minFreeBytes ? new BuildError(NEARLY_FULL_MESSAGE) : null;
+  } catch { return null; }
+}
+
 /** A BuildError when the disk holding `dir` has less than `minFreeBytes` free. Null when it is fine or cannot be read. */
 function nearlyFullError(dir: string, minFreeBytes: number): BuildError | null {
   let freeBytes: number;
@@ -337,27 +359,40 @@ export function watchCloneSize(
   limits: CloneLimits,
   onExceed: (error: BuildError) => void
 ): { stop(): void } {
-  let timer: NodeJS.Timeout | undefined;
+  let diskTimer: NodeJS.Timeout | undefined;
+  let sizeTimer: NodeJS.Timeout | undefined;
+  let stopped = false;
   const stop = () => {
-    if (timer) clearInterval(timer);
-    timer = undefined;
+    stopped = true;
+    if (diskTimer) clearTimeout(diskTimer);
+    if (sizeTimer) clearTimeout(sizeTimer);
   };
-  const check = () => {
-    let error: BuildError | null = null;
-    if (directorySize(dir, limits.maxBytes) > limits.maxBytes) {
-      error = new BuildError(
-        `The repository is larger than ${Math.round(limits.maxBytes / (1024 * 1024))} MB, so it was not cloned.`
-      );
-    } else {
-      error = nearlyFullError(dir, limits.minFreeBytes);
-    }
-    if (error) {
-      stop();
-      onExceed(error);
-    }
+  const exceed = (error: BuildError) => {
+    if (stopped) return;
+    stop();
+    onExceed(error);
   };
-  timer = setInterval(check, limits.intervalMs);
-  timer.unref();
+  const checkDisk = async () => {
+    const error = await nearlyFullErrorAsync(dir, limits.minFreeBytes);
+    if (stopped) return;
+    if (error) { exceed(error); return; }
+    diskTimer = setTimeout(() => void checkDisk(), limits.intervalMs);
+    diskTimer.unref();
+  };
+  const checkSize = async () => {
+    const tooLarge = await directorySizeAsync(dir, limits.maxBytes) > limits.maxBytes;
+    if (stopped) return;
+    if (tooLarge) {
+      exceed(new BuildError(`The repository is larger than ${Math.round(limits.maxBytes / (1024 * 1024))} MB, so it was not cloned.`));
+      return;
+    }
+    sizeTimer = setTimeout(() => void checkSize(), limits.intervalMs);
+    sizeTimer.unref();
+  };
+  diskTimer = setTimeout(() => void checkDisk(), limits.intervalMs);
+  sizeTimer = setTimeout(() => void checkSize(), limits.intervalMs);
+  diskTimer.unref();
+  sizeTimer.unref();
   return { stop };
 }
 
@@ -463,6 +498,14 @@ export async function cloneSource(
     watcher.stop();
   }
 
+  // A short clone can finish between watchdog ticks, or while a scan is in flight.
+  // Check once more before accepting it, after stopping the periodic scanner.
+  const finalLowDisk = await nearlyFullErrorAsync(workDir, resolved.minFreeBytes);
+  if (finalLowDisk) throw finalLowDisk;
+  if (await directorySizeAsync(workDir, resolved.maxBytes) > resolved.maxBytes) {
+    throw new BuildError(`The repository is larger than ${Math.round(resolved.maxBytes / (1024 * 1024))} MB, so it was not cloned.`);
+  }
+
   const info: string[] = [];
   await runProcess("git", ["log", "-1", "--format=%H%n%an%n%s"], {
     cwd: srcDir,
@@ -479,14 +522,15 @@ export async function cloneSource(
 }
 
 /** Pack `root` into a gzipped tar and refuse one over the size limit. Returns the size in bytes. */
-export async function packArchive(
+export async function packArchiveWithHash(
   root: string,
   archivePath: string,
   excludeNodeModules: boolean,
   what: string,
   log: LogFn,
   limits: { maxArchiveBytes?: number; maxUnpackedBytes?: number; maxEntries?: number } = {}
-): Promise<number> {
+): Promise<{ sizeBytes: number; sha256: string }> {
+  const hash = createHash("sha256");
   const maxArchiveBytes = limits.maxArchiveBytes ?? MAX_ARCHIVE_BYTES;
   const maxUnpackedBytes = limits.maxUnpackedBytes ?? MAX_SOURCE_UNPACKED_BYTES;
   const maxEntries = limits.maxEntries ?? MAX_SOURCE_ENTRIES;
@@ -497,6 +541,7 @@ export async function packArchive(
   const cap = new Transform({
     transform(chunk: Buffer, _encoding, callback) {
       size += chunk.length;
+      hash.update(chunk);
       if (size > maxArchiveBytes) {
         callback(new BuildError(`${what} compressed source archive exceeds the ${maxArchiveBytes} byte limit.`));
       } else callback(null, chunk);
@@ -542,7 +587,15 @@ export async function packArchive(
     throw new BuildError(`${what} could not be packaged safely: ${error instanceof Error ? error.message : "unknown error"}`);
   }
   log("info", `Packed source: ${(size / 1e6).toFixed(1)} MB`);
-  return size;
+  return { sizeBytes: size, sha256: hash.digest("hex") };
+}
+
+/** Compatibility wrapper for callers that only need the byte count. */
+export async function packArchive(
+  root: string, archivePath: string, excludeNodeModules: boolean, what: string, log: LogFn,
+  limits: { maxArchiveBytes?: number; maxUnpackedBytes?: number; maxEntries?: number } = {}
+): Promise<number> {
+  return (await packArchiveWithHash(root, archivePath, excludeNodeModules, what, log, limits)).sizeBytes;
 }
 
 /**
@@ -572,15 +625,26 @@ export const defaultSourceBuilder: Builder = async (req) => {
     }
     const files = detectFiles(appDir);
     const spec = resolveRuntime(req.runtime, files);
+    let npmLockHash: string | null = null;
+    if (req.enableDownloadCache && files.lockfile === "npm" && spec.buildInstall === "npm ci") {
+      try {
+        const lock = path.join(appDir, "package-lock.json");
+        const stat = lstatSync(lock);
+        if (stat.isFile() && !stat.isSymbolicLink() && stat.size <= 16 * 1024 * 1024) {
+          npmLockHash = createHash("sha256").update(readFileSync(lock)).digest("hex");
+        }
+      } catch { /* A missing or unreadable lockfile disables the optional cache. */ }
+    }
     // The output folder is made by the build on the container; one that leads outside the project is refused now.
     resolveInside(appDir, spec.archiveRoot);
 
     const archivePath = path.join(workDir, "source.tar.gz");
-    const size = await packArchive(appDir, archivePath, spec.excludeNodeModules, "The source", log);
+    const packed = await packArchiveWithHash(appDir, archivePath, spec.excludeNodeModules, "The source", log);
     return {
       archivePath,
-      sha256: await sha256File(archivePath),
-      sizeBytes: size,
+      npmLockHash,
+      sha256: packed.sha256,
+      sizeBytes: packed.sizeBytes,
       commit,
       spec,
       files,

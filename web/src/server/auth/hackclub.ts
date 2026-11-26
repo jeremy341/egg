@@ -16,6 +16,7 @@ export type HackClubProfile = {
   id: string;
   name: string;
   email: string | null;
+  emailVerified?: boolean;
   slackId: string | null;
 };
 
@@ -118,6 +119,7 @@ export function parseProfile(raw: unknown): HackClubProfile {
     id: sub,
     name,
     email: typeof o.email === "string" ? o.email : null,
+    emailVerified: o.email_verified === true,
     slackId: typeof o.slack_id === "string" ? o.slack_id : null,
   };
 }

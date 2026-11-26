@@ -142,6 +142,45 @@ describe("disconnecting a server", () => {
     await expect(connectToServer(row!)).rejects.toMatchObject({ status: 409 });
   });
 
+  it("does not disconnect a server while an SSH operation is open", async () => {
+    const owner = await newUser();
+    const { server, project } = await serverWithProject(owner, "active-ssh", 3312);
+    await ctx.db.insert(schema.cleanupOperations).values({
+      id: "active-ssh-operation",
+      userId: owner,
+      serverId: server.id,
+      openedAt: new Date(),
+    });
+
+    await expect(deleteServer(owner, server.id, { deleteProjects: true })).rejects.toMatchObject({ status: 409 });
+    expect(await ctx.db.select().from(schema.servers).where(eq(schema.servers.id, server.id)).get()).toBeTruthy();
+    expect(await ctx.db.select().from(schema.projects).where(eq(schema.projects.id, project.id)).get()).toBeTruthy();
+  });
+
+  it("rechecks live server status before reserving a session from a stale snapshot", async () => {
+    const owner = await newUser();
+    const { server } = await serverWithProject(owner, "stale-ssh", 3313);
+    const mock = await startMockSsh({ authorizedKeys: [server.publicKey] });
+    try {
+      await ctx.db.update(schema.servers).set({
+        host: "127.0.0.1",
+        port: mock.port,
+        hostKeyFingerprint: mock.hostKeyFingerprint,
+      }).where(eq(schema.servers.id, server.id));
+      const staleSnapshot = await getServerForUser(owner, server.id);
+      await deleteServer(owner, server.id, { deleteProjects: false });
+
+      const result = await connectToServer(staleSnapshot).then(
+        (session) => { session.close(); return null; },
+        (error: unknown) => error
+      );
+      expect(result).toMatchObject({ status: 409, code: "disconnected" });
+      expect(mock.commands).toEqual([]);
+    } finally {
+      await mock.stop();
+    }
+  });
+
   it("removes the projects, their deployments and their logs when asked", async () => {
     const owner = await newUser();
     const { server, project, deployment } = await serverWithProject(owner, "drop-me", 3303);

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowsClockwiseIcon,
+  ArrowUpRightIcon,
   GlobeSimpleIcon,
   HardDrivesIcon,
   PencilSimpleIcon,
@@ -103,6 +104,14 @@ export function DomainsView({
   const [saving, setSaving] = useState(false);
 
   const server = servers[0];
+  // The tour points at the first domain whose app has not answered a check yet, and at the first one shown as active.
+  // A Nest name is saved as active at once, but only a check that gets an answer shows the address works.
+  const answered = (id: string) => {
+    const r = appResults[id];
+    return Boolean(r) && !r!.skipped && r!.problem === null && r!.answers.some((a) => a.ok);
+  };
+  const waitingId = initial.find((d) => !answered(d.id))?.id;
+  const activeId = initial.find((d) => d.status === "valid" && !d.dnsWarning)?.id;
 
   function pickProject(id: string) {
     setProjectId(id);
@@ -224,7 +233,12 @@ export function DomainsView({
 
   return (
     <div className="space-y-6">
-      <form onSubmit={add} aria-label="Add a domain" className="rounded-lg bg-card shadow-border-small">
+      <form
+        onSubmit={add}
+        aria-label="Add a domain"
+        data-tour="domain-form"
+        className="rounded-lg bg-card shadow-border-small"
+      >
         <div className="grid gap-4 p-4 md:grid-cols-[1fr_1fr_130px]">
           <div>
             <label htmlFor="dom-name" className={FIELD_LABEL}>
@@ -291,7 +305,7 @@ export function DomainsView({
       </form>
 
       {instructions ? (
-        <section aria-labelledby="next-steps" className="motion-enter">
+        <section aria-labelledby="next-steps" data-tour="domain-steps" className="motion-enter">
           <Alert
             tone="info"
             role="status"
@@ -331,7 +345,10 @@ export function DomainsView({
             const s = statusFor(d);
             return (
               <li key={d.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 py-3">
-                <div className="min-w-0 max-sm:w-full">
+                <div
+                  data-tour={!instructions && d.id === waitingId ? "domain-steps" : undefined}
+                  className="min-w-0 max-sm:w-full"
+                >
                   <p className="truncate font-medium tracking-[-0.02em]">{d.domain}</p>
                   <p className="tabular text-label text-muted-foreground">
                     Port <span className="font-mono">{d.port}</span>
@@ -353,7 +370,7 @@ export function DomainsView({
                     </p>
                   ) : null}
                   {d.kind === "custom" && (d.status !== "valid" || d.dnsWarning) ? <RecordsToAdd d={d} /> : null}
-                  <div role="status" aria-label={`App check for ${d.domain}`}>
+                  <div role="status" aria-label={`App check for ${d.domain}`} data-tour={answered(d.id) ? "app-answers" : undefined}>
                     <DomainAppCheck result={appResults[d.id]} />
                   </div>
                 </div>
@@ -363,9 +380,22 @@ export function DomainsView({
                       <StatusIndicator tone={s.tone} label={s.label} />
                     </Swap>
                   </span>
+                  {d.id === activeId ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      data-tour="visit"
+                      render={<a href={`https://${d.domain}`} target="_blank" rel="noreferrer" />}
+                    >
+                      Open
+                      <ArrowUpRightIcon aria-hidden="true" />
+                      <span className="sr-only"> {d.domain} (opens in a new tab)</span>
+                    </Button>
+                  ) : null}
                   <Button
                     variant={d.status === "invalid" || d.dnsWarning ? "default" : "outline"}
                     size="sm"
+                    data-tour={d.id === waitingId ? "domain-check" : undefined}
                     disabled={checking === d.id}
                     aria-label={checking === d.id ? undefined : `Check ${d.domain}`}
                     aria-describedby={d.status === "invalid" || d.dnsWarning || reasons[d.id] ? `cause-${d.id}` : undefined}

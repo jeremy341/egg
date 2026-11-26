@@ -38,7 +38,9 @@ export function ProjectsView({
         title="Connect your Nest container first"
         description="Egg makes a key for you. Paste it into the SSH Keys page of the Nest dashboard and your apps can run there."
         action={
-          <Button render={<Link href="/connect" />}>Connect a server</Button>
+          <Button data-tour="connect-server" render={<Link href="/connect" />}>
+            Connect a server
+          </Button>
         }
       />
     );

@@ -269,7 +269,7 @@ describe.skipIf(!hasLinux)("against a real shell", () => {
     root = `${mock.home}/.egg/app`;
     await sh(`
 r=.egg/app
-mkdir -p $r/releases/r1/src $r/shared/data $r/incoming
+mkdir -p $r/releases/r1/src $r/shared/data $r/incoming $r/env
 echo 'console.log(1)' > $r/releases/r1/index.js
 ln -s releases/r1 $r/current
 echo top-secret > "$HOME/outside.txt"
@@ -291,11 +291,14 @@ ln -s ../releases $r/shared/to-releases
 ln -s ../current $r/shared/to-current
 ln -s nowhere $r/shared/dead
 printf 'API_KEY="top"\n' > $r/releases/r1/.env
+printf 'API_KEY="moved"\n' > $r/env/11111111-1111-4111-8111-111111111111.env
+ln -s env/11111111-1111-4111-8111-111111111111.env $r/current.env
 printf 'BUILD_SECRET="build-only"\n' > $r/incoming/11111111-1111-4111-8111-111111111111.buildenv
 printf 'kept' > $r/releases/r1/src/.env
 printf 'mine' > $r/shared/.env
 ln -s ../current/.env $r/shared/env-via-current
 ln -s ../releases/r1/.env $r/shared/env-via-release
+ln -s ../current.env $r/shared/env-via-current-env
 ln -s ../incoming/11111111-1111-4111-8111-111111111111.buildenv $r/shared/env-via-build
 `);
   }, 60_000);
@@ -312,8 +315,10 @@ ln -s ../incoming/11111111-1111-4111-8111-111111111111.buildenv $r/shared/env-vi
     const res = await listDir(session, root, "");
     expect(res.scope).toMatchObject({ area: "root", writable: false });
     const byName = Object.fromEntries(res.entries.map((e) => [e.name, e]));
-    expect(Object.keys(byName).sort()).toEqual(["current", "incoming", "releases", "shared"]);
+    expect(Object.keys(byName).sort()).toEqual(["current", "current.env", "env", "incoming", "releases", "shared"]);
     expect(byName.current).toMatchObject({ type: "link", target: "releases/r1", linkTo: "dir" });
+    expect(byName["current.env"]).toMatchObject({ type: "link", target: "env/11111111-1111-4111-8111-111111111111.env", linkTo: "file" });
+    expect(byName.env.type).toBe("dir");
     expect(byName.shared.type).toBe("dir");
   });
 
@@ -452,7 +457,7 @@ ln -s ../incoming/11111111-1111-4111-8111-111111111111.buildenv $r/shared/env-vi
   });
 
   it("will not hand out a release's .env under another name, such as a link in shared/", async () => {
-    for (const path of ["shared/env-via-current", "shared/env-via-release", "current/.env", "releases/r1/.env"]) {
+    for (const path of ["shared/env-via-current", "shared/env-via-release", "shared/env-via-current-env", "current/.env", "releases/r1/.env", "env/11111111-1111-4111-8111-111111111111.env", "current.env"]) {
       expect(await status(readFile(session, root, path)), path).toMatchObject({ status: 403, code: "secret_file" });
       expect(await status(downloadFile(session, root, path)), path).toMatchObject({ status: 403, code: "secret_file" });
     }

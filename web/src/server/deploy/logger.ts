@@ -5,6 +5,8 @@ export type Level = "info" | "warn" | "error";
 
 /** Most rows stored for one deployment; a runaway build gets one "truncated" line instead of more. */
 const MAX_LOG_ROWS = 20_000;
+const DEFAULT_LOG_BYTES = 4 * 1024 * 1024;
+const LIMIT_MESSAGE = "Further log output was dropped: this deployment reached its log limit.";
 
 // ANSI escape sequences, then the remaining control characters (NUL truncates a stored line).
 // Tab, newline and carriage return are kept.
@@ -22,11 +24,13 @@ export class DeploymentLogger {
   private flushing: Promise<void> = Promise.resolve();
   private secrets: string[] = [];
   private rows = 0;
+  private bytes = 0;
   private warned = false;
 
   constructor(
     private readonly deploymentId: string,
-    private readonly flushMs = 250
+    private readonly flushMs = 250,
+    private readonly maxBytes = DEFAULT_LOG_BYTES
   ) {}
 
   setSecrets(values: string[]) {
@@ -39,13 +43,18 @@ export class DeploymentLogger {
   }
 
   log = (level: Level, message: string) => {
-    if (this.rows >= MAX_LOG_ROWS) return;
-    this.rows++;
-    if (this.rows === MAX_LOG_ROWS) {
+    if (this.rows >= MAX_LOG_ROWS || this.bytes >= this.maxBytes) return;
+    let clean = this.mask(message).replace(ANSI, "").replace(CONTROL, "").slice(0, 4000);
+    const reserve = Buffer.byteLength(LIMIT_MESSAGE);
+    if (this.rows + 1 >= MAX_LOG_ROWS || this.bytes + Buffer.byteLength(clean) + reserve > this.maxBytes) {
       level = "warn";
-      message = "Further log output was dropped: this deployment reached its log limit.";
+      clean = LIMIT_MESSAGE;
+      if (this.bytes + reserve > this.maxBytes) { this.bytes = this.maxBytes; return; }
+      this.rows = MAX_LOG_ROWS;
+    } else {
+      this.rows++;
     }
-    const clean = this.mask(message).replace(ANSI, "").replace(CONTROL, "").slice(0, 4000);
+    this.bytes += Buffer.byteLength(clean);
     this.buffer.push({ at: new Date(), level, message: clean });
     if (this.buffer.length >= 200) {
       void this.flush();

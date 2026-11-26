@@ -5,7 +5,7 @@ import { retentionSummary } from "@/server/analytics-retention";
 import { errorsSummary, speedSummary } from "@/server/analytics-speed";
 import { CONTENT_TYPES, arrayColumns, exportFilename, toCsv, toJson, type CsvValue, type ExportFormat } from "@/lib/export-data";
 import { HttpError, notFound } from "@/server/http";
-import { getProjectForUser } from "@/server/projects";
+import { getReadableProject } from "@/server/projects";
 
 /**
  * What an analytics card exports. Each card reads the same summary function the page
@@ -78,7 +78,7 @@ export async function buildExport(
   card: ExportCard,
   now = new Date()
 ): Promise<ExportTable & { slug: string }> {
-  const project = await getProjectForUser(userId, projectId);
+  const project = await getReadableProject(userId, projectId);
   const need = NEEDS[card];
   if (need) {
     const features: AnalyticsFeatures = await getFeatures(project.id);

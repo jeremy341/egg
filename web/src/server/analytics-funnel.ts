@@ -2,7 +2,7 @@ import { and, eq, gte, inArray, sql } from "drizzle-orm";
 import { getFeatures, type FunnelStep } from "@/server/analytics-config";
 import { sinceDay } from "@/server/analytics-events";
 import { getDb, schema } from "@/server/db";
-import { getProjectForUser } from "@/server/projects";
+import { getReadableProject } from "@/server/projects";
 import { MIN_SAMPLE } from "@/server/stats";
 
 /**
@@ -103,7 +103,7 @@ export function summariseFunnel(steps: FunnelStep[], reached: number[], days = 3
 }
 
 export async function funnelSummary(userId: string, projectId: string, days = 30, now = new Date()): Promise<FunnelSummary> {
-  const project = await getProjectForUser(userId, projectId);
+  const project = await getReadableProject(userId, projectId);
   const { funnel, steps } = await getFeatures(project.id);
   if (!funnel) return summariseFunnel([], [], days);
 

@@ -153,10 +153,12 @@ describe("deploy pipeline", () => {
     expect(unit).toContain('ExecStart=/bin/bash -lc "exec node server.js"');
     expect(unit).toContain("Restart=always");
 
-    const envFile = await sh(`cat ${home}/.egg/demo-app/releases/${v1.releaseId}/.env`);
+    const envFile = await sh(`cat ${home}/.egg/demo-app/env/${v1.releaseId}.env`);
     expect(envFile).toBe('GREETING="hello-secret-value"');
     const link = await sh(`readlink ${home}/.egg/demo-app/current`);
     expect(link.replace(/\\/g, "/")).toContain(v1.releaseId);
+    const envLink = await sh(`readlink ${home}/.egg/demo-app/current.env`);
+    expect(envLink.replace(/\\/g, "/")).toContain(`/env/${v1.releaseId}.env`);
   });
 
   it("never stores secret values in the deployment log", async () => {
@@ -376,4 +378,90 @@ describe("deploy state races", () => {
     expect(dirs).not.toContain(dep.releaseId);
     expect(await answer(project.port)).not.toBe("never-ships:hello-secret-value");
   });
+});
+
+describe("runtime variables stay out of the release folder", () => {
+  const home = () => mock.home.replace(/\\/g, "/");
+  const proj = () => `${home()}/.egg/demo-app`;
+
+  it("writes each release's file beside the release folder, mode 600 in a 700 folder, and none inside any release", async () => {
+    files = nodeApp("sec1");
+    const dep = await deploy();
+    expect(dep.state, dep.error ?? "").toBe("ready");
+    expect(await sh(`stat -c %a '${proj()}/env' '${proj()}/env/${dep.releaseId}.env'`)).toBe("700\n600");
+    expect(await sh(`test -e '${proj()}/releases/${dep.releaseId}/.env' && echo inside || echo clean`)).toBe("clean");
+    // No release folder holds a .env at its top level, which is the folder a static app serves.
+    expect(await sh(`ls -A ${proj()}/releases/*/.env 2>/dev/null | wc -l`)).toBe("0");
+    const unit = await sh(`cat ${home()}/units/egg-demo-app.service`);
+    expect(unit).toContain(`EnvironmentFile=${proj()}/current.env`);
+    expect(unit).not.toContain("current/.env");
+  }, DEPLOY_LOOP_TIMEOUT);
+
+  it("a preview reads its own file, and removing the preview removes the file", async () => {
+    // Earlier tests leave preview services running on their ports; stop them so this one can have a port.
+    await sh("for u in $HOME/units/egg-demo-app-pv-*.service; do [ -e \"$u\" ] && systemctl stop \"$(basename \"$u\")\"; done; true");
+    files = nodeApp("pvsec");
+    const pv = await deploy("feature/env-out");
+    expect(pv.state, pv.error ?? "").toBe("ready");
+    const unit = await sh(`cat ${home()}/units/egg-demo-app-pv-${pv.releaseId.slice(0, 8)}.service`);
+    expect(unit).toContain(`EnvironmentFile=${proj()}/env/${pv.releaseId}.env`);
+    expect(await sh(`test -e '${proj()}/releases/${pv.releaseId}/.env' && echo inside || echo clean`)).toBe("clean");
+    for (const n of [1, 2, 3]) {
+      files = nodeApp(`pvs${n}`);
+      await deploy(`feature/env-out-${n}`);
+    }
+    // The first preview is beyond the newest two now: its folder and its file are both gone.
+    expect(await sh(`test -e '${proj()}/releases/${pv.releaseId}' || test -e '${proj()}/env/${pv.releaseId}.env' && echo left || echo gone`)).toBe("gone");
+  }, DEPLOY_LOOP_TIMEOUT);
+
+  it("a rollback brings back the variables its target was deployed with", async () => {
+    await setEnvVar(userId, project.id, { key: "GREETING", value: "first-value", target: "all" });
+    files = nodeApp("A");
+    const a = await deploy();
+    await setEnvVar(userId, project.id, { key: "GREETING", value: "second-value", target: "all" });
+    files = nodeApp("B");
+    const b = await deploy();
+    expect(a.state, a.error ?? "").toBe("ready");
+    expect(b.state, b.error ?? "").toBe("ready");
+    expect(await answer(project.port)).toBe("B:second-value");
+
+    const rb = await rollback(userId, a.id);
+    await runRollbackJob(rb.id, deps);
+    expect(await answer(project.port)).toBe("A:first-value");
+    expect(await sh(`readlink '${proj()}/current.env'`)).toBe(`${proj()}/env/${a.releaseId}.env`);
+  }, DEPLOY_LOOP_TIMEOUT);
+
+  it("a release deployed before the move still rolls back, and its old .env leaves the release folder", async () => {
+    await setEnvVar(userId, project.id, { key: "GREETING", value: "legacy-one", target: "all" });
+    files = nodeApp("L1");
+    const l1 = await deploy();
+    await setEnvVar(userId, project.id, { key: "GREETING", value: "legacy-two", target: "all" });
+    files = nodeApp("L2");
+    const l2 = await deploy();
+    expect(l2.state, l2.error ?? "").toBe("ready");
+
+    // Put the project back the way an earlier Egg left it: the file inside each release, the unit reading current/.env.
+    await sh(`set -e; p='${proj()}'
+for id in ${l1.releaseId} ${l2.releaseId}; do mv "$p/env/$id.env" "$p/releases/$id/.env"; done
+rm -f "$p/current.env"
+sed -i "s|^EnvironmentFile=.*|EnvironmentFile=$p/current/.env|" '${home()}/units/egg-demo-app.service'`);
+    expect(await sh(`grep '^EnvironmentFile=' ${home()}/units/egg-demo-app.service`)).toBe(`EnvironmentFile=${proj()}/current/.env`);
+
+    const rb = await rollback(userId, l1.id);
+    await runRollbackJob(rb.id, deps);
+    const done = await ctx.db.select().from(schema.deployments).where(eq(schema.deployments.id, rb.id)).get();
+    expect(done?.state, done?.error ?? "").toBe("ready");
+    expect(await answer(project.port)).toBe("L1:legacy-one");
+    // The target's own .env is out of its folder, and the unit now reads the link.
+    expect(await sh(`test -e '${proj()}/releases/${l1.releaseId}/.env' && echo inside || echo clean`)).toBe("clean");
+    expect(await sh(`stat -c %a '${proj()}/env/${l1.releaseId}.env'`)).toBe("600");
+    expect(await sh(`grep '^EnvironmentFile=' ${home()}/units/egg-demo-app.service`)).toBe(`EnvironmentFile=${proj()}/current.env`);
+
+    // The next deploy moves the other old release's file out of its folder too.
+    files = nodeApp("L3");
+    const l3 = await deploy();
+    expect(l3.state, l3.error ?? "").toBe("ready");
+    expect(await sh(`ls -A ${proj()}/releases/*/.env 2>/dev/null | wc -l`)).toBe("0");
+    expect(await sh(`cat '${proj()}/env/${l2.releaseId}.env'`)).toBe('GREETING="legacy-two"');
+  }, DEPLOY_LOOP_TIMEOUT * 2);
 });

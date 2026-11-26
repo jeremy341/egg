@@ -107,6 +107,10 @@ export async function requestProjectCleanup(userId: string, projectId: string) {
   const job = createJobRow(userId, "project", projectId, now);
   try {
     await db.transaction(async (tx) => {
+      const adoption = await tx.select({ id: schema.adoptionPlans.id }).from(schema.adoptionPlans)
+        .innerJoin(schema.projects, eq(schema.projects.id, schema.adoptionPlans.projectId))
+        .where(and(eq(schema.projects.serverId, project.serverId), eq(schema.adoptionPlans.state, "executing"))).get();
+      if (adoption) throw new HttpError(409, "An app cutover on this server needs to finish before cleanup.", "adoption_in_progress");
       if (await userCleanupExists(tx, userId)) {
         throw new HttpError(409, "Another cleanup is already in progress for this account.", "cleanup_in_progress");
       }
@@ -137,6 +141,9 @@ export async function requestAccountCleanup(userId: string, userName: string, ty
   const now = new Date();
   const job = createJobRow(userId, "account", null, now);
   await db.transaction(async (tx) => {
+    const adoption = await tx.select({ id: schema.adoptionPlans.id }).from(schema.adoptionPlans)
+      .where(and(eq(schema.adoptionPlans.userId, userId), eq(schema.adoptionPlans.state, "executing"))).get();
+    if (adoption) throw new HttpError(409, "An app cutover needs to finish before cleanup.", "adoption_in_progress");
     if (await userCleanupExists(tx, userId)) {
       throw new HttpError(409, "Cleanup is already in progress for this account.", "cleanup_in_progress");
     }
@@ -319,6 +326,10 @@ async function cleanItem(userId: string, itemId: string, deps: CleanupDeps, now:
   const db = await getDb();
   const item = await db.select().from(schema.cleanupItems).where(eq(schema.cleanupItems.id, itemId)).get();
   if (!item) throw new Error("Cleanup target no longer exists.");
+  const adoption = await db.select({ id: schema.adoptionPlans.id }).from(schema.adoptionPlans)
+    .innerJoin(schema.projects, eq(schema.projects.id, schema.adoptionPlans.projectId))
+    .where(and(eq(schema.projects.serverId, item.serverId), eq(schema.adoptionPlans.state, "executing"))).get();
+  if (adoption) return { wait: true, step: "waiting_for_adoption" as const };
   const running = await activeJobsForProject(item.projectId);
   if (running) return { wait: true, step: "waiting_for_deployments" as const };
   const remoteOps = await waitForRemoteOperations(userId, item.serverId, deps, now);

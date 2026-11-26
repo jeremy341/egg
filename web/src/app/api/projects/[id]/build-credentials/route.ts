@@ -9,8 +9,9 @@ import { authed, handle, ok } from "@/server/http";
 type Ctx = { params: Promise<{ id: string }> };
 
 /**
- * Make the three build credentials for GitHub builds (upload, preview variables, production variables),
- * replacing any earlier set. The tokens are returned once and only their hashes are stored.
+ * Make the four build credentials for GitHub builds (upload and variables, each for preview and for production),
+ * replacing any earlier set. The tokens are returned once and only their hashes are stored. The production pair
+ * belongs in a GitHub Environment secret, the preview pair in repository secrets.
  */
 export const POST = handle<Ctx>(async (_req, { params }) => {
   const user = await authed();
@@ -18,7 +19,8 @@ export const POST = handle<Ctx>(async (_req, { params }) => {
   const made = await createBuildCredentialsForUser(user.id, id);
   return NextResponse.json(
     {
-      uploadToken: made.uploadToken,
+      previewUploadToken: made.previewUploadToken,
+      productionUploadToken: made.productionUploadToken,
       previewEnvToken: made.previewEnvToken,
       productionEnvToken: made.productionEnvToken,
       createdAt: made.createdAt.toISOString(),

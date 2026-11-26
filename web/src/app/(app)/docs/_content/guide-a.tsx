@@ -948,6 +948,16 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
           runs again at the start of every deploy, before anything is written.
         </li>
         <li>
+          <B>Show on Egg Homepage</B> is off for every project. It is separate from the public status page. Turning it
+          on lists the project’s latest deployments on the public Egg homepage: the first line of the commit message,
+          the short commit, the branch, the state, Production or Preview, the time and the repository name, each linking to
+          the commit on GitHub. Build logs, your server, ports and environment variables are never shown. Only the owner
+          can turn it on, and only for a repository imported through the GitHub App that GitHub says is public: Egg asks
+          GitHub when you press <B>Show on homepage</B> and again each time the list is built, at most once a minute. A
+          private or unconfirmed repository is refused with a message, and one that turns private leaves the homepage
+          within a minute. Press <B>Stop showing</B> to take the project off.
+        </li>
+        <li>
           <B>Delete Project</B> asks you to type the project name. With “Also stop the service and delete releases
           on NAME.hackclub.app” ticked, which is the default, the app goes offline. The service, the production and
           preview releases and the <C>current</C> link are removed from the container, but only if Egg created
@@ -1017,8 +1027,8 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
           ],
           [
             "Static site",
-            "Builds if there is a build script, then ships only the Output directory. It is served with Python 3, or a short built-in Node.js server if Python is missing.",
-            <C key="s">python3 -m http.server PORT --bind 0.0.0.0</C>,
+            "Builds if there is a build script, then ships only the Output directory. It is served by a short built-in server run with Python 3, or with Node.js if Python is missing. That server answers only GET and HEAD, shows no folder listings, and refuses any path that has a part starting with a dot (such as .env or .git) and any link that points outside the folder.",
+            <C key="s">Egg’s static server on PORT</C>,
           ],
           ["Custom command", "No detection and no install on the container. You give the install, build and start commands.", "Your command"],
         ]}
@@ -1624,7 +1634,8 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
           At deploy time the values are passed to the build on your container as ordinary environment variables, so
           any install or build script, including those of your dependencies, can read them. For the build they are
           written to a file with permissions 600 that Egg deletes when the build ends. They are also written to a{" "}
-          <C>.env</C> file at the top of the release on your container with permissions 600, as{" "}
+          file in the project’s <C>env/</C> folder on your container, named after the release, with permissions 600 and never
+          inside the release folder, because a static site serves that folder. They are written as{" "}
           <C>NAME=&quot;value&quot;</C> lines for systemd. Line breaks in a value become <C>\n</C>. An empty value
           is left out of the file, so the app sees the variable as unset rather than empty.
         </li>
@@ -1640,8 +1651,8 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
           counts as two variables.
         </li>
       </List>
-      <Callout tone="note" title="Release .env files are not shown in the dashboard or the API">
-        The Files page and the API both refuse to open <C>current/.env</C> and <C>releases/ID/.env</C>. The Files page
+      <Callout tone="note" title="Variables files are not shown in the dashboard or the API">
+        The Files page and the API both refuse to open anything in <C>env/</C> and <C>current.env</C>, and the <C>.env</C> that releases made before the move still hold in <C>current/</C> and <C>releases/ID/</C>. The Files page
         says “This file holds the project’s environment variable values, so it is not shown here. Change the values
         in the project’s settings.” and the API answers 403. A terminal on your container can read the file, which is
         one reason the Terminal switch is off by default.
@@ -2321,6 +2332,32 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
           app.
         </>
       )}
+      <H2 id="github-actions" title="Building on GitHub Actions" />
+      <P>
+        A project can build on GitHub and send Egg the finished release, instead of building on your container. The
+        project settings make the workflow file for you, and the GitHub build card there shows the steps. The workflow
+        reads four credentials. Egg shows each value once, when you make the build credentials.
+      </P>
+      <List>
+        <li>
+          <B>Production.</B> <C>EGG_UPLOAD_PRODUCTION_TOKEN</C> and <C>EGG_ENV_PRODUCTION_TOKEN</C> are secrets of a GitHub
+          Environment named <C>egg-production</C> (Settings, Environments). Limit that environment to the production branch.
+          You can also turn on Required reviewers, so a person approves each production build.
+        </li>
+        <li>
+          <B>Previews.</B> <C>EGG_UPLOAD_PREVIEW_TOKEN</C> and <C>EGG_ENV_PREVIEW_TOKEN</C> are repository secrets.
+        </li>
+        <li>
+          <B>Never save the two production values as repository secrets.</B> A repository secret can be read by a workflow
+          that someone edits on any branch.
+        </li>
+      </List>
+      <Callout tone="warning" title="Treat workflow editors as trusted operators">
+        Test connection cannot see your GitHub secrets or environment settings, so check by hand that the production
+        values are in the <C>egg-production</C> environment and not in the repository. Anyone who can edit workflows can run
+        code with the preview credentials and with whatever else the repository allows. Roles in Egg do not isolate Nest
+        accounts from that.
+      </Callout>
       <H2 id="github-reference" title="Limits, errors and an example" />
       {limits("github", [
         ["Repositories listed", "5 pages of 100, newest push first", "Repositories beyond that are not listed. Paste the address instead.", "server/github/app.ts"],

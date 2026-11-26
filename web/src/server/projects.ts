@@ -15,6 +15,7 @@ import { moveDomainsToPort } from "@/server/domains";
 import { getServerForUser } from "@/server/servers";
 import { assertCleanupAllowsWork } from "@/server/cleanup-guards";
 import { maintenanceBlocksUser } from "@/server/maintenance";
+import { projectReadableBy } from "@/server/project-roles";
 
 export type ProjectRow = typeof schema.projects.$inferSelect;
 export type DeploymentRow = typeof schema.deployments.$inferSelect;
@@ -75,6 +76,7 @@ export const createProjectInput = z.object({
   outputDir: z.string().trim().max(200).nullable().optional(),
   /** Where builds run: "container" (the default) or "github" (a GitHub Actions workflow uploads the release). */
   buildLocation: z.enum(BUILD_LOCATIONS).optional(),
+  buildCacheEnabled: z.boolean().optional(),
   port,
   healthPath: z.string().trim().max(200).regex(/^\//, "Must start with /").default("/"),
   autoDeploy: z.boolean().default(true),
@@ -114,6 +116,24 @@ async function assertOwned(userId: string, projectId: string): Promise<ProjectRo
   return row;
 }
 export const getProjectForUser = assertOwned;
+
+/** Explicitly scoped read access; callers must not return this row directly. */
+export async function getReadableProject(userId: string, projectId: string): Promise<ProjectRow> {
+  const db = await getDb();
+  const project = await db.select().from(schema.projects).where(and(eq(schema.projects.id, projectId), projectReadableBy(userId))).get();
+  if (!project) throw notFound("Project not found");
+  return project;
+}
+
+async function getDevelopableProject(userId: string, projectId: string): Promise<ProjectRow> {
+  const db = await getDb();
+  const project = await db.select().from(schema.projects).where(and(eq(schema.projects.id, projectId), sql`(
+    ${schema.projects.userId} = ${userId} or exists (
+      select 1 from project_members pm where pm.project_id = ${schema.projects.id} and pm.user_id = ${userId} and pm.role = 'developer'
+    ))`)).get();
+  if (!project) throw notFound("Project not found");
+  return project;
+}
 
 export async function listProjects(userId: string) {
   const db = await getDb();
@@ -210,6 +230,7 @@ export async function createProject(userId: string, raw: unknown): Promise<Proje
       startCommand: input.startCommand || null,
       outputDir: input.outputDir || null,
       buildLocation: input.buildLocation ?? "container",
+      buildCacheEnabled: input.buildCacheEnabled ?? false,
       port: input.port,
       healthPath: input.healthPath,
       autoDeploy: input.adopted ? false : input.autoDeploy,
@@ -275,38 +296,41 @@ export async function setEnvVar(userId: string, projectId: string, raw: unknown)
   const project = await assertOwned(userId, projectId);
   const db = await getDb();
 
-  const existing = await db
-    .select({ id: schema.envVars.id })
-    .from(schema.envVars)
-    .where(
-      and(
-        eq(schema.envVars.projectId, project.id),
-        eq(schema.envVars.key, input.key),
-        eq(schema.envVars.target, input.target)
-      )
-    )
-    .get();
-  const valueEnc = seal(input.value, `env:${project.id}:${input.key}:${input.target}`);
-  if (existing) {
-    await db.update(schema.envVars).set({ valueEnc }).where(eq(schema.envVars.id, existing.id));
-  } else {
-    const count = await db
-      .select({ n: sql<number>`count(*)` })
+  await db.transaction(async (tx) => {
+    await assertCleanupAllowsWork(tx, userId, project.id);
+    const existing = await tx
+      .select({ id: schema.envVars.id })
       .from(schema.envVars)
-      .where(eq(schema.envVars.projectId, project.id))
+      .where(
+        and(
+          eq(schema.envVars.projectId, project.id),
+          eq(schema.envVars.key, input.key),
+          eq(schema.envVars.target, input.target)
+        )
+      )
       .get();
-    if ((count?.n ?? 0) >= 100) {
-      throw new HttpError(400, "A project can have up to 100 variables.", "limit");
+    const valueEnc = seal(input.value, `env:${project.id}:${input.key}:${input.target}`);
+    if (existing) {
+      await tx.update(schema.envVars).set({ valueEnc }).where(eq(schema.envVars.id, existing.id));
+    } else {
+      const count = await tx
+        .select({ n: sql<number>`count(*)` })
+        .from(schema.envVars)
+        .where(eq(schema.envVars.projectId, project.id))
+        .get();
+      if ((count?.n ?? 0) >= 100) {
+        throw new HttpError(400, "A project can have up to 100 variables.", "limit");
+      }
+      await tx.insert(schema.envVars).values({
+        id: newId(),
+        projectId: project.id,
+        key: input.key,
+        valueEnc,
+        target: input.target,
+        createdAt: new Date(),
+      });
     }
-    await db.insert(schema.envVars).values({
-      id: newId(),
-      projectId: project.id,
-      key: input.key,
-      valueEnc,
-      target: input.target,
-      createdAt: new Date(),
-    });
-  }
+  });
   await audit(userId, "env.set", project.id, { name: input.key, target: input.target });
 }
 
@@ -325,9 +349,11 @@ export async function listEnvVars(userId: string, projectId: string) {
 export async function deleteEnvVar(userId: string, projectId: string, envId: string) {
   const project = await assertOwned(userId, projectId);
   const db = await getDb();
-  await db
-    .delete(schema.envVars)
-    .where(and(eq(schema.envVars.id, envId), eq(schema.envVars.projectId, project.id)));
+  await db.transaction(async (tx) => {
+    await assertCleanupAllowsWork(tx, userId, project.id);
+    await tx.delete(schema.envVars)
+      .where(and(eq(schema.envVars.id, envId), eq(schema.envVars.projectId, project.id)));
+  });
   await audit(userId, "env.delete", project.id);
 }
 
@@ -393,6 +419,12 @@ export async function enqueueDeployment(
   const db = await getDb();
   const id = newId();
   const enqueue = () => db.transaction(async (tx) => {
+    if (input.triggeredBy && input.triggeredBy !== project.userId) {
+      const member = await tx.select({ role: schema.projectMembers.role }).from(schema.projectMembers).where(and(
+        eq(schema.projectMembers.projectId, project.id), eq(schema.projectMembers.userId, input.triggeredBy)
+      )).get();
+      if (member?.role !== "developer") throw notFound("Project not found");
+    }
     await assertCleanupAllowsWork(tx, project.userId, project.id);
     if (await maintenanceBlocksUser(project.userId, tx)) throw new HttpError(503, "Maintenance is active. New deployments are paused.", "maintenance");
     const port = input.port ??
@@ -417,6 +449,7 @@ export async function enqueueDeployment(
       id: newId(),
       type: jobType,
       deploymentId: id,
+      projectId: project.id,
       state: "queued",
       createdAt: new Date(),
     });
@@ -441,7 +474,7 @@ export async function deployBranch(
   projectId: string,
   branchName?: string
 ) {
-  const project = await assertOwned(userId, projectId);
+  const project = await getDevelopableProject(userId, projectId);
   const b = branchName ?? project.productionBranch;
   return enqueueDeployment(project, {
     env: b === project.productionBranch ? "production" : "preview",
@@ -461,7 +494,7 @@ function viaMeta(via: ActionVia): Record<string, string> {
 
 /** Build the same commit again. */
 export async function redeploy(userId: string, deploymentId: string, via: ActionVia = {}) {
-  const { project, dep } = await ownedDeployment(userId, deploymentId);
+  const { project, dep } = await developerDeployment(userId, deploymentId);
   await audit(userId, "deploy.redeploy", project.id, { branch: dep.branch, ...viaMeta(via) });
   return enqueueDeployment(project, {
     env: dep.env,
@@ -476,7 +509,7 @@ export async function redeploy(userId: string, deploymentId: string, via: Action
 
 /** Point production back at an earlier release that is still on the server. */
 export async function rollback(userId: string, deploymentId: string, via: ActionVia = {}) {
-  const { project, dep } = await ownedDeployment(userId, deploymentId);
+  const { project, dep } = await developerDeployment(userId, deploymentId);
   if (dep.env !== "production") {
     throw new HttpError(400, "Only production deployments can be rolled back to.", "validation");
   }
@@ -511,7 +544,7 @@ export async function rollback(userId: string, deploymentId: string, via: Action
 }
 
 export async function cancelDeployment(userId: string, deploymentId: string, via: ActionVia = {}) {
-  const { project, dep } = await ownedDeployment(userId, deploymentId);
+  const { project, dep } = await developerDeployment(userId, deploymentId);
   const db = await getDb();
   // This conditional write races atomically with the worker's activation CAS.
   // Exactly one side wins: a cancel before activation, or the activation lock.
@@ -548,6 +581,16 @@ export async function ownedDeployment(userId: string, deploymentId: string) {
   return { dep, project };
 }
 
+async function scopedDeployment(userId: string, deploymentId: string, role: "viewer" | "developer") {
+  const db = await getDb();
+  const dep = await db.select().from(schema.deployments).where(eq(schema.deployments.id, deploymentId)).get();
+  if (!dep) throw notFound("Deployment not found");
+  const project = role === "viewer" ? await getReadableProject(userId, dep.projectId) : await getDevelopableProject(userId, dep.projectId);
+  return { dep, project };
+}
+export const readableDeployment = (userId: string, deploymentId: string) => scopedDeployment(userId, deploymentId, "viewer");
+const developerDeployment = (userId: string, deploymentId: string) => scopedDeployment(userId, deploymentId, "developer");
+
 export async function listDeployments(userId: string, projectId?: string, limit = 50) {
   return (await listDeploymentsPage(userId, { projectId, limit })).rows;
 }
@@ -573,7 +616,7 @@ export async function listDeploymentsPage(
 }
 
 export async function deploymentLogs(userId: string, deploymentId: string, afterId = 0, limit = 1000) {
-  await ownedDeployment(userId, deploymentId);
+  await readableDeployment(userId, deploymentId);
   const db = await getDb();
   return db
     .select()

@@ -4,7 +4,7 @@ import { getFeatures } from "@/server/analytics-config";
 import { lastDays } from "@/server/analytics-events";
 import { share } from "@/server/analytics-funnel";
 import { getDb, schema } from "@/server/db";
-import { getProjectForUser } from "@/server/projects";
+import { getReadableProject } from "@/server/projects";
 
 /**
  * Returning visitors and the live view, both built on the retention code: an
@@ -103,7 +103,7 @@ export function splitReturning(
 }
 
 export async function retentionSummary(userId: string, projectId: string, now = new Date()): Promise<RetentionSummary> {
-  const project = await getProjectForUser(userId, projectId);
+  const project = await getReadableProject(userId, projectId);
   const db = await getDb();
   const t = now.getTime();
   const base = and(eq(schema.pageviews.projectId, project.id), sql`${schema.pageviews.vid} is not null`);
@@ -176,7 +176,7 @@ export type LiveSummary = {
  * in that window: those with a page view or a heartbeat.
  */
 export async function liveSummary(userId: string, projectId: string, now = new Date()): Promise<LiveSummary> {
-  const project = await getProjectForUser(userId, projectId);
+  const project = await getReadableProject(userId, projectId);
   const features = await getFeatures(project.id);
   const db = await getDb();
   const from = new Date(now.getTime() - LIVE_WINDOW_MS);

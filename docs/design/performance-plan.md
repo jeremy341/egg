@@ -1,6 +1,6 @@
 # Plan: make Egg fast and light
 
-Status: plan only. Nothing here is built. Numbers marked "measured" come from earlier checks in this repo; numbers marked "to measure" need a baseline first.
+Status: the backend package is implemented; current behavior and verification boundaries are recorded in [backend-efficiency.md](../backend-efficiency.md). The proposals below are historical, including node_modules reuse and broad SSH pooling, which are not the chosen implementation. Numbers marked "measured" come from earlier checks in this repo; numbers marked "to measure" need a baseline first.
 
 ## Where the time and resources go
 

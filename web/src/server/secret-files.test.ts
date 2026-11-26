@@ -5,6 +5,8 @@ describe("isSecretFile", () => {
   it("names the live release's and every release's top-level .env", () => {
     expect(isSecretFile("current/.env")).toBe(true);
     expect(isSecretFile("releases/abc123/.env")).toBe(true);
+    expect(isSecretFile("env/11111111-1111-4111-8111-111111111111.env")).toBe(true);
+    expect(isSecretFile("current.env")).toBe(true);
   });
 
   it("names only Egg's temporary build-environment files as secrets", () => {

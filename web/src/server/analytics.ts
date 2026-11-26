@@ -9,7 +9,7 @@ import { config } from "@/server/config";
 import { randomToken, sha256Hex } from "@/server/crypto";
 import { getDb, schema } from "@/server/db";
 import { HttpError } from "@/server/http";
-import { getProjectForUser } from "@/server/projects";
+import { getProjectForUser, getReadableProject } from "@/server/projects";
 
 export { cleanPath, cleanReferrer };
 
@@ -215,7 +215,7 @@ export async function analyticsSummary(
   days = 30,
   now = new Date()
 ): Promise<AnalyticsSummary> {
-  const project = await getProjectForUser(userId, projectId);
+  const project = await getReadableProject(userId, projectId);
   const db = await getDb();
   const since = new Date(now.getTime() - days * 86_400_000);
   const where = and(eq(schema.pageviews.projectId, project.id), gte(schema.pageviews.at, since));
@@ -276,7 +276,7 @@ export async function campaignsSummary(
   days = 30,
   now = new Date()
 ): Promise<CampaignsSummary> {
-  const project = await getProjectForUser(userId, projectId);
+  const project = await getReadableProject(userId, projectId);
   const db = await getDb();
   const since = new Date(now.getTime() - days * 86_400_000);
   const rows = await db

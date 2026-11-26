@@ -173,6 +173,9 @@ export async function withBuildLock<T>(
     const lock = await buildLockForServer(serverId);
     // Released between the two reads: try again at once.
     if (!lock?.holder) continue;
+    if (lock.holder.startsWith("recovery:")) {
+      throw new BuildLockError("An operator recovery guard is present and must be resolved before another build can start.");
+    }
     if (!lock.at || Date.now() - lock.at.getTime() >= staleAfterMs) {
       if (!options.verifyStale) {
         throw new BuildLockError(

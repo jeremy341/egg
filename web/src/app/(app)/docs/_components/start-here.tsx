@@ -4,10 +4,10 @@ import { docsHref, sectionTitle } from "../_data/nav";
 import { SUMMARIES } from "../_data/summaries";
 import { H2_CLASS } from "./prose";
 
-const START = ["overview", "quickstart"];
+const START = ["overview", "getting-started", "quickstart"];
 
 /**
- * Where to begin: the two pages to read first, as hairline rows like the page
+ * Where to begin: the pages to read first, as hairline rows like the page
  * list below them. The whole row is the link target.
  */
 export function StartHere() {

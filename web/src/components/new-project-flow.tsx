@@ -317,7 +317,7 @@ function Configure({
         </>
       ) : null}
 
-      <div className="mt-5 grid gap-4 sm:grid-cols-2">
+      <div data-tour="project-settings" className="mt-5 grid gap-4 sm:grid-cols-2">
         <div>
           <Label htmlFor="np-server">Nest server</Label>
           <NativeSelect id="np-server" value={serverId} onChange={(e) => setServerId(e.target.value)}>
@@ -437,7 +437,11 @@ function Configure({
             </p>
           ) : null}
         </div>
-        {check.status === "ok" ? <ProjectConflicts conflicts={check.conflicts} className="mt-3" /> : null}
+        {check.status === "ok" ? (
+          <div data-tour={check.conflicts.length > 0 ? "container-conflicts" : undefined}>
+            <ProjectConflicts conflicts={check.conflicts} className="mt-3" />
+          </div>
+        ) : null}
         {blocking.length > 0 ? (
           <Alert tone="error" role="alert" className="mt-3">
             <p id="np-blocked">
@@ -467,6 +471,7 @@ function Configure({
       ) : null}
 
       <Button
+        data-tour="deploy"
         className="mt-5 h-10 w-full"
         onClick={() => void submit()}
         loading={busy}
@@ -665,7 +670,7 @@ export function NewProjectFlow({
         </h2>
 
         {hasInstall ? (
-          <>
+          <div data-tour="repo-source" data-tour-state="installed">
             <div className="mb-3 flex flex-wrap items-center gap-2">
               <label htmlFor="gh-install" className="sr-only">
                 GitHub account
@@ -720,9 +725,13 @@ export function NewProjectFlow({
                 </a>
               </p>
             ) : null}
-          </>
+          </div>
         ) : github.configured ? (
-          <div className="rounded-lg bg-card p-5 shadow-border-small">
+          <div
+            data-tour="repo-source"
+            data-tour-state="not-installed"
+            className="rounded-lg bg-card p-5 shadow-border-small"
+          >
             <p className="font-medium tracking-[-0.02em]">Connect GitHub</p>
             <p className="mt-1 text-muted-foreground">
               Install the Egg GitHub App to pick repositories, deploy private ones, and deploy on every push.
@@ -741,7 +750,11 @@ export function NewProjectFlow({
           </div>
         ) : null}
 
-        <form onSubmit={useUrl} className="mt-6 rounded-lg bg-card p-5 shadow-border-small">
+        <form
+          onSubmit={useUrl}
+          {...(github.configured ? {} : { "data-tour": "repo-source", "data-tour-state": "not-configured" })}
+          className="mt-6 rounded-lg bg-card p-5 shadow-border-small"
+        >
           <label htmlFor="repo-url" className="font-medium tracking-[-0.02em]">
             {github.configured ? "Or use a public repository URL" : "Public repository URL"}
           </label>

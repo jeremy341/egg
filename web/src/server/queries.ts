@@ -1,5 +1,5 @@
 import { cache } from "react";
-import { and, asc, count, desc, eq, gte, inArray } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, or, sql } from "drizzle-orm";
 import { getDb, schema } from "@/server/db";
 import type { BuildLocation } from "@/server/db/schema";
 import { isNestName, ownedParentOf } from "@/server/domain-policy";
@@ -7,7 +7,8 @@ import { notFound } from "@/server/http";
 import { pageLimit, selectDeploymentPage, type DeploymentFilter } from "@/server/deployment-page";
 import { getServerForUser, listServers, publicServer } from "@/server/servers";
 import { notifySummary } from "@/server/notify";
-import { getProjectForUser } from "@/server/projects";
+import { getReadableProject } from "@/server/projects";
+import { projectReadableBy } from "@/server/project-roles";
 import { statusUrl } from "@/server/status-page";
 import { usageFromProbe } from "@/server/runtime-info";
 import { durationText, timeAgo, uiState, type UiState } from "@/lib/status";
@@ -50,6 +51,10 @@ export type ProjectView = {
   monitorSince: string | null;
   analyticsKey: string | null;
   statusUrl: string | null;
+  /** Owner opt-in: the latest deployments are listed on the Egg homepage (public repositories only). */
+  homepageFeed: boolean;
+  /** True when Egg can check the repository with GitHub, which listing on the homepage needs. */
+  homepageFeedPossible: boolean;
 };
 
 export type DeploymentView = {
@@ -84,12 +89,13 @@ type DeploymentRow = typeof schema.deployments.$inferSelect;
 
 function toDeploymentView(
   d: DeploymentRow,
-  project: { id: string; slug: string; name: string; repoFullName: string | null }
+  project: { id: string; userId: string; slug: string; name: string; repoFullName: string | null },
+  userId: string
 ): DeploymentView {
   return {
     id: d.id,
     projectId: project.id,
-    projectSlug: project.slug,
+    projectSlug: project.userId === userId ? project.slug : `~${project.id}`,
     projectName: project.name,
     repo: project.repoFullName,
     env: d.env,
@@ -118,16 +124,15 @@ async function loadProjectViews(userId: string): Promise<ProjectView[]> {
     .select({ p: schema.projects, nest: schema.servers.nestUsername })
     .from(schema.projects)
     .innerJoin(schema.servers, eq(schema.servers.id, schema.projects.serverId))
-    .where(eq(schema.projects.userId, userId))
+    .where(projectReadableBy(userId))
     .orderBy(desc(schema.projects.createdAt));
   if (projects.length === 0) return [];
 
   const deployments = await db
     .select({ d: schema.deployments })
-    .from(schema.deployments)
-    .innerJoin(schema.projects, eq(schema.projects.id, schema.deployments.projectId))
-    .where(eq(schema.projects.userId, userId))
-    .orderBy(desc(schema.deployments.createdAt));
+    .from(schema.projects)
+    .innerJoin(schema.deployments, sql`${schema.deployments.id} = (select id from deployments latest where latest.project_id = ${schema.projects.id} order by latest.created_at desc, latest.id desc limit 1)`)
+    .where(projectReadableBy(userId));
   const latest = new Map<string, DeploymentRow>();
   for (const { d } of deployments) {
     if (!latest.has(d.projectId)) latest.set(d.projectId, d);
@@ -136,13 +141,20 @@ async function loadProjectViews(userId: string): Promise<ProjectView[]> {
   const domains = await db
     .select()
     .from(schema.domains)
-    .where(eq(schema.domains.userId, userId));
+    .where(inArray(schema.domains.projectId, projects.map(({ p }) => p.id)));
+  const domainsByProject = new Map<string, string[]>();
+  for (const domain of domains) {
+    if (!domain.projectId) continue;
+    const list = domainsByProject.get(domain.projectId) ?? [];
+    list.push(domain.domain);
+    domainsByProject.set(domain.projectId, list);
+  }
 
   return projects.map(({ p, nest }) => {
     const d = latest.get(p.id);
     return {
       id: p.id,
-      slug: p.slug,
+      slug: p.userId === userId ? p.slug : `~${p.id}`,
       name: p.name,
       repo: p.repoFullName,
       repoUrl: p.repoUrl,
@@ -158,7 +170,7 @@ async function loadProjectViews(userId: string): Promise<ProjectView[]> {
       notify: notifySummary(p),
       serverId: p.serverId,
       nestUsername: nest,
-      domains: domains.filter((x) => x.projectId === p.id).map((x) => x.domain),
+      domains: domainsByProject.get(p.id) ?? [],
       state: d ? uiState(d.state) : null,
       lastCommit: d?.commitMessage ?? null,
       lastSha: d?.commitSha?.slice(0, 7) ?? null,
@@ -169,6 +181,8 @@ async function loadProjectViews(userId: string): Promise<ProjectView[]> {
       monitorSince: p.monitorSince ? timeAgo(p.monitorSince) : null,
       analyticsKey: p.analyticsKey,
       statusUrl: p.statusKey ? statusUrl(p.statusKey) : null,
+      homepageFeed: p.homepageFeed,
+      homepageFeedPossible: Boolean(p.repoFullName) && p.installationId !== null,
     };
   });
 }
@@ -203,7 +217,7 @@ export async function deploymentPage(
     filter: options.filter,
     limit: pageLimit(options.limit),
   });
-  return { rows: rows.map(({ d, p }) => toDeploymentView(d, p)), nextCursor };
+  return { rows: rows.map(({ d, p }) => toDeploymentView(d, p, userId)), nextCursor };
 }
 
 /** The newest deployments in one list, 100 unless `limit` says otherwise. */
@@ -215,7 +229,7 @@ export async function deploymentViews(
     projectId: options.projectId,
     limit: Math.max(1, Math.floor(options.limit ?? 100)),
   });
-  return rows.map(({ d, p }) => toDeploymentView(d, p));
+  return rows.map(({ d, p }) => toDeploymentView(d, p, userId));
 }
 
 export async function deploymentView(userId: string, deploymentId: string) {
@@ -224,7 +238,7 @@ export async function deploymentView(userId: string, deploymentId: string) {
     .select({ d: schema.deployments, p: schema.projects })
     .from(schema.deployments)
     .innerJoin(schema.projects, eq(schema.projects.id, schema.deployments.projectId))
-    .where(and(eq(schema.deployments.id, deploymentId), eq(schema.projects.userId, userId)))
+    .where(and(eq(schema.deployments.id, deploymentId), projectReadableBy(userId)))
     .get();
   if (!row) throw notFound("Deployment not found");
   const domains = await db
@@ -232,7 +246,7 @@ export async function deploymentView(userId: string, deploymentId: string) {
     .from(schema.domains)
     .where(eq(schema.domains.projectId, row.p.id));
   return {
-    deployment: toDeploymentView(row.d, row.p),
+    deployment: toDeploymentView(row.d, row.p, userId),
     project: { id: row.p.id, slug: row.p.slug, name: row.p.name, port: row.p.port },
     domains: domains.map((x) => x.domain),
   };
@@ -306,7 +320,7 @@ export async function domainViews(userId: string) {
     .from(schema.domains)
     .innerJoin(schema.servers, eq(schema.servers.id, schema.domains.serverId))
     .leftJoin(schema.projects, eq(schema.projects.id, schema.domains.projectId))
-    .where(eq(schema.domains.userId, userId))
+    .where(or(eq(schema.domains.userId, userId), projectReadableBy(userId)))
     .orderBy(schema.domains.createdAt);
   return rows.map(({ d, nest, project }) => {
     // A Nest name, or a subdomain of a domain already verified here, has no record to add.
@@ -347,7 +361,7 @@ export async function projectMetrics(
   projectId: string,
   hours = 24
 ): Promise<ProjectSamplePoint[]> {
-  const project = await getProjectForUser(userId, projectId);
+  const project = await getReadableProject(userId, projectId);
   const db = await getDb();
   const since = new Date(Date.now() - hours * 3_600_000);
   const rows = await db

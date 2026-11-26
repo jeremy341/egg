@@ -5,12 +5,14 @@ import { cn } from "@/lib/utils";
 
 const SECTIONS = [
   { id: "run-heading", label: "Build and Run" },
+  { id: "builds-heading", label: "Where Builds Run" },
   { id: "env-heading", label: "Environment Variables" },
   { id: "hook-heading", label: "Deploy Hook" },
   { id: "jobs-heading", label: "Scheduled Jobs" },
   { id: "notify-heading", label: "Notifications" },
   { id: "alerts-heading", label: "Alerts" },
   { id: "status-page-heading", label: "Status Page" },
+  { id: "homepage-feed-heading", label: "Egg Homepage" },
   { id: "cleanup-project-heading", label: "Clean up project" },
   { id: "danger-heading", label: "Delete Project" },
 ] as const;

@@ -31,6 +31,7 @@ describe("pages that stay public", () => {
     "/stats",
     "/nest-status",
     "/api/status/nest",
+    "/api/public/deployments",
     "/status/abc",
     "/api/analytics/script",
     "/api/collect/x",
@@ -45,6 +46,45 @@ describe("pages that stay public", () => {
   });
 });
 
+describe("GitHub build endpoints", () => {
+  it("keeps the scoped env lookup public to bearer callers without opening the rest of /api/builds", () => {
+    expect(proxy(request("/api/builds/env")).status).toBe(200);
+    expect(proxy(request("/api/builds/other")).status).toBe(401);
+    expect(proxy(request("/api/builds/upload/extra")).status).toBe(401);
+  });
+});
+
+describe("the anonymous security report intake", () => {
+  const post = (path: string) => new NextRequest(`http://localhost:3100${path}`, { method: "POST" });
+
+  it("lets a signed-out visitor POST a report to /api/security-reports", () => {
+    const res = proxy(post("/api/security-reports"));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("x-middleware-next")).toBe("1");
+  });
+
+  it("lets a signed-out visitor read the enabled flag the public form asks for", () => {
+    const res = proxy(request("/api/security-reports"));
+    expect(res.headers.get("x-middleware-next")).toBe("1");
+  });
+
+  it.each(["/api/security-reports/", "/api/security-reports/anything", "/api/security-reports/x/evidence/0"])(
+    "keeps %s closed to signed-out visitors",
+    (path) => {
+      const res = proxy(post(path));
+      expect(res.status).toBe(401);
+    }
+  );
+
+  it.each(["/api/admin/security-reports", "/api/admin/security-reports/abc", "/api/admin/security-reports/abc/evidence/0"])(
+    "keeps the administrator inbox %s closed to signed-out visitors",
+    (path) => {
+      expect(proxy(request(path)).status).toBe(401);
+      expect(proxy(post(path)).status).toBe(401);
+    }
+  );
+});
+
 describe("the proxy matcher", () => {
   it("skips static files by extension only, not any path that merely ends in those letters", async () => {
     const { config } = await import("@/proxy");
@@ -57,13 +97,13 @@ describe("the proxy matcher", () => {
     expect(asRegex.test("/api/tokens/mysvg")).toBe(false);
   });
 
-  it("skips the two build routes so a 500 MB upload streams straight through, and nothing else under /api", async () => {
+  it("skips the large upload route but keeps the small env route under the proxy", async () => {
     const { config } = await import("@/proxy");
     const [pattern] = config.matcher;
     const skip = pattern.slice(pattern.indexOf("(?!") + 3, pattern.indexOf(").*)"));
     const asRegex = new RegExp(`^/(?:${skip.replace(/\//g, "\/")})`);
     expect(asRegex.test("/api/builds/upload")).toBe(true);
-    expect(asRegex.test("/api/builds/env")).toBe(true);
+    expect(asRegex.test("/api/builds/env")).toBe(false);
     expect(asRegex.test("/api/build")).toBe(false);
   });
 });

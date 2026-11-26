@@ -5,9 +5,12 @@ const nextConfig: NextConfig = {
   cacheComponents: true,
   // Reads its country database from its own folder, so it is loaded from node_modules, not bundled.
   serverExternalPackages: ["geoip-country"],
-  // Uploads through the file manager can be 50 MB; proxy buffering defaults to 10 MB.
+  // Next.js buffers the body of every request that passes through src/proxy.ts, in memory, up to this size, and
+  // quietly cuts the rest. The routes with large bodies (build uploads, file uploads, the GitHub webhook, security
+  // reports) are skipped by the proxy matcher, so what is left needs little: JSON bodies are capped at 256 KB and
+  // a server action defaults to 1 MB. Keep this small: it is memory held per request before any handler runs.
   experimental: {
-    proxyClientMaxBodySize: "50mb",
+    proxyClientMaxBodySize: "1mb",
   },
   partialPrefetching: true,
   // Security headers on every route. script-src keeps 'unsafe-inline' on purpose: with

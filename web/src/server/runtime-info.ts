@@ -9,7 +9,8 @@ import { decodeLogCursor, pageLogLines } from "@/lib/log-page";
 import { HttpError } from "@/server/http";
 import { removeUnits } from "@/server/deploy/jobs-remote";
 import { jobUnitNames } from "@/server/scheduled-jobs";
-import { getProjectForUser } from "@/server/projects";
+import { getProjectForUser, getReadableProject } from "@/server/projects";
+import { requireProjectRole } from "@/server/project-roles";
 import { getServerForUser, withServerSession } from "@/server/servers";
 import { SshError } from "@/server/ssh/connection";
 import { probeSession, type NestProbe } from "@/server/ssh/probe";
@@ -61,8 +62,8 @@ export async function fetchRuntimeLogPage(
 ): Promise<{ lines: string[]; older: string | null }> {
   const cursor = filter.before ? decodeLogCursor(filter.before) : null;
   if (filter.before && !cursor) throw new HttpError(400, "That cursor is not valid.", "bad_cursor");
-  const project = await getProjectForUser(userId, projectId);
-  const server = await getServerForUser(userId, project.serverId);
+  const project = await getReadableProject(userId, projectId);
+  const server = await getServerForUser(project.userId, project.serverId);
   const q = search.trim().toLowerCase().slice(0, 200);
   // A search looks through the largest window the server will hand over, so
   // matches are not limited to the few lines the page already shows.
@@ -97,8 +98,9 @@ export async function fetchRuntimeLogPage(
 
 /** Restart the production service without building anything. */
 export async function restartService(userId: string, projectId: string) {
-  const project = await getProjectForUser(userId, projectId);
-  const server = await getServerForUser(userId, project.serverId);
+  await requireProjectRole(userId, projectId, "developer");
+  const project = await getReadableProject(userId, projectId);
+  const server = await getServerForUser(project.userId, project.serverId);
   const res = await withServerSession(server, (s) =>
     s.script(startUnit(unitName(project.slug)), { timeoutMs: 30_000 })
   );

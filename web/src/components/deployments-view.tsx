@@ -108,13 +108,19 @@ function appendUnique(rows: DeploymentView[], next: DeploymentView[]) {
 export function DeploymentsView({
   deployments,
   showProject = true,
-  demo = false,
+  demo: demoProp = false,
+  live = false,
   paging,
 }: {
   deployments: DeploymentView[];
   showProject?: boolean;
   /** Sample data on the homepage: only the status filter, rows are not links. */
   demo?: boolean;
+  /**
+   * The public homepage feed: the demo layout with the status filter, and each row opens its commit
+   * on GitHub. The rows carry only the feed's public fields (see lib/public-feed.ts).
+   */
+  live?: boolean;
   /**
    * One project's list, loaded a page at a time. `deployments` is the first page
    * and `nextCursor` the way to the page after it. Status, environment, time range and
@@ -123,6 +129,7 @@ export function DeploymentsView({
    */
   paging?: { projectId: string; nextCursor: string | null };
 }) {
+  const demo = demoProp || live;
   const router = useRouter();
   const searchPlaceholder = useSearchPlaceholder();
   const serverMode = Boolean(paging) && !demo;
@@ -148,6 +155,12 @@ export function DeploymentsView({
     const id = setTimeout(() => setNow(Date.now()), 0);
     return () => clearTimeout(id);
   }, []);
+
+  // The homepage frame snaps its boxes to a 30px grid after layout (see GridFrame). A filter changes
+  // how tall the list is, so ask it to snap again; it listens for resize.
+  useEffect(() => {
+    if (demo) window.dispatchEvent(new Event("resize"));
+  }, [demo, query.status]);
 
   /** Starts again from the newest page with the server-side filters of `q`. */
   const loadFirst = useCallback(
@@ -283,6 +296,7 @@ export function DeploymentsView({
       deployment={d}
       showProject={showProject}
       demo={demo}
+      live={live}
       selected={selected.has(d.id)}
       onSelectedChange={demo ? undefined : (checked) => toggle(d.id, checked)}
     />

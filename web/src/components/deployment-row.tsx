@@ -9,6 +9,7 @@ import { CommitLink } from "@/components/commit-link";
 import { DeploymentActions } from "@/components/deployment-actions";
 import { StatusDot } from "@/components/status-dot";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { commitUrl } from "@/lib/github";
 import type { DeploymentView } from "@/server/queries";
 import { cn } from "@/lib/utils";
 
@@ -39,6 +40,7 @@ export function DeploymentRow({
   deployment,
   showProject = true,
   demo = false,
+  live = false,
   selected = false,
   onSelectedChange,
 }: {
@@ -46,6 +48,11 @@ export function DeploymentRow({
   showProject?: boolean;
   /** Sample data on the homepage: no links and no actions menu. */
   demo?: boolean;
+  /**
+   * A row of the public homepage feed (implies the demo layout). The whole row opens the commit on
+   * GitHub in a new tab, and no author is shown because the feed does not carry one.
+   */
+  live?: boolean;
   selected?: boolean;
   /** When given, the row shows a checkbox for compare and bulk actions. */
   onSelectedChange?: (checked: boolean) => void;
@@ -53,6 +60,7 @@ export function DeploymentRow({
   const selectable = !demo && onSelectedChange !== undefined;
   const href = `/projects/${deployment.projectSlug}/deployments/${deployment.id}`;
   const title = deployment.commit ?? `${deployment.source} deployment`;
+  const commitHref = live ? commitUrl(deployment.repo, deployment.sha) : null;
 
   return (
     <li
@@ -61,7 +69,7 @@ export function DeploymentRow({
         "density-row relative grid grid-cols-[auto_auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 px-4 py-3 md:gap-x-4 md:gap-y-3",
         selectable && "pl-12",
         selected && "bg-[var(--ds-gray-alpha-100)]",
-        !demo &&
+        (!demo || live) &&
           "row-focus transition-colors duration-(--dur-fast) hover:bg-[var(--ds-gray-alpha-100)]",
         showProject
           ? "md:grid-cols-[150px_minmax(0,1fr)_110px_120px_272px_88px_32px]"
@@ -100,7 +108,17 @@ export function DeploymentRow({
               {deployment.projectName}
             </span>
           ) : null}
-          {demo ? (
+          {live && commitHref ? (
+            <a
+              href={commitHref}
+              target="_blank"
+              rel="noreferrer"
+              className="after:absolute after:inset-0 after:content-['']"
+            >
+              {title}
+              <span className="sr-only"> (opens the commit on GitHub in a new tab)</span>
+            </a>
+          ) : demo ? (
             title
           ) : (
             <Link href={href} className="after:absolute after:inset-0 after:content-['']">
@@ -125,7 +143,7 @@ export function DeploymentRow({
             <span className="flex shrink-0 items-center gap-1 max-md:hidden">
               <GitCommitIcon aria-hidden="true" className="size-4 shrink-0" />
               {deployment.sha ? (
-                <CommitLink repo={deployment.repo} sha={deployment.sha} link={!demo} />
+                <CommitLink repo={deployment.repo} sha={deployment.sha} link={!demo || live} />
               ) : (
                 deployment.id.slice(0, 7)
               )}
@@ -145,11 +163,13 @@ export function DeploymentRow({
         </div>
         <p className="flex shrink-0 items-center justify-end gap-2 text-muted-foreground max-md:min-w-0 max-md:justify-self-end max-sm:col-start-3">
           <span className="tabular whitespace-nowrap">{deployment.age}</span>
-          <Avatar size="sm" className="max-sm:hidden">
-            <AvatarFallback className="text-[10px] uppercase">
-              {(deployment.author ?? "?").slice(0, 2)}
-            </AvatarFallback>
-          </Avatar>
+          {live ? null : (
+            <Avatar size="sm" className="max-sm:hidden">
+              <AvatarFallback className="text-[10px] uppercase">
+                {(deployment.author ?? "?").slice(0, 2)}
+              </AvatarFallback>
+            </Avatar>
+          )}
         </p>
       </div>
 

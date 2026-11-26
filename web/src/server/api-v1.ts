@@ -30,7 +30,7 @@ import {
   cancelDeployment,
   createProjectInput,
   deployBranch,
-  getProjectForUser,
+  getReadableProject,
   redeploy,
   rollback,
 } from "@/server/projects";
@@ -76,7 +76,7 @@ export async function apiGetProject(p: Principal, projectId: string) {
 
 export async function apiListDeployments(p: Principal, projectId: string, limit: number) {
   requireScope(p, "deployments:read");
-  await getProjectForUser(p.userId, projectId);
+  await getReadableProject(p.userId, projectId);
   const rows = await deploymentViews(p.userId, { projectId, limit });
   return { deployments: rows.map(toDeployment) };
 }

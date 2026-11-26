@@ -26,7 +26,7 @@ Checked against the code on 2026-11-08. Paths are under `web/`. The original tab
 Old "Not fixed" list:
 
 - Signed-in JSON routes with no cap: **fixed**, 256 KB in `src/server/body-limit.ts` (`readJsonLimited`, used by `readJson` in `src/server/http.ts`).
-- Check-then-act deploy dedupe: **fixed** by the unique indexes `deployments_active_webhook_commit_idx`, `deployments_active_hook_idx` and `jobs_active_deployment_idx` (`drizzle/0013_security_prefs.sql`). The migration first ends older duplicates, keeping the newest.
+- Check-then-act deploy dedupe: **fixed** by the unique indexes `deployments_active_webhook_commit_idx`, `deployments_active_hook_idx` and `jobs_active_deployment_idx` (`drizzle/0013_security_prefs.sql`). The migration first ends older duplicates, keeping the newest. Migration `0042_job_project_lock` adds a second guard for the per-project job lock: `jobs.project_id` and the unique index `jobs_running_project_idx` (one running job per project). `claimNextJob` stamps the project when it claims, and a claim the index refuses leaves the job queued.
 - First-use pinning cannot see a man in the middle: **partly fixed**. The fingerprint is now confirmed by the owner, but Egg has no earlier key to compare with, so the check is only as good as the owner's comparison with the one Nest shows.
 - `BUILD_RUNNER=local` unsandboxed: **open**, by design (development only). `.env.example` says "local = no isolation".
 - Short and encoded secrets not masked: **fixed** except one-character values, see item 9.
@@ -38,7 +38,7 @@ Old "Not fixed" list:
 2. The replay list (`webhook.ts`), rate limits (`src/server/rate-limit.ts`) and the analytics collector windows are per process.
 3. The deploy log stream (`src/app/api/deployments/[id]/stream/route.ts`) checks the session once, when it opens, and can run for about 3.75 hours.
 4. The build container can reach the internet (needed for package installs).
-5. Masking finds the exact value, its base64 and its URL-encoded form. A secret printed in any other form is not masked.
+5. Masking finds the exact value, its base64 (also inside a longer base64 string such as a Basic auth header, for values of 8 characters or more) and its URL-encoded form (upper or lower case hex). A secret printed in any other form is not masked.
 
 Scope: `web/src/server` (files, terminal, ssh, deploy, inventory, webhooks, notify, github) and the matching routes. Every fix has a test.
 

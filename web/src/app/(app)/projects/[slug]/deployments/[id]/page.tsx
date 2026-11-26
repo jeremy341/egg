@@ -8,13 +8,14 @@ import {
 import { BuildLogs } from "@/components/build-logs";
 import { CommitLink } from "@/components/commit-link";
 import { DeploymentActions } from "@/components/deployment-actions";
+import { DeploymentTimeline } from "@/components/deployment-timeline";
 import { PageHeader } from "@/components/page-header";
 import { DeploymentSkeleton } from "@/components/skeletons/deployment";
 import { StatusDot } from "@/components/status-dot";
-import { Alert } from "@/components/ui/alert";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { requireUser } from "@/server/auth/current";
+import { deploymentTimeline } from "@/server/deployment-timeline";
 import { deploymentLogs } from "@/server/projects";
 import { deploymentView } from "@/server/queries";
 
@@ -52,6 +53,7 @@ async function Content({ params }: Props) {
     level: l.level,
     message: l.message,
   }));
+  const timeline = await deploymentTimeline(id, logs);
   const address = domains[0];
 
   return (
@@ -65,7 +67,9 @@ async function Content({ params }: Props) {
         description={
           <span className="flex flex-col gap-1">
             <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1 text-foreground">
-              <StatusDot state={d.state} />
+              <span data-tour="deployment-status" data-tour-state={d.state} data-tour-port={d.port}>
+                <StatusDot state={d.state} />
+              </span>
               {d.state !== "building" && d.state !== "queued" ? (
                 <span className="tabular text-muted-foreground">{d.duration}</span>
               ) : null}
@@ -78,6 +82,7 @@ async function Content({ params }: Props) {
           <>
             {address ? (
               <Button
+                data-tour="visit"
                 className="px-3"
                 render={<a href={`https://${address}`} target="_blank" rel="noreferrer" />}
               >
@@ -91,10 +96,12 @@ async function Content({ params }: Props) {
         }
       />
 
-      {d.state === "error" && d.error ? (
-        <Alert tone="error" role="status">
+      {timeline ? (
+        <DeploymentTimeline timeline={timeline} repo={d.repo} sha={d.sha} />
+      ) : d.state === "error" && d.error ? (
+        <p data-tour="error-summary" className="text-[var(--status-error)]">
           {d.error}
-        </Alert>
+        </p>
       ) : null}
 
       <section

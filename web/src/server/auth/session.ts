@@ -19,6 +19,7 @@ export async function upsertUser(profile: {
   name: string;
   email: string | null;
   slackId: string | null;
+  emailVerified?: boolean;
 }): Promise<SessionUser> {
   const db = await getDb();
   const existing = await db
@@ -30,7 +31,7 @@ export async function upsertUser(profile: {
   if (existing) {
     await db
       .update(schema.users)
-      .set({ name: profile.name, email: profile.email, slackId: profile.slackId })
+      .set({ name: profile.name, email: profile.email, emailVerified: profile.emailVerified === true, slackId: profile.slackId })
       .where(eq(schema.users.id, existing.id));
     return {
       id: existing.id,
@@ -47,6 +48,7 @@ export async function upsertUser(profile: {
     name: profile.name,
     email: profile.email,
     slackId: profile.slackId,
+    emailVerified: profile.emailVerified === true,
     createdAt: new Date(),
   });
   return { id, name: profile.name, email: profile.email, hackClubId: profile.id };

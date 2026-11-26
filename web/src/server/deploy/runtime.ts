@@ -132,11 +132,11 @@ export function resolveStartCommand(
       return "python3 app.py";
     case "static": {
       if (!probe || probe.has.python3) {
-        return `python3 -m http.server ${port} --bind 0.0.0.0`;
+        return `python3 -c ${shellQuote(STATIC_PYTHON_SCRIPT)} ${port}`;
       }
       if (probe.has.node) {
-        // A dependency-free static file server in one line.
-        return `node -e ${shellQuote(NODE_STATIC)}`;
+        // A dependency-free static file server.
+        return `node -e ${shellQuote(STATIC_NODE_SCRIPT)}`;
       }
       throw new StartCommandError(
         "Static sites need Python 3 or Node.js on your Nest container to be served."
@@ -149,13 +149,96 @@ export function resolveStartCommand(
   }
 }
 
-const NODE_STATIC = `
+/**
+ * The static servers below are what Egg runs for a static site. Both refuse the same things, on
+ * top of the rule that no variables file is ever inside the release folder (see layout.ts):
+ *  - a malformed address (a bad percent escape, a NUL byte or a backslash): 400, and the process
+ *    keeps running;
+ *  - any path segment that starts with a dot (.env, .git, .htaccess, and ".." itself): 404;
+ *  - a path whose real location, after following every link, is outside the folder or has a
+ *    segment that starts with a dot: 404. A link inside the site cannot point out of it.
+ * Only GET and HEAD are answered. A folder is answered with its index.html, never a listing.
+ * Neither script uses a backslash or a dollar sign, so it passes through the shell and the
+ * systemd unit unchanged.
+ */
+export const STATIC_NODE_SCRIPT = `
 const http=require('http'),fs=require('fs'),path=require('path');
-const root=process.cwd(),port=+process.env.PORT||3000;
-const types={'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.txt':'text/plain'};
-http.createServer((q,r)=>{let p=path.normalize(decodeURIComponent(q.url.split('?')[0])).replace(/^(\\.\\.[\\/\\\\])+/,'');
-let f=path.join(root,p);if(fs.existsSync(f)&&fs.statSync(f).isDirectory())f=path.join(f,'index.html');
-fs.readFile(f,(e,d)=>{if(e){r.writeHead(404);r.end('Not found');return}r.writeHead(200,{'content-type':types[path.extname(f)]||'application/octet-stream'});r.end(d)})}).listen(port,'0.0.0.0');
+const root=fs.realpathSync(process.cwd()),port=+process.env.PORT||3000;
+const types={'.html':'text/html','.htm':'text/html','.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.json':'application/json','.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.gif':'image/gif','.webp':'image/webp','.ico':'image/x-icon','.txt':'text/plain','.xml':'application/xml','.woff2':'font/woff2','.wasm':'application/wasm'};
+const BS=String.fromCharCode(92),NUL=String.fromCharCode(0);
+const hidden=(rel)=>rel.split(path.sep).some((s)=>s&&s!=='.'&&s.charAt(0)==='.');
+function end(r,code,text,head){try{r.writeHead(code,{'content-type':'text/plain'});r.end(head?undefined:text)}catch(e){}}
+function inside(real){const rel=path.relative(root,real);return rel===''||(!path.isAbsolute(rel)&&!hidden(rel))}
+function resolve(f,cb,depth=0){fs.realpath(f,(e,real)=>{if(e||!inside(real))return cb(null);fs.stat(real,(e2,st)=>{if(e2)return cb(null);if(!st.isDirectory())return cb(real);if(depth>=1)return cb(null);resolve(path.join(real,'index.html'),cb,depth+1)})})}
+const srv=http.createServer((q,r)=>{try{
+if(q.method!=='GET'&&q.method!=='HEAD'){r.setHeader('allow','GET, HEAD');return end(r,405,'Method not allowed')}
+const head=q.method==='HEAD';
+let p;try{p=decodeURIComponent(String(q.url||'/').split('?')[0].split('#')[0])}catch(e){return end(r,400,'Bad request',head)}
+if(p.indexOf(NUL)>=0||p.indexOf(BS)>=0)return end(r,400,'Bad request',head);
+const segs=p.split('/').filter((s)=>s&&s!=='.');
+if(segs.some((s)=>s.charAt(0)==='.'))return end(r,404,'Not found',head);
+resolve(path.join(root,...segs),(real)=>{
+if(!real)return end(r,404,'Not found',head);
+fs.readFile(real,(e,d)=>{if(e)return end(r,404,'Not found',head);try{r.writeHead(200,{'content-type':types[path.extname(real).toLowerCase()]||'application/octet-stream'});r.end(head?undefined:d)}catch(e2){}})})
+}catch(e){end(r,500,'Server error')}});
+srv.on('error',(e)=>{console.error(String(e&&e.message||e));process.exit(1)});
+srv.on('clientError',(e,sock)=>{try{sock.end('HTTP/1.1 400 Bad Request'+String.fromCharCode(13,10,13,10))}catch(e2){}});
+srv.listen(port,'0.0.0.0');
+process.on('uncaughtException',(e)=>{console.error(String(e&&e.stack||e))});
+`.trim();
+
+export const STATIC_PYTHON_SCRIPT = `
+import http.server, os, sys
+from urllib.parse import urlsplit, unquote
+ROOT = os.path.realpath(os.getcwd())
+PORT = int(sys.argv[1]) if len(sys.argv) > 1 else int(os.environ.get('PORT') or 3000)
+BS = chr(92)
+NUL = chr(0)
+PCT = chr(37)
+HEX = '0123456789abcdefABCDEF'
+def malformed(raw):
+    i = raw.find(PCT)
+    while i != -1:
+        if len(raw) < i + 3 or raw[i + 1] not in HEX or raw[i + 2] not in HEX:
+            return True
+        i = raw.find(PCT, i + 1)
+    return False
+def hidden(rel):
+    return any(s.startswith('.') for s in rel.split(os.sep) if s not in ('', os.curdir))
+def inside(path):
+    return not hidden(os.path.relpath(os.path.realpath(path), ROOT))
+class Handler(http.server.SimpleHTTPRequestHandler):
+    def list_directory(self, path):
+        self.send_error(404, 'Not found')
+        return None
+    def send_head(self):
+        try:
+            raw = urlsplit(self.path).path
+            if malformed(raw):
+                raise ValueError('bad escape')
+            p = unquote(raw, errors='strict')
+        except Exception:
+            self.send_error(400, 'Bad request')
+            return None
+        if NUL in p or BS in p:
+            self.send_error(400, 'Bad request')
+            return None
+        parts = [s for s in p.split('/') if s not in ('', '.')]
+        if any(s.startswith('.') for s in parts):
+            self.send_error(404, 'Not found')
+            return None
+        full = os.path.join(ROOT, *parts)
+        if not inside(full):
+            self.send_error(404, 'Not found')
+            return None
+        if os.path.isdir(full) and p.endswith('/'):
+            for name in ('index.html', 'index.htm'):
+                candidate = os.path.join(full, name)
+                if os.path.exists(candidate) and not inside(candidate):
+                    self.send_error(404, 'Not found')
+                    return None
+        return super().send_head()
+http.server.ThreadingHTTPServer(('0.0.0.0', PORT), Handler).serve_forever()
 `.trim();
 
 export const ENV_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/;

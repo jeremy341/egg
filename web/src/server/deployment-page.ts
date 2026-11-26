@@ -1,6 +1,7 @@
 import { and, desc, eq, gte, inArray, lt, or, sql, type SQL } from "drizzle-orm";
 import { getDb, schema } from "@/server/db";
 import { HttpError } from "@/server/http";
+import { projectReadableBy } from "@/server/project-roles";
 
 /**
  * Keyset paging for deployments. Rows are ordered newest first by `createdAt`,
@@ -136,7 +137,7 @@ export async function selectDeploymentPage(
   const d = schema.deployments;
   const f = options.filter ?? {};
   const where = and(
-    eq(schema.projects.userId, userId),
+    projectReadableBy(userId),
     options.projectId ? eq(d.projectId, options.projectId) : undefined,
     cursor
       ? or(lt(d.createdAt, new Date(cursor.at)), and(eq(d.createdAt, new Date(cursor.at)), lt(d.id, cursor.id)))

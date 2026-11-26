@@ -42,9 +42,16 @@ async function waitingProject(): Promise<{ project: ProjectRow; deploymentId: st
 
 const headersFor = (bytes: Buffer) => ({ commit: COMMIT, sha256: sha256Of(bytes), branch: "main", run: "9" });
 
-const optionsFor = (projectId: string, bytes: Buffer, body: ReadableStream<Uint8Array> | null): UploadOptions => ({
+const optionsFor = (
+  projectId: string,
+  bytes: Buffer,
+  body: ReadableStream<Uint8Array> | null,
+  environment: UploadOptions["environment"] = "production",
+  branch = "main"
+): UploadOptions => ({
   projectId,
-  headers: headersFor(bytes),
+  environment,
+  headers: { ...headersFor(bytes), branch },
   body,
   contentLength: null,
 });
@@ -153,6 +160,67 @@ describe("the receive deadlines", () => {
     const res = await acceptUpload(optionsFor(second.project.id, plain, new Response(new Uint8Array(plain)).body));
     expect(res.deploymentId).toBe(second.deploymentId);
     expect(partFiles()).toEqual([]);
+  });
+});
+
+describe("upload credential environment isolation", () => {
+  it("rejects a preview credential for a waiting production deployment before reading the artifact", async () => {
+    const { project, deploymentId } = await waitingProject();
+    const bytes = goodRelease([{ name: "substituted.txt", content: "preview artifact" }]);
+    let consumed = false;
+    const options = optionsFor(project.id, bytes, null, "preview");
+    Object.defineProperty(options, "body", {
+      get() {
+        consumed = true;
+        return new Response(new Uint8Array(bytes)).body;
+      },
+    });
+
+    const err = await acceptUpload(options).catch((e) => e);
+
+    expect(err).toMatchObject({ status: 403, code: "wrong_upload_credential" });
+    expect(consumed).toBe(false);
+    expect(await readUpload(deploymentId)).toBeNull();
+  });
+
+  it("rejects a production credential for a waiting preview deployment", async () => {
+    const project = await bareProject();
+    const branch = "feature/demo";
+    const dep = await enqueueDeployment(project, {
+      env: "preview",
+      source: "webhook",
+      branch,
+      commitSha: COMMIT,
+      triggeredBy: user.id,
+    });
+    const bytes = goodRelease([{ name: "production artifact.txt", content: "production artifact" }]);
+
+    const err = await acceptUpload(
+      optionsFor(project.id, bytes, new Response(new Uint8Array(bytes)).body, "production", branch)
+    ).catch((e) => e);
+
+    expect(err).toMatchObject({ status: 403, code: "wrong_upload_credential" });
+    expect(await readUpload(dep.id)).toBeNull();
+  });
+
+  it("accepts a preview credential only for the matching preview branch and attaches the complete build", async () => {
+    const project = await bareProject();
+    const branch = "feature/preview";
+    const dep = await enqueueDeployment(project, {
+      env: "preview",
+      source: "webhook",
+      branch,
+      commitSha: COMMIT,
+      triggeredBy: user.id,
+    });
+    const bytes = goodRelease([{ name: "preview.txt", content: "preview" }]);
+
+    const result = await acceptUpload(
+      optionsFor(project.id, bytes, new Response(new Uint8Array(bytes)).body, "preview", branch)
+    );
+
+    expect(result.deploymentId).toBe(dep.id);
+    expect((await readUpload(dep.id))?.meta.sha256).toBe(sha256Of(bytes));
   });
 });
 
