@@ -1333,6 +1333,20 @@ export async function run(argv, deps = {}) {
     return 0;
   }
 
+  // Commands marked offline: true run without a token or server, and get no client.
+  const offline = COMMANDS.find((command) => command.name === parsed.command && command.offline);
+  if (offline) {
+    try {
+      let deferredOffline = null;
+      await COMMAND_RUNNERS[offline.runner](null, parsed.args, parsed.flags, out, full, (message, error) => {
+        deferredOffline = error ?? new Failure(message);
+      }, KIT);
+      if (deferredOffline) throw deferredOffline;
+      return 0;
+    } catch (error) {
+      return printError(error, parsed.flags);
+    }
+  }
   if (LOCAL_COMMANDS.has(parsed.command)) {
     // `deps.local` lets tests replace the machine-touching parts of these two commands.
     const local = { out, ...deps.local };
