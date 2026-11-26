@@ -14,6 +14,7 @@ import {
   userDetailForAdmin,
 } from "@/server/admin-users";
 import { isInstanceAdmin } from "@/server/admin-identity";
+import { adminOverview } from "@/server/admin";
 import { GET as listRoute } from "@/app/api/admin/users/route";
 import { POST as banRoute } from "@/app/api/admin/users/[id]/ban/route";
 
@@ -197,5 +198,15 @@ describe("the account detail page data", () => {
     const after = await userDetailForAdmin(admin, person);
     expect(after.standing.state).toBe("active");
     expect(after.history[0]).toMatchObject({ action: "admin.unban", reason: "Ban was a mistake" });
+  });
+});
+
+describe("the administration log", () => {
+  it("lists each ban, unban and administrator change with a readable label", async () => {
+    const overview = await adminOverview(admin);
+    const byAction = (action: string) => overview.events.filter((e) => e.action === action);
+    expect(byAction("admin.ban")[0]).toMatchObject({ label: "Banned an account" });
+    expect(byAction("admin.unban")[0]).toMatchObject({ label: "Lifted a ban on an account" });
+    expect(byAction("admin.grant")[0]).toMatchObject({ label: "Made someone an administrator" });
   });
 });

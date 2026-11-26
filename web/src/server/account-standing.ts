@@ -60,17 +60,40 @@ export async function accountStandingFor(
   return accountStanding(row, now);
 }
 
-function day(value: Date): string {
-  return value.toISOString().slice(0, 10);
+const DAY_FORMAT = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZone: "UTC" });
+
+/** A calendar day in UTC, the same wherever the page is rendered. */
+export function formatGraceDay(value: Date): string {
+  return DAY_FORMAT.format(value);
 }
 
 /** The refusal for a blocked account. It says what still works, so the user knows where to go. */
 export function accountBlockedError(graceEndsAt: Date): HttpError {
   return new HttpError(
     403,
-    `Your account is suspended, and its grace period ended on ${day(graceEndsAt)}. New projects, deployments, settings changes, security reports and API writes are blocked. You can still view and export your data.`,
+    `Your account is suspended, and its grace period ended on ${formatGraceDay(graceEndsAt)}. New projects, deployments, settings changes, security reports and API writes are blocked. You can still view and export your data.`,
     "account_suspended",
   );
+}
+
+export type StandingNotice = { tone: "warning" | "error"; title: string; body: string };
+
+/** The banner text for the app shell. Active accounts see nothing. */
+export function standingNotice(standing: AccountStanding): StandingNotice | null {
+  if (standing.state === "active") return null;
+  const date = formatGraceDay(standing.graceEndsAt);
+  if (standing.state === "grace") {
+    return {
+      tone: "warning",
+      title: "Your account is suspended",
+      body: `Everything keeps working until ${date}. After that, new projects, deployments, settings changes, security reports and API writes are blocked. You can view and export your data at any time.`,
+    };
+  }
+  return {
+    tone: "error",
+    title: "Your account is suspended",
+    body: `The grace period ended on ${date}. New projects, deployments, settings changes, security reports and API writes are blocked. You can still view and export your data.`,
+  };
 }
 
 /**
