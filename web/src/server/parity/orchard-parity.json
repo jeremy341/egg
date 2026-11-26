@@ -1,5 +1,5 @@
 {
-  "baseline_present": 107,
+  "baseline_present": 110,
   "baseline_partial": 10,
   "tools": [
     {
@@ -24,9 +24,8 @@
     {
       "name": "call_api",
       "source": "apps/server/src/mcp/compact/compact-server.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "compact:call_api"
     },
     {
       "name": "cancel_build",
@@ -275,9 +274,8 @@
     {
       "name": "describe_operation",
       "source": "apps/server/src/mcp/compact/compact-server.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "compact:describe_operation"
     },
     {
       "name": "detect_repo_config",
@@ -1119,9 +1117,8 @@
     {
       "name": "search_api",
       "source": "apps/server/src/mcp/compact/compact-server.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "compact:search_api"
     },
     {
       "name": "search_logs",
@@ -1447,6 +1444,6 @@
     "test_notification",
     "write_file"
   ],
-  "baseline_missing": 18,
+  "baseline_missing": 15,
   "baseline_not_applicable": 82
 }

@@ -1,8 +1,8 @@
 # Orchard parity checklist (MCP and API tools)
 
-Generated from the Orchard parity manifest (`orchard-parity.json`). Our side: `ENDPOINTS` in `web/src/server/api-v1*.ts`. Test-only names are excluded.
+Generated from the Orchard parity manifest (`orchard-parity.json`). Our side: `ENDPOINTS` in `web/src/server/api-v1*.ts`, plus the compact server's three tools in `web/src/server/mcp-compact.ts`. Test-only names are excluded.
 
-Totals: 217 Orchard product tools. Present: 107. Partial: 10. Missing: 18. Not applicable: 82. Ours only: 29.
+Totals: 217 Orchard product tools. Present: 110. Partial: 10. Missing: 15. Not applicable: 82. Ours only: 29.
 
 `present` means an equivalent endpoint exists with the same job. `partial` means it covers part of the job. `missing` means no equivalent yet.
 
@@ -96,9 +96,9 @@ Totals: 217 Orchard product tools. Present: 107. Partial: 10. Missing: 18. Not a
 
 | Orchard tool | Status | Our endpoint |
 |---|---|---|
-| [ ] `call_api` | missing | - |
-| [ ] `describe_operation` | missing | - |
-| [ ] `search_api` | missing | - |
+| [x] `call_api` | present | `compact:call_api` |
+| [x] `describe_operation` | present | `compact:describe_operation` |
+| [x] `search_api` | present | `compact:search_api` |
 
 ## apps/server/src/mcp/tools/deployments.ts
 
