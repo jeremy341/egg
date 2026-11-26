@@ -23,6 +23,7 @@ import {
   usageSchema,
 } from "@/server/api-v1-models";
 import { ME_ENDPOINTS } from "@/server/api-v1-me";
+import { ROLLOUT_ENDPOINTS } from "@/server/api-v1-rollout";
 import { EXPANDED_ENDPOINTS } from "@/server/api-v1-more";
 import { SHELL_ENDPOINTS } from "@/server/api-v1-shell";
 import { notFound, zodToHttp } from "@/server/http";
@@ -306,7 +307,13 @@ const CORE_ENDPOINTS: Endpoint[] = [
 ];
 
 /** Every endpoint, in the order the docs and the agent tool list show them. */
-export const ENDPOINTS: Endpoint[] = [...ME_ENDPOINTS, ...CORE_ENDPOINTS, ...EXPANDED_ENDPOINTS, ...SHELL_ENDPOINTS];
+export const ENDPOINTS: Endpoint[] = [
+  ...ME_ENDPOINTS,
+  ...CORE_ENDPOINTS,
+  ...ROLLOUT_ENDPOINTS,
+  ...EXPANDED_ENDPOINTS,
+  ...SHELL_ENDPOINTS,
+];
 
 export function endpointById(id: string): Endpoint | undefined {
   return ENDPOINTS.find((e) => e.id === id);
