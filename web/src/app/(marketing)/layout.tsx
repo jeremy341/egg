@@ -2,8 +2,11 @@ import { Pixelify_Sans } from "next/font/google";
 import Link from "next/link";
 import { NestMark } from "@/components/nest-mark";
 import { PixelField } from "@/components/pixel-field";
+import { ThemeButton } from "@/components/theme-button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { NEST_GUIDES_URL, REPO_URL } from "@/lib/site";
+
+const GRID_CELL = 30;
 
 const pixel = Pixelify_Sans({ variable: "--font-pixel", subsets: ["latin"] });
 
@@ -18,8 +21,14 @@ const small =
 
 export default function MarketingLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className={`${pixel.variable} flex flex-1 flex-col`}>
-      <PixelField fixed autoDrops tone="mono" cell={30} />
+    <div className={`${pixel.variable} relative isolate flex flex-1 flex-col`}>
+      {/* Hairlines for the whole page height. The canvas on top only draws what is lit. */}
+      <div
+        aria-hidden="true"
+        className="page-grid pointer-events-none absolute inset-0 -z-10"
+        style={{ backgroundSize: `${GRID_CELL}px ${GRID_CELL}px` }}
+      />
+      <PixelField fixed autoDrops tone="mono" cell={GRID_CELL} />
       <a
         href="#top"
         className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[100] focus:rounded-md focus:bg-background focus:px-3 focus:py-2 focus:shadow-menu"
@@ -46,6 +55,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
           </nav>
 
           <div className="ml-auto flex items-center gap-2">
+            <ThemeButton />
             <Link href="/login" className={`${small} hidden text-muted-foreground hover:text-foreground sm:inline-flex`}>
               Log in
             </Link>

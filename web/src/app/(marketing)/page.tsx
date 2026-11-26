@@ -119,7 +119,7 @@ function Showcase({
             <Plus className="-top-1.5 -right-1.5 z-10" />
             <Plus className="-bottom-1.5 -left-1.5 z-10" />
             <Plus className="-right-1.5 -bottom-1.5 z-10" />
-            <div inert aria-hidden="true" className="overflow-hidden border bg-background">
+            <div className="overflow-hidden border bg-background">
               {children}
             </div>
           </div>
@@ -137,7 +137,7 @@ const STEPS = [
 
 function Start() {
   return (
-    <section id="start" className="scroll-mt-14 border-y bg-background py-24 lg:py-32">
+    <section id="start" className="scroll-mt-14 border-y py-24 lg:py-32">
       <div className={wrap}>
         <h2 className={h2}>Set up in three steps.</h2>
         <ol className="mt-14 grid gap-10 md:grid-cols-3 md:gap-8">
@@ -208,7 +208,7 @@ const FAQ = [
 
 function Faq() {
   return (
-    <section id="faq" className="scroll-mt-14 border-y bg-background py-24 lg:py-32">
+    <section id="faq" className="scroll-mt-14 border-y py-24 lg:py-32">
       <div className={cn(wrap, "grid gap-12 lg:grid-cols-[260px_minmax(0,1fr)] lg:gap-20")}>
         <h2 className="font-pixel text-[clamp(2rem,3vw,2.75rem)] leading-none font-medium">Questions</h2>
         <dl className="grid gap-x-14 gap-y-10 md:grid-cols-2">
@@ -262,7 +262,7 @@ export default function HomePage() {
       >
         {/* On a phone the demo is too narrow for commit and branch, so those drop out. */}
         <div className="p-3 sm:p-6 max-sm:[&_p.font-mono]:hidden">
-          <DeploymentsView deployments={SAMPLE_DEPLOYMENTS} showProject={false} />
+          <DeploymentsView deployments={SAMPLE_DEPLOYMENTS} showProject={false} demo />
         </div>
       </Showcase>
 
