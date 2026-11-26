@@ -139,18 +139,7 @@ export const providerConnections = sqliteTable("provider_connections", {
 export const RUNTIMES = ["node", "python", "static", "command", "go", "rust", "ruby", "php", "java"] as const;
 export type Runtime = (typeof RUNTIMES)[number];
 export const WORKLOAD_KINDS = ["web", "worker"] as const;
-/** "image": a prebuilt container image pulled from a registry; nothing is built from source. */
-export const DEPLOYMENT_MODES = ["native", "dockerfile", "compose", "image"] as const;
-
-/**
- * How a new release replaces the running one. "rolling" (the default) starts the new copy before the
- * old one stops; "recreate" stops first; "blue_green" brings the new copy up beside the old one and
- * switches once it is healthy. An app whose containers mount a volume must use "recreate", because
- * two copies must never share a volume at once.
- */
-export const DEPLOY_STRATEGIES = ["rolling", "recreate", "blue_green"] as const;
-export type DeployStrategy = (typeof DEPLOY_STRATEGIES)[number];
-export type PullPolicy = (typeof PULL_POLICIES)[number];
+export const DEPLOYMENT_MODES = ["native", "dockerfile", "compose"] as const;
 
 /**
  * Where a project is built. "container": on the user's Nest container, under a memory and CPU
@@ -160,27 +149,6 @@ export type PullPolicy = (typeof PULL_POLICIES)[number];
  */
 export const BUILD_LOCATIONS = ["container", "github"] as const;
 export type BuildLocation = (typeof BUILD_LOCATIONS)[number];
-
-/**
- * Logins for private container registries, one per owner and registry host. The username and the
- * password are sealed with the instance key (server/crypto); the password is never sent back by the API.
- */
-export const registryCredentials = sqliteTable(
-  "registry_credentials",
-  {
-    id: text("id").primaryKey(),
-    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-    /** Registry host, with an optional port, such as ghcr.io or registry.example.com:5000. */
-    host: text("host").notNull(),
-    usernameEnc: text("username_enc").notNull(),
-    passwordEnc: text("password_enc").notNull(),
-    createdAt: ts("created_at").notNull(),
-    updatedAt: ts("updated_at").notNull(),
-  },
-  (t) => [uniqueIndex("registry_credentials_user_host_idx").on(t.userId, t.host)]
-);
-
-export const PULL_POLICIES = ["auto", "always", "cached"] as const;
 
 export const projects = sqliteTable(
   "projects",
@@ -210,15 +178,6 @@ export const projects = sqliteTable(
     runtime: text("runtime", { enum: RUNTIMES }).notNull(),
     workloadKind: text("workload_kind", { enum: WORKLOAD_KINDS }).notNull().default("web"),
     deploymentMode: text("deployment_mode", { enum: DEPLOYMENT_MODES }).notNull().default("native"),
-    deployStrategy: text("deploy_strategy", { enum: DEPLOY_STRATEGIES }).notNull().default("rolling"),
-    /** Image mode only: the image reference, such as nginx:1.27 or ghcr.io/owner/app@sha256:... */
-    imageRef: text("image_ref"),
-    /** Image mode only: when Docker pulls the image. "auto" pulls only if it is missing. */
-    pullPolicy: text("pull_policy", { enum: PULL_POLICIES }).notNull().default("auto"),
-    /** Image mode only: the registry login for a private image. Null for a public image. */
-    registryCredentialId: text("registry_credential_id").references(() => registryCredentials.id, { onDelete: "restrict" }),
-    /** Set by the last Compose deploy: the main service mounts a named volume. Such an app must use "recreate". */
-    hasVolumes: integer("has_volumes", { mode: "boolean" }).notNull().default(false),
     /** Dockerfile path relative to the repository root; used only in "dockerfile" mode. */
     dockerfilePath: text("dockerfile_path"),
     /** Path of the Compose file relative to the repository root; used only in "compose" mode. */
@@ -321,6 +280,44 @@ export const envVars = sqliteTable(
     createdAt: ts("created_at").notNull(),
   },
   (t) => [uniqueIndex("env_project_key_idx").on(t.projectId, t.key, t.target)]
+);
+
+/**
+ * SSH keys Egg generates for you, beyond the per-server key stored on the
+ * servers row. Each key's private half is sealed for its own row, and is
+ * replaced by a seal of "removed" once the key is revoked.
+ */
+export const SSH_KEY_KINDS = ["github_deploy", "git_key", "personal"] as const;
+export type SshKeyKind = (typeof SSH_KEY_KINDS)[number];
+
+export const sshKeys = sqliteTable(
+  "ssh_keys",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** The project a github_deploy or git_key belongs to. Always null for personal keys. */
+    projectId: text("project_id").references(() => projects.id, { onDelete: "cascade" }),
+    /** "github_deploy": added to the linked repo through the GitHub App. "git_key": pasted by you on your own git host. "personal": for your own use outside Egg. */
+    kind: text("kind", { enum: SSH_KEY_KINDS }).notNull(),
+    name: text("name").notNull(),
+    publicKey: text("public_key").notNull(),
+    privateKeyEnc: text("private_key_enc").notNull(),
+    /** SHA256 fingerprint of the public key, shown in lists. */
+    fingerprint: text("fingerprint").notNull(),
+    /** The id GitHub gave the deploy key, so it can be removed there on revoke. */
+    externalId: text("external_id"),
+    createdAt: ts("created_at").notNull(),
+    revokedAt: ts("revoked_at"),
+  },
+  (t) => [
+    // One active key per project and kind; revoking frees the slot.
+    uniqueIndex("ssh_keys_project_kind_idx")
+      .on(t.projectId, t.kind)
+      .where(sql`${t.projectId} is not null and ${t.revokedAt} is null`),
+    index("ssh_keys_user_idx").on(t.userId),
+  ]
 );
 
 export const DEPLOY_STATES = [

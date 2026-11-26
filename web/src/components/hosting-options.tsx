@@ -21,7 +21,7 @@ export const runtimeLabel = (runtime: string) => RUNTIME_OPTIONS.find((r) => r.v
 export const runtimeHint = (runtime: string) => RUNTIME_OPTIONS.find((r) => r.value === runtime)?.hint ?? "";
 export type WorkloadKind = "web" | "worker";
 export const workloadForRuntime = (runtime: string, chosen: WorkloadKind): WorkloadKind => runtime === "static" ? "web" : chosen;
-export type DeploymentMode = "native" | "dockerfile" | "compose" | "image";
+export type DeploymentMode = "native" | "dockerfile" | "compose";
 export type TargetCapabilities = {
   deploymentModes: Record<DeploymentMode, boolean>;
   docker: { available: boolean; composeAvailable: boolean; reason: string | null };
@@ -54,7 +54,6 @@ export function HostingOptions({ prefix, workloadKind, deploymentMode, capabilit
           <option value="native" disabled={capabilities?.deploymentModes.native === false}>Native process · systemd</option>
           <option value="dockerfile" disabled={!capabilities?.deploymentModes.dockerfile}>Dockerfile{!capabilities?.deploymentModes.dockerfile ? " · unavailable" : ""}</option>
           <option value="compose" disabled={!capabilities?.deploymentModes.compose}>Docker Compose{!capabilities?.deploymentModes.compose ? " · unavailable" : ""}</option>
-          {deploymentMode === "image" && <option value="image" disabled>Prebuilt image · set with the API</option>}
         </NativeSelect>
       </div>
       <div className="space-y-2 text-label text-muted-foreground sm:col-span-2">
