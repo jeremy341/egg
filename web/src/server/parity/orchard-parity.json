@@ -1,6 +1,6 @@
 {
-  "baseline_present": 74,
-  "baseline_partial": 11,
+  "baseline_present": 104,
+  "baseline_partial": 10,
   "tools": [
     {
       "name": "add_env_vars",
@@ -94,9 +94,8 @@
     {
       "name": "create_deployment",
       "source": "apps/server/src/mcp/tools/deployments.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "create_deployment"
     },
     {
       "name": "create_environment",
@@ -153,9 +152,8 @@
     {
       "name": "create_service",
       "source": "apps/server/src/mcp/tools/configuration.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "create_service"
     },
     {
       "name": "delete_database",
@@ -181,9 +179,8 @@
     {
       "name": "delete_deployment",
       "source": "apps/server/src/mcp/tools/dangerous.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "delete_deployment"
     },
     {
       "name": "delete_env_vars",
@@ -238,9 +235,8 @@
     {
       "name": "delete_service",
       "source": "apps/server/src/mcp/tools/dangerous.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "delete_service"
     },
     {
       "name": "delete_shared_env_vars",
@@ -372,16 +368,14 @@
     {
       "name": "get_anomalies",
       "source": "apps/server/src/mcp/tools/observability.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "get_anomalies"
     },
     {
       "name": "get_attack_signals",
       "source": "apps/server/src/mcp/tools/observability.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "get_attack_signals"
     },
     {
       "name": "get_audit_log",
@@ -417,9 +411,8 @@
     {
       "name": "get_compose_stack",
       "source": "apps/server/src/mcp/tools/compose.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "get_compose_stack"
     },
     {
       "name": "get_current_user",
@@ -521,9 +514,8 @@
     {
       "name": "get_deploy_verdict",
       "source": "apps/server/src/mcp/tools/observability.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "get_deploy_verdict"
     },
     {
       "name": "get_deployment",
@@ -534,9 +526,8 @@
     {
       "name": "get_deployment_http_metrics",
       "source": "apps/server/src/mcp/tools/query.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "get_deployment_http_metrics"
     },
     {
       "name": "get_deployment_logs",
@@ -586,9 +577,8 @@
     {
       "name": "get_image_history",
       "source": "apps/server/src/mcp/tools/query.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "get_image_history"
     },
     {
       "name": "get_ingress",
@@ -636,9 +626,8 @@
     {
       "name": "get_observability_link",
       "source": "apps/server/src/mcp/tools/observability.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "get_observability_link"
     },
     {
       "name": "get_pod_details",
@@ -695,9 +684,8 @@
     {
       "name": "get_request_stats",
       "source": "apps/server/src/mcp/tools/observability.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "get_request_stats"
     },
     {
       "name": "get_resource_quota",
@@ -709,9 +697,8 @@
     {
       "name": "get_resource_recommendation",
       "source": "apps/server/src/mcp/tools/observability.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "get_resource_recommendation"
     },
     {
       "name": "get_sandbox",
@@ -784,9 +771,8 @@
     {
       "name": "list_build_runs",
       "source": "apps/server/src/mcp/tools/rollout.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "list_build_runs"
     },
     {
       "name": "list_checkpoints",
@@ -798,9 +784,8 @@
     {
       "name": "list_compose_stacks",
       "source": "apps/server/src/mcp/tools/compose.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "list_compose_stacks"
     },
     {
       "name": "list_database_backups",
@@ -942,9 +927,8 @@
     {
       "name": "list_organizations",
       "source": "apps/server/src/mcp/tools/query.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "list_organizations"
     },
     {
       "name": "list_pods",
@@ -996,9 +980,8 @@
     {
       "name": "list_services",
       "source": "apps/server/src/mcp/tools/query.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "list_services"
     },
     {
       "name": "list_template_instances",
@@ -1030,9 +1013,8 @@
     {
       "name": "redeploy_compose_stack",
       "source": "apps/server/src/mcp/tools/compose.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "redeploy_compose_stack"
     },
     {
       "name": "rename_database",
@@ -1044,9 +1026,8 @@
     {
       "name": "rename_deployment",
       "source": "apps/server/src/mcp/tools/deployments.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "rename_deployment"
     },
     {
       "name": "rename_environment",
@@ -1084,9 +1065,8 @@
     {
       "name": "restart_deployment",
       "source": "apps/server/src/mcp/tools/deployments.ts",
-      "status": "partial",
-      "ours": "restart_service",
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "restart_deployment"
     },
     {
       "name": "restore_checkpoint",
@@ -1105,9 +1085,8 @@
     {
       "name": "retry_deployment_apply",
       "source": "apps/server/src/mcp/tools/deployments.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "retry_deployment_apply"
     },
     {
       "name": "rollback_deployment",
@@ -1209,16 +1188,14 @@
     {
       "name": "set_service_exposure",
       "source": "apps/server/src/mcp/tools/configuration.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "set_service_exposure"
     },
     {
       "name": "set_service_port_public",
       "source": "apps/server/src/mcp/tools/configuration.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "set_service_port_public"
     },
     {
       "name": "set_shared_env_vars",
@@ -1331,9 +1308,8 @@
     {
       "name": "update_deployment_build_config",
       "source": "apps/server/src/mcp/tools/configuration.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "update_deployment_build_config"
     },
     {
       "name": "update_deployment_disruption_budget",
@@ -1352,16 +1328,14 @@
     {
       "name": "update_deployment_health_check",
       "source": "apps/server/src/mcp/tools/configuration.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "update_deployment_health_check"
     },
     {
       "name": "update_deployment_image",
       "source": "apps/server/src/mcp/tools/configuration.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "update_deployment_image"
     },
     {
       "name": "update_deployment_placement",
@@ -1373,30 +1347,26 @@
     {
       "name": "update_deployment_pull_policy",
       "source": "apps/server/src/mcp/tools/configuration.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "update_deployment_pull_policy"
     },
     {
       "name": "update_deployment_resources",
       "source": "apps/server/src/mcp/tools/deployments.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "update_deployment_resources"
     },
     {
       "name": "update_deployment_strategy",
       "source": "apps/server/src/mcp/tools/configuration.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "update_deployment_strategy"
     },
     {
       "name": "update_deployment_volumes",
       "source": "apps/server/src/mcp/tools/configuration.ts",
-      "status": "missing",
-      "ours": null,
-      "reason": "No corresponding registered endpoint exists in the current public API."
+      "status": "present",
+      "ours": "update_deployment_volumes"
     },
     {
       "name": "update_ingress",
@@ -1450,65 +1420,36 @@
     }
   ],
   "ours_only": [
-    "get_logs",
-    "get_server_usage",
-    "set_env_var",
     "delete_env_var",
-    "revoke_deploy_hook",
-    "get_notifications",
-    "test_notification",
-    "get_status_page",
+    "delete_file",
+    "download_file",
     "get_analytics",
-    "list_servers",
     "get_container_inventory",
-    "terminal_status",
+    "get_logs",
+    "get_notification_channel",
+    "get_notifications",
+    "get_organization",
+    "get_server_usage",
+    "get_status_page",
+    "list_compose_releases",
+    "list_env_vars",
+    "list_files",
+    "list_servers",
+    "make_folder",
+    "read_file",
+    "rename_file",
+    "restart_service",
+    "revoke_deploy_hook",
+    "set_env_var",
+    "terminal_close",
     "terminal_open",
-    "terminal_send",
     "terminal_read",
     "terminal_resize",
-    "terminal_close",
-    "list_files",
-    "read_file",
-    "download_file",
-    "write_file",
-    "make_folder",
-    "rename_file",
-    "delete_file",
-    "restart_deployment",
-    "get_notification_channel",
-    "list_env_vars",
-    "list_services",
-    "create_service",
-    "delete_service",
-    "set_service_exposure",
-    "set_service_port_public",
-    "create_deployment",
-    "delete_deployment",
-    "rename_deployment",
-    "retry_deployment_apply",
-    "update_deployment_build_config",
-    "update_deployment_health_check",
-    "update_deployment_image",
-    "update_deployment_pull_policy",
-    "update_deployment_strategy",
-    "update_deployment_resources",
-    "update_deployment_volumes",
-    "list_compose_stacks",
-    "get_compose_stack",
-    "list_compose_releases",
-    "redeploy_compose_stack",
-    "get_deploy_verdict",
-    "get_deployment_http_metrics",
-    "get_request_stats",
-    "get_anomalies",
-    "get_resource_recommendation",
-    "get_attack_signals",
-    "get_image_history",
-    "list_build_runs",
-    "get_observability_link",
-    "list_organizations",
-    "get_organization"
+    "terminal_send",
+    "terminal_status",
+    "test_notification",
+    "write_file"
   ],
-  "baseline_missing": 53,
+  "baseline_missing": 24,
   "baseline_not_applicable": 79
 }
