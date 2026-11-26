@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { readJsonLimited } from "@/server/body-limit";
 import { authed, handle, ok, zodToHttp } from "@/server/http";
-import { enforceRateLimit } from "@/server/rate-limit";
 import { HOST_KEY_FINGERPRINT, getServerForUser, publicServer, testServer } from "@/server/servers";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -18,7 +17,6 @@ const body = z.object({
  */
 export const POST = handle<Ctx>(async (req, { params }) => {
   const user = await authed();
-  enforceRateLimit("sshCall", user.id);
   const { id } = await params;
   const parsed = body.safeParse(await readJsonLimited(req, { fallback: {} }));
   if (!parsed.success) throw zodToHttp(parsed.error);

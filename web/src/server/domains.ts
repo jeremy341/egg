@@ -5,7 +5,7 @@ import { z } from "zod";
 import { audit } from "@/server/audit";
 import { runAppCheck, type AppCheckReport, type Probe } from "@/server/app-check";
 import { newId } from "@/server/crypto";
-import { getDb, schema, withLockRetry, type Db } from "@/server/db";
+import { getDb, schema, type Db } from "@/server/db";
 import { HttpError, notFound } from "@/server/http";
 import { checkDomainPolicy, isNestName, ownedParentOf } from "@/server/domain-policy";
 import { getServerForUser } from "@/server/servers";
@@ -35,7 +35,7 @@ export const domainInput = z.object({
   serverId: z.string().min(1),
   domain: z.string().min(1).max(253),
   port: z.number().int().min(1).max(65535),
-  projectId: z.string().min(1).nullable().optional(),
+  projectId: z.string().nullable().optional(),
 });
 
 /** The name a custom domain should point at (CNAME). */
@@ -99,8 +99,12 @@ export async function addDomain(userId: string, raw: unknown) {
       .where(and(eq(schema.projects.id, input.projectId), eq(schema.projects.userId, userId)))
       .get();
     if (!project || project.serverId !== server.id) throw notFound("Project not found");
-    if (project.workloadKind === "worker" && !project.listenPort) throw new HttpError(400, "This worker exposes no port. Give it a listen port in Settings first.", "validation");
   }
+  // One answer whether the domain is yours already or on someone else's server: it is taken.
+  if (await db.select().from(schema.domains).where(eq(schema.domains.domain, domain)).get()) {
+    throw new HttpError(409, `${domain} is already added.`, "conflict");
+  }
+
   // Nest names need no check, and neither does a subdomain of a domain already verified on this server.
   const mine = await db
     .select()
@@ -113,32 +117,17 @@ export async function addDomain(userId: string, raw: unknown) {
       : "dns";
 
   const id = newId();
-  const staleBefore = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   try {
-    await withLockRetry(() => db.transaction(async (tx) => {
-      const existing = await tx.select().from(schema.domains).where(eq(schema.domains.domain, domain)).get();
-      if (existing) {
-        // A pending claim nobody ever verified must not reserve the name forever. The
-        // window runs from the owner's last action (added, re-pointed, re-verified), not
-        // from the original add: an actively updated domain never becomes reclaimable.
-        // Valid, invalid and fresh pending rows keep the normal 409.
-        const stale = existing.status === "pending" && existing.userId !== userId &&
-          existing.updatedAt < staleBefore;
-        if (!stale) throw new HttpError(409, `${domain} is already added.`, "conflict");
-        await tx.delete(schema.domains).where(eq(schema.domains.id, existing.id));
-      }
-      await tx.insert(schema.domains).values({
-        id,
-        userId,
-        serverId: server.id,
-        projectId: input.projectId ?? null,
-        domain,
-        port: input.port,
-        status: verifiedBy === "dns" ? "pending" : "valid",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-    }));
+    await db.insert(schema.domains).values({
+      id,
+      userId,
+      serverId: server.id,
+      projectId: input.projectId ?? null,
+      domain,
+      port: input.port,
+      status: verifiedBy === "dns" ? "pending" : "valid",
+      createdAt: new Date(),
+    });
   } catch (err) {
     if (isUniqueViolation(err)) throw new HttpError(409, `${domain} is already added.`, "conflict");
     throw err;
@@ -204,7 +193,6 @@ export async function updateDomain(userId: string, domainId: string, raw: unknow
         .where(and(eq(schema.projects.id, input.projectId), eq(schema.projects.userId, userId)))
         .get();
       if (!project || project.serverId !== row.serverId) throw notFound("Project not found");
-      if (project.workloadKind === "worker" && !project.listenPort) throw new HttpError(400, "This worker exposes no port. Give it a listen port in Settings first.", "validation");
       projectId = project.id;
       // Moving to a project without naming a port means "use that project's port".
       if (input.port === undefined) port = project.port;
@@ -214,12 +202,7 @@ export async function updateDomain(userId: string, domainId: string, raw: unknow
   const portChanged = port !== row.port;
   await db
     .update(schema.domains)
-    .set({
-      projectId,
-      port,
-      updatedAt: new Date(),
-      ...(portChanged ? { status: "pending" as const, lastCheckedAt: null } : {}),
-    })
+    .set({ projectId, port, ...(portChanged ? { status: "pending" as const, lastCheckedAt: null } : {}) })
     .where(eq(schema.domains.id, row.id));
   await audit(userId, "domain.update", projectId, { domain: row.domain, port });
 
@@ -239,7 +222,7 @@ export async function updateDomain(userId: string, domainId: string, raw: unknow
 export async function moveDomainsToPort(db: Pick<Db, "update">, projectId: string, port: number) {
   await db
     .update(schema.domains)
-    .set({ port, status: "pending", lastCheckedAt: null, updatedAt: new Date() })
+    .set({ port, status: "pending", lastCheckedAt: null })
     .where(eq(schema.domains.projectId, projectId));
 }
 
@@ -322,14 +305,13 @@ export function clearDnsCache() {
 /**
  * Check DNS and the stored status together. A verified domain whose record is gone
  * becomes "invalid" (never deleted); a domain still waiting stays "pending"; a failed
- * lookup changes nothing and is reported as it is, so it is never mistaken for a
- * verdict about the record.
+ * lookup changes nothing.
  */
 export async function verifyDomain(
   userId: string,
   domainId: string,
   resolver: Resolver = dns
-): Promise<{ status: "valid" | "invalid" | "unknown"; reason: string | null }> {
+): Promise<{ status: "valid" | "invalid"; reason: string | null }> {
   const db = await getDb();
   const row = await db
     .select()
@@ -361,10 +343,9 @@ export async function verifyDomain(
     // verified domain keeps its status when the lookup fails; the reason is still shown.
     const lost = result.state === "missing" && row.status === "valid" && !nest;
     const status = result.state === "ok" ? "valid" : lost ? "invalid" : row.status;
-    await db.update(schema.domains).set({ status, lastCheckedAt: new Date(), updatedAt: new Date() }).where(eq(schema.domains.id, row.id));
+    await db.update(schema.domains).set({ status, lastCheckedAt: new Date() }).where(eq(schema.domains.id, row.id));
   }
-  const status = result.state === "ok" ? "valid" : result.state === "missing" ? "invalid" : "unknown";
-  return { status, reason: result.reason };
+  return { status: result.state === "ok" ? "valid" : "invalid", reason: result.reason };
 }
 
 type ActiveRow = { id: string; domain: string; status: string; nestUsername: string };
@@ -439,7 +420,7 @@ export type DomainAppCheck =
 export async function checkDomainApp(
   userId: string,
   domainId: string,
-  dnsStatus: "valid" | "invalid" | "unknown",
+  dnsStatus: "valid" | "invalid",
   probe?: Probe
 ): Promise<DomainAppCheck> {
   const db = await getDb();

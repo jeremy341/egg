@@ -41,10 +41,7 @@ export async function GET(req: NextRequest) {
       httpOnly: true,
       sameSite: "lax",
       secure: process.env.NODE_ENV === "production",
-      // Root-scoped like the login and GitHub routes: scoping this cookie to
-      // /api/auth here lets it coexist with the root-scoped one other routes
-      // set, and the callback's planted-cookie check treats that pair as an attack.
-      path: "/",
+      path: "/api/auth",
       maxAge: 600,
     }
   );

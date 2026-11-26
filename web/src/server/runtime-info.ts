@@ -185,7 +185,6 @@ export async function removeProjectFromServer(
           releaseId: p.releaseId,
           unit: unitName(project.slug, { releaseId: p.releaseId }),
           unitDir,
-          docker: project.deploymentMode !== "native",
         }),
         { timeoutMs: 60_000 }
       );
@@ -196,7 +195,7 @@ export async function removeProjectFromServer(
     // Timers first, so none of them starts a job in a release that is about to be deleted.
     const jobUnits = await jobUnitNames(project.id, project.slug);
     if (jobUnits.length > 0) {
-      const result = await s.script(removeUnits(unitDir, jobUnits, project.slug), { timeoutMs: 60_000 });
+      const result = await s.script(removeUnits(unitDir, jobUnits), { timeoutMs: 60_000 });
       if (result.code !== 0) {
         throw new HttpError(502, "Could not remove scheduled jobs from your container.", "upstream");
       }
@@ -208,7 +207,6 @@ export async function removeProjectFromServer(
         unit: unitName(project.slug),
         unitDir,
         deleteData: options.deleteData ?? false,
-        docker: project.deploymentMode !== "native",
       }),
       { timeoutMs: 60_000 }
     );

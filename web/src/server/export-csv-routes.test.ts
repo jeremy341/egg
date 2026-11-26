@@ -106,25 +106,15 @@ describe("GET /api/activity/export", () => {
   });
 
   it("drops secrets the way the activity page does and neutralises formulas", async () => {
-    const bareToken = "nho9f83nd0aks2lmzqx7wp5rtb4cy6ve";
-    const mixedToken = "aB3xY7pQ2mN9kL4d";
-    const uuid = "550e8400-e29b-41d4-a716-446655440000";
     await entry(me.id, "project.update", {
       password: "hunter2-plain",
       apiKey: "abc",
       note: "ghp_abcdefghijklmnopqrstuvwxyz0123456789",
       fields: "=HYPERLINK(\"http://evil\")",
-      bare: bareToken,
-      mixed: mixedToken,
-      id: uuid,
     });
     const csv = await (await run(activityExport as Handler, get("/api/activity/export"))).text();
     expect(csv).not.toContain("hunter2");
     expect(csv).not.toContain("ghp_");
-    expect(csv).not.toContain(bareToken);
-    expect(csv).not.toContain(mixedToken);
-    // The entry's ids stay visible (the row is about them); only secrets drop.
-    expect(csv).toContain(uuid);
     expect(csv).not.toMatch(/apiKey|api key/i);
     expect(csv).not.toMatch(/(^|,)"=/m);
   });

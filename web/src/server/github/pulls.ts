@@ -101,7 +101,7 @@ export async function commentDeploymentOnPr(deploymentId: string, fetchImpl: Fet
       .from(schema.projects)
       .where(eq(schema.projects.id, dep.projectId))
       .get();
-    if (!project?.repoFullName || !project.installationId || project.workloadKind === "worker") return;
+    if (!project?.repoFullName || !project.installationId) return;
 
     await upsertPullRequestComment(
       project.installationId,
@@ -179,7 +179,6 @@ async function removeCanceledPreviews(projectId: string, prNumber: number): Prom
               releaseId: d.releaseId,
               unit: unitName(project.slug, { releaseId: d.releaseId }),
               unitDir: config().UNIT_DIR,
-              docker: project.deploymentMode !== "native",
             }),
             { timeoutMs: 60_000 }
           )

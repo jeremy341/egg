@@ -461,7 +461,6 @@ type AlertProject = Pick<
   | "id"
   | "slug"
   | "name"
-  | "workloadKind"
   | "notifyUrlEnc"
   | "alertOnDown"
   | "alertOnRecovery"
@@ -482,9 +481,7 @@ function titleFor(
   phase: "fire" | "resolve"
 ): string {
   if (type === "down") {
-    // A worker does not answer requests; it runs, or it has stopped.
-    const down = project.workloadKind === "worker" ? `${project.name} has stopped` : `${project.name} is not answering`;
-    return phase === "fire" ? down : `${project.name} is back up`;
+    return phase === "fire" ? `${project.name} is not answering` : `${project.name} is back up`;
   }
   return `${project.name}: ${RESOURCE_TITLE[type][phase === "fire" ? 0 : 1]}`;
 }

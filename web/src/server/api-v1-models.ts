@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { Principal } from "@/server/api-tokens";
-import { BUILD_LOCATIONS, DEPLOY_STATES, RUNTIMES, WORKLOAD_KINDS, DEPLOYMENT_MODES } from "@/server/db/schema";
+import { BUILD_LOCATIONS, DEPLOY_STATES, RUNTIMES } from "@/server/db/schema";
 import { notFound } from "@/server/http";
 import {
   deploymentView,
@@ -53,12 +53,9 @@ export const projectSchema = z
     repo: z.string().nullable().describe("GitHub repository as owner/name."),
     branch: z.string().describe("The production branch."),
     runtime: z.enum(RUNTIMES),
-    port: z.number().int().nullable(),
-    listenPort: z.number().int().nullable(),
-    workloadKind: z.enum(WORKLOAD_KINDS),
-    deploymentMode: z.enum(DEPLOYMENT_MODES),
+    port: z.number().int(),
     startCommand: z.string().nullable(),
-    healthPath: z.string().nullable(),
+    healthPath: z.string(),
     autoDeploy: z.boolean(),
     buildLocation: z.enum(BUILD_LOCATIONS).describe("Where builds run: container (on your Nest container, under a memory and CPU cap) or github (in your own GitHub Actions workflow)."),
     serverId: z.string(),
@@ -126,12 +123,9 @@ export function toProject(v: ProjectView, latest: DeploymentView | null): Public
     repo: v.repo,
     branch: v.branch,
     runtime: v.runtime as PublicProject["runtime"],
-    port: v.listenPort,
-    listenPort: v.listenPort,
-    workloadKind: v.workloadKind,
-    deploymentMode: v.deploymentMode,
+    port: v.port,
     startCommand: v.startCommand,
-    healthPath: v.workloadKind === "worker" ? null : v.healthPath,
+    healthPath: v.healthPath,
     autoDeploy: v.autoDeploy,
     buildLocation: v.buildLocation,
     serverId: v.serverId,

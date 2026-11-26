@@ -7,7 +7,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {}, push:
 vi.mock("next/link", () => ({ default: ({ children, href }: { children: unknown; href: string }) => createElement("a", { href }, children as never) }));
 import { GithubBuildCard } from "@/components/github-build-card";
 
-const project = (buildLocation: "container" | "github") => ({ id: "p1", branch: "main", repoUrl: "https://github.com/sam/app.git", buildLocation, autoDeploy: true }) as unknown as ProjectView;
+const project = (buildLocation: "container" | "github") => ({ id: "p1", branch: "main", buildLocation, autoDeploy: true }) as unknown as ProjectView;
 const html = (loc: "container" | "github") => renderToStaticMarkup(createElement(GithubBuildCard, { project: project(loc) }));
 
 /** The value of every checked radio, whatever order the attributes come in. */

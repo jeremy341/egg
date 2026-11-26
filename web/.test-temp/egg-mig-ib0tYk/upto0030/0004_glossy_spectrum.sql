@@ -1,1 +1,0 @@
-ALTER TABLE `deployments` ADD `pr_number` integer;

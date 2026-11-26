@@ -1,4 +1,4 @@
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createClient } from "@libsql/client";
@@ -20,28 +20,6 @@ afterEach(() => {
 });
 
 describe("database migrations", () => {
-  it("backfills listener ports without losing existing project or deployment rows", async () => {
-    const dir = mkdtempSync(path.join(tmpdir(), "egg-workload-migration-"));
-    dirs.push(dir);
-    const migrations = path.join(dir, "drizzle");
-    cpSync(path.join(process.cwd(), "drizzle"), migrations, { recursive: true });
-    const journalFile = path.join(migrations, "meta", "_journal.json");
-    const journal = JSON.parse(readFileSync(journalFile, "utf8"));
-    journal.entries = journal.entries.filter((entry: { idx: number }) => entry.idx < 44);
-    writeFileSync(journalFile, JSON.stringify(journal));
-    const client = createClient({ url: `file:${path.join(dir, "test.db").replace(/\\/g, "/")}` });
-    clients.push(client);
-    await client.execute("PRAGMA foreign_keys=ON");
-    await migrateDatabase(client, migrations);
-    await client.execute("INSERT INTO users (id, hack_club_id, name, created_at) VALUES ('u', 'hc', 'User', 1)");
-    await client.execute("INSERT INTO servers (id, user_id, nest_username, host, public_key, private_key_enc, key_fingerprint, created_at) VALUES ('s', 'u', 'user', 'host', 'pub', 'private', 'fingerprint', 1)");
-    await client.execute("INSERT INTO projects (id, user_id, server_id, slug, name, repo_url, runtime, port, created_at, updated_at) VALUES ('p', 'u', 's', 'app', 'App', 'https://github.com/a/b', 'node', 3000, 1, 1)");
-    await client.execute("INSERT INTO deployments (id, project_id, env, source, branch, port, release_id, created_at) VALUES ('d', 'p', 'production', 'manual', 'main', 3000, 'r', 1)");
-    await migrateDatabase(client, path.join(process.cwd(), "drizzle"));
-    expect((await client.execute("SELECT workload_kind, deployment_mode, listen_port FROM projects WHERE id='p'")).rows[0]).toMatchObject({ workload_kind: "web", deployment_mode: "native", listen_port: 3000 });
-    expect((await client.execute("SELECT listen_port FROM deployments WHERE id='d'")).rows[0]?.listen_port).toBe(3000);
-    expect((await client.execute("PRAGMA foreign_key_check")).rows).toEqual([]);
-  });
   it("recovers when first migrations compete across separate connections", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "egg-migration-race-"));
     dirs.push(dir);
@@ -65,53 +43,6 @@ describe("database migrations", () => {
     ) as { entries: unknown[] };
     const applied = await first.execute("SELECT count(*) AS count FROM __drizzle_migrations");
     expect(Number(applied.rows[0]?.count)).toBe(journal.entries.length);
-  });
-
-  it("renames duplicate slugs and nest usernames instead of failing the upgrade", async () => {
-    const dir = mkdtempSync(path.join(tmpdir(), "egg-duplicate-upgrade-"));
-    dirs.push(dir);
-    const migrations = path.join(dir, "drizzle");
-    cpSync(path.join(process.cwd(), "drizzle"), migrations, { recursive: true });
-    const journalFile = path.join(migrations, "meta", "_journal.json");
-    const journal = JSON.parse(readFileSync(journalFile, "utf8"));
-    journal.entries = journal.entries.filter((entry: { idx: number }) => entry.idx < 50);
-    writeFileSync(journalFile, JSON.stringify(journal));
-    const client = createClient({ url: `file:${path.join(dir, "test.db").replace(/\\/g, "/")}` });
-    clients.push(client);
-    await client.execute("PRAGMA foreign_keys=ON");
-    await migrateDatabase(client, migrations);
-    // Two users holding the same slug on one server, and the same Nest username
-    // on one host: legal before this upgrade, unique-index violations after.
-    await client.execute("INSERT INTO users (id, hack_club_id, name, created_at) VALUES ('u1', 'hc1', 'One', 1)");
-    await client.execute("INSERT INTO users (id, hack_club_id, name, created_at) VALUES ('u2', 'hc2', 'Two', 1)");
-    await client.execute(
-      "INSERT INTO servers (id, user_id, nest_username, host, public_key, private_key_enc, key_fingerprint, created_at) VALUES ('s1', 'u1', 'kaj', 'nest.example', 'pub', 'enc', 'fp1', 1)"
-    );
-    await client.execute(
-      "INSERT INTO servers (id, user_id, nest_username, host, public_key, private_key_enc, key_fingerprint, created_at) VALUES ('s2', 'u2', 'kaj', 'nest.example', 'pub', 'enc', 'fp2', 2)"
-    );
-    await client.execute(
-      "INSERT INTO projects (id, user_id, server_id, slug, name, repo_url, runtime, port, created_at, updated_at) VALUES ('p1', 'u1', 's1', 'app', 'App One', 'https://github.com/a/b', 'node', 3000, 1, 1)"
-    );
-    await client.execute(
-      "INSERT INTO projects (id, user_id, server_id, slug, name, repo_url, runtime, port, created_at, updated_at) VALUES ('p2', 'u2', 's1', 'app', 'App Two', 'https://github.com/a/c', 'node', 3001, 2, 2)"
-    );
-    await migrateDatabase(client, path.join(process.cwd(), "drizzle"));
-    const slugs = (await client.execute("SELECT id, slug FROM projects ORDER BY id")).rows;
-    expect(slugs).toEqual([
-      { id: "p1", slug: "app-r-p1" },
-      { id: "p2", slug: "app" },
-    ]);
-    const usernames = (await client.execute("SELECT id, nest_username FROM servers ORDER BY id")).rows;
-    expect(usernames).toEqual([
-      { id: "s1", nest_username: "kaj-r-s1" },
-      { id: "s2", nest_username: "kaj" },
-    ]);
-    const indexes = await client.execute(
-      "SELECT name FROM sqlite_master WHERE type = 'index' AND name IN ('projects_server_slug_idx', 'servers_nest_host_idx')"
-    );
-    expect(indexes.rows).toHaveLength(2);
-    expect((await client.execute("PRAGMA foreign_key_check")).rows).toEqual([]);
   });
 
   it("rethrows a persistent duplicate-schema conflict instead of treating it as success", async () => {

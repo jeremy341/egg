@@ -8,7 +8,7 @@ export const GET = handle<Ctx>(async (_req, { params }) => {
   const { id } = await params;
   const { dep, project } = await readableDeployment(user.id, id);
   return ok({
-    deployment: { ...dep, port: project.workloadKind === "worker" ? null : dep.port },
+    deployment: dep,
     project: { id: project.id, name: project.name, slug: project.slug },
   });
 });

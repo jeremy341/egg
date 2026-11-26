@@ -58,7 +58,6 @@ export const DOCS_NAV: DocsGroup[] = [
           { id: "projects-settings", title: "Settings" },
           { id: "projects-runtimes", title: "Runtimes" },
           { id: "projects-guarantees", title: "What every app can rely on" },
-          { id: "projects-docker", title: "Dockerfile and Compose modes" },
         ],
       },
       {
@@ -86,16 +85,6 @@ export const DOCS_NAV: DocsGroup[] = [
           { id: "container-files", title: "The Files tab" },
         ],
       },
-    ],
-  },
-  {
-    group: "Bots",
-    sections: [
-      { id: "bots-discordjs", title: "Deploy a Discord bot (discord.js)", subsections: [] },
-      { id: "bots-discordpy", title: "Deploy a Discord bot (discord.py)", subsections: [] },
-      { id: "bots-slack", title: "Deploy a Slack app (Bolt)", subsections: [] },
-      { id: "bots-telegram", title: "Deploy a Telegram bot", subsections: [] },
-      { id: "bots-alive", title: "Keep a bot alive", subsections: [] },
     ],
   },
   {

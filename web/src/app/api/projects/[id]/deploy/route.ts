@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { authed, handle, ok, readJson } from "@/server/http";
-import { deployBranch, deploymentResponse } from "@/server/projects";
+import { deployBranch } from "@/server/projects";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -10,5 +10,5 @@ export const POST = handle<Ctx>(async (req, { params }) => {
   const user = await authed();
   const { id } = await params;
   const { branch } = await readJson(req, body);
-  return ok({ deployment: deploymentResponse(await deployBranch(user.id, id, branch)) }, 202);
+  return ok({ deployment: await deployBranch(user.id, id, branch) }, 202);
 });

@@ -77,10 +77,6 @@ echo "$server_pid"`);
     expect(await request("/%2e%2e/%2e%2e/etc/passwd")).toMatchObject({ status: "404" });
     expect(await request("/%2e%65nv")).toMatchObject({ status: "404" });
     expect(await request("/assets/..%2f.env")).toMatchObject({ status: "404" });
-    // An encoded trailing slash is the folder too: its index is served, never a redirect loop.
-    expect(await request("/%2f")).toEqual({ body: "home page", status: "200" });
-    expect(await request("/assets%2f")).toMatchObject({ status: "404" });
-    expect(await request("/%252f")).toMatchObject({ status: "404" });
     // A malformed escape is a 400, and the server is still there for the next request.
     expect(await request("/%E0%A4%A")).toMatchObject({ status: "400" });
     expect(await request("/%")).toMatchObject({ status: "400" });

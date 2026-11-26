@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { getDb } from "@/server/db";
 import { deployStageMetrics } from "@/server/db/schema";
 
-export type StageName = "source" | "upload" | "lock_wait" | "unpack" | "compose" | "build" | "activation" | "health";
+export type StageName = "source" | "upload" | "lock_wait" | "unpack" | "build" | "activation" | "health";
 export type StageMetric = { stage: StageName; startedAt: Date; finishedAt: Date; durationMs: number; bytes: number | null; metadata: { outcome: "ok" | "failed" } };
 export type StageRecorder = (metric: StageMetric) => Promise<void>;
 

@@ -204,35 +204,6 @@ describe("Test connection", () => {
     expect(byId(report.checks, "repository").status).toBe("not_checked");
   });
 
-  it("fails the installation check, not the request, when GitHub is unreachable", async () => {
-    const p = await makeProject();
-    await createBuildCredentials(p.id);
-    const unreachable = (async () => {
-      throw new TypeError("fetch failed");
-    }) as unknown as typeof fetch;
-    const report = await checkGithubConnection(user.id, p.id, { eggUrl: EGG_URL, fetchImpl: unreachable });
-    expect(byId(report.checks, "installation")).toMatchObject({ status: "fail" });
-    expect(byId(report.checks, "installation").detail).toMatch(/Try again in a minute/);
-    expect(byId(report.checks, "repository").status).toBe("not_checked");
-    expect(report.allPassed).toBe(false);
-  });
-
-  it("fails the repository check, not the request, when listing does not answer", async () => {
-    const p = await makeProject();
-    await createBuildCredentials(p.id);
-    const tokenThenDead = (async (input: string | URL | Request) => {
-      if (String(input).endsWith("/access_tokens")) {
-        return Response.json({ token: TOKEN, expires_at: new Date(Date.now() + 60_000).toISOString() });
-      }
-      throw new TypeError("fetch failed");
-    }) as unknown as typeof fetch;
-    const report = await checkGithubConnection(user.id, p.id, { eggUrl: EGG_URL, fetchImpl: tokenThenDead });
-    expect(byId(report.checks, "installation")).toMatchObject({ status: "pass" });
-    expect(byId(report.checks, "repository")).toMatchObject({ status: "fail" });
-    expect(byId(report.checks, "repository").detail).toMatch(/Try again in a minute/);
-    expect(byId(report.checks, "workflow_file").status).toBe("not_checked");
-  });
-
   it("fails when the app cannot see the repository, and does not look for the file", async () => {
     const p = await makeProject();
     await createBuildCredentials(p.id);

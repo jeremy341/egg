@@ -94,12 +94,6 @@ export const FOLDER_MARKER = ".egg-managed";
 /** Shell helpers, ready to paste into a script. They only read. */
 export const SH_MARKER_HELPERS =
   `egg_unit_marked() { [ -f "$1" ] && [ ! -L "$1" ] && grep -q '^${UNIT_MARKER}' "$1" 2>/dev/null; }\n` +
-  // Ownership, not just authorship: a unit belongs to the project its marker names.
-  // Units written before the marker grew a project= carry none, and stay ours for
-  // every project, as before. Slugs are [a-z0-9-], so they are literal in this ERE.
-  `egg_unit_ours() { local f="$1" slug="$2"; egg_unit_marked "$f" || return 1; ` +
-  `grep -qE "^${UNIT_MARKER} project=" -- "$f" 2>/dev/null || return 0; ` +
-  `grep -qE "^${UNIT_MARKER} project="$slug"( |\\$)" -- "$f" 2>/dev/null; }\n` +
   `egg_dir_managed() { local d e n; d="$1"; [ -d "$d" ] && [ ! -L "$d" ] || return 1; [ -f "$d/${FOLDER_MARKER}" ] && return 0; [ -e "$d/.git" ] && return 1; ` +
   `n=0; for e in "$d"/* "$d"/.[!.]*; do [ -e "$e" ] || [ -L "$e" ] || continue; ` +
   `case "$(basename "$e")" in releases|incoming|shared|env|current|current.new|current.env|current.env.new) n=$((n+1));; *) return 1;; esac; done; [ "$n" -gt 0 ]; }\n`;

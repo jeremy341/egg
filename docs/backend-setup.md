@@ -41,10 +41,11 @@ UNIT_DIR=<printed by pnpm fake-nest>
 | `GITHUB_APP_ID`, `GITHUB_APP_SLUG`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET` | for private repos and push-to-deploy | From a GitHub App. The private key may use `\n` escapes. |
 | `RUN_WORKER` | no | `1` runs the deployment queue inside the web process. `0` means run `pnpm worker` yourself, for example on another machine. |
 | `WORKER_CONCURRENCY` | no | Parallel deployments, default 2. One project never builds twice at once. |
+| `BUILD_RUNNER` | no | `docker` (default) or `local`. |
+| `BUILD_IMAGE_NODE`, `BUILD_IMAGE_PYTHON` | no | Images for the build sandbox. |
+| `BUILD_TIMEOUT_SECONDS` | no | Default 900. |
 | `NEST_HOST`, `NEST_PORT` | no | Defaults `hackclub.app` and `22`. Only change for testing. |
 | `UNIT_DIR` | no | Where systemd units are written on the container. Default `/etc/systemd/system`. |
-
-Builds stop after 15 minutes. That cap is a constant in the code, not a setting.
 
 ## Hack Club Auth
 

@@ -27,9 +27,6 @@ export type TimelineDeployment = {
   source: string;
   env: "production" | "preview";
   port: number;
-  /** Optional for older timeline callers. A null listen port identifies a worker snapshot. */
-  listenPort?: number | null;
-  workloadKind?: "web" | "worker";
   error: string | null;
   createdAt: When;
   startedAt: When;
@@ -80,8 +77,6 @@ export type Timeline = {
   canceledWhy: string | null;
   /** The text for a polite live region. It changes only when the stage changes. */
   summary: string;
-  /** For a live deployment, what "working" means next, in the words of its workload. Null on any other outcome. */
-  liveNote: string | null;
 };
 
 // ----------------------------------------------------------------- helpers
@@ -127,8 +122,6 @@ const MARK = {
   noBuild: /^No build step for this project\.$/,
   buildStart: /^Building on your container, capped at /,
   waitHealth: /^Waiting for the app to answer on port \d+$/,
-  waitWorker: /^Checking that the worker stays active$/,
-  workerHealthy: /^Worker is active$/,
   reverting: /^Reverting to the previous release$/,
   restored: /^The previous release is serving traffic again\.$/,
   notRestored: /^The previous release did not come back either\./,
@@ -388,12 +381,9 @@ export function explainFailure(input: {
   error: string | null;
   logs?: TimelineLog[];
   port?: number;
-  listenPort?: number | null;
-  workloadKind?: "web" | "worker";
   stage?: TimelineStageKey;
 }): TimelineFailure {
   const logs = toLogs(input.logs ?? []);
-  const worker = input.workloadKind === "worker" || input.listenPort === null;
   const recorded = input.error?.trim() || null;
   const stage = input.stage ?? "preparing";
   const neutral = "Egg could not finish this deployment. Read the last lines of the log below to see why, then deploy again.";
@@ -402,24 +392,14 @@ export function explainFailure(input: {
   const { text, appRunning } = stripTail(recorded);
   const note = appRunning ? "Your app is still running the release it had before." : null;
   const reverted = revertOutcome(logs);
-  const revertNote = reverted === "restored" ? worker ? "The previous worker release is running again." : "The previous release is serving traffic again." : reverted === "failed" ? "The previous release did not come back either. Check the log." : null;
-
-  if (worker && /worker did not stay active|did not become healthy/.test(text)) {
-    return {
-      stage: "health",
-      message: /^The older release/.test(text)
-        ? "The older worker release did not stay active. Redeploy from your branch instead of rolling back."
-        : "The worker did not stay active. Check its logs and start command, then deploy again.",
-      known: true, note: revertNote ?? note, recorded,
-    };
-  }
+  const revertNote = reverted === "restored" ? "The previous release is serving traffic again." : reverted === "failed" ? "The previous release did not come back either. Check the log." : null;
 
   for (const rule of RULES) {
     const m = rule.test.exec(text);
     if (!m) continue;
     return {
       stage: rule.stage ?? stage,
-      message: rule.say(m, { logs, port: input.listenPort ?? input.port ?? 0 }),
+      message: rule.say(m, { logs, port: input.port ?? 0 }),
       known: true,
       note: revertNote ?? note,
       recorded,
@@ -498,8 +478,6 @@ export function buildTimeline(dep: TimelineDeployment, metricsIn: TimelineMetric
   const logs = toLogs(logsIn);
   const metrics = metricsIn;
   const rollback = dep.source === "rollback";
-  const worker = dep.workloadKind === "worker" || dep.listenPort === null;
-  const listenPort = dep.listenPort ?? dep.port;
   const active = ACTIVE.has(dep.state);
   const ready = dep.state === "ready";
   const canceled = dep.state === "canceled";
@@ -520,16 +498,16 @@ export function buildTimeline(dep: TimelineDeployment, metricsIn: TimelineMetric
   const healthMetric = lastMetric(metrics, "health");
   const noBuild = !rollback && Boolean(findLog(logs, MARK.noBuild)) && !buildMetric;
   const buildLog = findLog(logs, MARK.buildStart);
-  const waitHealthLog = findLog(logs, worker ? MARK.waitWorker : MARK.waitHealth);
+  const waitHealthLog = findLog(logs, MARK.waitHealth);
   const revertLog = rollback ? undefined : findLog(logs, MARK.reverting);
-  const failureHint = failedState || canceled ? explainFailure({ error: dep.error, logs: logsIn, port: dep.port, listenPort: dep.listenPort, workloadKind: dep.workloadKind }) : null;
+  const failureHint = failedState || canceled ? explainFailure({ error: dep.error, logs: logsIn, port: dep.port }) : null;
 
   let reached = 0;
   // A deployment that ended before it ever started (startedAt unset) failed while still queued.
   if (startedAt !== null || (active && dep.state !== "queued")) reached = 1;
   if (rollback) {
     if (dep.state === "deploying" || activationAt !== null || ready) reached = Math.max(reached, at("starting"));
-    if (healthMetric || waitHealthLog || findLog(logs, worker ? MARK.workerHealthy : MARK.healthy) || findLog(logs, MARK.crashed) || (!worker && findLog(logs, MARK.noAnswer))) reached = Math.max(reached, at("health"));
+    if (healthMetric || findLog(logs, MARK.healthy) || findLog(logs, MARK.crashed) || findLog(logs, MARK.noAnswer)) reached = Math.max(reached, at("health"));
     if (failedState && failureHint?.stage === "health") reached = at("health");
   } else {
     if (buildMetric || buildLog) reached = Math.max(reached, at("building"));
@@ -578,16 +556,16 @@ export function buildTimeline(dep: TimelineDeployment, metricsIn: TimelineMetric
       if (key === "queued") detail = "Waiting for a free slot in the queue";
       else if (key === "preparing") detail = preparingDetail(logs) ?? "Getting the source ready";
       else if (key === "building") detail = buildingDetail(logs) ?? "Installing and building on your container";
-      else if (key === "starting") detail = rollback ? worker ? "Switching to the older release, then checking that it stays active" : "Switching to the older release, then waiting for it to answer" : dep.env === "preview" ? "Starting the preview" : "Switching to the new release";
-      else if (key === "health") detail = worker ? "Checking that the worker stays active" : `Waiting for the app to answer on port ${listenPort}`;
+      else if (key === "starting") detail = rollback ? "Switching to the older release, then waiting for it to answer" : dep.env === "preview" ? "Starting the preview" : "Switching to the new release";
+      else if (key === "health") detail = `Waiting for the app to answer on port ${dep.port}`;
     } else if (status === "done" && key === "health") {
-      detail = worker ? findLastLog(logs, MARK.workerHealthy)?.message ?? null : findLastLog(logs, MARK.healthy)?.message.replace(/^Healthy: /, "") ?? null;
+      detail = findLastLog(logs, MARK.healthy)?.message.replace(/^Healthy: /, "") ?? null;
     } else if (status === "skipped" && !(key === "building" && noBuild)) {
       detail = "Not reached";
     }
     return {
       key,
-      label: key === "health" && worker ? "Process check" : key === "starting" && rollback ? "Switching release" : key === "live" && (worker || dep.env === "preview") ? "Running" : LABELS[key],
+      label: key === "starting" && rollback ? "Switching release" : key === "live" && dep.env === "preview" ? "Running" : LABELS[key],
       status,
       // A stage that did not run has no time, even if a later boundary could be read off the records.
       at: status === "skipped" || status === "pending" ? null : iso(when[key] ?? null),
@@ -606,10 +584,10 @@ export function buildTimeline(dep: TimelineDeployment, metricsIn: TimelineMetric
       at: iso(revertLog.at),
       durationMs: null,
       detail: restored
-        ? worker ? "The previous worker release is running again" : "The previous release is serving traffic again"
+        ? "The previous release is serving traffic again"
         : active && reverted === "unknown"
           ? "Putting the previous release back"
-          : worker ? "Could not confirm that the previous worker release is running. Check the log" : "Could not confirm that the previous release is serving traffic. Check the log",
+          : "Could not confirm that the previous release is serving traffic. Check the log",
     };
     stages.splice(stages.findIndex((s) => s.key === "health") + 1, 0, row);
   }
@@ -638,21 +616,15 @@ export function buildTimeline(dep: TimelineDeployment, metricsIn: TimelineMetric
 
   // The failure, and the line for a polite live region.
   const failedKey = stages.find((s) => s.status === "failed")?.key ?? stages[Math.min(reached, stages.length - 1)].key;
-  const failure = failedState ? explainFailure({ error: dep.error, logs: logsIn, port: dep.port, listenPort: dep.listenPort, workloadKind: dep.workloadKind, stage: failedKey }) : null;
+  const failure = failedState ? explainFailure({ error: dep.error, logs: logsIn, port: dep.port, stage: failedKey }) : null;
   const canceledWhy = canceled ? explainCancel(dep.error) : null;
   const currentIndex = stages.findIndex((s) => s.status === "current");
 
   let outcome: TimelineOutcome = "running";
   let summary: string;
-  let liveNote: string | null = null;
   if (ready) {
     outcome = "live";
-    summary = worker ? "The worker is running." : dep.env === "preview" ? "The preview is running." : "The deployment is live.";
-    liveNote = worker
-      ? "Working, for a worker, means the process stays active: Egg checks every few minutes, its status and restart count are on the project page, its output is in the logs below, and if it stops you get an alert on the channel you set up."
-      : dep.env === "preview"
-        ? "The preview is serving its own URL, and it disappears when its pull request closes."
-        : "Keep an eye on it from the project page: uptime checks run every few minutes and its application logs are on the Logs tab.";
+    summary = dep.env === "preview" ? "The preview is running." : "The deployment is live.";
   } else if (canceled) {
     outcome = "canceled";
     summary = canceledWhy ?? "This deployment was canceled.";
@@ -665,5 +637,5 @@ export function buildTimeline(dep: TimelineDeployment, metricsIn: TimelineMetric
     summary = `${row.label}. Step ${(currentIndex >= 0 ? currentIndex : 0) + 1} of ${stages.length}.`;
   }
 
-  return { stages, outcome, failure, canceledWhy, summary, liveNote };
+  return { stages, outcome, failure, canceledWhy, summary };
 }

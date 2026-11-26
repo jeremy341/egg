@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { createWriteStream, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statfsSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { lstat, readdir, statfs } from "node:fs/promises";
-import { devNull } from "node:os";
 import { Transform } from "node:stream";
 import { pipeline as pipelineStream } from "node:stream/promises";
 import { StringDecoder } from "node:string_decoder";
@@ -11,13 +10,11 @@ import * as tar from "tar";
 import { config } from "@/server/config";
 import {
   resolveRuntime,
-  selectLockfile,
   type ProjectFiles,
   type RuntimeInput,
   type RuntimeSpec,
 } from "@/server/deploy/runtime";
 import { maskSecrets, secretNeedles } from "@/server/deploy/redact";
-import { genericGitEnvironment, validateGitVersion } from "@/server/providers/generic";
 
 export type LogFn = (level: "info" | "warn" | "error", message: string) => void;
 
@@ -29,7 +26,6 @@ export type BuildRequest = {
     cloneUrl: string;
     /** GitHub installation token for private repos. */
     token?: string | null;
-    provider?: "github" | "generic";
     branch: string;
     sha?: string | null;
   };
@@ -71,13 +67,6 @@ const ALLOWED_GIT_HOSTS = ["github.com"];
 
 /** Only clone https URLs from hosts we expect. Blocks file://, ssh and internal hosts. */
 export function assertCloneUrl(url: string) {
-  // git/curl and the WHATWG parser disagree about authority characters: a backslash
-  // can be a path separator to URL but part of the host to git, and an @ can turn
-  // what URL reads as a path into userinfo that changes where git connects. Refuse
-  // the raw text before parsing so the two can never disagree about the host.
-  if (url.includes("\\") || url.includes("@")) {
-    throw new BuildError("Only plain https repository URLs without @ or \\ are supported.");
-  }
   let u: URL;
   try {
     u = new URL(url);
@@ -143,26 +132,9 @@ export function assertGitSha(sha: string): string {
   return sha.toLowerCase();
 }
 
-/** What a spawned git may inherit from the server: the executable path, the locale and the temp folder, and nothing else. */
-const GIT_ENV_KEEP = /^(?:PATH|PATHEXT|LANG|LC_[A-Z_]+|HOME|USERPROFILE|TMPDIR|TEMP|TMP|SYSTEMROOT|SYSTEMDRIVE|COMSPEC)$/i;
-/** No inherited Git, proxy or curl setting, the same protection the generic clone path applies. */
-const GIT_ENV_DROP = /^(?:git_|.*proxy$|curl_)/i;
-
-/**
- * Configure Git authentication through its environment, keeping the token out
- * of argv. The clone itself is of a repository somebody else chose, so git gets
- * a minimal environment with the server's own configuration, credentials and
- * secrets left out, just as `genericGitEnvironment` does for the generic path.
- */
+/** Configure Git authentication through its environment, keeping the token out of argv. */
 export function gitEnvironment(token?: string | null): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...process.env };
-  for (const key of Object.keys(env)) {
-    if (!GIT_ENV_KEEP.test(key) || GIT_ENV_DROP.test(key)) delete env[key];
-  }
-  env.GIT_CONFIG_NOSYSTEM = "1";
-  env.GIT_CONFIG_GLOBAL = devNull;
-  env.GIT_TERMINAL_PROMPT = "0";
-  env.GIT_ASKPASS = "echo";
+  const env: NodeJS.ProcessEnv = { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_ASKPASS: "echo" };
   if (token) {
     const basic = Buffer.from(`x-access-token:${token}`).toString("base64");
     env.GIT_CONFIG_COUNT = "1";
@@ -241,12 +213,10 @@ export function detectFiles(dir: string): ProjectFiles {
   const has = (f: string) => existsSync(path.join(dir, f));
   let hasBuildScript = false;
   let nodeEngine: string | null = null;
-  let packageManager: unknown;
   const hasPackageJson = has("package.json");
   if (hasPackageJson) {
     try {
       const pkg = JSON.parse(readFileSync(path.join(dir, "package.json"), "utf8"));
-      packageManager = pkg?.packageManager;
       hasBuildScript = typeof pkg?.scripts?.build === "string";
       if (typeof pkg?.engines?.node === "string") nodeEngine = pkg.engines.node.trim().slice(0, 200) || null;
     } catch {
@@ -254,16 +224,16 @@ export function detectFiles(dir: string): ProjectFiles {
     }
   }
   return {
-    lockfile: selectLockfile(has, packageManager),
+    lockfile: has("pnpm-lock.yaml")
+      ? "pnpm"
+      : has("yarn.lock")
+        ? "yarn"
+        : has("package-lock.json")
+          ? "npm"
+          : null,
     hasPackageJson,
     hasBuildScript,
     hasRequirements: has("requirements.txt"),
-    hasPyproject: has("pyproject.toml"),
-    hasGemfile: has("Gemfile"),
-    hasComposer: has("composer.json"),
-    hasCargoLock: has("Cargo.lock"),
-    hasMaven: has("pom.xml"),
-    hasGradle: has("build.gradle") || has("build.gradle.kts"),
     nodeEngine,
   };
 }
@@ -438,8 +408,7 @@ export async function cloneSource(
   line: (l: string) => void,
   limits: Partial<CloneLimits> = {}
 ): Promise<BuildResult["commit"]> {
-  if (req.source.provider !== "generic") assertCloneUrl(req.source.cloneUrl);
-  if (req.source.provider === "generic" && req.source.token) throw new BuildError("Generic Git supports public repositories only.");
+  assertCloneUrl(req.source.cloneUrl);
   assertGitRef(req.source.branch);
   if (req.source.sha) assertGitSha(req.source.sha);
   const resolved: CloneLimits = {
@@ -452,7 +421,7 @@ export async function cloneSource(
   if (lowDisk) throw lowDisk;
 
   log("info", `Cloning ${req.source.cloneUrl} (branch ${req.source.branch})`);
-  const gitEnv = req.source.provider === "generic" ? await genericGitEnvironment(req.source.cloneUrl) : gitEnvironment(req.source.token);
+  const gitEnv = gitEnvironment(req.source.token);
   const watched: { error: BuildError | null } = { error: null };
   const controller = new AbortController();
   const signal = AbortSignal.any(
@@ -463,17 +432,6 @@ export async function cloneSource(
     controller.abort();
   });
   try {
-    if (req.source.provider === "generic") {
-      const version: string[] = [];
-      if (await runProcess("git", ["--version"], { env: gitEnv, onLine: (s) => version.push(s), timeoutMs: 10_000, signal }) !== 0) throw new BuildError("Could not check Git version.");
-      validateGitVersion(version[0] ?? "");
-      const refs: string[] = [];
-      const branchRef = `refs/heads/${req.source.branch}`;
-      if (await runProcess("git", ["ls-remote", "--exit-code", "--heads", "--", req.source.cloneUrl, branchRef], { env: gitEnv, onLine: (s) => refs.push(s), timeoutMs: 30_000, signal }) !== 0) throw new BuildError("Could not read the public repository branch.");
-      const match = refs.map((line) => line.split(/\s+/)).find((parts) => parts[1] === branchRef);
-      if (!match) throw new BuildError("Could not verify the public repository branch.");
-      req = { ...req, source: { ...req.source, sha: req.source.sha ?? assertGitSha(match[0]) } };
-    }
     let cloneCode: number;
     try {
       cloneCode = await runProcess(
@@ -549,16 +507,11 @@ export async function cloneSource(
   }
 
   const info: string[] = [];
-  const commitCode = await runProcess("git", ["log", "-1", "--format=%H%n%an%n%s"], {
+  await runProcess("git", ["log", "-1", "--format=%H%n%an%n%s"], {
     cwd: srcDir,
     env: gitEnv,
     onLine: (l) => info.push(l),
   });
-  // An empty repository has no commits to anchor the deployment to: fail cleanly
-  // instead of recording an empty commit.
-  if (commitCode !== 0 || !info[0]) {
-    throw new BuildError(`No commits found on branch ${req.source.branch}.`);
-  }
   const commit = {
     sha: info[0] ?? "",
     author: info[1] ?? "",

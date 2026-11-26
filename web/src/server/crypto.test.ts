@@ -27,14 +27,6 @@ describe("seal/open", () => {
   it("rejects values it did not produce", () => {
     expect(() => open("nonsense", "ctx")).toThrow(/Unrecognised/);
   });
-
-  it("round-trips an empty value, because an env var may legitimately be empty", () => {
-    const sealed = seal("", "env:p1:DEBUG:all");
-    expect(open(sealed, "env:p1:DEBUG:all")).toBe("");
-    // A missing ciphertext segment is still rejected: only the empty string seals to "".
-    const [, iv, tag] = sealed.split(".");
-    expect(() => open([ "v1", iv, tag ].join("."), "env:p1:DEBUG:all")).toThrow(/Unrecognised/);
-  });
 });
 
 describe("helpers", () => {

@@ -731,9 +731,6 @@ function fakeSession(handler: Handler) {
       async writeFile(path: string, content: string, mode?: string) {
         writes.push({ path, content, mode });
       },
-      async exec() {
-        return { code: 0, stdout: "", stderr: "" };
-      },
     },
   };
 }

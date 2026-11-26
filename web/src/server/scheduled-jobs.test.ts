@@ -6,7 +6,7 @@ import { resetConfigForTests } from "@/server/config";
 import { open } from "@/server/crypto";
 import { schema } from "@/server/db";
 import { runDeployJob, type PipelineDeps } from "@/server/deploy/pipeline";
-import { installJob, dockerJobCommand, jobServiceFile, jobTimerFile, jobUnits } from "@/server/deploy/jobs-remote";
+import { installJob, jobServiceFile, jobTimerFile, jobUnits } from "@/server/deploy/jobs-remote";
 import { parseSchedule } from "@/lib/cron-schedule";
 import { createProject, deployBranch, type ProjectRow } from "@/server/projects";
 import { removeProjectFromServer } from "@/server/runtime-info";
@@ -23,7 +23,7 @@ import {
   updateJob,
 } from "@/server/scheduled-jobs";
 import { connectToServer, createServer, getServerForUser, type ServerRow } from "@/server/servers";
-import { NestSession, shellQuote } from "@/server/ssh/connection";
+import { NestSession } from "@/server/ssh/connection";
 import { fakeBuilder, freePort, containerReadyFacts, installFakeContainerBuild, installFakeSystemd, nodeApp } from "@/server/test/fake-nest";
 import { useFreshDb } from "@/server/test/db";
 import { startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
@@ -80,20 +80,6 @@ describe("job unit files", () => {
   it("escapes systemd's own syntax in the command", () => {
     const file = jobServiceFile({ ...base, command: 'echo "$HOME" 100%' });
     expect(file).toContain('ExecStart=/bin/bash -lc "echo \\"$$HOME\\" 100%%"');
-  });
-
-  it("runs a container project's job inside the container, without expanding the command before it", () => {
-    const command = 'psql "$POSTGRES_PASSWORD" && echo $(whoami)';
-    const inner = dockerJobCommand({ slug: "demo", containerPort: 8080, command });
-    expect(inner).toBe(`docker exec -e PORT=8080 'egg-demo' sh -lc 'psql "$POSTGRES_PASSWORD" && echo $(whoami)'`);
-    const quoted = dockerJobCommand({ slug: "demo", containerPort: 3000, command: "echo 'done'" });
-    expect(quoted).toBe(`docker exec -e PORT=3000 'egg-demo' sh -lc ${shellQuote("echo 'done'")}`);
-    const file = jobServiceFile({ ...base, command: inner });
-    const line = file.split("\n").find((l) => l.startsWith("ExecStart"));
-    // The unit's login shell hands the command to the container unread: the doubled
-    // dollars are systemd's own escaping of the ones the container's shell will see.
-    const expected = `ExecStart=/bin/bash -lc ${JSON.stringify(`docker exec -e PORT=8080 'egg-demo' sh -lc 'psql "$$POSTGRES_PASSWORD" && echo $$(whoami)'`)}`;
-    expect(line).toBe(expected);
   });
 
   it("writes a timer in UTC that does not catch up after downtime", () => {

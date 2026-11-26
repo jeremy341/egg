@@ -307,7 +307,7 @@ export function ScheduledJobsCard({ projectId }: { projectId: string }) {
       title="Scheduled Jobs"
       docsHref="/docs/jobs"
       docsTopic="scheduled jobs"
-      description="Run a command on a schedule inside your latest release, such as a nightly clean-up or a weekly report. Times are UTC."
+      description="Run a command on a schedule inside your latest release, such as a nightly clean-up or a weekly report. It has the same environment variables as your app. Times are UTC."
     >
       {jobs === null ? (
         <p role="status" className="text-muted-foreground">

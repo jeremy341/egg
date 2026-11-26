@@ -106,13 +106,7 @@ export const servers = sqliteTable(
     lastCheckedAt: ts("last_checked_at"),
     createdAt: ts("created_at").notNull(),
   },
-  (t) => [
-    uniqueIndex("servers_user_nest_idx").on(t.userId, t.nestUsername),
-    // One Nest account per instance: a server's whole namespace (systemd units,
-    // containers, ~/.egg folder, images) lives in that account's home, so two
-    // Egg accounts must never point at the same host login.
-    uniqueIndex("servers_nest_host_idx").on(t.host, t.nestUsername),
-  ]
+  (t) => [uniqueIndex("servers_user_nest_idx").on(t.userId, t.nestUsername)]
 );
 
 export const githubInstallations = sqliteTable("github_installations", {
@@ -126,20 +120,8 @@ export const githubInstallations = sqliteTable("github_installations", {
   createdAt: ts("created_at").notNull(),
 });
 
-export const providerConnections = sqliteTable("provider_connections", {
-  id: text("id").primaryKey(),
-  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  provider: text("provider", { enum: ["gitlab", "forgejo", "codeberg"] }).notNull(),
-  label: text("label").notNull(),
-  host: text("host").notNull(),
-  tokenEnc: text("token_enc").notNull(),
-  createdAt: ts("created_at").notNull(),
-}, (t) => [index("provider_connections_user_idx").on(t.userId)]);
-
-export const RUNTIMES = ["node", "python", "static", "command", "go", "rust", "ruby", "php", "java"] as const;
+export const RUNTIMES = ["node", "python", "static", "command"] as const;
 export type Runtime = (typeof RUNTIMES)[number];
-export const WORKLOAD_KINDS = ["web", "worker"] as const;
-export const DEPLOYMENT_MODES = ["native", "dockerfile", "compose"] as const;
 
 /**
  * Where a project is built. "container": on the user's Nest container, under a memory and CPU
@@ -169,23 +151,10 @@ export const projects = sqliteTable(
     repoFullName: text("repo_full_name"),
     /** Clone URL. For public repos without the App this is all we have. */
     repoUrl: text("repo_url").notNull(),
-    sourceProvider: text("source_provider", { enum: ["github", "gitlab", "forgejo", "codeberg", "generic"] }).notNull().default("github"),
-    providerConnectionId: text("provider_connection_id").references(() => providerConnections.id, { onDelete: "restrict" }),
-    providerWebhookSecretEnc: text("provider_webhook_secret_enc"),
     installationId: integer("installation_id"),
     productionBranch: text("production_branch").notNull().default("main"),
     rootDir: text("root_dir").notNull().default("."),
     runtime: text("runtime", { enum: RUNTIMES }).notNull(),
-    workloadKind: text("workload_kind", { enum: WORKLOAD_KINDS }).notNull().default("web"),
-    deploymentMode: text("deployment_mode", { enum: DEPLOYMENT_MODES }).notNull().default("native"),
-    /** Dockerfile path relative to the repository root; used only in "dockerfile" mode. */
-    dockerfilePath: text("dockerfile_path"),
-    /** Path of the Compose file relative to the repository root; used only in "compose" mode. */
-    composeFilePath: text("compose_file_path"),
-    /** The Compose service that is deployed; used only in "compose" mode. */
-    composeService: text("compose_service"),
-    /** Port the container image listens on; used only in Docker modes. */
-    containerPort: integer("container_port"),
     installCommand: text("install_command"),
     buildCommand: text("build_command"),
     startCommand: text("start_command"),
@@ -195,7 +164,6 @@ export const projects = sqliteTable(
     buildLocation: text("build_location", { enum: BUILD_LOCATIONS }).notNull().default("container"),
     /** Port the app listens on. Map your domain to this port in Nest. */
     port: integer("port").notNull(),
-    listenPort: integer("listen_port"),
     healthPath: text("health_path").notNull().default("/"),
     autoDeploy: integer("auto_deploy", { mode: "boolean" })
       .notNull()
@@ -248,22 +216,12 @@ export const projects = sqliteTable(
   },
   (t) => [
     uniqueIndex("projects_user_slug_idx").on(t.userId, t.slug),
-    // Unit, container, folder, image and Compose-project names are slug-only on the
-    // server, so the slug must be unique per server across all users of that server.
-    uniqueIndex("projects_server_slug_idx").on(t.serverId, t.slug),
-    uniqueIndex("projects_server_listen_port_idx").on(t.serverId, t.listenPort).where(sql`${t.listenPort} is not null`),
     uniqueIndex("projects_hook_idx").on(t.hookHash),
     uniqueIndex("projects_analytics_idx").on(t.analyticsKey),
     uniqueIndex("projects_status_idx").on(t.statusKey),
     index("projects_user_idx").on(t.userId),
   ]
 );
-
-export const providerWebhookDeliveries = sqliteTable("provider_webhook_deliveries", {
-  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
-  deliveryId: text("delivery_id").notNull(),
-  receivedAt: ts("received_at").notNull(),
-}, (t) => [uniqueIndex("provider_webhook_delivery_project_id_idx").on(t.projectId, t.deliveryId)]);
 
 export const envVars = sqliteTable(
   "env_vars",
@@ -313,7 +271,6 @@ export const deployments = sqliteTable(
     author: text("author"),
     /** Port this release listens on. Previews get their own. */
     port: integer("port").notNull(),
-    listenPort: integer("listen_port"),
     /** Directory name under the project's releases folder on the server. */
     releaseId: text("release_id").notNull(),
     /** True for the release currently serving the production port. */
@@ -405,9 +362,6 @@ export const domains = sqliteTable(
       .default("pending"),
     lastCheckedAt: ts("last_checked_at"),
     createdAt: ts("created_at").notNull(),
-    /** The last owner action on this domain (added, re-pointed, re-verified). The reclaim
-     *  window for an abandoned pending claim runs from this, not from the add date. */
-    updatedAt: ts("updated_at").notNull(),
   },
   (t) => [uniqueIndex("domains_domain_idx").on(t.domain)]
 );
@@ -593,7 +547,7 @@ export const auditLog = sqliteTable("audit_log", {
   target: text("target"),
   meta: text("meta"),
   at: ts("at").notNull(),
-}, (t) => [index("audit_log_action_at_idx").on(t.action, t.at)]);
+});
 
 /** Server load, memory and disk, sampled by the worker so the dashboard can show trends. */
 export const usageSamples = sqliteTable(

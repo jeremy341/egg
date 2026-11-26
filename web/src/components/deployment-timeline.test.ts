@@ -54,21 +54,4 @@ describe("DeploymentTimeline", () => {
     expect(html).not.toContain("This deployment failed");
     expect(html).toContain("The deployment is live.");
   });
-
-  it("shows the live note for a live worker but not for a failed deployment", () => {
-    const live = render(
-      { ...base, workloadKind: "worker", listenPort: null, port: 0, state: "ready", startedAt: at(1), finishedAt: at(20) },
-      [log(18, "Worker is active")]
-    );
-    expect(live).toContain("the process stays active");
-
-    const failed = render({
-      ...base,
-      state: "error",
-      startedAt: at(1),
-      finishedAt: at(4),
-      error: "Could not clone the repository. Check the branch name and that Egg has access to it.",
-    });
-    expect(failed).not.toContain("the process stays active");
-  });
 });

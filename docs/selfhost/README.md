@@ -295,10 +295,6 @@ Egg talks to the target with plain SSH commands (`bash -s`, and `cat` for upload
 | `curl` and `sha256sum` | Health checks and upload checks | Warnings only. Without `curl`, the health check falls back to a plain TCP check. |
 | A free port for each app | Each app listens on `0.0.0.0` on the port you choose | A port from 1024 to 65535, and not 20000 to 29999 (kept for previews) |
 
-Native runtime profiles use systemd services. Node projects can use npm, pnpm, Yarn, or Bun lockfiles; the required package manager must be on the build target and the server when production dependencies are installed. Python projects with `requirements.txt` or `pyproject.toml` get a release-local virtual environment. Go defaults to `go build -o .egg-app .` and `./.egg-app`. Rust builds with Cargo; Ruby installs a Gemfile into the release; PHP installs Composer dependencies; Java can build Maven or Gradle projects. Set a start command for Rust, Ruby, PHP, and Java, and override the build command where the project needs a different entry point or build process. The target needs the tools used by its build and start commands; GitHub builds can reduce target toolchain requirements, but compiled artifacts must match the target OS and architecture. Lockfiles and tool versions should be committed or pinned where the project supports them. These profiles have not yet been verified end to end on a real Nest container.
-
-PM2 is optional for Node applications: install it as a production dependency and set the start command to `./node_modules/.bin/pm2-runtime ecosystem.config.js` (or another foreground `pm2-runtime` command). Egg still runs and restarts the service with systemd; do not use a detached PM2 daemon for this purpose.
-
 Egg puts everything under `~/.egg` on the target and names its service files `egg-*.service` and its timers `egg-*`. Anything without Egg's marker is never overwritten, stopped or removed.
 
 The health check runs on the target against `127.0.0.1`, over SSH. The Egg machine does not need to reach your app's port.
@@ -518,7 +514,7 @@ pnpm build
 pnpm start
 ```
 
-Database changes are applied automatically the first time the new version opens the database. Going backwards, from a newer database to older code, is not supported, so keep the backup from before the update. On a server, use `sh deploy/upgrade.sh` (see below). One migration renames old duplicates in place rather than failing: if two accounts held the same project slug on one server, or the same Nest username on one host, the older row gets a `-r-…` suffix so the newer row keeps the name — no data is deleted, and a renamed project provisions its unit under the new slug on its next deploy.
+Database changes are applied automatically the first time the new version opens the database. Going backwards, from a newer database to older code, is not supported, so keep the backup from before the update. On a server, use `sh deploy/upgrade.sh` (see below).
 
 ## Setup B: on your own server
 
@@ -757,8 +753,6 @@ The built-in static server (used for static sites, with Python 3 or Node.js) ans
 ### Recovering a stale deployment
 
 An expired lease is not proof that commands on the deploy target stopped. Egg therefore does not automatically free a stale running job. It remains the project's queue guard until an operator has confirmed the worker and its remote work have stopped.
-
-With the worker stopped and remote work confirmed, the administrator recovery API does this for you: `POST /api/admin/recovery/<serverId>` (inspect first with `GET /api/admin/recovery`) fences the stale holder, stops the recorded remote build scopes, fails the job, and marks a still-queued, building or deploying deployment as errored — a canceled one stays canceled. It works whatever crash window the worker died in, including during activation. The manual database updates below are the fallback for when the API itself cannot run.
 
 Stop every Egg worker first. For Compose, stop the app as well because it may run the worker when `RUN_WORKER=1`:
 

@@ -224,8 +224,8 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
       <Callout tone="note" title="What it does not do">
         It does not run databases, give a preview a public address on its own, or promise that any application
         works on Nest. It runs the runtimes listed under Projects and runtimes, and any start command that
-        listens on the <C>PORT</C> it is given. A Dockerfile alone does nothing: the native process mode is the
-        default, and the Dockerfile mode is offered only when a check of your server confirms Docker works there.
+        listens on the <C>PORT</C> it is given. A Dockerfile in your repository is ignored: Egg
+        does not build Docker images.
       </Callout>
       {limits("overview",
         [
@@ -890,9 +890,8 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
         <li>
           <B>Language.</B> A <C>package.json</C> means Node.js. Otherwise <C>requirements.txt</C> or{" "}
           <C>pyproject.toml</C> means Python. A <C>go.mod</C>, <C>Gemfile</C> or <C>Cargo.toml</C> is named as not
-          supported yet, with a hint to try the Custom command preset. A <C>Dockerfile</C> is named so you can find
-          it, but the project still starts in the native process mode: a Dockerfile counts only when the
-          Dockerfile mode is chosen and your server passed its Docker check.
+          supported yet, with a hint to try the Custom command preset. A <C>Dockerfile</C> is mentioned and ignored,
+          because Egg does not build Docker images.
         </li>
         <li>
           <B>Package manager.</B> The <C>packageManager</C> field in <C>package.json</C>, else a lockfile
@@ -1070,44 +1069,6 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
         <li>
           Files in <C>shared/</C> are never touched by a deploy, so data the app keeps there survives new releases.
           Write data there, not into the release folder, which is replaced on every deploy.
-        </li>
-      </List>
-      <H3 id="projects-docker" />
-      <P>
-        Native is the default, but a project can deploy as a container when your server has passed the Docker
-        check. The check runs when the settings open and when the connection is tested: it asks the Docker on
-        your container, not Egg's own, and it looks at what the daemon reports about cgroup limits, free disk
-        at its storage root and the port proxy. When a part of that fails, the Dockerfile and Compose options
-        stay greyed out with the reason, and nothing changes on the server.
-      </P>
-      <List>
-        <li>
-          <B>Dockerfile mode.</B> Egg uploads your source, then builds the image on your container with{" "}
-          <C>docker build</C>, under the same memory, CPU and disk caps as a native build. Every release gets
-          its own image tag. The app runs as one named container that a systemd service starts and watches, so
-          restarts, the journal logs, the Restarts count and rollbacks work the same way as for a native
-          process.
-        </li>
-        <li>
-          <B>Compose mode.</B> The Compose file is read by Docker itself, and only the resolved form Egg checked
-          is ever run. Services must use prebuilt images, host ports must bind to{" "}
-          <C>127.0.0.1</C> only, and the one service Egg monitors must not publish ports of its own; Egg maps
-          the project's listen port onto it. Every other service, such as a database, starts with{" "}
-          <C>docker compose up -d</C> and keeps its named volumes across releases. Rollbacks restore the
-          previous release's code and configuration, never the data the stack wrote.
-        </li>
-        <li>
-          <B>What stays the same.</B> Environment variables reach the container at run time through the same
-          encrypted path, nothing is baked into the image. A bot in a container mode can still open one
-          optional listen port. Scheduled jobs run inside the running container with{" "}
-          <C>docker exec</C>. Previews exist for Dockerfile projects; a Compose stack has no branch preview
-          yet.
-        </li>
-        <li>
-          <B>What is refused.</B> Compose files that build images, add devices or privileged options, mount
-          bind paths instead of named volumes, or publish ports on other interfaces, are rejected before
-          anything starts, with the first reasons named in the logs. A Compose project also cannot use the
-          GitHub Actions build: the image is built on your server.
         </li>
       </List>
       <H2 id="projects-reference" title="Limits, errors and an example" />

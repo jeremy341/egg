@@ -136,7 +136,6 @@ export function DeploymentTimeline({
         </div>
       ) : null}
       {timeline.outcome === "canceled" && canceledWhy ? <Alert tone="note">{canceledWhy}</Alert> : null}
-      {timeline.outcome === "live" && timeline.liveNote ? <Alert tone="note" title={timeline.summary}>{timeline.liveNote}</Alert> : null}
 
       <section aria-labelledby="timeline-heading" className="overflow-hidden rounded-lg bg-card shadow-border-small">
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b px-4 py-3">
@@ -144,14 +143,8 @@ export function DeploymentTimeline({
             Timeline
           </h2>
           <p className="text-label text-muted-foreground">
-            {sha ? (
-              <>
-                Commit{" "}
-                <CommitLink repo={repo} sha={sha} className="font-mono text-[13px] text-foreground" />
-              </>
-            ) : (
-              "Commit not read yet"
-            )}
+            Commit{" "}
+            <CommitLink repo={repo} sha={sha} fallback="not read yet" className="font-mono text-[13px] text-foreground" />
           </p>
         </div>
         <ol className="p-4" aria-labelledby="timeline-heading">

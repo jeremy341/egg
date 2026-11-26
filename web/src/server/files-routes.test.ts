@@ -154,9 +154,6 @@ describe("path rules at the route", () => {
 
   it("returns 400 for traversal and never touches SSH", async () => {
     for (const path of traversal) {
-      // Each read, list and download now spends from the per-user slow SSH bucket, so give every
-      // traversal candidate a fresh one: the point here is the path rule, not the allowance.
-      rateLimiter().clear();
       const id = ctxFor(projectId);
       const results = [
         await list(get("list", { path }), id),

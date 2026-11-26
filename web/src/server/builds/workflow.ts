@@ -123,23 +123,10 @@ function indent(text: string, spaces: number): string {
 const q = (value: string) => JSON.stringify(value);
 
 /** Install with the package manager the lockfile names, in the order Egg's own build uses (pnpm, yarn, npm). */
-const SELECT_PM = `pm=$(node -e "try { console.log((require('./package.json').packageManager || '').split('@')[0]) } catch {}")
-if [ "$pm" = bun ] && { [ -f bun.lock ] || [ -f bun.lockb ]; }; then :
-elif [ "$pm" = pnpm ] && [ -f pnpm-lock.yaml ]; then :
-elif [ "$pm" = yarn ] && [ -f yarn.lock ]; then :
-elif [ "$pm" = npm ] && [ -f package-lock.json ]; then :
-elif [ -f bun.lock ] || [ -f bun.lockb ]; then pm=bun
-elif [ -f pnpm-lock.yaml ]; then pm=pnpm
-elif [ -f yarn.lock ]; then pm=yarn
-else pm=npm; fi`;
-
 const AUTO_INSTALL = `if [ -f package.json ]; then
-  ${SELECT_PM}
-  if [ "$pm" = bun ]; then
-    bun install --frozen-lockfile
-  elif [ "$pm" = pnpm ]; then
+  if [ -f pnpm-lock.yaml ]; then
     corepack enable && pnpm install --frozen-lockfile
-  elif [ "$pm" = yarn ]; then
+  elif [ -f yarn.lock ]; then
     corepack enable && yarn install --frozen-lockfile
   elif [ -f package-lock.json ]; then
     npm ci
@@ -150,12 +137,9 @@ fi`;
 
 /** Build only when package.json has a build script, with the same package manager choice. */
 const AUTO_BUILD = `if [ -f package.json ] && node -e "process.exit(require('./package.json').scripts?.build ? 0 : 1)"; then
-  ${SELECT_PM}
-  if [ "$pm" = bun ]; then
-    bun run build
-  elif [ "$pm" = pnpm ]; then
+  if [ -f pnpm-lock.yaml ]; then
     corepack enable && pnpm build
-  elif [ "$pm" = yarn ]; then
+  elif [ -f yarn.lock ]; then
     corepack enable && yarn build
   else
     npm run build
@@ -171,15 +155,7 @@ function commands(i: WorkflowInput): { install: string | null; build: string | n
       return { install: install ?? AUTO_INSTALL, build: build ?? AUTO_BUILD };
     case "python":
     case "command":
-    case "ruby":
-    case "php":
       return { install, build };
-    case "go":
-      return { install, build: build ?? "go build -o .egg-app ." };
-    case "rust":
-      return { install, build: build ?? "if [ -f Cargo.lock ]; then cargo build --release --locked; else cargo build --release; fi" };
-    case "java":
-      return { install, build: build ?? "if [ -f pom.xml ]; then mvn -B package -DskipTests; elif [ -f build.gradle ] || [ -f build.gradle.kts ]; then gradle build -x test; fi" };
   }
 }
 
@@ -202,11 +178,6 @@ function packExcludes(runtime: Runtime): string[] {
     case "static":
       return ["node_modules"];
     case "command":
-    case "go":
-    case "rust":
-    case "ruby":
-    case "php":
-    case "java":
       return [".git", ".github"];
   }
 }

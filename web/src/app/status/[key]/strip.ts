@@ -27,19 +27,16 @@ export function minutes(m: number): string {
 }
 
 /** What happened on one day, in words. */
-export function dayDetail(d: StripDay, workloadKind: "web" | "worker" = "web"): string {
-  const worker = workloadKind === "worker";
+export function dayDetail(d: StripDay): string {
   if (d.state === "none") return "No checks yet";
-  if (d.state === "up") return worker ? "Ran all day" : "Answered all day";
-  if (d.state === "partial") return `${worker ? "Stopped" : "Down"} for ${minutes(d.downMinutes)}`;
-  return `${worker ? "Stopped" : "Down"} for most of the day, ${minutes(d.downMinutes)}`;
+  if (d.state === "up") return "Answered all day";
+  if (d.state === "partial") return `Down for ${minutes(d.downMinutes)}`;
+  return `Down for most of the day, ${minutes(d.downMinutes)}`;
 }
 
 /** The strip in words, for screen readers: counts of each kind of day. */
-export function stripSummary(days: StripDay[], windowDays: number, workloadKind: "web" | "worker" = "web"): string {
+export function stripSummary(days: StripDay[], windowDays: number): string {
   const count = (s: StripDay["state"]) => days.filter((d) => d.state === s).length;
   const none = count("none");
-  const up = workloadKind === "worker" ? "ran" : "answered";
-  const down = workloadKind === "worker" ? "stopped" : "down";
-  return `Last ${windowDays} days: ${count("up")} ${up} all day, ${count("partial")} ${down} for part of the day, ${count("down")} ${down} for most of the day${none ? `, ${none} with no checks yet` : ""}.`;
+  return `Last ${windowDays} days: ${count("up")} answered all day, ${count("partial")} down for part of the day, ${count("down")} down for most of the day${none ? `, ${none} with no checks yet` : ""}.`;
 }

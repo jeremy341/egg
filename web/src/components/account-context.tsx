@@ -15,7 +15,7 @@ export type Account = {
   user: { name: string; shownName: string; avatar: string; isAdmin?: boolean };
   maintenance?: MaintenanceState;
   servers: AccountServer[];
-  projects: { slug: string; name: string; role: "owner" | "developer" | "viewer" }[];
+  projects: { slug: string; name: string }[];
 };
 
 const AccountContext = createContext<Account | null>(null);

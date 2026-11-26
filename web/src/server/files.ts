@@ -141,12 +141,9 @@ tgt="$PR/$NAME"
 [ -L "$tgt" ] && die 36
 [ -d "$tgt" ] && die 37
 if [ -e "$tgt" ] && [ "$3" != 1 ]; then die 38; fi
-# The part file is per-writer ($$): two writers of the same target share a
-# bare .partial, and whichever finishes last would publish the other's bytes.
-# Leftovers of crashed writers are swept after a day.
-part="$tgt.partial.$$"
+part="$tgt.partial"
 trap 'rm -f -- "$part"' EXIT
-find "$(dirname -- "$tgt")" -maxdepth 1 -type f -name "$(basename -- "$tgt").partial.*" -mmin +1440 -exec rm -f -- {} \; 2>/dev/null || true
+rm -f -- "$part"
 ( set -C; umask 077; cat > "$part" ) || exit 51
 if [ -e "$tgt" ]; then
   chmod --reference="$tgt" -- "$part" 2>/dev/null || chmod 644 -- "$part"

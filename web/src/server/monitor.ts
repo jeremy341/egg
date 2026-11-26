@@ -186,23 +186,8 @@ export function nextMonitorState(
   return { state: prev.state, failures, change: null };
 }
 
-/**
- * One sentence about why a check failed. Web apps answer on a health path; a
- * worker is down when its process does not stay up, so the words match what
- * the workload actually does.
- */
-function describe(s: ServiceStatus, slowMs: number | null = null, worker = false): string {
-  if (s.state !== "running") {
-    if (worker) {
-      if (s.state === "failed") return "The process keeps failing to start, so systemd has paused it.";
-      if (s.state === "starting") return "The process keeps restarting, which usually means it crashes right after it starts.";
-      if (s.state === "stopped") return "The process is stopped.";
-      if (s.state === "not_deployed") return "The worker's service is not on the container any more.";
-      return "The process is not running.";
-    }
-    return `The service is ${s.state.replace("_", " ")}.`;
-  }
-  if (worker) return "The process did not pass its check.";
+function describe(s: ServiceStatus, slowMs: number | null = null): string {
+  if (s.state !== "running") return `The service is ${s.state.replace("_", " ")}.`;
   if (s.http && s.http.code > 0 && s.http.code < 500 && isSlow(s, slowMs)) {
     return `The health path took ${s.http.ms} ms to answer, over your limit of ${slowMs} ms.`;
   }
@@ -237,7 +222,7 @@ async function checkServer(server: typeof schema.servers.$inferSelect, now: Date
     for (let i = 0; i < projects.length; i += 8) batches.push(projects.slice(i, i + 8));
     await monitorServers(batches, async (batch) => {
       const script = batch.map((p, i) => `printf '\\nEGG_STATUS_${i}\\n'\n` +
-        serviceStatus({ unit: unitName(p.slug), port: p.workloadKind === "worker" ? null : p.port, path: p.healthPath })).join("\n");
+        serviceStatus({ unit: unitName(p.slug), port: p.port, path: p.healthPath })).join("\n");
       const r = await s.script(script, { timeoutMs: 20_000 * batch.length, maxOutputBytes: 64 * 1024 * batch.length });
       if (r.code !== 0) return;
       const parts = r.stdout.split(/\nEGG_STATUS_(\d+)\n/);
@@ -306,9 +291,8 @@ async function checkServer(server: typeof schema.servers.$inferSelect, now: Date
     // The public status page keeps its data for 60 seconds; a change of state should not wait.
     if (next.change || next.state !== p.monitorState) await invalidateStatusPage(p.statusKey);
     if (next.change) {
-      const worker = p.workloadKind === "worker";
       const detail =
-        next.change === "down" ? describe(status, p.alertSlowMs, worker) : worker ? "The worker is running again." : "It is answering again.";
+        next.change === "down" ? describe(status, p.alertSlowMs) : "It is answering again.";
       await audit(p.userId, next.change === "down" ? "monitor.down" : "monitor.up", p.id, { detail });
       if (next.change === "down") await openAlert(p, "down", detail, now);
       else await resolveAlert(p, "down", detail, now);

@@ -1,5 +1,5 @@
 import { GithubError, headers, installationToken } from "@/server/github/app";
-import { selectLockfile, type ProjectFiles } from "@/server/deploy/runtime";
+import type { ProjectFiles } from "@/server/deploy/runtime";
 
 /**
  * What is in a project's root directory, for the monorepo hint in settings.
@@ -37,15 +37,18 @@ export function summarizeRoot(entries: string[], pkg: unknown): RootDetection {
   const p = (pkg && typeof pkg === "object" ? pkg : {}) as {
     name?: unknown;
     scripts?: Record<string, unknown>;
-    packageManager?: unknown;
   };
   return {
     status: "ok",
     message: null,
     packageJson: has("package.json"),
-    // The build's own choice: same lockfile order and packageManager override,
-    // so the hint here matches what a deployment would actually run.
-    lockfile: selectLockfile(has, p.packageManager),
+    lockfile: has("pnpm-lock.yaml")
+      ? "pnpm"
+      : has("yarn.lock")
+        ? "yarn"
+        : has("package-lock.json")
+          ? "npm"
+          : null,
     requirements: has("requirements.txt"),
     scripts: {
       start: typeof p.scripts?.start === "string",

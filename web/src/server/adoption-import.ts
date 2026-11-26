@@ -45,9 +45,8 @@ case "$work$HOME$group" in *$'\\n'*|*$'\\t'*) exit 35;; esac
 [ -d "$work/.git" ] && [ ! -L "$work/.git" ] || exit 36
 [ -z "$(systemctl show "$unit" -p EnvironmentFiles --value)" ] || exit 37
 [ -z "$(git -C "$work" status --porcelain --untracked-files=normal)" ] || exit 38
-repo_l=$(printf '%s' "$repo" | tr 'A-Z' 'a-z')
-url=$(git -C "$work" config --get remote.origin.url | tr 'A-Z' 'a-z')
-case "$url" in "https://github.com/$repo_l"|"https://github.com/$repo_l.git"|"git@github.com:$repo_l"|"git@github.com:$repo_l.git") ;; *) exit 39;; esac
+url=$(git -C "$work" config --get remote.origin.url)
+case "$url" in "https://github.com/$repo"|"https://github.com/$repo.git"|"git@github.com:$repo"|"git@github.com:$repo.git") ;; *) exit 39;; esac
 sha=$(git -C "$work" rev-parse --verify HEAD)
 hash=$(systemctl cat "$unit" | sha256sum | cut -d ' ' -f1)
 printf 'ENABLED\\t%s\\n' "$enabled"
@@ -101,7 +100,6 @@ export async function planImport(userId: string, projectId: string, raw: unknown
   if (!repo) throw fail("This import requires a GitHub repository with a clean checkout.");
   const db = await getDb();
   const candidate = await db.select().from(schema.deployments).where(and(eq(schema.deployments.id, input.candidateId), eq(schema.deployments.projectId, projectId), eq(schema.deployments.env, "preview"), eq(schema.deployments.state, "ready"))).get();
-  if (project.workloadKind === "worker") throw fail("Importing an existing worker is not supported; create a new worker deployment instead.");
   if (!candidate?.commitSha || candidate.port === project.port || candidate.cleanedUp) throw fail("Choose a ready preview on a separate port with a known commit.");
   const server = await getServerForUser(userId, project.serverId);
   const session = await connect(server);

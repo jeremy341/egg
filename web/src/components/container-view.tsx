@@ -194,7 +194,7 @@ function ProjectRow({ p, conflict }: { p: ProjectEntry; conflict: PortConflict |
           ) : (
             <StatusIndicator tone="neutral" label="No service yet" />
           )}
-          <span className="tabular font-mono text-[13px]">{p.port > 0 ? `Port ${p.port}` : "Background worker"}</span>
+          <span className="tabular font-mono text-[13px]">Port {p.port}</span>
           {p.folderKb !== null ? (
             <span className="tabular text-label text-muted-foreground">{formatKb(p.folderKb)}</span>
           ) : null}
@@ -421,7 +421,7 @@ function BuildMemoryField({ serverId }: { serverId: string }) {
     <Section
       id="container-build-memory"
       title="Build memory"
-      description="Builds run on your own container, not on Egg's machine. This sets the memory limit of one build; the maximum follows your container's memory, minus 512 MB kept for your app."
+      description="Your projects are built on your own container, never on Egg's machine. This sets the memory limit of a build. The allowed maximum follows the connected Nest server's reported memory, and the limit never goes above your container's memory minus 512 MB, which is kept for your app. Projects with a build step get at least 1024 MB while they build, if your container has room for it."
     >
       <form onSubmit={save} className="px-4 py-4">
         {loadError ? (
@@ -582,7 +582,7 @@ function Body({
             id="container-orphans"
             title="Orphans"
             count={orphans.length}
-            description="An orphan is a service or folder Egg created earlier that no project uses any more. Removing a service stops it and deletes its unit file; deleting a folder permanently deletes the files inside it."
+            description="An orphan is a service or folder Egg created earlier that none of your projects use any more. A leftover service keeps running and a leftover folder keeps using disk. Removing a service stops it and deletes its unit file. Deleting a folder permanently deletes the files inside it."
           >
             {!canRemove ? (
               <div className="border-b px-4 py-3">

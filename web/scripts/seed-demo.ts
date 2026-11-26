@@ -353,7 +353,7 @@ async function seed() {
       port: 3000,
       status: "valid",
       lastCheckedAt: new Date(now - 2 * 60 * MIN),
-      createdAt: new Date(now - 12 * DAY), updatedAt: new Date(now - 12 * DAY)
+      createdAt: new Date(now - 12 * DAY),
     },
     {
       id: "demo-domain-2",
@@ -364,7 +364,7 @@ async function seed() {
       port: 3001,
       status: "valid",
       lastCheckedAt: new Date(now - 30 * MIN),
-      createdAt: new Date(now - 9 * DAY), updatedAt: new Date(now - 9 * DAY)
+      createdAt: new Date(now - 9 * DAY),
     },
     {
       id: "demo-domain-3",
@@ -375,7 +375,7 @@ async function seed() {
       port: 5173,
       status: "invalid",
       lastCheckedAt: new Date(now - 5 * MIN),
-      createdAt: new Date(now - 1 * DAY), updatedAt: new Date(now - 1 * DAY)
+      createdAt: new Date(now - 1 * DAY),
     },
   ]);
 

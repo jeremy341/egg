@@ -1,7 +1,6 @@
 import Link from "next/link";
 import {
   GitCommitIcon,
-  GitBranchIcon,
   GithubLogoIcon,
 } from "@phosphor-icons/react/dist/ssr";
 import { CommitLink } from "@/components/commit-link";
@@ -18,7 +17,7 @@ function commitText(project: ProjectView) {
 /** The state mark, always with its word. A monitor that cannot reach the app wins. */
 function ProjectStatus({ project }: { project: ProjectView }) {
   if (project.monitor === "down") {
-    return <StatusIndicator tone="error" label={project.workloadKind === "worker" ? "Not running" : "Not answering"} className="shrink-0" />;
+    return <StatusIndicator tone="error" label="Not answering" className="shrink-0" />;
   }
   return (
     <StatusDot state={project.state} className="shrink-0" />
@@ -37,7 +36,7 @@ export function ProjectCard({
   project: ProjectView;
   variant?: "card" | "row";
 }) {
-  const address = project.workloadKind === "worker" ? "Background worker" : project.domains[0] ?? (project.listenPort === null ? "Port not configured" : `port ${project.listenPort}`);
+  const address = project.domains[0] ?? `port ${project.port}`;
   const href = `/projects/${project.slug}`;
 
   if (variant === "row") {
@@ -96,7 +95,7 @@ export function ProjectCard({
       </p>
 
       <p className="mt-auto flex min-w-0 items-center gap-2 text-label text-muted-foreground">
-        {project.repoUrl.startsWith("https://github.com/") ? <GithubLogoIcon aria-hidden="true" className="size-4 shrink-0" /> : <GitBranchIcon aria-hidden="true" className="size-4 shrink-0" />}
+        <GithubLogoIcon aria-hidden="true" className="size-4 shrink-0" />
         <span className="truncate">
           {project.repo ?? project.repoUrl.replace("https://github.com/", "")}
         </span>

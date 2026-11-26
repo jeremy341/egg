@@ -11,7 +11,6 @@ import {
   JOB_TIMEOUT_SECONDS,
   NOT_INSTALLED_EXIT,
   NO_RELEASE_EXIT,
-  dockerJobCommand,
   installJob,
   jobLogs,
   jobServiceFile,
@@ -194,12 +193,8 @@ async function install(
           jobId: row.id,
           name: row.name,
           home,
-          // A job of a container project runs inside its running container; a native project's
-          // job runs in the release folder as before.
-          command: project.deploymentMode === "native"
-            ? row.command
-            : dockerJobCommand({ slug: project.slug, containerPort: project.containerPort ?? 3000, command: row.command }),
-          pathPrefix: project.deploymentMode === "native" && project.runtime === "python" ? `${currentLink(home, project.slug)}/.venv/bin` : undefined,
+          command: row.command,
+          pathPrefix: project.runtime === "python" ? `${currentLink(home, project.slug)}/.venv/bin` : undefined,
         }),
         timerFile: jobTimerFile({ slug: project.slug, jobId: row.id, name: row.name, schedule }),
         enabled: row.enabled,
@@ -244,19 +239,7 @@ export async function createJob(userId: string, projectId: string, raw: unknown)
   };
   await install(userId, project.id, row);
   try {
-    await db.transaction(async (tx) => {
-      // The cap was checked before the slow remote install, so another create that
-      // ran in the meantime could have used the last slot: check again under the
-      // write lock, where the check and the insert are atomic.
-      const rows = await tx
-        .select({ id: schema.scheduledJobs.id })
-        .from(schema.scheduledJobs)
-        .where(eq(schema.scheduledJobs.projectId, project.id));
-      if (rows.length >= MAX_JOBS_PER_PROJECT) {
-        throw new HttpError(409, `A project can have ${MAX_JOBS_PER_PROJECT} jobs. Remove one to add another.`, "limit");
-      }
-      await tx.insert(schema.scheduledJobs).values(row);
-    });
+    await db.insert(schema.scheduledJobs).values(row);
   } catch (err) {
     // Do not leave a timer on the container that the dashboard does not know about.
     await onContainer(userId, project.id, ({ project: p, session }) =>

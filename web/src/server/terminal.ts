@@ -208,9 +208,6 @@ export function checkSize(size: TerminalSize): TerminalSize {
 
 const sessionNotFound = () => notFound("Terminal session not found");
 
-/** The most simultaneous live views of one session: real dashboards use a handful. */
-const MAX_SUBSCRIBERS = 16;
-
 export class TerminalManager {
   private readonly deps: TerminalDeps;
   private readonly sessions = new Map<string, Session>();
@@ -420,11 +417,6 @@ export class TerminalManager {
       return { ended: gone.reason };
     }
     const session = this.owned(userId, projectId, sessionId);
-    // Every subscriber is a buffered view of the session's output. Without a
-    // cap, scripted streams against one session amplify memory on the instance.
-    if (session.subscribers.size >= MAX_SUBSCRIBERS) {
-      throw new HttpError(429, "This terminal has too many live views open. Close one and try again.", "busy");
-    }
     session.subscribers.add(sub);
     return {
       replay: Buffer.concat(session.chunks),

@@ -4,7 +4,6 @@ import { isUniqueViolation } from "@/server/db/errors";
 import { assertGitRef, assertGitSha } from "@/server/deploy/build";
 import { attachPullRequest, closePullRequestPreviews } from "@/server/github/pulls";
 import { enqueueDeployment } from "@/server/projects";
-import { HttpError } from "@/server/http";
 import { maintenanceError, maintenanceState } from "@/server/maintenance";
 
 export type WebhookResult = {
@@ -178,25 +177,25 @@ export async function handleGithubEvent(
 
   const created: string[] = [];
   for (const project of projects) {
-    try {
-      // Only trust events for installations the project's owner can use.
-      if (!(await installationTrusted(db, project, p.installation?.id))) continue;
+    // Only trust events for installations the project's owner can use.
+    if (!(await installationTrusted(db, project, p.installation?.id))) continue;
 
-      // A push that is already queued or running for this commit is a retry.
-      const dup = await db
-        .select({ id: schema.deployments.id })
-        .from(schema.deployments)
-        .where(
-          and(
-            eq(schema.deployments.projectId, project.id),
-            eq(schema.deployments.branch, branch),
-            eq(schema.deployments.commitSha, p.after),
-            inArray(schema.deployments.state, ["queued", "building", "deploying"])
-          )
+    // A push that is already queued or running for this commit is a retry.
+    const dup = await db
+      .select({ id: schema.deployments.id })
+      .from(schema.deployments)
+      .where(
+        and(
+          eq(schema.deployments.projectId, project.id),
+          eq(schema.deployments.branch, branch),
+          eq(schema.deployments.commitSha, p.after),
+          inArray(schema.deployments.state, ["queued", "building", "deploying"])
         )
-        .get();
-      if (dup) continue;
+      )
+      .get();
+    if (dup) continue;
 
+    try {
       const dep = await enqueueDeployment(project, {
         env: branch === project.productionBranch ? "production" : "preview",
         source: "webhook",
@@ -207,13 +206,8 @@ export async function handleGithubEvent(
       });
       created.push(dep.id);
     } catch (err) {
-      // Maintenance starting mid-fan-out is a whole-event failure: let the route
-      // release the replay digest and answer 503 so GitHub redelivers.
-      if (err instanceof HttpError && err.code === "maintenance") throw err;
-      // The unique index caught a racing duplicate of the same commit. Anything
-      // else is one project's failure; log it and keep the rest deploying.
-      if (isUniqueViolation(err)) continue;
-      console.warn("push deploy failed", project.id, err instanceof Error ? err.message : err);
+      // The unique index caught a racing duplicate of the same commit.
+      if (!isUniqueViolation(err)) throw err;
     }
   }
   return { handled: true, deployments: created };
@@ -281,9 +275,9 @@ async function handlePullRequest(payload: unknown): Promise<WebhookResult> {
   const created: string[] = [];
   for (const project of trusted) {
     if (!project.autoDeploy || branch === project.productionBranch) continue;
+    const existing = await attachPullRequest(project.id, branch, sha, number);
+    if (existing) continue;
     try {
-      const existing = await attachPullRequest(project.id, branch, sha, number);
-      if (existing) continue;
       const dep = await enqueueDeployment(project, {
         env: "preview",
         source: "webhook",
@@ -293,13 +287,7 @@ async function handlePullRequest(payload: unknown): Promise<WebhookResult> {
       });
       created.push(dep.id);
     } catch (err) {
-      // Maintenance starting mid-fan-out must fail the whole event, not just this
-      // project, so the route releases the digest and GitHub can redeliver.
-      if (err instanceof HttpError && err.code === "maintenance") throw err;
-      // The unique index caught a racing duplicate of the same commit. Anything
-      // else is one project's failure; log it and keep the rest deploying.
-      if (isUniqueViolation(err)) continue;
-      console.warn("pull request deploy failed", project.id, err instanceof Error ? err.message : err);
+      if (!isUniqueViolation(err)) throw err;
     }
   }
   return { handled: true, deployments: created };
@@ -330,10 +318,6 @@ async function handleRepository(payload: unknown): Promise<WebhookResult> {
   let renamed = 0;
   for (const project of projects) {
     if (!(await installationTrusted(db, project, p.installation?.id))) continue;
-    // The dispatcher checked maintenance before this event, and this loop awaits
-    // between projects; the window can open mid-fan-out, so re-check before every
-    // rewrite. A throw releases the replay digest and the delivery is redelivered.
-    if ((await maintenanceState()).active) throw maintenanceError();
     // Keep the clone URL pointing at the same host, with the new path.
     let repoUrl = project.repoUrl;
     try {
@@ -356,15 +340,10 @@ async function handleInstallation(payload: unknown): Promise<WebhookResult> {
   const p = payload as { action?: string; installation?: { id?: number } };
   if (p.action === "deleted" && p.installation?.id) {
     const db = await getDb();
-    // The dispatcher checked maintenance before this event; check again before
-    // each write, as the window can open between them. A throw releases the
-    // replay digest, GitHub redelivers, and the delete re-runs as a no-op.
-    if ((await maintenanceState()).active) throw maintenanceError();
     await db
       .delete(schema.githubInstallations)
       .where(eq(schema.githubInstallations.id, p.installation.id));
     // Projects keep their record but lose private-repo access until relinked.
-    if ((await maintenanceState()).active) throw maintenanceError();
     await db
       .update(schema.projects)
       .set({ installationId: null })

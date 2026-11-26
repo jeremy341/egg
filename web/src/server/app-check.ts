@@ -12,21 +12,6 @@ import { resolvePublicAddress, UnsafeAddressError, type Lookup } from "@/server/
 
 export const CHECK_TIMEOUT_MS = 5000;
 
-/** Internal marker so a resolution deadline is told apart from a refusal. */
-class LookupTimeout extends Error {}
-
-/** Race a resolution against a deadline, handling a lookup that settles late. */
-function withLookupDeadline<T>(work: Promise<T>, ms: number): Promise<T> {
-  work.catch(() => {});
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new LookupTimeout()), ms);
-    work.then(
-      (value) => { clearTimeout(timer); resolve(value); },
-      (error) => { clearTimeout(timer); reject(error); }
-    );
-  });
-}
-
 export type ProbeResult =
   | {
       kind: "response";
@@ -112,18 +97,13 @@ export function safeRequestPath(path: string | null | undefined): string {
 /** Make one HTTPS request to a vetted address. Exported for tests as `makeProbe`. */
 export function makeProbe(lookup?: Lookup, timeoutMs = CHECK_TIMEOUT_MS): Probe {
   return async (domain, path) => {
-    const startedAt = Date.now();
     let target: { address: string; family: 4 | 6 };
     try {
-      target = await withLookupDeadline(resolvePublicAddress(domain, lookup), timeoutMs);
+      target = await resolvePublicAddress(domain, lookup);
     } catch (err) {
-      if (err instanceof LookupTimeout) return { kind: "unreachable", detail: "No answer within 5 seconds." };
       if (err instanceof UnsafeAddressError) return { kind: "refused", detail: err.message };
       throw err;
     }
-    // Time spent resolving comes off the request's budget, so the whole check
-    // stays within the deadline even when DNS is slow.
-    const remaining = Math.max(1, timeoutMs - (Date.now() - startedAt));
     return new Promise<ProbeResult>((resolve) => {
       let done = false;
       const finish = (r: ProbeResult) => {
@@ -140,7 +120,7 @@ export function makeProbe(lookup?: Lookup, timeoutMs = CHECK_TIMEOUT_MS): Probe 
           path,
           servername: domain,
           rejectUnauthorized: true,
-          timeout: remaining,
+          timeout: timeoutMs,
           headers: { host: domain, "user-agent": "egg-check", accept: "*/*" },
           agent: false,
         },
@@ -163,7 +143,7 @@ export function makeProbe(lookup?: Lookup, timeoutMs = CHECK_TIMEOUT_MS): Probe 
       const hard = setTimeout(() => {
         req.destroy();
         finish({ kind: "unreachable", detail: "No answer within 5 seconds." });
-      }, remaining + 500);
+      }, timeoutMs + 500);
       hard.unref?.();
       req.on("close", () => clearTimeout(hard));
       req.end();

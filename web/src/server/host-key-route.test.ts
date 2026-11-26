@@ -3,7 +3,6 @@ import { eq } from "drizzle-orm";
 import { NextRequest } from "next/server";
 import { upsertUser } from "@/server/auth/session";
 import { schema } from "@/server/db";
-import { RATE_LIMITS, rateLimiter } from "@/server/rate-limit";
 import { startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
 import { useFreshDb } from "@/server/test/db";
 
@@ -42,7 +41,6 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 beforeEach(() => {
-  rateLimiter().clear();
   vi.mocked(getCurrentUser).mockResolvedValue({ id: userId } as never);
 });
 
@@ -72,13 +70,5 @@ describe("POST /api/servers/:id/test host key confirmation", () => {
     const body = (await res.json()) as { result: { ok: boolean } };
     expect(body.result.ok).toBe(true);
     expect((await getServerForUser(userId, serverId)).hostKeyFingerprint).toBe(mock.hostKeyFingerprint);
-  });
-
-  it("caps host-key test connections per user before any SSH work, with Retry-After", async () => {
-    for (let i = 0; i < RATE_LIMITS.sshCall.limit; i++) expect((await post(serverId)).status).toBe(200);
-    const res = await post(serverId);
-    expect(res.status).toBe(429);
-    expect(Number(res.headers.get("retry-after"))).toBeGreaterThanOrEqual(1);
-    expect((await res.json()).error?.code).toBe("rate_limited");
   });
 });

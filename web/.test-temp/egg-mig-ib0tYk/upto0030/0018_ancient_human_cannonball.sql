@@ -1,1 +1,0 @@
-ALTER TABLE `servers` ADD `build_cpu_quarters` integer DEFAULT 8 NOT NULL;

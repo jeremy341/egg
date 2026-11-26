@@ -145,7 +145,7 @@ export function parseSchedule(input: string): Schedule {
   return schedule;
 }
 
-/** Smallest time between two runs on the days the job runs, null when it runs once a day or less. */
+/** Smallest time between two runs on a day the job runs; null when it runs once a day or less. */
 function smallestGapMinutes(s: Schedule): number | null {
   const times: number[] = [];
   for (const h of s.hours) for (const m of s.minutes) times.push(h * 60 + m);
@@ -153,36 +153,7 @@ function smallestGapMinutes(s: Schedule): number | null {
   times.sort((a, b) => a - b);
   let min = Infinity;
   for (let i = 1; i < times.length; i++) min = Math.min(min, times[i] - times[i - 1]);
-  // The last run of one active day and the first of the next can be closer together
-  // than any two runs on a single day. That wrap is a real gap only when two active
-  // days are adjacent, which must be checked for restricted days and weekdays too.
-  if (hasAdjacentActiveDays(s)) {
-    min = Math.min(min, times[0] + (1440 - times[times.length - 1]));
-  }
   return min;
-}
-
-/** True when two active days can land on consecutive calendar dates. */
-function hasAdjacentActiveDays(s: Schedule): boolean {
-  if (s.weekdays.length > 0) {
-    // Every active week has all seven weekdays, so adjacency is the cyclic next one.
-    return s.weekdays.some((d) => s.weekdays.includes((d + 1) % 7));
-  }
-  const days = s.days.length > 0 ? s.days : Array.from({ length: 31 }, (_, i) => i + 1);
-  const months = s.months.length > 0 ? s.months : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-  // February reaches the 29th in a leap year; other months have a fixed length.
-  const lastDay = (m: number) => (m === 2 ? 29 : new Date(Date.UTC(2000, m, 0)).getUTCDate());
-  // Two listed days next to each other in the same active month.
-  if (months.some((m) => days.some((d) => days.includes(d + 1) && d + 1 <= lastDay(m)))) return true;
-  if (!days.includes(1)) return false;
-  // A month boundary: the last day of an active month and day 1 of the next one,
-  // including December to January. Both the 28th and the 29th can end February.
-  for (const m of months) {
-    const next = m === 12 ? 1 : m + 1;
-    if (!months.includes(next)) continue;
-    if (m === 2 ? days.includes(28) || days.includes(29) : days.includes(lastDay(m))) return true;
-  }
-  return false;
 }
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];

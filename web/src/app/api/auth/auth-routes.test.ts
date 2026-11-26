@@ -128,14 +128,6 @@ describe("the callback", () => {
     expect(completeLogin).not.toHaveBeenCalled();
   });
 
-  it("refuses a tossed second sign-in cookie instead of letting it win", async () => {
-    const cookie = `${oauth({ s: "st", v: "v" })}; ${oauth({ s: "attacker", v: "attacker" })}`;
-    const res = await callback(req("/api/auth/callback?code=c&state=attacker", { cookie }));
-    expect(res.headers.get("location")).toContain("error=state_mismatch");
-    expect(setCookie(res, OAUTH_COOKIE)).toMatch(/Max-Age=0|Expires=/i);
-    expect(completeLogin).not.toHaveBeenCalled();
-  });
-
   it("does not leak why Hack Club refused", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     vi.mocked(completeLogin).mockRejectedValue(new Error("Hack Club Auth rejected the login (token 400) secret-detail"));
@@ -156,12 +148,12 @@ describe("sign-in rate limits", () => {
     expect((await login(req("/api/auth/login", { "x-forwarded-for": "203.0.113.51" }))).headers.get("location")).toContain("auth.hackclub.com");
   });
 
-  it("sets the sign-in state cookie httpOnly and Lax, scoped to the whole site", async () => {
+  it("sets the sign-in state cookie httpOnly and Lax, scoped to /api/auth", async () => {
     const res = await login(req("/api/auth/login"));
     const cookie = setCookie(res, OAUTH_COOKIE);
     expect(cookie).toMatch(/HttpOnly/i);
     expect(cookie).toMatch(/SameSite=lax/i);
-    expect(cookie).toMatch(/Path=\/(?:;|$)/i);
+    expect(cookie).toMatch(/Path=\/api\/auth/i);
   });
 });
 
