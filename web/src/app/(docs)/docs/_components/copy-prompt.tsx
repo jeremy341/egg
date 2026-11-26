@@ -1,7 +1,7 @@
 "use client";
 
 import { useSyncExternalStore, useState } from "react";
-import { CaretDownIcon, CheckIcon, CopyIcon } from "@phosphor-icons/react";
+import { CaretDownIcon, ChatCircleIcon, CheckIcon, CopyIcon, SparkleIcon, TerminalWindowIcon } from "@phosphor-icons/react";
 import { toast } from "@/components/ui/toast";
 
 /**
@@ -60,6 +60,14 @@ export function CopyPromptButton({
         aria-label={copied ? "Prompt copied" : label}
         className="touch-target inline-flex h-8 items-center gap-1.5 rounded-l-md px-2.5 font-medium text-muted-foreground transition-colors duration-(--dur-fast) hover:bg-[var(--ds-gray-alpha-100)] hover:text-foreground disabled:opacity-50"
       >
+        {/* Generic agent glyphs, not brand marks: a sparkle for a Claude-style
+            assistant, a chat bubble for a ChatGPT-style one and a terminal for
+            a coding agent. They are decoration; the label carries the name. */}
+        <span aria-hidden="true" className="inline-flex items-center gap-1 text-subtle-foreground">
+          <SparkleIcon className="size-3" />
+          <ChatCircleIcon className="size-3" />
+          <TerminalWindowIcon className="size-3" />
+        </span>
         {copied ? <CheckIcon aria-hidden="true" className="size-3.5" /> : <CopyIcon aria-hidden="true" className="size-3.5" />}
         {copied ? "Prompt copied" : label}
       </button>
@@ -75,13 +83,19 @@ export function CopyPromptButton({
           <p className="px-2 py-1.5 text-[12px] leading-snug text-muted-foreground break-words">{prompt}</p>
           {claude ? (
             <a href={claude} target="_blank" rel="noopener noreferrer" className="block rounded-sm px-2 py-1.5 text-[13px] hover:bg-[var(--ds-gray-alpha-100)]">
-              Open in Claude
+              <span className="flex items-center gap-2">
+                <SparkleIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+                Open in Claude
+              </span>
               <span className="sr-only"> (opens in a new tab)</span>
             </a>
           ) : null}
           {chatgpt ? (
             <a href={chatgpt} target="_blank" rel="noopener noreferrer" className="block rounded-sm px-2 py-1.5 text-[13px] hover:bg-[var(--ds-gray-alpha-100)]">
-              Open in ChatGPT
+              <span className="flex items-center gap-2">
+                <ChatCircleIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+                Open in ChatGPT
+              </span>
               <span className="sr-only"> (opens in a new tab)</span>
             </a>
           ) : null}

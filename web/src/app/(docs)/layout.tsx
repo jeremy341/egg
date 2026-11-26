@@ -46,7 +46,7 @@ export default function DocsShellLayout({ children }: { children: React.ReactNod
       <div className="flex min-w-0 flex-1">
         <aside
           aria-label="Docs"
-          className="sticky top-[var(--topbar-height)] hidden h-[calc(100dvh-var(--topbar-height))] w-[var(--sidebar-width)] shrink-0 overflow-y-auto border-r bg-background-subtle p-2 min-[1280px]:block"
+          className="sticky top-[var(--topbar-height)] hidden h-[calc(100dvh-var(--topbar-height))] w-[288px] shrink-0 overflow-y-auto border-r bg-background-subtle p-2 min-[1280px]:block"
         >
           <Suspense fallback={null}>
             <DocsPageList />
