@@ -172,6 +172,36 @@ export const DOCS_NAV: DocsGroup[] = [
           { id: "api-addresses", title: "Addresses for tools and agents" },
         ],
       },
+      {
+        id: "api-resources",
+        title: "Projects through the API",
+        subsections: [],
+      },
+      {
+        id: "api-configuration",
+        title: "Configuration through the API",
+        subsections: [],
+      },
+      {
+        id: "api-releases",
+        title: "Releases",
+        subsections: [],
+      },
+      {
+        id: "api-query",
+        title: "Reading deployment state",
+        subsections: [],
+      },
+      {
+        id: "api-monitoring",
+        title: "Monitoring and notifications API",
+        subsections: [],
+      },
+      {
+        id: "api-agent-safety",
+        title: "Agent safety rules",
+        subsections: [],
+      },
     ],
   },
   {
