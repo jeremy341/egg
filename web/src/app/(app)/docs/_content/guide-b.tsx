@@ -879,7 +879,7 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
     >
       <P>
         Open Account from the account menu. It has cards for Profile, GitHub, Container permissions, Webhooks,
-        Signed-in browsers and Delete Account. How Egg looks and what new projects start with are on a separate
+        Signed-in browsers and Delete account. How Egg looks and what new projects start with are on a separate
         page, Settings, which is in the same menu.
       </P>
       <List>
@@ -1038,7 +1038,7 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
       </P>
       <H2 id="account-delete" />
       {steps("account-delete-steps", "Delete your account", [
-        { title: "Open the Delete Account card", body: "It is at the bottom of Account." },
+        { title: "Open the Delete account card", body: "It is at the bottom of Account." },
         { title: "Type your name", body: "Type your Hack Club name exactly as Profile shows it under Hack Club name. Spaces at the start and end are ignored." },
         { title: "Press Delete account", body: "Your terminals close first, then your records are deleted." },
       ])}

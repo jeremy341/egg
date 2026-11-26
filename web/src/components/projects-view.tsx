@@ -83,8 +83,8 @@ export function ProjectsView({
             className="pl-9"
           />
         </div>
-        {/* Phones: the layout toggle and the one primary button share a row under the search box. */}
-        <div className="flex w-full items-center justify-between gap-2 sm:contents">
+        {/* Phones, and the narrow column beside the side panels (lg), put the layout toggle and the primary button on one row under the search box. */}
+        <div className="flex w-full items-center justify-between gap-2 sm:contents lg:flex xl:contents">
           <Segmented<View>
             label="Layout"
             value={view}

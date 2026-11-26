@@ -1,8 +1,8 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { PencilSimpleIcon, TrashIcon } from "@phosphor-icons/react";
+import { CaretRightIcon, PencilSimpleIcon, TrashIcon } from "@phosphor-icons/react";
 import { api } from "@/components/api";
 import { Swap } from "@/components/motion/swap";
 import { GithubBuildCard } from "@/components/github-build-card";
@@ -26,6 +26,50 @@ import { cn } from "@/lib/utils";
 import { CleanupCard } from "@/components/cleanup-card";
 
 type EnvVar = { id: string; key: string; target: "all" | "production" | "preview" };
+
+/** The cards inside the Automation "Advanced" disclosure. The settings nav links to their headings. */
+const AUTOMATION_ADVANCED_IDS = ["alerts-heading", "status-page-heading", "homepage-feed-heading"];
+
+/** One heading for a group of cards. */
+function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
+  return (
+    <section aria-labelledby={id} className="space-y-6">
+      <h2 id={id} className="border-b pb-2 text-sm font-medium">
+        {title}
+      </h2>
+      {children}
+    </section>
+  );
+}
+
+/** A native disclosure for the rarely used options of a section. */
+function Advanced({
+  label = "Advanced",
+  open,
+  onOpenChange,
+  className,
+  children,
+}: {
+  label?: string;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <details
+      className={cn("disclosure", className)}
+      open={open}
+      onToggle={onOpenChange ? (e) => onOpenChange(e.currentTarget.open) : undefined}
+    >
+      <summary className="touch-target -mx-1 w-fit items-center gap-1.5 rounded-sm px-1 py-1.5 text-label font-medium max-sm:min-h-10">
+        <CaretRightIcon aria-hidden="true" className="disclosure-caret size-4" />
+        {label}
+      </summary>
+      <div className="mt-3">{children}</div>
+    </details>
+  );
+}
 
 export function ProjectSettings({
   project,
@@ -151,6 +195,17 @@ export function ProjectSettings({
 
   const canDelete = confirm === project.slug;
 
+  // ---- automation: open the Advanced group when a link points at a card inside it
+  const [autoOpen, setAutoOpen] = useState(false);
+  useEffect(() => {
+    const reveal = () => {
+      if (AUTOMATION_ADVANCED_IDS.includes(window.location.hash.slice(1))) setAutoOpen(true);
+    };
+    reveal();
+    window.addEventListener("hashchange", reveal);
+    return () => window.removeEventListener("hashchange", reveal);
+  }, []);
+
   return (
     <div className="motion-enter w-full max-w-[936px]">
       <PageHeader
@@ -161,7 +216,8 @@ export function ProjectSettings({
       <div className="grid gap-10 lg:grid-cols-[176px_minmax(0,720px)]">
         <SettingsNav />
 
-        <div className="min-w-0 space-y-6">
+        <div className="min-w-0 space-y-10">
+          <Section id="section-build" title="Build">
           <Card
             id="run-heading"
             title="Build and Run"
@@ -217,26 +273,7 @@ export function ProjectSettings({
                   className="font-mono"
                 />
               </div>
-              <ProjectBuildFields
-                projectId={project.id}
-                build={build}
-                onLoad={setBuild}
-                onChange={setBuild}
-                onCopy={(s) => {
-                  setBuild(toBuildForm(s));
-                  setForm((f) => ({ ...f, startCommand: s.startCommand ?? "", healthPath: s.healthPath }));
-                }}
-              />
-              <div>
-                <Label htmlFor="ps-health">Health check path</Label>
-                <Input
-                  id="ps-health"
-                  value={form.healthPath}
-                  onChange={(e) => setForm({ ...form, healthPath: e.target.value })}
-                  className="font-mono"
-                />
-              </div>
-              <label className="touch-target inline-flex min-h-10 items-center gap-2 self-end sm:min-h-9">
+              <label className="touch-target inline-flex min-h-10 items-center gap-2 sm:col-span-2 sm:min-h-9">
                 <input
                   type="checkbox"
                   checked={form.autoDeploy}
@@ -244,17 +281,43 @@ export function ProjectSettings({
                 />
                 Deploy automatically on push
               </label>
+              <Advanced className="sm:col-span-2">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <ProjectBuildFields
+                    projectId={project.id}
+                    build={build}
+                    onLoad={setBuild}
+                    onChange={setBuild}
+                    onCopy={(s) => {
+                      setBuild(toBuildForm(s));
+                      setForm((f) => ({ ...f, startCommand: s.startCommand ?? "", healthPath: s.healthPath }));
+                    }}
+                  />
+                  <div>
+                    <Label htmlFor="ps-health">Health check path</Label>
+                    <Input
+                      id="ps-health"
+                      value={form.healthPath}
+                      onChange={(e) => setForm({ ...form, healthPath: e.target.value })}
+                      className="font-mono"
+                    />
+                  </div>
+                </div>
+              </Advanced>
             </form>
           </Card>
 
           <GithubBuildCard project={project} />
+          </Section>
 
+          <Section id="section-env" title="Environment">
           <Card
             id="env-heading"
             title="Environment Variables"
-            description="Stored encrypted. They are written to your server when you deploy, and values are never shown again."
+            description="Stored encrypted. Values are never shown again."
             docsHref="/docs/env"
             docsTopic="environment variables"
+            docsLabel="Learn more"
           >
             <form
               onSubmit={addEnv}
@@ -307,7 +370,9 @@ export function ProjectSettings({
               </Alert>
             ) : null}
 
-            <EnvHelp />
+            <Advanced label="How variables work" className="mt-4">
+              <EnvHelp />
+            </Advanced>
 
             <EnvImportButton
               projectId={project.id}
@@ -348,26 +413,34 @@ export function ProjectSettings({
                 ))}
               </ul>
             ) : (
-              <p className="mt-4 text-muted-foreground">No variables yet. Add a name and a value above; they reach your server on the next deploy.</p>
+              <p className="mt-4 text-muted-foreground">No variables yet.</p>
             )}
           </Card>
+          </Section>
 
-          <DeployHookCard project={project} />
+          <Section id="section-automation" title="Automation">
+            <DeployHookCard project={project} />
 
-          <ScheduledJobsCard projectId={project.id} />
+            <ScheduledJobsCard projectId={project.id} />
 
-          <NotificationsCard project={project} />
+            <NotificationsCard project={project} />
 
-          <AlertsCard project={project} />
+            <Advanced open={autoOpen} onOpenChange={setAutoOpen}>
+              <div className="space-y-6">
+                <AlertsCard project={project} />
+                <StatusPageCard project={project} />
+                <HomepageFeedCard project={project} />
+              </div>
+            </Advanced>
+          </Section>
 
-          <StatusPageCard project={project} />
-          <HomepageFeedCard project={project} />
+          <Section id="section-danger" title="Danger zone">
           <CleanupCard name={project.slug} projectId={project.id} />
 
           <Card
             id="danger-heading"
             title="Delete Project"
-            description="Removes the project from Egg. Optionally stops it and deletes its releases on your server first. The lists below show what goes and what stays."
+            description="Removes the project from Egg. The lists below show what goes and what stays."
             tone="danger"
             footer={
               <>
@@ -431,6 +504,7 @@ export function ProjectSettings({
               className="font-mono"
             />
           </Card>
+          </Section>
         </div>
       </div>
     </div>

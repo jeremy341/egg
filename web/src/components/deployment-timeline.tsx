@@ -143,8 +143,14 @@ export function DeploymentTimeline({
             Timeline
           </h2>
           <p className="text-label text-muted-foreground">
-            Commit{" "}
-            <CommitLink repo={repo} sha={sha} fallback="not read yet" className="font-mono text-[13px] text-foreground" />
+            {sha ? (
+              <>
+                Commit{" "}
+                <CommitLink repo={repo} sha={sha} className="font-mono text-[13px] text-foreground" />
+              </>
+            ) : (
+              "Commit not read yet"
+            )}
           </p>
         </div>
         <ol className="p-4" aria-labelledby="timeline-heading">
