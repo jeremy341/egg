@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import { CopyPromptButton } from "./_components/copy-prompt";
+import { DocsBrowse } from "./_components/docs-browse";
 import { DocsIndex } from "./_components/docs-index";
 import { ARTICLE, PageHeader } from "./_components/prose";
 import { StartHere } from "./_components/start-here";
@@ -24,6 +25,7 @@ export default function DocsHome() {
         <CopyPromptButton global label="Copy docs prompt" />
       </div>
       <StartHere />
+      <DocsBrowse />
       <DocsIndex />
     </article>
   );

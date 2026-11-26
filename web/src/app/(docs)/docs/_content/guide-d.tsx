@@ -5,7 +5,23 @@ import { docsHref } from "../_data/nav";
 /**
  * Two pages about where a build runs: GitHub Actions (the recommended choice) and Nest (the container).
  * The numbers and names here are pinned to the code in `docs-facts.test.ts`.
+ * The copy follows Orchard's docs style: short declarative sentences, a cause for each rule,
+ * numbered steps, one consequence per caution, and a Related resources closer.
  */
+
+/** The links that end each page. One line, named for what the reader can open next. */
+const related = (pages: [string, string][]) => (
+  <P>
+    <B>Related resources:</B>{" "}
+    {pages.map(([id, title], i) => (
+      <span key={id}>
+        {i > 0 ? ", " : ""}
+        <InternalLink href={docsHref(id)}>{title}</InternalLink>
+      </span>
+    ))}
+    .
+  </P>
+);
 
 export const GUIDE_D: Record<string, () => ReactNode> = {
   "build-github-actions": () => (
@@ -15,14 +31,15 @@ export const GUIDE_D: Record<string, () => ReactNode> = {
     >
       <H2 id="build-actions-what" />
       <P>
-        With this choice a workflow in your repository installs, builds and packs the app on GitHub&apos;s machines, then
-        sends the release to Egg. Egg unpacks it on your container, starts it and checks that it answers. Your container never
-        runs the build, so a framework build that needs a lot of memory no longer competes with your app for it.
+        With this choice a workflow in your repository installs, builds and packs the app on GitHub&apos;s machines. It
+        sends the finished release to Egg. Egg unpacks it on your container, starts it and checks that it answers. Your
+        container never runs the build, so a framework build that needs a lot of memory no longer competes with your app
+        for it.
       </P>
       <P>
-        It is the default for a new project. Pick <B>Build on Nest</B> instead when you want no dependence on GitHub; see{" "}
+        This is the default for a new project. Pick <B>Build on Nest</B> when you want no dependence on GitHub; see{" "}
         <InternalLink href={docsHref("build-on-nest")}>Build on Nest</InternalLink>. A project made from a pasted public
-        address has no link to the GitHub app, so the new project flow does not offer GitHub Actions for it.
+        address has no link to the GitHub app. The new project flow does not offer GitHub Actions for it.
       </P>
       <P>
         Builds use your GitHub Actions minutes.
@@ -30,10 +47,10 @@ export const GUIDE_D: Record<string, () => ReactNode> = {
 
       <H2 id="build-actions-steps" />
       <P>
-        New projects take you straight to these steps. For an existing project, open Settings, then <B>Where Builds Run</B>,
-        choose <B>GitHub Actions</B> and press Save. Each step opens one at a time and finished steps fold into one line.
-        Egg stores no progress: it knows whether the credentials exist and whether the last test passed, and asks you about
-        the two steps only GitHub can confirm.
+        New projects take you straight to these steps. For an existing project, open Settings, then <B>Where Builds Run</B>.
+        Choose <B>GitHub Actions</B> and press Save. Each step opens one at a time, and finished steps fold into one line.
+        Egg stores no progress. It knows whether the credentials exist and whether the last test passed. It asks you about
+        the two steps that only GitHub can confirm.
       </P>
       <List ordered>
         <li>
@@ -41,17 +58,17 @@ export const GUIDE_D: Record<string, () => ReactNode> = {
           fingerprint. Making new ones stops the old ones at once.
         </li>
         <li>
-          <B>Save the secrets on GitHub.</B> Save each value under the name and in the place the next section lists, then
-          press <B>I saved all four secrets</B>. Egg cannot read GitHub secrets, so this step is your confirmation.
+          <B>Save the secrets on GitHub.</B> Save each value under the name and in the place the next section lists. Press{" "}
+          <B>I saved all four secrets</B>. Egg cannot read GitHub secrets, so this step is your confirmation.
         </li>
         <li>
-          <B>Add the workflow file.</B> Press <B>Add to repository</B>. Egg opens a pull request that adds the file; merge it
-          on GitHub. Without the GitHub app permissions below, copy or download <C>egg.yml</C> and commit it to the
+          <B>Add the workflow file.</B> Press <B>Add to repository</B>. Egg opens a pull request that adds the file. Merge
+          it on GitHub. Without the GitHub app permissions below, copy or download <C>egg.yml</C> and commit it to the
           production branch yourself.
         </li>
         <li>
           <B>Test the connection.</B> Egg checks its own records and, read only, your repository. Every failed check says
-          what to do; the last section here goes through them.
+          what to do. The last section here goes through them.
         </li>
         <li>
           <B>Run the first build.</B> Push a commit, or open the workflow on GitHub and press <B>Run workflow</B>. The
@@ -62,7 +79,8 @@ export const GUIDE_D: Record<string, () => ReactNode> = {
       <H2 id="build-actions-secrets" />
       <P>
         The workflow reads four secrets. The two production values live in a GitHub Environment called{" "}
-        <C>egg-production</C>, which you limit to the production branch. The two preview values are repository secrets.
+        <C>egg-production</C>. You limit that environment to the production branch. The two preview values are repository
+        secrets.
       </P>
       <Table
         caption="The four secrets"
@@ -77,7 +95,7 @@ export const GUIDE_D: Record<string, () => ReactNode> = {
       <List>
         <li>
           To make the environment, open the repository&apos;s Settings, then Environments, then New environment. Under
-          Deployment branches and tags choose Selected branches and tags and add the production branch. You can also turn on
+          Deployment branches and tags, choose Selected branches and tags and add the production branch. You can turn on
           Required reviewers so a person approves each production build.
         </li>
         <li>
@@ -94,12 +112,12 @@ export const GUIDE_D: Record<string, () => ReactNode> = {
         <B>Add to repository</B> asks the GitHub app to create a branch, commit <C>.github/workflows/egg.yml</C> to it and
         open a pull request into the production branch. If a pull request from an earlier press is still open, Egg updates
         it. If the production branch already has an identical file, Egg changes nothing and says so. Nothing is merged for
-        you: the workflow only starts working when you merge.
+        you. The workflow only starts working when you merge.
       </P>
       <Callout tone="warning" title="This needs three permissions on the GitHub app">
         Adding the workflow by pull request needs Egg&apos;s GitHub app to have <B>Contents</B>, <B>Pull requests</B> and{" "}
         <B>Workflows</B> read and write access. Only the person who runs this Egg can grant them, in the app&apos;s settings
-        on GitHub. Without them, Egg says so and you copy or download the file instead; everything else works the same.
+        on GitHub. Without them, Egg says so. You copy or download the file instead, and everything else works the same.
       </Callout>
 
       <H2 id="build-actions-safety" />
@@ -110,7 +128,7 @@ export const GUIDE_D: Record<string, () => ReactNode> = {
         </li>
         <li>
           Only the job for the production branch can use the <C>egg-production</C> environment. A workflow edited on another
-          branch can ask for it, and GitHub then refuses the secrets.
+          branch can ask for it. GitHub then refuses the secrets.
         </li>
         <li>
           Anyone who can push a workflow can run code with the preview credentials and with whatever else the repository
@@ -119,7 +137,7 @@ export const GUIDE_D: Record<string, () => ReactNode> = {
         </li>
         <li>
           The credentials can send a release and read build variables, and nothing else. A production credential cannot
-          deliver a preview build, and a preview credential cannot deliver a production one.
+          deliver a preview build. A preview credential cannot deliver a production one.
         </li>
       </List>
 
@@ -134,13 +152,13 @@ export const GUIDE_D: Record<string, () => ReactNode> = {
         ]}
       />
       <P>
-        These numbers are the ones the project&apos;s setup steps show, read from the code that enforces them.
+        These numbers are the ones the setup steps show. They come from the code that enforces them.
       </P>
 
       <H2 id="build-actions-troubleshooting" />
       <P>
-        Test connection lists six checks. A check that could not run because an earlier one failed shows “Not checked”,
-        never “Passed”. Fix the first failure and test again.
+        Test connection lists six checks. A check that could not run because an earlier one failed shows “Not checked”.
+        It never shows “Passed”. Fix the first failure, then test again.
       </P>
       <Table
         caption="Test connection checks"
@@ -155,10 +173,15 @@ export const GUIDE_D: Record<string, () => ReactNode> = {
         ]}
       />
       <P>
-        Test connection cannot see your GitHub secrets or environment settings, and it does not know whether the last
-        workflow run passed. If the first build fails, open the workflow run on GitHub. A run that cannot
-        send the release usually means a secret is missing, saved in the wrong place or out of date.
+        Test connection cannot see your GitHub secrets or environment settings. It does not know whether the last workflow
+        run passed. If the first build fails, open the workflow run on GitHub. A run that cannot send the release usually
+        means a secret is missing. It may be saved in the wrong place. It may be out of date.
       </P>
+      {related([
+        ["build-on-nest", "Build on Nest"],
+        ["github", "GitHub and previews"],
+        ["troubleshooting", "Troubleshooting"],
+      ])}
     </Section>
   ),
 
@@ -169,8 +192,9 @@ export const GUIDE_D: Record<string, () => ReactNode> = {
     >
       <H2 id="build-nest-what" />
       <P>
-        Nothing depends on GitHub for the build itself: Egg sends the source to your container over SSH, runs the install and
-        build commands there, and starts the result. It suits small apps and projects that are not on GitHub through the app.
+        Nothing depends on GitHub for the build itself. Egg sends the source to your container over SSH. It runs the install
+        and build commands there, then starts the result. It suits small apps and projects that are not on GitHub through
+        the app.
       </P>
       <H2 id="build-nest-caps" />
       <List>
@@ -179,8 +203,8 @@ export const GUIDE_D: Record<string, () => ReactNode> = {
           set on the Container page, under Build memory and Build CPU.
         </li>
         <li>
-          The memory cap is never more than your container&apos;s memory minus 512 MB, which stays free for your app. A
-          container with under 768 MB cannot build.
+          The memory cap is never more than your container&apos;s memory minus 512 MB. The 512 MB stays free for your app.
+          A container with under 768 MB cannot build.
         </li>
         <li>A build that runs longer than 15 minutes is stopped. Your running app is not.</li>
       </List>
@@ -194,11 +218,16 @@ export const GUIDE_D: Record<string, () => ReactNode> = {
         </li>
       </List>
       <P>
-        Switching is a saved choice under Where Builds Run in the project&apos;s Settings. Egg never changes it for you, and
+        Switching is a saved choice under Where Builds Run in the project&apos;s Settings. Egg never changes it for you, so
         the next deployment uses the new place. The numbers and the messages a build can give are on the{" "}
         <InternalLink href={`${docsHref("container")}#container-build-memory`}>Container page</InternalLink> and in{" "}
         <InternalLink href={`${docsHref("troubleshooting")}#troubleshooting-build`}>Troubleshooting</InternalLink>.
       </P>
+      {related([
+        ["build-github-actions", "Build with GitHub Actions"],
+        ["container", "Container, terminal and files"],
+        ["troubleshooting", "Troubleshooting"],
+      ])}
     </Section>
   ),
 };
