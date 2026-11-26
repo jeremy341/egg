@@ -78,7 +78,11 @@ function errorResponse(status: number) {
   };
 }
 
+/** The built document. `ENDPOINTS` is static, so it is built once and every request reuses it. */
+let cached: Json | undefined;
+
 export function buildOpenApi(): Json {
+  if (cached !== undefined) return cached;
   const defs: Json = {};
   const paths: Record<string, Json> = {};
 
@@ -149,5 +153,6 @@ export function buildOpenApi(): Json {
       },
     },
   };
-  return relink(doc);
+  cached = relink(doc);
+  return cached;
 }

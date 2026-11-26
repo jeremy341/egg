@@ -68,7 +68,8 @@ function Item({
  * open an SSH session. It looks again every 30 seconds while the tab is
  * visible, shows when the reading was taken, and Check now always asks.
  */
-export function ServiceCard({ projectId }: { projectId: string }) {
+export function ServiceCard({ projectId, workloadKind = "web" }: { projectId: string; workloadKind?: "web" | "worker" }) {
+  const worker = workloadKind === "worker";
   const [status, setStatus] = useState<ServiceStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -147,7 +148,7 @@ export function ServiceCard({ projectId }: { projectId: string }) {
     >
       <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
         <h2 id="service-heading" className="text-title-3">
-          Service
+          {worker ? "Worker process" : "Service"}
         </h2>
         <div className="flex items-center gap-2">
           <ConfirmDialog
@@ -163,7 +164,7 @@ export function ServiceCard({ projectId }: { projectId: string }) {
               </Button>
             }
             title="Restart the service?"
-            description="The app is offline for a few seconds."
+            description={worker ? "The worker stops processing for a few seconds." : "The app is offline for a few seconds."}
             confirmLabel="Restart"
             pendingLabel="Restarting…"
             onConfirm={restart}
@@ -190,7 +191,7 @@ export function ServiceCard({ projectId }: { projectId: string }) {
 
       {status ? (
         <>
-          <dl className="grid gap-x-6 gap-y-5 p-4 sm:grid-cols-2 lg:grid-cols-5">
+          <dl className={cn("grid gap-x-6 gap-y-5 p-4 sm:grid-cols-2", worker ? "lg:grid-cols-4" : "lg:grid-cols-5")}>
             <Item label="Status" lead>
               <Swap value={status.state}>
                 <StatusIndicator
@@ -218,7 +219,7 @@ export function ServiceCard({ projectId }: { projectId: string }) {
                 {status.restarts ?? "No reading"}
               </Swap>
             </Item>
-            <Item label="Health check">
+            {!worker && <Item label="Health check">
               <Swap value={http ? `${http.code}-${http.ms}` : "none"}>
                 {http === null || http === undefined ? (
                   <span className="font-normal text-muted-foreground">Not checked</span>
@@ -233,7 +234,7 @@ export function ServiceCard({ projectId }: { projectId: string }) {
                   </span>
                 )}
               </Swap>
-            </Item>
+            </Item>}
           </dl>
           <p className="border-t px-4 py-2 text-caption text-muted-foreground">
             Checked{" "}
@@ -250,8 +251,8 @@ export function ServiceCard({ projectId }: { projectId: string }) {
       ) : error ? null : (
         <div role="status">
           <span className="sr-only">Checking your container…</span>
-          <div aria-hidden="true" className="grid gap-x-6 gap-y-5 p-4 sm:grid-cols-2 lg:grid-cols-5">
-            {["Status", "Uptime", "Memory", "Restarts", "Health check"].map((label) => (
+          <div aria-hidden="true" className={cn("grid gap-x-6 gap-y-5 p-4 sm:grid-cols-2", worker ? "lg:grid-cols-4" : "lg:grid-cols-5")}>
+            {(worker ? ["Status", "Uptime", "Memory", "Restarts"] : ["Status", "Uptime", "Memory", "Restarts", "Health check"]).map((label) => (
               <div key={label}>
                 <p className="mb-1 text-label text-muted-foreground">{label}</p>
                 <div className="flex h-5 items-center">

@@ -11,19 +11,23 @@ import type { Runtime } from "@/server/db/schema";
  *
  * Secrets: environment files are parsed for NAMES only. No value from any file
  * is ever returned, logged or stored. A committed .env is reported by file name
- * and is never read at all.
+ * and is never read at all. requirements.txt is read for package NAMES only,
+ * the same way, so a bot framework can be recognised.
  */
 
 export type PackageManager = "npm" | "pnpm" | "yarn" | "bun";
-export type Language = "node" | "python" | "go" | "ruby" | "rust" | "docker";
+export type Language = "node" | "python" | "go" | "ruby" | "rust" | "php" | "java" | "docker";
 export type Framework = "next" | "vite" | "nuxt" | "astro";
+export type BotFramework = "discord.js" | "discord.py" | "telegraf" | "slack-bolt" | "python-telegram-bot";
 
 export type DetectedEnv = {
   name: string;
-  /** The example file the name came from. */
+  /** The example file the name came from, or the framework a suggestion is for. */
   source: string;
   /** Whether the example file gives the name a value. The value itself is never returned. */
   hasExampleValue: boolean;
+  /** Set for names Egg suggests for a detected bot framework, not for names read from a file. */
+  suggested?: boolean;
 };
 
 export type Commands = {
@@ -34,7 +38,7 @@ export type Commands = {
 
 export type RepoDetection = {
   packageManager: PackageManager | null;
-  /** The runtimes Egg builds with today: npm, pnpm and yarn. */
+  /** Whether Egg recognises this package manager. */
   packageManagerSupported: boolean;
   language: Language | null;
   framework: Framework | null;
@@ -46,6 +50,12 @@ export type RepoDetection = {
   monorepo: boolean;
   /** Folders that hold their own package.json, offered as root directory choices. */
   candidateRoots: string[];
+  /** A bot framework found in the dependencies, when there is one and the repo is not a web app. */
+  bot: BotFramework | null;
+  /** The workload Egg suggests for the repository: "worker" for a bot, else null. A default, never a lock. */
+  suggestedWorkloadKind: "worker" | null;
+  /** Token names the detected bot framework reads, ready to add as environment variables. */
+  suggestedEnv: DetectedEnv[];
   env: DetectedEnv[];
   /** Names of committed env files, such as ".env". Never their contents. */
   committedEnvFiles: string[];
@@ -62,13 +72,87 @@ export const ENV_EXAMPLE_FILES = [
   ".env.template",
   ".env.local.example",
 ] as const;
-export const READ_FILES: readonly string[] = ["package.json", ...ENV_EXAMPLE_FILES];
+export const READ_FILES: readonly string[] = ["package.json", "requirements.txt", ...ENV_EXAMPLE_FILES];
 
-/** Env files that must not be in a repository. Detected by name only. */
+/**
+ * Env files that must not be in a repository. Detected by name only.
+ */
 export const COMMITTED_ENV_FILES = [".env", ".env.local", ".env.production", ".env.production.local"] as const;
 
 export const COMMITTED_ENV_WARNING =
   "A .env file is committed to this repository. Remove it from git and rotate the values.";
+
+/**
+ * Bot frameworks a student actually hosts: recognised in dependencies, with
+ * the token names their examples read. The env list is a suggestion of names
+ * only; Egg never asks for a token anywhere except environment variables, and
+ * never creates a variable itself.
+ */
+export const BOT_FRAMEWORKS: {
+  id: BotFramework;
+  label: string;
+  language: "node" | "python";
+  deps: string[];
+  env: string[];
+  note: string;
+}[] = [
+  {
+    id: "discord.js",
+    label: "Discord bot (discord.js)",
+    language: "node",
+    deps: ["discord.js"],
+    env: ["DISCORD_TOKEN"],
+    note: "This looks like a Discord bot. It is set up as a background app that needs no port, and DISCORD_TOKEN is offered as an environment variable.",
+  },
+  {
+    id: "discord.py",
+    label: "Discord bot (discord.py)",
+    language: "python",
+    deps: ["discord.py"],
+    env: ["DISCORD_TOKEN"],
+    note: "This looks like a Discord bot. It is set up as a background app that needs no port, and DISCORD_TOKEN is offered as an environment variable.",
+  },
+  {
+    id: "telegraf",
+    label: "Telegram bot (Telegraf)",
+    language: "node",
+    deps: ["telegraf"],
+    env: ["TELEGRAM_BOT_TOKEN"],
+    note: "This looks like a Telegram bot. It is set up as a background app that needs no port, and TELEGRAM_BOT_TOKEN is offered as an environment variable.",
+  },
+  {
+    id: "slack-bolt",
+    label: "Slack app (Bolt for JavaScript)",
+    language: "node",
+    deps: ["@slack/bolt", "slack-bolt"],
+    env: ["SLACK_BOT_TOKEN", "SLACK_SIGNING_SECRET"],
+    note: "This looks like a Slack app. It is set up as a background app, and its token names are offered as environment variables.",
+  },
+  {
+    id: "python-telegram-bot",
+    label: "Telegram bot (python-telegram-bot)",
+    language: "python",
+    deps: ["python-telegram-bot"],
+    env: ["TELEGRAM_BOT_TOKEN"],
+    note: "This looks like a Telegram bot. It is set up as a background app that needs no port, and TELEGRAM_BOT_TOKEN is offered as an environment variable.",
+  },
+];
+
+/**
+ * Package names from a requirements.txt. Only the names are looked at; version
+ * pins, comments, option lines and VCS URLs are ignored, and nothing but the
+ * recognised bot framework names is ever reported.
+ */
+export function parseRequirementsNames(text: string): string[] {
+  const out: string[] = [];
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.split("#")[0].trim();
+    if (!line || line.startsWith("-") || line.startsWith(".") || line.startsWith("/")) continue;
+    const m = /^([A-Za-z0-9][A-Za-z0-9._-]*)/.exec(line);
+    if (m) out.push(m[1].toLowerCase());
+  }
+  return out;
+}
 
 const MAX_NAMES = 100;
 
@@ -94,6 +178,8 @@ const LANGUAGE_LABEL: Record<Language, string> = {
   go: "Go",
   ruby: "Ruby",
   rust: "Rust",
+  php: "PHP",
+  java: "Java",
   docker: "Docker",
 };
 export const languageLabel = (l: Language) => LANGUAGE_LABEL[l];
@@ -208,6 +294,8 @@ export function detectRepo(files: Record<string, string>): RepoDetection {
   else if (has("go.mod")) language = "go";
   else if (has("Gemfile")) language = "ruby";
   else if (has("Cargo.toml")) language = "rust";
+  else if (has("composer.json")) language = "php";
+  else if (has("pom.xml") || has("build.gradle") || has("build.gradle.kts")) language = "java";
   else if (has("Dockerfile")) language = "docker";
 
   // ---- package manager
@@ -227,12 +315,7 @@ export function detectRepo(files: Record<string, string>): RepoDetection {
       );
     }
   }
-  const packageManagerSupported = packageManager !== null && packageManager !== "bun";
-  if (packageManager === "bun") {
-    notes.push(
-      "Bun is detected. Egg builds with npm, pnpm or Yarn today, so check that your install and build commands can run on the build host."
-    );
-  }
+  const packageManagerSupported = packageManager !== null;
 
   // ---- framework
   let framework: Framework | null = null;
@@ -241,6 +324,25 @@ export function detectRepo(files: Record<string, string>): RepoDetection {
     else if (hasDep("nuxt")) framework = "nuxt";
     else if (hasDep("astro")) framework = "astro";
     else if (hasDep("vite")) framework = "vite";
+  }
+
+  // ---- bot framework: a default workload and token-name suggestions, never a lock.
+  // A web framework wins: a Next or Vite app that also uses discord.js is a web app first.
+  let bot: BotFramework | null = null;
+  const pythonNames =
+    language === "python" && files["requirements.txt"] ? new Set(parseRequirementsNames(files["requirements.txt"])) : null;
+  if (framework === null) {
+    for (const f of BOT_FRAMEWORKS) {
+      const found =
+        f.language === "node"
+          ? f.deps.some((d) => hasDep(d))
+          : pythonNames !== null && f.deps.some((d) => pythonNames.has(d));
+      if (found) {
+        bot = f.id;
+        notes.push(f.note);
+        break;
+      }
+    }
   }
 
   // ---- runtime and commands
@@ -272,10 +374,9 @@ export function detectRepo(files: Record<string, string>): RepoDetection {
   } else if (language === "python") {
     runtime = "python";
     notes.push("Python app. The default start command is python3 app.py; change it if your entry point differs.");
-  } else if (language === "go" || language === "ruby" || language === "rust") {
-    notes.push(
-      `${LANGUAGE_LABEL[language]} is not supported yet. You can still try the custom command preset with your own build and start commands.`
-    );
+  } else if (language === "go" || language === "ruby" || language === "rust" || language === "php" || language === "java") {
+    runtime = language;
+    notes.push(language === "go" ? "Go apps default to building the package in the selected root; check the build and start commands." : `${LANGUAGE_LABEL[language]} app. Set a start command for your application and check its build settings.`);
   } else if (language === "docker") {
     notes.push(
       "A Dockerfile was found. Egg does not build Docker images, so it is not used. Pick a runtime and set your own commands."
@@ -300,6 +401,16 @@ export function detectRepo(files: Record<string, string>): RepoDetection {
     notes.push("This looks like a monorepo. Set the root directory to the app you want to deploy.");
   }
 
+  // ---- suggested token names for a detected bot
+  const env = collectEnv(files);
+  const known = new Set(env.map((e) => e.name));
+  const botInfo = BOT_FRAMEWORKS.find((f) => f.id === bot);
+  const suggestedEnv: DetectedEnv[] = botInfo
+    ? botInfo.env
+        .filter((n) => !known.has(n) && ENV_KEY.test(n) && !RESERVED_ENV.has(n.toUpperCase()))
+        .map((name) => ({ name, source: botInfo.label, hasExampleValue: false, suggested: true }))
+    : [];
+
   return {
     packageManager,
     packageManagerSupported,
@@ -310,7 +421,10 @@ export function detectRepo(files: Record<string, string>): RepoDetection {
     outputDir,
     monorepo,
     candidateRoots,
-    env: collectEnv(files),
+    bot,
+    suggestedWorkloadKind: bot !== null && runtime !== "static" ? "worker" : null,
+    suggestedEnv,
+    env,
     committedEnvFiles,
     warnings,
     notes,

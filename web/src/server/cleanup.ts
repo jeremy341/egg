@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { audit } from "@/server/audit";
 import { config } from "@/server/config";
 import { newId } from "@/server/crypto";
@@ -13,6 +13,7 @@ import { connectToServer, getServerForUser, type ServerRow } from "@/server/serv
 import { parseProbe, PROBE_SCRIPT } from "@/server/ssh/probe";
 import type { NestSession } from "@/server/ssh/connection";
 import { cleanupBlockingStates } from "@/server/cleanup-guards";
+import { forgetDeliveriesForDeployments } from "@/server/webhooks";
 
 export const CLEANUP_DRAIN_MS = 5 * 60_000;
 const CLEANUP_LEASE_MS = 2 * 60_000;
@@ -190,7 +191,7 @@ export async function getCleanupStatus(userId: string, cleanupId: string): Promi
     notBefore: job.notBefore,
     error: job.error,
     recoveryRequired: job.state === "running" && !!job.leaseUntil && job.leaseUntil.getTime() < Date.now(),
-    canCancel: job.state === "draining" && job.attempts === 0,
+    canCancel: (job.state === "draining" && job.attempts === 0) || job.state === "failed",
     items: items.map((item) => ({
       id: item.id,
       projectId: item.projectId,
@@ -261,12 +262,50 @@ export async function retryCleanup(userId: string, cleanupId: string, confirmIdl
   return getCleanupStatus(userId, job.id);
 }
 
-/** A drain can be canceled only before the executor has started any remote step. */
-export async function cancelCleanup(userId: string, cleanupId: string) {
+/**
+ * A drain can be canceled before the executor has started any remote step, and
+ * a failed job can always be dropped: its remote step has stopped, and leaving
+ * the row in place would block account deletion forever. Dropping a failed job
+ * discards the only record of projects that may still have units on their
+ * server — and account deletion later takes the SSH key too — so the not-done
+ * projects are named once, an audit entry keeps the leader's lead until the
+ * account itself goes, and the caller must explicitly confirm going ahead.
+ */
+export async function cancelCleanup(
+  userId: string,
+  cleanupId: string,
+  input: { acknowledgeOrphans?: boolean } = {}
+) {
   const db = await getDb();
+  const job = await db.select().from(schema.cleanupJobs).where(and(
+    eq(schema.cleanupJobs.id, cleanupId), eq(schema.cleanupJobs.userId, userId)
+  )).get();
+  if (!job) throw new HttpError(409, "Cleanup has started and cannot be canceled safely.", "conflict");
+  const cancellable = (job.state === "draining" && job.attempts === 0) || job.state === "failed";
+  if (!cancellable) throw new HttpError(409, "Cleanup has started and cannot be canceled safely.", "conflict");
+  if (job.state === "failed") {
+    const items = await db.select().from(schema.cleanupItems).where(eq(schema.cleanupItems.cleanupJobId, job.id));
+    const orphans = items.filter((i) => i.state !== "done");
+    if (orphans.length > 0) {
+      const names = [...new Set(orphans.map((o) => o.projectName))];
+      await audit(userId, "account.cleanup_cancel_failed", null, {
+        orphans: JSON.stringify(orphans.map((o) => ({ project: o.projectName, slug: o.projectSlug, server: o.serverLabel, step: o.step, error: o.error }))),
+      });
+      if (input.acknowledgeOrphans !== true) {
+        throw new HttpError(
+          409,
+          `This cleanup failed and ${orphans.length} project step${orphans.length === 1 ? "" : "s"} may not be finished on the server: ${names.join(", ")}. Canceling deletes this record, and account deletion later removes the SSH key too, so check the server's ~/.egg folder by hand first. Confirm the acknowledgment to cancel anyway.`,
+          "confirm_orphans"
+        );
+      }
+    }
+  }
   const gone = await db.delete(schema.cleanupJobs).where(and(
     eq(schema.cleanupJobs.id, cleanupId), eq(schema.cleanupJobs.userId, userId),
-    eq(schema.cleanupJobs.state, "draining"), eq(schema.cleanupJobs.attempts, 0)
+    or(
+      and(eq(schema.cleanupJobs.state, "draining"), eq(schema.cleanupJobs.attempts, 0)),
+      eq(schema.cleanupJobs.state, "failed")
+    )
   )).returning({ id: schema.cleanupJobs.id });
   if (!gone.length) throw new HttpError(409, "Cleanup has started and cannot be canceled safely.", "conflict");
 }
@@ -360,6 +399,7 @@ async function cleanItem(userId: string, itemId: string, deps: CleanupDeps, now:
         ...(await jobUnitNames(project.id, project.slug)),
       ],
       unitDir: deps.unitDir,
+      docker: project.deploymentMode !== "native",
     }), { timeoutMs: 120_000 });
     if (res.code !== 0) throw new Error(res.stderr.trim().slice(0, 300) || "Could not remove the Egg-managed project resources from the Nest server.");
     warnings.push(...extractWarnings(`${res.stdout}\n${res.stderr}`));
@@ -399,7 +439,14 @@ async function finalizeProject(userId: string, jobId: string, projectId: string)
     const item = await tx.select().from(schema.cleanupItems)
       .where(and(eq(schema.cleanupItems.cleanupJobId, jobId), eq(schema.cleanupItems.projectId, projectId))).get();
     if (!job || !item || item.state !== "done") throw new Error("Remote cleanup is not complete; project records were kept.");
+    const deployments = await tx
+      .select({ id: schema.deployments.id })
+      .from(schema.deployments)
+      .where(eq(schema.deployments.projectId, projectId));
     await tx.delete(schema.projects).where(and(eq(schema.projects.id, projectId), eq(schema.projects.userId, userId)));
+    // The cascade removes the deployments; their delivery history survives, so
+    // links that would now point at nothing are forgotten.
+    await forgetDeliveriesForDeployments(tx, deployments.map((d) => d.id));
     await tx.update(schema.cleanupJobs).set({ state: "done", step: "complete", finishedAt: new Date(), leaseOwner: null, leaseUntil: null, updatedAt: new Date() }).where(eq(schema.cleanupJobs.id, jobId));
   });
   await audit(userId, "project.delete", null, { projectId, remoteCleanup: "complete" });
@@ -485,7 +532,7 @@ export async function runCleanupOnce(deps = defaultCleanupDeps(), now = new Date
       leaseOwner: null,
       leaseUntil: null,
       updatedAt: now,
-    }).where(eq(schema.cleanupJobs.id, job.id));
+    }).where(and(eq(schema.cleanupJobs.id, job.id), eq(schema.cleanupJobs.leaseOwner, workerId)));
     return job.id;
   } finally {
     clearInterval(heartbeat);

@@ -559,6 +559,7 @@ describe("computeStats, the richer figures", () => {
         port: 3000,
         status: i < 12 ? "valid" : "pending",
         createdAt: created,
+        updatedAt: created,
       });
     await db.insert(schema.domains).values(domains);
 
@@ -715,6 +716,11 @@ describe("computeStats, the richer figures", () => {
       { runtime: "python", count: { approx: 12 } },
       { runtime: "static", count: { lessThan: 10 } },
       { runtime: "command", count: { lessThan: 10 } },
+      { runtime: "go", count: { lessThan: 10 } },
+      { runtime: "rust", count: { lessThan: 10 } },
+      { runtime: "ruby", count: { lessThan: 10 } },
+      { runtime: "php", count: { lessThan: 10 } },
+      { runtime: "java", count: { lessThan: 10 } },
     ]);
   });
 
@@ -775,7 +781,7 @@ describe("computeStats, the richer figures", () => {
 
     // Every string is a date, a timestamp, or one of a closed set of words.
     const words = new Set([
-      "up", "down", "same", "node", "python", "static", "command",
+      "up", "down", "same", "node", "python", "static", "command", "go", "rust", "ruby", "php", "java",
       "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
     ]);
     for (const str of strings) {

@@ -74,7 +74,7 @@ async function addDomain(userId: string, serverId: string, id: string, status: "
     domain: `${id}.example.test`,
     port: 3000,
     status,
-    createdAt: day("2026-10-02"),
+    createdAt: day("2026-10-02"), updatedAt: day("2026-10-02")
   });
 }
 

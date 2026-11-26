@@ -503,6 +503,23 @@ export async function removeOrphans(
             continue;
           }
 
+          // The inventory was read over SSH; a deployment may have claimed
+          // this name for a live project meanwhile. Re-check a fresh read of
+          // the projects before removing anything.
+          const fresh = await loadContext(userId, serverId);
+          const claimedNow =
+            t.kind === "unit"
+              ? classifyUnit(t.unit, fresh.projects, fresh.previews).type !== "orphan"
+              : fresh.projects.some((p) => p.slug === t.name);
+          if (claimedNow) {
+            results.set(id, {
+              id,
+              status: "refused",
+              message: "This belongs to one of your projects, so it was left alone.",
+            });
+            continue;
+          }
+
           const script =
             t.kind === "unit" ? removeUnitScript(unitDir, t.unit) : removeFolderScript(t.name);
           let result: OrphanResult;

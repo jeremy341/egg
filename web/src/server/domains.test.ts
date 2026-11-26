@@ -142,6 +142,58 @@ describe("domain records", () => {
     const other = (await upsertUser({ id: "u2", name: "Kim", email: null, slackId: null })).id;
     await expect(addDomain(other, { serverId, domain: "kim.example.com", port: 3000 })).rejects.toMatchObject({ status: 404 });
   });
+
+  it("reclaims a pending claim left by another user for over seven days", async () => {
+    const squatter = (await upsertUser({ id: "u-stale", name: "Stale", email: null, slackId: null })).id;
+    const squatterServer = (await createServer(squatter, "stale-r")).id;
+    const stale = await addDomain(squatter, { serverId: squatterServer, domain: "stale.example.com", port: 3000 });
+    expect(stale.domain.status).toBe("pending");
+    const db = await getDb();
+    await db.update(schema.domains)
+      .set({ createdAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000), updatedAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000) })
+      .where(eq(schema.domains.id, stale.domain.id));
+
+    const mine = await addDomain(userId, { serverId, domain: "stale.example.com", port: 3000 });
+    expect(mine.domain).toMatchObject({ domain: "stale.example.com", userId, status: "pending" });
+    expect(await db.select().from(schema.domains).where(eq(schema.domains.domain, "stale.example.com"))).toHaveLength(1);
+    await removeDomain(userId, mine.domain.id);
+  });
+
+  it("does not reclaim an old pending claim its owner still actively updates", async () => {
+    const other = (await upsertUser({ id: "u-active", name: "Active", email: null, slackId: null })).id;
+    const otherServer = (await createServer(other, "active-r")).id;
+    const added = await addDomain(other, { serverId: otherServer, domain: "old-but-ours.example.com", port: 3000 });
+    const db = await getDb();
+    // Added eight days ago, but the owner still points it at a project today:
+    // the reclaim window runs from the owner's last action, not the add date.
+    await db.update(schema.domains)
+      .set({ createdAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000) })
+      .where(eq(schema.domains.id, added.domain.id));
+    await db.update(schema.domains)
+      .set({ projectId: null, port: 3001, status: "pending", lastCheckedAt: null, updatedAt: new Date() })
+      .where(eq(schema.domains.id, added.domain.id));
+
+    await expect(addDomain(userId, { serverId, domain: "old-but-ours.example.com", port: 3000 })).rejects.toMatchObject({ status: 409 });
+    await removeDomain(other, added.domain.id);
+  });
+
+  it("keeps a recent pending claim by another user reserved", async () => {
+    const other = (await upsertUser({ id: "u-fresh", name: "Fresh", email: null, slackId: null })).id;
+    const otherServer = (await createServer(other, "fresh-r")).id;
+    const fresh = await addDomain(other, { serverId: otherServer, domain: "fresh.example.com", port: 3000 });
+    await expect(addDomain(userId, { serverId, domain: "fresh.example.com", port: 3000 })).rejects.toMatchObject({ status: 409 });
+    await removeDomain(other, fresh.domain.id);
+  });
+
+  it("keeps a verified domain by another user reserved", async () => {
+    const other = (await upsertUser({ id: "u-valid", name: "Valid", email: null, slackId: null })).id;
+    const otherServer = (await createServer(other, "valid-r")).id;
+    const valid = await addDomain(other, { serverId: otherServer, domain: "verified.example.net", port: 3000 });
+    const db = await getDb();
+    await db.update(schema.domains).set({ status: "valid" }).where(eq(schema.domains.id, valid.domain.id));
+    await expect(addDomain(userId, { serverId, domain: "verified.example.net", port: 3000 })).rejects.toMatchObject({ status: 409 });
+    await removeDomain(other, valid.domain.id);
+  });
 });
 
 function resolverFor(cname: string[] | Error, a: string[] | Error = [], txt: string[][] | Error = dnsError("ENODATA")): Resolver {
@@ -199,6 +251,21 @@ describe("DNS check", () => {
     const other = await addDomain(userId, { serverId, domain: "other.example.com", port: 3000 });
     const otherResult = await verifyDomain(userId, other.domain.id, resolver(dnsError("ENODATA"), [], [["domain-verification=kim-k"]]));
     expect(otherResult.status).toBe("invalid");
+  });
+
+  it("says unknown, not a verdict, when the lookup itself fails, and changes nothing", async () => {
+    const { domain } = await addDomain(userId, { serverId, domain: "flaky.example.com", port: 3000 });
+    const db = await getDb();
+    const stored = async () => (await db.select().from(schema.domains).where(eq(schema.domains.id, domain.id)).get())!;
+    const timedOut = await verifyDomain(userId, domain.id, resolver(dnsError("ETIMEOUT")));
+    expect(timedOut.status).toBe("unknown");
+    expect(timedOut.reason).toContain("could not be checked");
+    expect((await stored()).status).toBe("pending");
+    await verifyDomain(userId, domain.id, resolver(["sam-r.hackclub.app"]));
+    const lost = await verifyDomain(userId, domain.id, resolver(dnsError("ETIMEOUT")));
+    expect(lost.status).toBe("unknown");
+    expect(lost.reason).toContain("could not be checked");
+    expect((await stored()).status).toBe("valid");
   });
 
   it("goes active on a pass, stays waiting on a miss, and flags a lost record without deleting it", async () => {

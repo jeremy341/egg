@@ -26,25 +26,23 @@ async function Content({ params }: Props) {
 
   const role = await getProjectRole(user.id, project.id);
   if (role !== "owner") {
-    // Only the owner can read or change settings and environment variables, so members see a short note instead.
+    // The server refuses configuration to anyone but the owner, so this page only says what their access is.
     const mine = role === "developer" || role === "viewer" ? role : null;
     return (
       <>
-        <PageHeader title="Settings" description={`${project.name} on ${project.nestUsername}.hackclub.app`} />
+        <PageHeader
+          title="Settings"
+          description={`${project.name} on ${project.nestUsername}.hackclub.app`}
+        />
         <div className="mx-auto w-full max-w-[720px]">
-          <Alert tone="note" title="Only the project owner can change settings.">
+          <Alert tone="note" title="Only the owner changes the settings">
             {mine ? (
               <p>
                 You are a {ROLE_LABEL[mine].toLowerCase()} on this project. {ROLE_NOTE[mine]}
               </p>
             ) : (
-              <p>Ask the project owner to change them.</p>
+              <p>Ask the project owner to change the settings.</p>
             )}
-            <p>
-              <Link href={`/projects/${slug}`} className="link font-medium">
-                Back to {project.name}
-              </Link>
-            </p>
           </Alert>
         </div>
       </>

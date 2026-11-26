@@ -5,6 +5,11 @@ import { STRIP_LEGEND, STRIP_TONE, dayDetail, dayLabel, minutes, stripSummary } 
 const day = (state: StripDay["state"], downMinutes = 0): StripDay => ({ day: "2026-11-05", state, downMinutes });
 
 describe("status strip text", () => {
+  it("describes worker days as running or stopped instead of HTTP answers", () => {
+    expect(dayDetail(day("up"), "worker")).toBe("Ran all day");
+    expect(dayDetail(day("partial", 12), "worker")).toBe("Stopped for 12 min");
+    expect(stripSummary([day("up"), day("down", 800)], 2, "worker")).toBe("Last 2 days: 1 ran all day, 0 stopped for part of the day, 1 stopped for most of the day.");
+  });
   it("has a legend entry and a colour for every kind of day", () => {
     expect(STRIP_LEGEND.map((l) => l.state).sort()).toEqual(Object.keys(STRIP_TONE).sort());
   });

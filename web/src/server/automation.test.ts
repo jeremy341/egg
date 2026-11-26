@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { upsertUser } from "@/server/auth/session";
 import { schema } from "@/server/db";
 import { createDeployHook, revokeDeployHook, triggerDeployHook } from "@/server/hooks";
@@ -103,6 +103,27 @@ describe("deploy hooks", () => {
     const view = (await projectViews(userId)).find((p) => p.id === project.id)!;
     expect(view.hookActive).toBe(true);
     expect(JSON.stringify(view)).not.toContain(token);
+  });
+
+  it("does not rotate the hook when the audit line cannot be written", async () => {
+    const before = await ctx.db
+      .select({ hookHash: schema.projects.hookHash })
+      .from(schema.projects)
+      .where(eq(schema.projects.id, project.id))
+      .get();
+    await ctx.db.run(sql.raw("CREATE TRIGGER fail_hook_audit BEFORE INSERT ON audit_log BEGIN SELECT RAISE(ABORT, 'test failure'); END"));
+    try {
+      // The rotation and its audit line land together or not at all.
+      await expect(createDeployHook(userId, project.id)).rejects.toThrow(/audit_log/);
+      const row = await ctx.db
+        .select({ hookHash: schema.projects.hookHash })
+        .from(schema.projects)
+        .where(eq(schema.projects.id, project.id))
+        .get();
+      expect(row?.hookHash).toBe(before?.hookHash);
+    } finally {
+      await ctx.db.run(sql.raw("DROP TRIGGER fail_hook_audit"));
+    }
   });
 });
 

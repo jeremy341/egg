@@ -10,6 +10,7 @@ import {
   createWebhook,
   deleteWebhook,
   dispatchDeploymentEvent,
+  forgetDeliveriesForDeployments,
   getWebhook,
   listDeliveries,
   listWebhooks,
@@ -213,7 +214,10 @@ describe("dispatching deployment events", () => {
     // The request goes to the checked address, over https, to the stored path.
     expect(req.address).toBe("93.184.216.34");
     expect(req.url.toString()).toBe(URL_OK);
-    expect(req.timeoutMs).toBe(5000);
+    // The DNS lookup and the send share one 5 s budget, so whatever the transport
+    // sees is what remained at send time.
+    expect(req.timeoutMs).toBeGreaterThan(0);
+    expect(req.timeoutMs).toBeLessThanOrEqual(5000);
     expect(req.maxBytes).toBe(4096);
     // The signature header is t=<unix>,v1=<hex> over "<t>.<body>" with this webhook's secret.
     const sig = req.headers["X-Egg-Signature"];
@@ -383,6 +387,15 @@ describe("rotating the secret", () => {
     expect(verifyWebhookSignature(rotated.secret, sig, seen[0].body, t)).toBe(true);
     expect(verifyWebhookSignature(created.secret, sig, seen[0].body, t)).toBe(false);
   });
+
+  it("records the rotation in the audit log", async () => {
+    const created = await createWebhook(sam, { url: URL_OK });
+    const rotated = await rotateWebhookSecret(sam, created.webhook.id);
+    const rows = await ctx.db.select().from(schema.auditLog).where(eq(schema.auditLog.target, created.webhook.id));
+    expect(rows.map((r) => r.action)).toEqual(["webhook.create", "webhook.rotate"]);
+    // Nothing about the rotation carries the secret.
+    expect(JSON.stringify(rows)).not.toContain(rotated.secret);
+  });
 });
 
 describe("delivery history", () => {
@@ -417,5 +430,33 @@ describe("delivery history", () => {
     expect(await ctx.db.select().from(schema.webhookDeliveries)).toHaveLength(1);
     await deleteWebhook(sam, webhook.id);
     expect(await ctx.db.select().from(schema.webhookDeliveries)).toHaveLength(0);
+  });
+
+  it("forgets the deployment link when the deployments are deleted, and leaves others alone", async () => {
+    const { webhook } = await createWebhook(sam, { url: URL_OK });
+    const gone = await deployment("ready");
+    const kept = await deployment("ready");
+    const row = (id: string, deploymentId: string | null) => ({
+      id,
+      webhookId: webhook.id,
+      event: "deployment.succeeded",
+      deploymentId,
+      status: "success" as const,
+      attempts: 1,
+      createdAt: NOW,
+    });
+    await ctx.db.insert(schema.webhookDeliveries).values([
+      row("dv-gone", gone),
+      row("dv-kept", kept),
+      row("dv-none", null),
+    ]);
+    await forgetDeliveriesForDeployments(ctx.db, [gone]);
+    const left = Object.fromEntries((await ctx.db.select().from(schema.webhookDeliveries)).map((d) => [d.id, d]));
+    expect(left["dv-gone"].deploymentId).toBeNull();
+    expect(left["dv-kept"].deploymentId).toBe(kept);
+    expect(left["dv-none"].deploymentId).toBeNull();
+    // An empty list changes nothing.
+    await forgetDeliveriesForDeployments(ctx.db, []);
+    expect(await ctx.db.select().from(schema.webhookDeliveries)).toHaveLength(3);
   });
 });

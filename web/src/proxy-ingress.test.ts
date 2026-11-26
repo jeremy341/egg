@@ -134,6 +134,20 @@ describe("the client address is read correctly", () => {
     expect(await res.text()).toMatch(/^Too many requests\. /);
     expect(rateLimiter().activeBans()).toBe(0);
   });
+
+  it("with TRUST_PROXY off, a session cookie keeps a signed-in browser out of the anonymous bucket", () => {
+    vi.stubEnv("TRUST_PROXY", "");
+    const signedIn = () => req("/", { cookie: "egg_session=session-token-one" });
+    // An anonymous flood fills the shared key and is refused.
+    for (let i = 0; i < RATE_LIMITS.ingressGlobal.limit; i++) proxy(req("/"));
+    expect(proxy(req("/")).status).toBe(429);
+    // The signed-in browser is not held at 429 by that flood: it is gated per session instead.
+    expect(proxy(signedIn()).status).toBe(200);
+    for (let i = 1; i < RATE_LIMITS.ingress.limit; i++) expect(proxy(signedIn()).status).toBe(200);
+    expect(proxy(signedIn()).status).toBe(429);
+    // Another session still has its own allowance.
+    expect(proxy(req("/", { cookie: "egg_session=session-token-two" })).status).toBe(200);
+  });
 });
 
 describe("counters", () => {

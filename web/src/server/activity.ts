@@ -28,7 +28,7 @@ export const KIND_PREFIXES: Record<Exclude<ActivityKind, "other">, readonly stri
   deployments: ["deploy.", "hook.", "build_token.", "build_credentials."],
   domains: ["domain."],
   servers: ["server.", "container."],
-  access: ["token.", "account.", "auth.", "webhook.", "admin.", "security_report."],
+  access: ["token.", "account.", "auth.", "webhook.", "admin.", "security_report.", "provider."],
   monitoring: ["monitor."],
   terminal: ["terminal.", "file."],
 };
@@ -240,7 +240,7 @@ export function groupByDay<T extends { at: string }>(items: T[], now: Date): Act
  * but this page is the last line of defence, so they are dropped on sight.
  */
 const SECRET_KEY =
-  /(secret|passw|pwd|token|credential|cookie|bearer|signature|authoriz|auth|hash|salt|jwt|cipher|sealed|webhook|apikey|accesskey|privatekey|sshkey|sessionid|otp)/;
+  /(secret|passw|pwd|passphrase|token|credential|cookie|bearer|signature|authoriz|auth|hash|salt|jwt|cipher|sealed|webhook|apikey|accesskey|private|sshkey|session|otp|recaptcha|seed|mnemonic|clientid)/;
 
 export function isSecretKey(key: string): boolean {
   // "apiKey" and "api-key" become "api_key", so a trailing "key" is its own word ("monkey" is fine).
@@ -258,8 +258,9 @@ const WEBHOOK_URL = /(discord(app)?\.com\/api\/webhooks|hooks\.slack\.com|hooks\
 
 /**
  * Whether a value looks like a secret, whatever its key. Conservative about
- * ordinary text: file paths, branch names and words pass; long random-looking
- * strings, prefixed keys, credentials in URLs and key=value pairs do not.
+ * ordinary text: file paths, branch names, dates, slugs and words pass; long
+ * random-looking runs, prefixed keys, credentials in URLs and key=value
+ * pairs do not.
  */
 export function isSecretValue(value: string): boolean {
   const v = value.trim();
@@ -268,18 +269,48 @@ export function isSecretValue(value: string): boolean {
   if (SECRET_ASSIGNMENT.test(v)) return true;
   if (URL_USERINFO.test(v) || URL_SECRET_QUERY.test(v) || WEBHOOK_URL.test(v)) return true;
   if (/^[a-f0-9]{32,}$/i.test(v)) return true;
-  if (/\s/.test(v) || v.length < 24) return false;
-  // Random-looking: one unbroken run with upper case, lower case and digits, few separators.
-  if (/^[A-Za-z0-9+/_=-]+$/.test(v) && !v.startsWith("/") && !v.includes("//")) {
-    const classes = [/[a-z]/, /[A-Z]/, /[0-9]/].every((re) => re.test(v));
-    const separators = (v.match(/[-_]/g) ?? []).length / v.length;
-    if (classes && separators < 0.1) return true;
+  // The longest whitespace-free run decides, so a token pasted into a sentence
+  // is caught and whitespace alone hides nothing. Dashed UUIDs are the app's
+  // own resource ids (jobs, plans, deployments, invitations); they are not
+  // masked wholesale or every entry would lose the very id it is about — a
+  // secret is caught by its key or by looking like a random token below.
+  return v.split(/\s+/).some(isRandomToken);
+}
+
+const TOKEN_CHARS = /^[A-Za-z0-9+/_=._:-]+$/;
+const LONG_CLASS_RUN = /(?:[a-z]{6,}|[A-Z]{6,}|[0-9]{6,})/;
+
+/**
+ * A bare random token: one whitespace-free run of at least 15 characters drawn
+ * from at least two of lower/upper/digits, using the spacers real token formats
+ * use (`.` and `:` join JWT-style segments, `-` and `_` sit inside base64, `+ / =`
+ * appear in standard base64). Everything shaped like a word, a name, a date, a
+ * version, a slug or a path stays visible: a random token never carries a long
+ * run of a single character class, a thick sprinkle of separators, or the vowel
+ * rhythm of real words, and the app's own `egg-…` unit and scope names are
+ * never tokens.
+ */
+function isRandomToken(run: string): boolean {
+  if (run.length < 15) return false;
+  if (run.startsWith("egg-")) return false;
+  if (!TOKEN_CHARS.test(run)) return false;
+  if (run.startsWith("/") || run.includes("//")) return false;
+  const classes = [/[a-z]/, /[A-Z]/, /[0-9]/].filter((re) => re.test(run)).length;
+  if (classes < 2) return false;
+  if (LONG_CLASS_RUN.test(run)) return false;
+  const separators = (run.match(/[._:-]/g) ?? []).length / run.length;
+  if (separators >= 0.16) return false;
+  const letters = run.replace(/[^a-z]/gi, "");
+  if (letters.length > 0) {
+    const vowels = (letters.match(/[aeiou]/gi) ?? []).length / letters.length;
+    if (vowels >= 0.3) return false;
   }
-  return false;
+  return true;
 }
 
 /** Keys that are plumbing, not detail. They are used elsewhere (the token actor, links) or mean nothing to a person. */
 const HIDDEN_KEYS = new Set(["project", "token", "deployment"]);
+const isHiddenKey = (key: string) => HIDDEN_KEYS.has(key.trim().toLowerCase());
 
 const MAX_VALUE = 200;
 
@@ -293,7 +324,7 @@ export function cleanMeta(meta: unknown): Record<string, Scalar> {
   const out: Record<string, Scalar> = {};
   if (!meta || typeof meta !== "object" || Array.isArray(meta)) return out;
   for (const [key, raw] of Object.entries(meta as Record<string, unknown>)) {
-    if (HIDDEN_KEYS.has(key) || isSecretKey(key)) continue;
+    if (isHiddenKey(key) || isSecretKey(key)) continue;
     if (typeof raw === "number" || typeof raw === "boolean") {
       out[key] = raw;
       continue;

@@ -132,7 +132,7 @@ async function ProjectsContent() {
                   <li key={`down-${p.id}`} className="px-4 py-3">
                     <StatusIndicator tone="error" label={<ProjectLink slug={p.slug} name={p.name} />} />
                     <p className="mt-0.5 text-muted-foreground">
-                      Not answering{p.monitorSince ? ` since ${p.monitorSince}` : ""}.
+                      {p.workloadKind === "worker" ? "Not running" : "Not answering"}{p.monitorSince ? ` since ${p.monitorSince}` : ""}.
                     </p>
                   </li>
                 ))}

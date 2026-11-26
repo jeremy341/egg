@@ -8,11 +8,12 @@ type Ctx = { params: Promise<{ id: string }> };
 /**
  * Answers `{ lines, older }`. `older` is a cursor for the lines before these, or
  * null when the journal has none; send it back as `before` to read them.
+ * Reads journald over SSH, so the polling is limited per user.
  */
 export const GET = handle<Ctx>(async (req, { params }) => {
   const user = await authed();
-  enforceRateLimit("sshSession", user.id);
   const { id } = await params;
+  enforceRateLimit("sshCall", user.id);
   const n = Number(req.nextUrl.searchParams.get("lines") ?? 200);
   const lines = Number.isFinite(n) ? Math.min(Math.max(n, 1), 1000) : 200;
   const q = req.nextUrl.searchParams.get("q") ?? "";

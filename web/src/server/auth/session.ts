@@ -22,36 +22,48 @@ export async function upsertUser(profile: {
   emailVerified?: boolean;
 }): Promise<SessionUser> {
   const db = await getDb();
+  // Store the email the way sign-in lookups normalize it (normalizeEmail):
+  // a stored form with surrounding spaces or non-ASCII case could never match.
+  const email = profile.email?.trim().toLowerCase().slice(0, 254) ?? null;
+  const refresh = async (userId: string, hackClubId: string): Promise<SessionUser> => {
+    await db
+      .update(schema.users)
+      .set({ name: profile.name, email, emailVerified: profile.emailVerified === true, slackId: profile.slackId })
+      .where(eq(schema.users.id, userId));
+    return { id: userId, name: profile.name, email, hackClubId };
+  };
   const existing = await db
     .select()
     .from(schema.users)
     .where(eq(schema.users.hackClubId, profile.id))
     .get();
 
-  if (existing) {
-    await db
-      .update(schema.users)
-      .set({ name: profile.name, email: profile.email, emailVerified: profile.emailVerified === true, slackId: profile.slackId })
-      .where(eq(schema.users.id, existing.id));
-    return {
-      id: existing.id,
-      name: profile.name,
-      email: profile.email,
-      hackClubId: existing.hackClubId,
-    };
-  }
+  if (existing) return refresh(existing.id, existing.hackClubId);
 
   const id = newId();
-  await db.insert(schema.users).values({
-    id,
-    hackClubId: profile.id,
-    name: profile.name,
-    email: profile.email,
-    slackId: profile.slackId,
-    emailVerified: profile.emailVerified === true,
-    createdAt: new Date(),
-  });
-  return { id, name: profile.name, email: profile.email, hackClubId: profile.id };
+  const inserted = await db
+    .insert(schema.users)
+    .values({
+      id,
+      hackClubId: profile.id,
+      name: profile.name,
+      email,
+      slackId: profile.slackId,
+      emailVerified: profile.emailVerified === true,
+      createdAt: new Date(),
+    })
+    .onConflictDoNothing()
+    .returning({ id: schema.users.id });
+  if (inserted.length === 0) {
+    // Another first sign-in created this identity between our select and insert.
+    const raced = await db
+      .select()
+      .from(schema.users)
+      .where(eq(schema.users.hackClubId, profile.id))
+      .get();
+    if (raced) return refresh(raced.id, raced.hackClubId);
+  }
+  return { id, name: profile.name, email, hackClubId: profile.id };
 }
 
 /**
