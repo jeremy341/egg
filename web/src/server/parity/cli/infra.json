@@ -1,0 +1,794 @@
+[
+  {
+    "orchard": "db.go: db",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db.go: list",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db.go: get <id>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db.go: create",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db.go: delete <id>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db.go: connection <id>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db.go: metrics <id>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db.go: logs <id>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db.go: psql <id>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db.go: extension",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db.go: list <id>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db.go: install <id> <name>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db.go: uninstall <id> <name>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db.go: settings",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db.go: get <id>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db.go: set <id> KEY=VAL...",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db.go: public",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db.go: enable <id>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db.go: disable <id>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db.go: resources",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db.go: set <id>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db.go: storage",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db.go: expand <id>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db.go: killed",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db.go: list <id>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db.go: logs <id> <entryId>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_backup.go: backup",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_backup.go: list <id>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_backup.go: create <id>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_backup.go: restore <id> [backupId]",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_backup.go: backup-schedule",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_backup.go: get <id>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_backup.go: set <id>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_backup.go: clear <id>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_health.go: diagnose <dbId>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_health.go: activity <dbId>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_health.go: protect <dbId>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_health.go: pooler",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_health.go: get <dbId>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_health.go: set <dbId>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_health.go: replication",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_health.go: get <dbId>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_health.go: set <dbId>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_health.go: user",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_health.go: list <dbId>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_health.go: create <dbId> <name>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_health.go: rm <dbId> <name>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_recovery.go: fork <id>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_recovery.go: ops",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_recovery.go: list <dbId>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_recovery.go: get <opId>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_recovery.go: cancel <opId>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_recovery.go: undo <opId>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_recovery.go: checkpoint",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_recovery.go: create [dbId]",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_recovery.go: list <dbId>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_recovery.go: group <groupId>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_recovery.go: restore <checkpointId>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_recovery.go: restore-group <groupId>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_recovery.go: rm <checkpointId>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_recovery.go: test-backup",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_recovery.go: run <dbId>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_recovery.go: list <dbId>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_recovery.go: trash",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_recovery.go: list",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_recovery.go: restore <deletedId>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_recovery.go: recovery <dbId>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_versions.go: versions",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_versions.go: security <dbId>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_versions.go: update <dbId>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "db_versions.go: upgrade <dbId>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Managed PostgreSQL is not applicable (decision on record); Egg has no managed database service."
+  },
+  {
+    "orchard": "sandbox.go: sandbox",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Greenhouse sandboxes need Orchard's cluster; not built."
+  },
+  {
+    "orchard": "sandbox.go: create [name]",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Greenhouse sandboxes need Orchard's cluster; not built."
+  },
+  {
+    "orchard": "sandbox.go: list",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Greenhouse sandboxes need Orchard's cluster; not built."
+  },
+  {
+    "orchard": "sandbox.go: get <name>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Greenhouse sandboxes need Orchard's cluster; not built."
+  },
+  {
+    "orchard": "sandbox.go: update <name>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Greenhouse sandboxes need Orchard's cluster; not built."
+  },
+  {
+    "orchard": "sandbox.go: diff <name>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Greenhouse sandboxes need Orchard's cluster; not built."
+  },
+  {
+    "orchard": "sandbox.go: repo",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Greenhouse sandboxes need Orchard's cluster; not built."
+  },
+  {
+    "orchard": "sandbox.go: list <sandbox>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Greenhouse sandboxes need Orchard's cluster; not built."
+  },
+  {
+    "orchard": "sandbox.go: add <sandbox> <repo-url>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Greenhouse sandboxes need Orchard's cluster; not built."
+  },
+  {
+    "orchard": "sandbox.go: icon <sandbox> <repo> [icon]",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Greenhouse sandboxes need Orchard's cluster; not built."
+  },
+  {
+    "orchard": "sandbox.go: conversations <sandbox>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Greenhouse sandboxes need Orchard's cluster; not built."
+  },
+  {
+    "orchard": "sandbox.go: start <name>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Greenhouse sandboxes need Orchard's cluster; not built."
+  },
+  {
+    "orchard": "sandbox.go: stop <name>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Greenhouse sandboxes need Orchard's cluster; not built."
+  },
+  {
+    "orchard": "sandbox.go: retry <name>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Greenhouse sandboxes need Orchard's cluster; not built."
+  },
+  {
+    "orchard": "sandbox.go: delete <name>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Greenhouse sandboxes need Orchard's cluster; not built."
+  },
+  {
+    "orchard": "sandbox.go: ssh <name> [-- ssh-args...]",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Greenhouse sandboxes need Orchard's cluster; not built."
+  },
+  {
+    "orchard": "sandbox.go: chat <name> [message...]",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Greenhouse sandboxes need Orchard's cluster; not built."
+  },
+  {
+    "orchard": "sandbox.go: proxy [name]",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Greenhouse sandboxes need Orchard's cluster; not built."
+  },
+  {
+    "orchard": "sandbox.go: bridge",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Greenhouse sandboxes need Orchard's cluster; not built."
+  },
+  {
+    "orchard": "sandbox.go: agentd",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Greenhouse sandboxes need Orchard's cluster; not built."
+  },
+  {
+    "orchard": "sandbox.go: ssh-config [name]",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Greenhouse sandboxes need Orchard's cluster; not built."
+  },
+  {
+    "orchard": "sandbox.go: credentials",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Greenhouse sandboxes need Orchard's cluster; not built."
+  },
+  {
+    "orchard": "sandbox.go: set",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Greenhouse sandboxes need Orchard's cluster; not built."
+  },
+  {
+    "orchard": "sandbox.go: clear",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Greenhouse sandboxes need Orchard's cluster; not built."
+  },
+  {
+    "orchard": "sandbox.go: status",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Greenhouse sandboxes need Orchard's cluster; not built."
+  },
+  {
+    "orchard": "sandbox_fork_share.go: fork <sandbox>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Greenhouse sandboxes need Orchard's cluster; not built."
+  },
+  {
+    "orchard": "sandbox_fork_share.go: share",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Greenhouse sandboxes need Orchard's cluster; not built."
+  },
+  {
+    "orchard": "sandbox_fork_share.go: create <sandbox>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Greenhouse sandboxes need Orchard's cluster; not built."
+  },
+  {
+    "orchard": "sandbox_fork_share.go: list <sandbox>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Greenhouse sandboxes need Orchard's cluster; not built."
+  },
+  {
+    "orchard": "sandbox_fork_share.go: revoke <sandbox> <link-id>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Greenhouse sandboxes need Orchard's cluster; not built."
+  },
+  {
+    "orchard": "sandbox_fork_share.go: prompt <sandbox> <session> [text|-]",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Greenhouse sandboxes need Orchard's cluster; not built."
+  },
+  {
+    "orchard": "sandbox_fork_share.go: transcript <sandbox> <session>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Greenhouse sandboxes need Orchard's cluster; not built."
+  },
+  {
+    "orchard": "sandbox_link.go: link",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Greenhouse sandboxes need Orchard's cluster; not built."
+  },
+  {
+    "orchard": "sandbox_link.go: list <sandbox>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Greenhouse sandboxes need Orchard's cluster; not built."
+  },
+  {
+    "orchard": "sandbox_link.go: add <sandbox> <project>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Greenhouse sandboxes need Orchard's cluster; not built."
+  },
+  {
+    "orchard": "sandbox_link.go: remove <sandbox> <project>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Greenhouse sandboxes need Orchard's cluster; not built."
+  },
+  {
+    "orchard": "sandbox_link.go: preview <sandbox> <session>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Greenhouse sandboxes need Orchard's cluster; not built."
+  },
+  {
+    "orchard": "sandbox_session.go: session",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Greenhouse sandboxes need Orchard's cluster; not built."
+  },
+  {
+    "orchard": "sandbox_session.go: list <sandbox>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Greenhouse sandboxes need Orchard's cluster; not built."
+  },
+  {
+    "orchard": "sandbox_session.go: create <sandbox> <repo>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Greenhouse sandboxes need Orchard's cluster; not built."
+  },
+  {
+    "orchard": "sandbox_session.go: archive <sandbox> <session>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Greenhouse sandboxes need Orchard's cluster; not built."
+  },
+  {
+    "orchard": "sandbox_usage.go: usage <sandbox>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Greenhouse sandboxes need Orchard's cluster; not built."
+  },
+  {
+    "orchard": "tailscale.go: tailscale",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Tailscale network control is infrastructure outside one Nest server; not applicable."
+  },
+  {
+    "orchard": "tailscale.go: status",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Tailscale network control is infrastructure outside one Nest server; not applicable."
+  },
+  {
+    "orchard": "tailscale.go: link",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Tailscale network control is infrastructure outside one Nest server; not applicable."
+  },
+  {
+    "orchard": "tailscale.go: unlink",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Tailscale network control is infrastructure outside one Nest server; not applicable."
+  },
+  {
+    "orchard": "tailscale.go: get <deploymentId>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Tailscale network control is infrastructure outside one Nest server; not applicable."
+  },
+  {
+    "orchard": "tailscale.go: expose <deploymentId>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Tailscale network control is infrastructure outside one Nest server; not applicable."
+  },
+  {
+    "orchard": "tailscale.go: unexpose <deploymentId>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Tailscale network control is infrastructure outside one Nest server; not applicable."
+  },
+  {
+    "orchard": "template.go: template",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Orchard template registry is cluster-managed; Egg has no template service."
+  },
+  {
+    "orchard": "template.go: list",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Orchard template registry is cluster-managed; Egg has no template service."
+  },
+  {
+    "orchard": "template.go: get <id>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Orchard template registry is cluster-managed; Egg has no template service."
+  },
+  {
+    "orchard": "template.go: deploy <templateId>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Orchard template registry is cluster-managed; Egg has no template service."
+  },
+  {
+    "orchard": "template.go: instance",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Orchard template registry is cluster-managed; Egg has no template service."
+  },
+  {
+    "orchard": "template.go: list",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Orchard template registry is cluster-managed; Egg has no template service."
+  },
+  {
+    "orchard": "template.go: get <id>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Orchard template registry is cluster-managed; Egg has no template service."
+  },
+  {
+    "orchard": "template.go: delete <id>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Orchard template registry is cluster-managed; Egg has no template service."
+  },
+  {
+    "orchard": "template.go: admin",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Orchard template registry is cluster-managed; Egg has no template service."
+  },
+  {
+    "orchard": "template.go: create",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Orchard template registry is cluster-managed; Egg has no template service."
+  },
+  {
+    "orchard": "template.go: update <id>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Orchard template registry is cluster-managed; Egg has no template service."
+  },
+  {
+    "orchard": "template.go: delete <id>",
+    "status": "not_applicable",
+    "egg": null,
+    "reason": "Orchard template registry is cluster-managed; Egg has no template service."
+  }
+]

@@ -17,12 +17,14 @@ import { fileURLToPath } from "node:url";
 import { doctorCommand } from "./doctor.mjs";
 import { startEgg } from "./egg-start.mjs";
 
+import { GROUPS } from "./egg-cli-groups/index.mjs";
+
 const FINAL_STATES = new Set(["ready", "error", "canceled"]);
 const POLL_MS = 2000;
 
 // ---------------------------------------------------------------------- usage
 
-const OPTION_TYPES = {
+const BASE_OPTION_TYPES = {
   json: "flag",
   "show-secrets": "flag",
   help: "flag",
@@ -66,7 +68,7 @@ const OPTION_TYPES = {
 const GLOBAL_OPTIONS = new Set(["json", "show-secrets", "help", "token", "url"]);
 
 /** Canonical command table: parsing and help both derive their command surface from here. */
-const COMMANDS = [
+const BASE_COMMANDS = [
   { name: "whoami", args: [], description: "Show the account and token scopes.", runner: "whoami" },
   { name: "projects list", args: [], description: "List your projects.", runner: "projectsList" },
   { name: "projects show", args: ["project"], description: "Show a project by slug or id.", runner: "projectsShow" },
@@ -242,6 +244,9 @@ const COMMANDS = [
   { name: "doctor", args: [], description: "Check whether this computer can run Egg.", local: true },
 ];
 
+// Command groups are merged in from web/scripts/egg-cli-groups. Base entries come first.
+export const COMMANDS = [...BASE_COMMANDS, ...GROUPS.flatMap((group) => group.commands)];
+const OPTION_TYPES = Object.assign({}, BASE_OPTION_TYPES, ...GROUPS.map((group) => group.optionTypes));
 const LOCAL_COMMANDS = new Set(COMMANDS.filter((command) => command.local).map((command) => command.name));
 const optionKey = (name) => name.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
 const fail = (message) => ({ ok: false, message });
@@ -666,7 +671,7 @@ async function printLogs(nest, id, after, emit) {
   return last;
 }
 
-const COMMAND_RUNNERS = {
+const BASE_COMMAND_RUNNERS = {
   async whoami(nest, _args, flags, out, deps) {
     const me = await nest.me();
     return printData(me, flags, deps, out, (data) => [
@@ -1284,6 +1289,9 @@ async function loadClient() {
  * Run the CLI and return the exit code. Everything it touches is passed in, so tests can
  * give it a fake fetch and capture the output: `{ env, fetch, stdout, stderr, sleep, pollMs }`.
  */
+const COMMAND_RUNNERS = Object.assign({}, BASE_COMMAND_RUNNERS, ...GROUPS.map((group) => group.runners));
+const KIT = { printData, table, clean, dash, json, redactSecrets, UsageError, Failure, NotFound, TimeoutFailure };
+
 export async function run(argv, deps = {}) {
   const env = deps.env ?? process.env;
   const stdout = deps.stdout ?? process.stdout;
@@ -1345,7 +1353,7 @@ export async function run(argv, deps = {}) {
     let deferredFailure = null;
     await COMMAND_RUNNERS[spec.runner](nest, parsed.args, parsed.flags, out, full, (message, error) => {
       deferredFailure = error ?? new Failure(message);
-    });
+    }, KIT);
     if (deferredFailure) throw deferredFailure;
     return 0;
   } catch (error) {
