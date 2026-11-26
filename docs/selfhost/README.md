@@ -810,3 +810,14 @@ Restart Egg after the transaction. If the deployment had already been canceled, 
 ## What does not work yet without Hack Club or Nest
 
 The list of gaps, ranked, with the file and line for each, is in [docs/design/self-host-gaps.md](../design/self-host-gaps.md).
+
+## Protecting deployed project addresses
+
+Project owners can configure access protection in the project's **Access protection** settings. The setting applies to requests for that project's valid custom domains:
+
+- **Off** allows requests without credentials.
+- **Shared password** accepts the password through `X-Egg-Access-Password` or a Bearer authorization value.
+- **Username and password** uses standard HTTP Basic authentication.
+- **Egg sign-in** accepts the project's signed `egg_access` session cookie.
+
+Excluded paths skip the credential check. An exact path such as `/health` matches only that path; a suffix such as `/api/public/**` matches that path and its descendants. The hostname must resolve to a valid custom domain assigned to a project. The owner-only `GET /api/projects/{id}/ingress-protection` endpoint reports `enabled` and `mode`; it never returns the password or its hash.

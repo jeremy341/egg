@@ -26,6 +26,10 @@ import { PixelAvatar } from "@/components/ui/pixel-avatar";
 import type { ProjectView } from "@/server/queries";
 import { cn } from "@/lib/utils";
 import { CleanupCard } from "@/components/cleanup-card";
+import { AccessProtectionCard } from "@/components/access-protection-card";
+import { DbBackupCard } from "@/components/db-backup-card";
+import { ScorePreviewCard } from "@/components/score-preview-card";
+import { SecurityChecksCard } from "@/components/security-checks-card";
 import { AlertRulesCard } from "@/components/alert-rules-card";
 import { ProjectMembersCard } from "@/components/project-members-card";
 import { HostingOptions, StartCommandHelp, runtimeHint, type TargetCapabilities } from "@/components/hosting-options";
@@ -484,6 +488,13 @@ export function ProjectSettings({
                 <HomepageFeedCard project={project} />
               </div>
             </Advanced>
+          </Section>
+
+          <Section id="section-access" title="Access and reliability">
+            <AccessProtectionCard projectId={project.id} />
+            <SecurityChecksCard projectId={project.id} />
+            <ScorePreviewCard projectId={project.id} />
+            <DbBackupCard projectId={project.id} />
           </Section>
 
           <Section id="members-heading" title="Members">

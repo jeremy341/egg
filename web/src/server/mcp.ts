@@ -14,6 +14,7 @@ import { config } from "@/server/config";
 import { HttpError } from "@/server/http";
 import { endpointVisible, FULL_VIEW, McpView, SENSITIVE_TOOLS, viewAllows } from "@/server/mcp-toolsets";
 import { protectedResourceMetadataUrl } from "@/server/oauth";
+import { llmsTxt } from "@/app/(docs)/docs/_data/markdown";
 
 /**
  * Authenticate an MCP request. The 401 names the protected-resource document
@@ -42,6 +43,46 @@ export async function authenticateMcp(req: Request): Promise<Principal> {
 
 const LATEST = "2025-06-18";
 const SUPPORTED = [LATEST, "2025-03-26", "2024-11-05"];
+const MAX_ARRAY_ITEMS = 1000;
+
+const DOC_RESOURCES = [
+  {
+    uri: "egg://docs/llms.txt",
+    name: "Egg documentation index",
+    title: "Egg documentation index",
+    description: "The concise index of Egg documentation pages for AI clients.",
+    mimeType: "text/plain",
+  },
+  {
+    uri: "egg://docs/template-config",
+    name: "Agent template and configuration guide",
+    title: "Agent template and configuration guide",
+    description: "How to configure an MCP client for Egg and safely provide its bearer token.",
+    mimeType: "text/markdown",
+  },
+] as const;
+
+const TEMPLATE_CONFIG_GUIDE = `# Configure an agent for Egg
+
+Connect an HTTP MCP client to your Egg instance with the token in an Authorization header:
+
+\`\`\`json
+{
+  "mcpServers": {
+    "egg": {
+      "type": "http",
+      "url": "https://your-egg.example/api/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+\`\`\`
+
+Keep the token in the client's secret store; do not put it in a public file, prompt, log, or transcript. Grant only the scopes the agent needs. Call get_me first to inspect the token's scopes, then list_projects and list_deployments to find the relevant resources. The MCP server uses one JSON-RPC message per HTTP POST and accepts no batches or sessions.
+
+Add ?toolsets=core,projects,deployments or ?scope=read to the URL to narrow the tools the client sees. Narrowing never adds permissions. The server checks scopes again on every call.
+
+Read the documentation index at egg://docs/llms.txt for the full guide and API reference links.`;
 
 export const SERVER_INFO = { name: "egg", title: "Egg", version: "1.0.0" };
 
@@ -78,10 +119,13 @@ function jsonSchemaOf(zod: z.ZodType, io: "input" | "output"): Record<string, un
 }
 
 function toTool(ep: Endpoint): McpTool {
+  const description = `${ep.description} ${ep.scope ? `Needs the ${ep.scope} scope.` : "Needs no scope."}`;
   return {
     name: ep.id,
     title: ep.summary,
-    description: `${ep.description} ${ep.scope ? `Needs the ${ep.scope} scope.` : "Needs no scope."}`,
+    description: SENSITIVE_TOOLS.has(ep.id)
+      ? `${description} This tool returns a one-time secret; treat it as sensitive and do not log or repeat it.`
+      : description,
     inputSchema: jsonSchemaOf(ep.input, "input"),
     // Only read-only tools declare an outputSchema: declare one means the tool
     // must always return structuredContent that validates against it.
@@ -238,6 +282,23 @@ function structuredContentOf(ep: Endpoint, data: unknown): Record<string, unknow
     : { value };
 }
 
+/** Reject oversized arrays before a tool schema or endpoint can process them. */
+function hasOversizedArray(value: unknown, seen = new WeakSet<object>()): boolean {
+  if (!value || typeof value !== "object") return false;
+  if (seen.has(value)) return false;
+  seen.add(value);
+  if (Array.isArray(value)) {
+    return value.length > MAX_ARRAY_ITEMS || value.some((item) => hasOversizedArray(item, seen));
+  }
+  return Object.values(value).some((item) => hasOversizedArray(item, seen));
+}
+
+function readResource(uri: string): { text: string; mimeType: string } | undefined {
+  if (uri === "egg://docs/llms.txt") return { text: llmsTxt(config().APP_URL), mimeType: "text/plain" };
+  if (uri === "egg://docs/template-config") return { text: TEMPLATE_CONFIG_GUIDE, mimeType: "text/markdown" };
+  return undefined;
+}
+
 /**
  * Run one endpoint for a token: the per-token rate limit first (its 429 is thrown to the route), then the
  * endpoint. Scope, validation and ownership are all checked inside callEndpoint. Failures come back as an
@@ -312,6 +373,8 @@ async function callTool(p: Principal, params: unknown, id: RpcId, view: McpView,
   if (!parsed.success) return rpcError(id, RPC.invalidParams, "tools/call needs a tool name.");
   const { name, arguments: args } = parsed.data;
 
+  if (hasOversizedArray(args)) return rpcError(id, RPC.invalidParams, `Tool arguments may contain arrays of at most ${MAX_ARRAY_ITEMS} items.`);
+
   // A tool outside the view is indistinguishable from one that does not exist.
   const ep = viewedEndpoint(name, view);
   if (!ep) return rpcError(id, RPC.invalidParams, `Unknown tool: ${name.slice(0, 80)}`);
@@ -377,7 +440,7 @@ export async function handleMcpMessage(
       return reply(
         rpcResult(id, {
           protocolVersion,
-          capabilities: { tools: { listChanged: false } },
+          capabilities: { tools: { listChanged: false }, resources: { listChanged: false, subscribe: false } },
           serverInfo: SERVER_INFO,
           instructions: INSTRUCTIONS,
         })
@@ -387,6 +450,15 @@ export async function handleMcpMessage(
       return reply(rpcResult(id, {}));
     case "tools/list":
       return reply(rpcResult(id, { tools: toolsFor(p, view) }));
+    case "resources/list":
+      return reply(rpcResult(id, { resources: DOC_RESOURCES }));
+    case "resources/read": {
+      const parsed = z.object({ uri: z.string() }).safeParse(params);
+      if (!parsed.success) return reply(rpcError(id, RPC.invalidParams, "resources/read needs a resource URI."));
+      const resource = readResource(parsed.data.uri);
+      if (!resource) return reply(rpcError(id, RPC.invalidParams, `Unknown resource: ${parsed.data.uri.slice(0, 120)}`));
+      return reply(rpcResult(id, { contents: [{ uri: parsed.data.uri, mimeType: resource.mimeType, text: resource.text }] }));
+    }
     default:
       return reply(rpcError(id, RPC.methodNotFound, `Method not found: ${method.slice(0, 80)}`));
   }
