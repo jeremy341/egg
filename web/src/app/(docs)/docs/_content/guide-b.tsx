@@ -311,14 +311,20 @@ const CALLS: Call[] = [
   ["get_deployment", "GET", "/deployments/{deploymentId}", "deployments:read", "Reads"],
   ["get_rollout", "GET", "/deployments/{deploymentId}/rollout", "deployments:read", "Reads"],
   ["get_deployment_logs", "GET", "/deployments/{deploymentId}/logs", "deployments:read", "Container session"],
+  ["get_deployment_metrics", "GET", "/deployments/{deploymentId}/metrics", "deployments:read", "Reads"],
+  ["deploy_from_github_url", "POST", "/projects/{projectId}/deploy-from-github-url", "deployments:write", "Changes"],
   ["redeploy", "POST", "/deployments/{deploymentId}/redeploy", "deployments:write", "Changes"],
   ["cancel_deployment", "POST", "/deployments/{deploymentId}/cancel", "deployments:write", "Changes"],
   ["rollback_deployment", "POST", "/deployments/{deploymentId}/rollback", "deployments:write", "Changes"],
   ["rotate_deploy_hook", "POST", "/projects/{projectId}/hook/rotate", "deployments:write", "Changes"],
   ["revoke_deploy_hook", "DELETE", "/projects/{projectId}/hook", "deployments:write", "Changes"],
   ["get_logs", "GET", "/projects/{projectId}/logs", "logs:read", "Reads"],
+  ["list_crash_reports", "GET", "/projects/{projectId}/crash-reports", "logs:read", "Reads"],
+  ["get_crash_report", "GET", "/crash-reports/{crashId}", "logs:read", "Reads"],
   ["list_env_vars", "GET", "/projects/{projectId}/env", "env:read", "Reads"],
+  ["get_env_vars", "GET", "/projects/{projectId}/env/values", "env:read", "Reads"],
   ["set_env_var", "PUT", "/projects/{projectId}/env/{key}", "env:write", "Changes"],
+  ["set_env_var_secret", "PATCH", "/projects/{projectId}/env/{key}/{target}/secret", "env:write", "Changes"],
   ["delete_env_var", "DELETE", "/projects/{projectId}/env/{key}", "env:write", "Changes"],
   ["list_domains", "GET", "/domains", "domains:read", "Reads"],
   ["add_domain", "POST", "/domains", "domains:write", "Changes"],
@@ -329,9 +335,11 @@ const CALLS: Call[] = [
   ["get_alerts", "GET", "/projects/{projectId}/alerts", "alerts:read", "Reads"],
   ["get_analytics", "GET", "/projects/{projectId}/analytics", "analytics:read", "Reads"],
   ["get_activity", "GET", "/activity", "activity:read", "Reads"],
+  ["get_changes", "GET", "/projects/{projectId}/changes", "activity:read", "Reads"],
   ["get_server_usage", "GET", "/servers/{serverId}/usage", "resources:read", "Reads"],
   ["get_resource_history", "GET", "/servers/{serverId}/usage/history", "resources:read", "Container session"],
   ["get_project_resources", "GET", "/projects/{projectId}/resources", "resources:read", "Container session"],
+  ["get_resource_quota", "GET", "/projects/{projectId}/resources/quota", "resources:read", "Container session"],
   ["list_servers", "GET", "/servers", "container:read", "Reads"],
   ["get_container_inventory", "GET", "/servers/{serverId}/inventory", "container:read", "Container session"],
   ["list_files", "GET", "/projects/{projectId}/files", "files:read", "Container session"],
@@ -536,7 +544,7 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
       <List>
         <li>
           <B>Environment variables</B> are sealed with AES-256-GCM, tied to the project, the name and where the
-          value applies. The list shows names only. Values are never sent back by the browser routes or the API. At
+          value applies. The list shows names only. The browser routes never send a value back, and the API returns one only through <C>get_env_vars</C> for a variable marked non-secret. Each variable has a secret flag, on by default. At
           deploy time they are written to a <C>.env</C> file on your container with mode 600.
         </li>
         <li>
@@ -829,6 +837,12 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         "Terminal",
         `curl -H "Authorization: Bearer $NEST_TOKEN" \\\n  "https://your-egg/api/v1/activity?kind=deployments&range=24h&limit=20"`
       )}
+      <P>
+        A token with <C>activity:read</C> can also read the change feed with{" "}
+        <C>GET /api/v1/projects/{"{projectId}"}/changes</C>, or the <C>get_changes</C> tool. It is a newest-first list of
+        one project’s deploys, rollbacks, redeploys, domain changes and build-config changes. Environment variables
+        appear by name only, never with their values.
+      </P>
 
       {limits("activity-limits", [
         ["Entries per page", "50", "Press Load more for the next 50.", "server/activity.ts (PAGE_SIZE)"],
@@ -2149,6 +2163,7 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
           ["The older release did not become healthy, so nothing was changed.", "The release that was live is still live. Check the older release’s logs."],
           ["That deployment is already finished.", "Cancel works only while a deployment is Queued, Building or Deploying."],
           ["Only old previews that are not live or removed can be deleted in bulk.", "409. Pick previews that are finished and not the current one."],
+          ["A cancel by API returns 409 once the release has been switched.", "The live release keeps running. Check the deployment’s state."],
         ],
         "Rollback and cancel messages",
         3
@@ -2398,19 +2413,19 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         head={["Permission", "What it allows", "Calls"]}
         rows={[
           [<C key="1">projects:read</C>, "Read projects, their settings and status page.", "list_projects, get_project, get_status_page"],
-          [<C key="2">projects:write</C>, "Create, change and delete projects, including build and start commands.", "create_project, update_project, delete_project"],
-          [<C key="3">deployments:read</C>, "Read deployments and build output.", "list_deployments, get_deployment, get_deployment_logs"],
-          [<C key="4">deployments:write</C>, "Deploy, redeploy, cancel and roll back, and replace or revoke the deploy hook.", "deploy_branch, redeploy, cancel_deployment, rollback_deployment, rotate_deploy_hook, revoke_deploy_hook"],
-          [<C key="5">logs:read</C>, "Read runtime logs.", "get_logs"],
-          [<C key="6">env:read</C>, "List variable names. Never their values.", "list_env_vars"],
-          [<C key="7">env:write</C>, "Set and remove variables.", "set_env_var, delete_env_var"],
+          [<C key="2">projects:write</C>, "Create, change and delete projects, including build and start commands.", "create_project, update_project, delete_project, deploy_from_github_url"],
+          [<C key="3">deployments:read</C>, "Read deployments, build output and deployment metrics.", "list_deployments, get_deployment, get_deployment_logs, get_deployment_metrics"],
+          [<C key="4">deployments:write</C>, "Deploy, redeploy, cancel and roll back, and replace or revoke the deploy hook.", "deploy_branch, deploy_from_github_url, redeploy, cancel_deployment, rollback_deployment, rotate_deploy_hook, revoke_deploy_hook"],
+          [<C key="5">logs:read</C>, "Read runtime logs and crash reports.", "get_logs, list_crash_reports, get_crash_report"],
+          [<C key="6">env:read</C>, "List variable names, and read the values of variables marked non-secret.", "list_env_vars, get_env_vars"],
+          [<C key="7">env:write</C>, "Set and remove variables, and change whether a variable is secret.", "set_env_var, delete_env_var, set_env_var_secret"],
           [<C key="8">domains:read</C>, "Read domains.", "list_domains"],
           [<C key="9">domains:write</C>, "Add, check and remove domains.", "add_domain, verify_domain, remove_domain"],
           [<C key="10">notifications:read</C>, "Read notification settings and send a test message.", "get_notifications, test_notification"],
           [<C key="11">alerts:read</C>, "Read alert settings and history.", "get_alerts"],
           [<C key="12">analytics:read</C>, "Read visitor analytics.", "get_analytics"],
-          [<C key="13">activity:read</C>, "Read your activity log.", "get_activity"],
-          [<C key="14">resources:read</C>, "Read CPU, memory and disk, now and over time.", "get_server_usage, get_resource_history, get_project_resources"],
+          [<C key="13">activity:read</C>, "Read your activity log and a project’s change feed.", "get_activity, get_changes"],
+          [<C key="14">resources:read</C>, "Read CPU, memory and disk, now and over time, and a project’s resource limits and usage.", "get_server_usage, get_resource_history, get_project_resources, get_resource_quota"],
           [<C key="15">container:read</C>, "List servers and see what is on the container. Read only.", "list_servers, get_container_inventory"],
           [<C key="16">files:read</C>, "List and read files in a project’s folder.", "list_files, read_file, download_file"],
           [<C key="17">files:write</C>, "Create, change, rename and delete files in a project’s shared/ folder.", "write_file, make_folder, rename_file, delete_file"],
@@ -2472,7 +2487,7 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
           Authenticated answers are never cached.
         </li>
         <li>
-          <B>Secrets are write-only.</B> Variable values, notification URLs and token secrets are never returned. A
+          <B>Secrets are write-only.</B> Variable values marked secret, notification URLs and token secrets are never returned. A variable value comes back only from <C>get_env_vars</C>, and only when it is marked non-secret. A
           deploy hook URL comes back once, from the call that makes it.
         </li>
         <li>
@@ -2622,7 +2637,7 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         },
         {
           title: "Set a variable",
-          body: <>You need <C>env:write</C>. <C>target</C> is <C>all</C>, <C>production</C> or <C>preview</C>. The value reaches the app at the next deploy and is never returned.</>,
+          body: <>You need <C>env:write</C>. <C>target</C> is <C>all</C>, <C>production</C> or <C>preview</C>. The value reaches the app at the next deploy. Setting a value never changes its secret flag, and the value comes back only from <C>get_env_vars</C>, when the variable is marked non-secret.</>,
           code: { label: "Terminal", code: `curl -X PUT -H "Authorization: Bearer $NEST_TOKEN" \\\n  -H "Content-Type: application/json" \\\n  -d '{"value":"sk_test_123","target":"production"}' \\\n  https://your-egg/api/v1/projects/PROJECT_ID/env/STRIPE_KEY` },
         },
         {

@@ -1762,7 +1762,8 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
           body: (
             <>
               Press the pencil (“Change the value of NAME”), type a “New value” and press <B>Update</B>. Saving the
-              same name and target again also replaces the value. You cannot read the old one back.
+              same name and target again also replaces the value. You cannot read the old one back. Saving a value
+              never changes the variable’s secret flag.
             </>
           ),
         },
@@ -1801,8 +1802,10 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
       </P>
       <List>
         <li>
-          The list shows names and targets only, so values are never returned by the browser, the API or an access
-          token. Egg stores them encrypted with AES-256-GCM, tied to the project, the name and the target.
+          The list shows names and targets only, and the browser never shows a value. Each variable has a secret flag,
+          on by default, and the flag is changed through the API. A token with <C>env:read</C> gets a value back from{" "}
+          <C>get_env_vars</C> only when the variable is marked non-secret. Egg stores them encrypted with AES-256-GCM,
+          tied to the project, the name and the target.
         </li>
         <li>
           At deploy time Egg passes your values to the build on your container as ordinary environment variables,
@@ -1834,8 +1837,9 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
       </Callout>
       {why(
         <>
-          Values are write-only, so no page, token or log has to be trusted with them. The cost is that you cannot
-          check a value after saving it; you replace it. Egg writes variables into each release instead of reading
+          Secret values are write-only, so no page, token or log has to be trusted with them. The cost is that you
+          cannot check a secret value after saving it; you replace it. A value marked non-secret can be read back
+          through <C>get_env_vars</C>. Egg writes variables into each release instead of reading
           them live, so a rollback runs with the variables that release shipped with and a half-edited set never
           reaches a running app.
         </>
@@ -3286,6 +3290,11 @@ export function isFromEgg(secret, header, body) {
           nothing.
         </li>
       </List>
+      <P>
+        When Egg sees a production service fail, it keeps up to 200 lines of its journal against the current release,
+        once per crash, with known secrets masked. A token with <C>logs:read</C> lists them with{" "}
+        <C>list_crash_reports</C> and reads one with <C>get_crash_report</C>.
+      </P>
       <H3 id="monitoring-resources" />
       <P>
         The Resource use card on your project page shows this one service’s memory and CPU over the last 24 hours, so
@@ -3297,6 +3306,12 @@ export function isFromEgg(secret, header, body) {
       <P>
         The worker samples every connected server every 5 minutes by default and keeps 7 days, so it writes project
         samples only while the service is running.
+      </P>
+      <P>
+        Through the API, <C>get_deployment_metrics</C> (<C>deployments:read</C>) returns bucketed CPU and memory
+        averages and restart counts for the deployment’s project. The samples are per project, not per release. <C>get_resource_quota</C>{" "}
+        (<C>resources:read</C>) returns the limits and current usage of the project. A value Egg has not measured is
+        <C>null</C>, never zero.
       </P>
       <H3 id="monitoring-uptime" />
       <P>
