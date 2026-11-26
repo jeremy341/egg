@@ -363,24 +363,6 @@ export const projects = sqliteTable(
   ]
 );
 
-/** Named deploy-hook credentials. Only the SHA-256 token hash is stored. */
-export const deployHookTokens = sqliteTable(
-  "deploy_hook_tokens",
-  {
-    id: text("id").primaryKey(),
-    projectId: text("project_id")
-      .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
-    name: text("name").notNull(),
-    hash: text("hash").notNull(),
-    createdAt: ts("created_at").notNull(),
-  },
-  (t) => [
-    uniqueIndex("deploy_hook_tokens_hash_idx").on(t.hash),
-    index("deploy_hook_tokens_project_created_idx").on(t.projectId, t.createdAt),
-  ]
-);
-
 export const PROJECT_ROLES = ["admin", "member", "viewer"] as const;
 export type ProjectRole = (typeof PROJECT_ROLES)[number];
 

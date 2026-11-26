@@ -49,7 +49,7 @@ export const SCOPE_LABEL: Record<Scope, string> = {
   "projects:read": "Read projects, their settings and status page",
   "projects:write": "Create, change and delete projects, including build and start commands",
   "deployments:read": "Read deployments and build output",
-  "deployments:write": "Deploy, redeploy, cancel and roll back, and create, replace or revoke deploy hooks",
+  "deployments:write": "Deploy, redeploy, cancel and roll back, and replace or revoke the deploy hook",
   "jobs:read": "List scheduled command jobs and read their latest status and logs",
   "jobs:write": "Create, change, run and delete scheduled command jobs",
   "logs:read": "Read runtime logs",
