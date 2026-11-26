@@ -95,7 +95,7 @@ export default function ConfigurationDocs() {
       />
       <P>
         <C>PATCH /api/v1/deployments/{"{deploymentId}"}/volumes</C> returns <C>501</C>. Volume mounts come from the
-        project's Compose file. Change them there, then deploy again.
+        project&apos;s Compose file. Change them there, then deploy again.
       </P>
       <H3 id="configuration-safety" title="Keep values private" />
       <P>
