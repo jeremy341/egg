@@ -164,7 +164,7 @@ async function seed() {
   const now = Date.now();
 
   // ------------------------------------------------------------ server
-  const key = generateServerKey("nest-deploy:sam-r (demo)");
+  const key = generateServerKey("egg:sam-r (demo)");
   await db.insert(schema.servers).values({
     id: SERVER_ID,
     userId: user.id,

@@ -1,8 +1,8 @@
 # Vercel Feature Inventory
 
-Research snapshot: 28 October 2026. Related: [[Nest - Deploy]] · [[Nest Deploy Requirements]].
+Research snapshot: 28 October 2026. Related: [[Nest - Deploy]] · [[Egg Requirements]].
 
-This is a broad **product-area inventory**, grounded in Vercel's public documentation navigation and selected feature pages. It is not a verified list of every setting, plan entitlement, subfeature, private feature or recent change. Beta/new labels reflect the documentation at the time of research. Items below are Vercel product families or documented capabilities, not a promise that Nest Deploy will replicate them. Check individual linked documentation, pricing and availability before making commitments.
+This is a broad **product-area inventory**, grounded in Vercel's public documentation navigation and selected feature pages. It is not a verified list of every setting, plan entitlement, subfeature, private feature or recent change. Beta/new labels reflect the documentation at the time of research. Items below are Vercel product families or documented capabilities, not a promise that Egg will replicate them. Check individual linked documentation, pricing and availability before making commitments.
 
 ## Projects, source and builds
 
@@ -50,6 +50,6 @@ Sources: [Security](https://vercel.com/docs/security), [Account management](http
 
 Sources: [Documentation index](https://vercel.com/docs), [AI Gateway](https://vercel.com/docs/ai-gateway), [AI SDK](https://ai-sdk.dev/docs), [REST API](https://vercel.com/docs/rest-api).
 
-## What this means for Nest Deploy
+## What this means for Egg
 
-The Vercel experience includes both a dashboard and a large hosting platform. [[Nest Deploy Requirements]] maps the useful workflows to proposed Nest-compatible solutions and identifies areas that depend on extra infrastructure. Nest Deploy must not imply equivalence to Vercel's global network, serverless compute, security products, managed storage or enterprise guarantees without actually providing and verifying them.
+The Vercel experience includes both a dashboard and a large hosting platform. [[Egg Requirements]] maps the useful workflows to proposed Nest-compatible solutions and identifies areas that depend on extra infrastructure. Egg must not imply equivalence to Vercel's global network, serverless compute, security products, managed storage or enterprise guarantees without actually providing and verifying them.

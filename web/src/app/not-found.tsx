@@ -17,9 +17,9 @@ export default function NotFound() {
       <PixelField tone="mono" className="[mask-image:radial-gradient(ellipse_at_center,black_15%,transparent_70%)]" />
       <header className="relative">
         <div className="board-col flex h-[60px] items-center">
-          <Link href="/" aria-label="Nest Deploy, home" className="flex min-h-10 w-fit items-center gap-2 outline-offset-4">
+          <Link href="/" aria-label="Egg, home" className="flex min-h-10 w-fit items-center gap-2 outline-offset-4">
             <NestMark className="size-6" />
-            <span className="font-pixel text-[19px] leading-none font-semibold whitespace-nowrap">Nest Deploy</span>
+            <span className="font-pixel text-[19px] leading-none font-semibold whitespace-nowrap">Egg</span>
           </Link>
         </div>
       </header>

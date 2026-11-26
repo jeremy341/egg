@@ -77,7 +77,7 @@ export function CodeBlock({ label, code }: { label: Label; code: string }) {
   }
 
   return (
-    <div className="mt-[30px] max-w-[760px] border bg-[var(--code-bg)]">
+    <div className="mt-[30px] max-w-[760px] overflow-hidden rounded-md border bg-[var(--code-bg)]">
       <div className="flex h-10 items-center justify-between border-b px-3">
         <span className="min-w-0 truncate font-mono text-[12px] text-muted-foreground">{label}</span>
         <button

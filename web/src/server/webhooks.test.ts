@@ -216,10 +216,10 @@ describe("dispatching deployment events", () => {
     expect(req.timeoutMs).toBe(5000);
     expect(req.maxBytes).toBe(4096);
     // The signature header is t=<unix>,v1=<hex> over "<t>.<body>" with this webhook's secret.
-    const sig = req.headers["X-NestDeploy-Signature"];
+    const sig = req.headers["X-Egg-Signature"];
     expect(sig).toBe(signWebhook(secret, body, Math.floor(NOW.getTime() / 1000)));
     expect(verifyWebhookSignature(secret, sig, body, Math.floor(NOW.getTime() / 1000))).toBe(true);
-    expect(req.headers["X-NestDeploy-Event"]).toBe("deployment.succeeded");
+    expect(req.headers["X-Egg-Event"]).toBe("deployment.succeeded");
 
     const [d] = await listDeliveries(sam, webhook.id);
     expect(d).toMatchObject({ event: "deployment.succeeded", status: "success", attempts: 1, lastErrorCode: null, deploymentId: id });
@@ -365,7 +365,7 @@ describe("test send", () => {
     expect(result).toMatchObject({ status: "failed", attempts: 1, lastErrorCode: "http_500", event: "webhook.test" });
     const body = JSON.parse(seen[0].body);
     expect(body).toMatchObject({ event: "webhook.test", test: true, project: { id: "test-project" } });
-    expect(verifyWebhookSignature(secret, seen[0].req.headers["X-NestDeploy-Signature"], seen[0].body, Math.floor(NOW.getTime() / 1000))).toBe(true);
+    expect(verifyWebhookSignature(secret, seen[0].req.headers["X-Egg-Signature"], seen[0].body, Math.floor(NOW.getTime() / 1000))).toBe(true);
     expect(await listDeliveries(sam, webhook.id)).toHaveLength(1);
   });
 });
@@ -379,7 +379,7 @@ describe("rotating the secret", () => {
     const { seen, transport } = recorder();
     await dispatchDeploymentEvent(await deployment("ready"), deps(transport));
     const t = Math.floor(NOW.getTime() / 1000);
-    const sig = seen[0].req.headers["X-NestDeploy-Signature"];
+    const sig = seen[0].req.headers["X-Egg-Signature"];
     expect(verifyWebhookSignature(rotated.secret, sig, seen[0].body, t)).toBe(true);
     expect(verifyWebhookSignature(created.secret, sig, seen[0].body, t)).toBe(false);
   });

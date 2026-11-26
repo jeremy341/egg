@@ -1,6 +1,6 @@
 # Backend setup
 
-How to run Nest Deploy for real: what to register, what to configure, and how the pieces fit.
+How to run Egg for real: what to register, what to configure, and how the pieces fit.
 
 ## Quick start (local, no accounts needed)
 
@@ -35,7 +35,7 @@ UNIT_DIR=<printed by pnpm fake-nest>
 | --- | --- | --- |
 | `APP_SECRET` | yes | 32+ characters. Encrypts SSH private keys and environment variables. **Back it up.** Losing it makes every stored key unreadable, and changing it does the same. |
 | `APP_URL` | yes | Public URL of the site, used for OAuth redirects. |
-| `DATABASE_URL` | no | SQLite file, default `file:./data/nest-deploy.db`. |
+| `DATABASE_URL` | no | SQLite file, default `file:./data/egg.db`. |
 | `HACKCLUB_CLIENT_ID`, `HACKCLUB_CLIENT_SECRET` | for login | From a Hack Club Auth app. |
 | `DEV_LOGIN` | no | `1` allows the fake sign-in outside production builds. |
 | `GITHUB_APP_ID`, `GITHUB_APP_SLUG`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET` | for private repos and push-to-deploy | From a GitHub App. The private key may use `\n` escapes. |
@@ -66,7 +66,7 @@ Create an app at <https://github.com/settings/apps/new>:
 - **Homepage URL:** your `APP_URL`.
 - **Callback URL:** `<APP_URL>/api/github/callback`.
 - **Setup URL:** `<APP_URL>/api/github/callback`, with "Redirect on update" on.
-- **Request user authorization (OAuth) during installation:** on. This is how Nest Deploy learns which installations belong to which user.
+- **Request user authorization (OAuth) during installation:** on. This is how Egg learns which installations belong to which user.
 - **Webhook URL:** `<APP_URL>/api/webhooks/github`, with a random secret saved as `GITHUB_WEBHOOK_SECRET`.
 - **Repository permissions:** Contents: read-only. Metadata: read-only. Pull requests: read and write (only needed for the preview comment; without it, previews still build and the comment is skipped).
 - **Subscribe to events:** Push and Pull request. (Installation events arrive without a subscription.)
@@ -88,10 +88,10 @@ browser ──> Next.js app ──> SQLite          (users, servers, projects, l
 ```
 
 - The **worker** builds on the machine it runs on, never on Nest, so builds do not use your container's 2 GB of RAM.
-- A **release** is a folder `~/.nest-deploy/<project>/releases/<id>` on the container. `current` is a symlink to the live one. A deploy unpacks, installs production dependencies, writes the service file, points `current` at the new release, restarts, and waits for the port to answer. If it does not, the symlink is switched back and the old release is restarted.
+- A **release** is a folder `~/.egg/<project>/releases/<id>` on the container. `current` is a symlink to the live one. A deploy unpacks, installs production dependencies, writes the service file, points `current` at the new release, restarts, and waits for the port to answer. If it does not, the symlink is switched back and the old release is restarted.
 - **Rollback** switches `current` back to an earlier release that is still on disk. The newest five production releases are kept.
-- **Previews** run as `nd-<project>-pv-<id>.service` on ports 20000 to 29999. Nest maps domains to ports on its own dashboard with no API, so mapping a preview to a domain is manual.
-- Everything Nest Deploy puts on a container lives under `~/.nest-deploy` and in `nd-*.service` units. Removing those removes it.
+- **Previews** run as `egg-<project>-pv-<id>.service` on ports 20000 to 29999. Nest maps domains to ports on its own dashboard with no API, so mapping a preview to a domain is manual.
+- Everything Egg puts on a container lives under `~/.egg` and in `egg-*.service` units. Removing those removes it.
 
 ## Security notes
 

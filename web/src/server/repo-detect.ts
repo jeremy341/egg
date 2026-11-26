@@ -34,11 +34,11 @@ export type Commands = {
 
 export type RepoDetection = {
   packageManager: PackageManager | null;
-  /** The runtimes Nest Deploy builds with today: npm, pnpm and yarn. */
+  /** The runtimes Egg builds with today: npm, pnpm and yarn. */
   packageManagerSupported: boolean;
   language: Language | null;
   framework: Framework | null;
-  /** The Nest Deploy runtime to use, or null when the repository is not supported yet. */
+  /** The Egg runtime to use, or null when the repository is not supported yet. */
   runtime: Runtime | null;
   commands: Commands;
   /** Output folder for static sites (vite, astro), else null. */
@@ -230,7 +230,7 @@ export function detectRepo(files: Record<string, string>): RepoDetection {
   const packageManagerSupported = packageManager !== null && packageManager !== "bun";
   if (packageManager === "bun") {
     notes.push(
-      "Bun is detected. Nest Deploy builds with npm, pnpm or Yarn today, so check that your install and build commands can run on the build host."
+      "Bun is detected. Egg builds with npm, pnpm or Yarn today, so check that your install and build commands can run on the build host."
     );
   }
 
@@ -278,14 +278,14 @@ export function detectRepo(files: Record<string, string>): RepoDetection {
     );
   } else if (language === "docker") {
     notes.push(
-      "A Dockerfile was found. Nest Deploy does not build Docker images, so it is not used. Pick a runtime and set your own commands."
+      "A Dockerfile was found. Egg does not build Docker images, so it is not used. Pick a runtime and set your own commands."
     );
   } else {
     notes.push("Nothing here tells us what this project is. Pick a preset yourself.");
   }
   // A Dockerfile next to real source is worth a mention, whatever else was found.
   if (language !== "docker" && language !== null && has("Dockerfile")) {
-    notes.push("A Dockerfile was found. Nest Deploy does not build Docker images, so it is ignored.");
+    notes.push("A Dockerfile was found. Egg does not build Docker images, so it is ignored.");
   }
 
   // ---- monorepo

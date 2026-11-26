@@ -178,7 +178,7 @@ describe("path helpers", () => {
 });
 
 describe("symlink containment on resolved paths", () => {
-  const root = "/home/sam/.nest-deploy/app";
+  const root = "/home/sam/.egg/app";
 
   it("accepts the root and anything inside", () => {
     expect(isInsideRoot(root, root)).toBe(true);
@@ -188,9 +188,9 @@ describe("symlink containment on resolved paths", () => {
 
   it("refuses links that resolve outside, including look-alike prefixes", () => {
     expect(isInsideRoot(root, "/etc/passwd")).toBe(false);
-    expect(isInsideRoot(root, "/home/sam/.nest-deploy")).toBe(false);
-    expect(isInsideRoot(root, "/home/sam/.nest-deploy/app-evil")).toBe(false);
-    expect(isInsideRoot(root, "/home/sam/.nest-deploy/app2/shared")).toBe(false);
+    expect(isInsideRoot(root, "/home/sam/.egg")).toBe(false);
+    expect(isInsideRoot(root, "/home/sam/.egg/app-evil")).toBe(false);
+    expect(isInsideRoot(root, "/home/sam/.egg/app2/shared")).toBe(false);
     expect(isInsideRoot(root, "/")).toBe(false);
   });
 

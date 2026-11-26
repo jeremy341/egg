@@ -8,14 +8,17 @@ import { ConnectionAlert } from "@/components/connection-alert";
 import { ContainerBodySkeleton } from "@/components/container-skeleton";
 import { TypedConfirmDialog } from "@/components/container-typed-confirm";
 import { PageHeader } from "@/components/page-header";
+import { Label } from "@/components/settings-ui";
 import { StatusIndicator } from "@/components/status-dot";
 import { Alert } from "@/components/ui/alert";
 import { ConfirmDialog } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { toast } from "@/components/ui/toast";
+import { checkBuildMemory } from "@/lib/build-memory";
 import { OFF_MESSAGES, PERMISSIONS_HREF } from "@/lib/container-permissions";
 import { cn } from "@/lib/utils";
 import type {
@@ -104,7 +107,7 @@ function Mono({ children, className }: { children: React.ReactNode; className?: 
   return <span className={cn("font-mono text-[13px] break-all", className)}>{children}</span>;
 }
 
-/** Disk use, and how much of it is Nest Deploy's own folders. */
+/** Disk use, and how much of it is Egg's own folders. */
 function Overview({ inventory }: { inventory: Inventory }) {
   const { disk } = inventory;
   const ratio = disk ? Math.min(disk.usedMb / disk.totalMb, 1) : 0;
@@ -151,7 +154,7 @@ function Overview({ inventory }: { inventory: Inventory }) {
             </div>
             <p className="mt-2 text-label text-muted-foreground">
               {Math.round(ratio * 100)}% used.
-              {folderKb > 0 ? ` Nest Deploy folders take ${formatKb(folderKb)} of that.` : ""}
+              {folderKb > 0 ? ` Egg folders take ${formatKb(folderKb)} of that.` : ""}
             </p>
           </>
         ) : (
@@ -183,7 +186,7 @@ function ProjectRow({ p, conflict }: { p: ProjectEntry; conflict: PortConflict |
             {p.name}
           </Link>
           <div className="text-label text-muted-foreground">
-            <Mono className="break-all">{p.service?.unit ?? `nd-${p.slug}.service`}</Mono>
+            <Mono className="break-all">{p.service?.unit ?? `egg-${p.slug}.service`}</Mono>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
@@ -237,7 +240,7 @@ function OrphanRow({
 }) {
   const isFolder = o.kind === "folder";
   const kindLabel = o.kind === "folder" ? "Folder" : o.kind === "preview" ? "Preview service" : "Service";
-  const shown = isFolder ? `~/.nest-deploy/${o.id}` : o.id;
+  const shown = isFolder ? `~/.egg/${o.id}` : o.id;
 
   const trigger = (
     <Button
@@ -282,7 +285,7 @@ function OrphanRow({
             title={`Delete the folder ${o.id}?`}
             description={
               <>
-                This permanently deletes <Mono>~/.nest-deploy/{o.id}</Mono> and everything inside it
+                This permanently deletes <Mono>~/.egg/{o.id}</Mono> and everything inside it
                 ({formatKb(o.sizeKb)}), including any data in its shared folder. It cannot be undone.
               </>
             }
@@ -338,6 +341,108 @@ function OtherPortRow({ p }: { p: OtherPort }) {
   );
 }
 
+type BuildMemory = { memoryMb: number; minMb: number; maxMb: number; defaultMb: number };
+
+/**
+ * The memory limit of the build sandbox for one server. It is read and saved
+ * on its own, so it works even while the container itself cannot be reached.
+ * The page keys it by server, so choosing another server starts it fresh.
+ */
+function BuildMemoryField({ serverId }: { serverId: string }) {
+  const [setting, setSetting] = useState<BuildMemory | null>(null);
+  const [value, setValue] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api<{ buildMemory: BuildMemory }>(`/api/servers/${serverId}/build-memory`)
+      .then((res) => {
+        if (cancelled) return;
+        setSetting(res.buildMemory);
+        setValue(String(res.buildMemory.memoryMb));
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setLoadError(err instanceof Error ? err.message : "Could not read the build memory.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [serverId]);
+
+  const parsed = value.trim() === "" ? Number.NaN : Number(value);
+  const problem = setting ? checkBuildMemory(parsed, setting.maxMb) : null;
+  const changed = setting !== null && parsed !== setting.memoryMb;
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    if (!setting || problem) return;
+    setSaving(true);
+    try {
+      const res = await api<{ buildMemory: BuildMemory }>(`/api/servers/${serverId}/build-memory`, {
+        method: "PUT",
+        body: { memoryMb: parsed },
+      });
+      setSetting(res.buildMemory);
+      setValue(String(res.buildMemory.memoryMb));
+      toast.success(`Build memory set to ${res.buildMemory.memoryMb} MB`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not save the build memory.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Section
+      id="container-build-memory"
+      title="Build memory"
+      description="Your project is built on the Egg side, in a sandbox that gets this much memory. 2048 MB suits a standard Nest container. If your server can use more, raise it. A build that needs more memory than this stops with a message saying it ran out of memory, and you can raise the limit here and deploy again."
+    >
+      <form onSubmit={save} className="px-4 py-4">
+        {loadError ? (
+          <p className="text-label text-muted-foreground">{loadError}</p>
+        ) : !setting ? (
+          <p className="text-label text-muted-foreground">Reading the setting…</p>
+        ) : (
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="w-full sm:w-48">
+              <Label htmlFor="build-memory">Build memory (MB)</Label>
+              <Input
+                id="build-memory"
+                type="number"
+                inputMode="numeric"
+                min={setting.minMb}
+                max={setting.maxMb}
+                step={1}
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                aria-invalid={problem ? true : undefined}
+                aria-describedby="build-memory-hint"
+                className="tabular"
+              />
+            </div>
+            <Button type="submit" loading={saving} disabled={!changed || problem !== null}>
+              Save
+            </Button>
+            {setting.memoryMb !== setting.defaultMb ? (
+              <Button type="button" variant="outline" onClick={() => setValue(String(setting.defaultMb))} disabled={saving}>
+                Use {setting.defaultMb} MB
+              </Button>
+            ) : null}
+            <p
+              id="build-memory-hint"
+              className={cn("w-full text-label", problem ? "text-destructive" : "text-muted-foreground")}
+            >
+              {problem ?? `From ${setting.minMb} to ${setting.maxMb} MB. The default is ${setting.defaultMb} MB.`}
+            </p>
+          </div>
+        )}
+      </form>
+    </Section>
+  );
+}
+
 function Body({
   inventory,
   canRemove,
@@ -389,7 +494,7 @@ function Body({
             id="container-projects"
             title="Projects"
             count={projects.length}
-            description="The services Nest Deploy runs for your projects on this container."
+            description="The services Egg runs for your projects on this container."
           >
             {projects.length === 0 ? (
               <p className="px-4 py-5 text-muted-foreground">No projects use this container yet.</p>
@@ -406,7 +511,7 @@ function Body({
             id="container-orphans"
             title="Orphans"
             count={orphans.length}
-            description="An orphan is a service or folder Nest Deploy created earlier that none of your projects use any more. A leftover service keeps running and a leftover folder keeps using disk. Removing a service stops it and deletes its unit file. Deleting a folder permanently deletes the files inside it."
+            description="An orphan is a service or folder Egg created earlier that none of your projects use any more. A leftover service keeps running and a leftover folder keeps using disk. Removing a service stops it and deletes its unit file. Deleting a folder permanently deletes the files inside it."
           >
             {!canRemove ? (
               <div className="border-b px-4 py-3">
@@ -432,7 +537,7 @@ function Body({
                   size="compact"
                   icon={<CubeFocusIcon />}
                   title="No leftovers"
-                  description="Every Nest Deploy service and folder on this container belongs to one of your projects."
+                  description="Every Egg service and folder on this container belongs to one of your projects."
                 />
               </div>
             ) : (
@@ -454,7 +559,7 @@ function Body({
             id="container-ports"
             title="Other ports"
             count={inventory.portsKnown ? otherPorts.length : undefined}
-            description="Programs listening on this container that Nest Deploy did not start. This list is read-only."
+            description="Programs listening on this container that Egg did not start. This list is read-only."
           >
             {!inventory.portsKnown ? (
               <p className="px-4 py-5 text-muted-foreground">
@@ -582,7 +687,7 @@ export function ContainerView({ servers }: { servers: ContainerServer[] }) {
     <div className="motion-enter">
       <PageHeader
         title="Container"
-        description={`What is running on ${serverLabel}, and what Nest Deploy left behind.`}
+        description={`What is running on ${serverLabel}, and what Egg left behind.`}
         actions={
           <>
             {servers.length > 1 ? (
@@ -626,6 +731,12 @@ export function ContainerView({ servers }: { servers: ContainerServer[] }) {
       ) : (
         <Body inventory={load.inventory} canRemove={canRemove} onRemove={remove} />
       )}
+
+      {serverId ? (
+        <div className="mt-6">
+          <BuildMemoryField key={serverId} serverId={serverId} />
+        </div>
+      ) : null}
     </div>
   );
 }

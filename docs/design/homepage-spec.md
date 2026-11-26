@@ -67,9 +67,9 @@ Format: job. Proves. Form. Research idea. **Headline.** Body. File, export.
 
 **Setup:** Create a key: enter your Nest username, paste the public key on the SSH Keys page of the Nest dashboard, press Test connection. Import a repository: pick it, press Deploy. Push: your production branch deploys; other branches become previews from port 20000.
 
-**FAQ:** Is Egg part of Nest? No, it is an independent add-on that reaches your container over SSH. What does it change? A folder per project under `~/.nest-deploy`, one `nd-` service, a `current` link; anything without its marker is left alone. Does a preview get an address? Its own port, from 20000; map a domain in the Nest dashboard. Can I leave? Disconnecting removes your projects from Egg and leaves your apps running. Are variables safe? Encrypted and write-only. Private repository? Install the GitHub App.
+**FAQ:** Is Egg part of Nest? No, it is an independent add-on that reaches your container over SSH. What does it change? A folder per project under `~/.egg`, one `egg-` service, a `current` link; anything without its marker is left alone. Does a preview get an address? Its own port, from 20000; map a domain in the Nest dashboard. Can I leave? Disconnecting removes your projects from Egg and leaves your apps running. Are variables safe? Encrypted and write-only. Private repository? Install the GitHub App.
 
-**Scopes tabs:** curl: `curl -H "Authorization: Bearer ndp_..." <site>/api/v1/me`. MCP: `list_projects`, `deploy_branch`, `get_logs`, `get_server_usage`.
+**Scopes tabs:** curl: `curl -H "Authorization: Bearer egg_..." <site>/api/v1/me`. MCP: `list_projects`, `deploy_branch`, `get_logs`, `get_server_usage`.
 
 **Switch rows:** Terminal: a root shell, closes after 10 minutes idle or 60 in all. File changes: edit files in `shared/` only. Removing leftovers: deletes only what carries the Egg marker.
 

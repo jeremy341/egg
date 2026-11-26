@@ -77,6 +77,9 @@ function ServerCard({ initial }: { initial: ServerView }) {
   const [testing, setTesting] = useState(false);
   const [outcome, setOutcome] = useState<TestResponse["result"] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [deleteProjects, setDeleteProjects] = useState(false);
+  /** From the page data, not the server state: the test and key routes do not return it. */
+  const projectCount = initial.projectCount;
 
   async function test() {
     setTesting(true);
@@ -105,8 +108,12 @@ function ServerCard({ initial }: { initial: ServerView }) {
     router.refresh();
   }
 
+  /** Throws on failure, so the confirm dialog stays open and shows the message. */
   async function remove() {
-    await api(`/api/servers/${server.id}`, { method: "DELETE" });
+    await api(`/api/servers/${server.id}`, {
+      method: "DELETE",
+      body: { deleteProjects: projectCount > 0 && deleteProjects },
+    });
     router.refresh();
   }
 
@@ -161,17 +168,40 @@ function ServerCard({ initial }: { initial: ServerView }) {
           />
           <ConfirmDialog
             trigger={
-              <Button variant="ghost" className="px-3">
+              <Button variant="ghost" className="px-3" onClick={() => setDeleteProjects(false)}>
                 Disconnect
               </Button>
             }
             tone="destructive"
             title={`Disconnect ${server.nestUsername}?`}
-            description="Your running apps are not touched. Remove the key from the Nest dashboard to end our access."
+            description="This closes its terminals and removes our key for it. Your running apps are not touched. Remove the key from the Nest dashboard to end our access."
             confirmLabel="Disconnect"
             pendingLabel="Disconnecting…"
             onConfirm={remove}
-          />
+          >
+            {projectCount > 0 ? (
+              <label className="mt-4 flex min-h-11 cursor-pointer items-start gap-3 rounded-lg bg-[var(--ds-gray-100)] px-3 py-2.5">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={deleteProjects}
+                  onChange={(e) => setDeleteProjects(e.target.checked)}
+                />
+                <span className="min-w-0">
+                  <span className="block font-medium">
+                    {projectCount === 1
+                      ? "Also delete the project on this server"
+                      : `Also delete the ${projectCount} projects on this server`}
+                  </span>
+                  <span className="mt-0.5 block text-label text-muted-foreground">
+                    {deleteProjects
+                      ? "Their deployments and logs are deleted too. Their apps keep running on the container."
+                      : "Left unchecked, they are kept. Their apps keep running, but Egg stops managing them until you connect this server again."}
+                  </span>
+                </span>
+              </label>
+            ) : null}
+          </ConfirmDialog>
         </div>
       </div>
 
@@ -278,7 +308,7 @@ export function ConnectFlow({ servers }: { servers: ServerView[] }) {
     <div className="motion-enter mx-auto w-full max-w-[720px] space-y-6">
       <PageHeader
         title="Connect a Nest server"
-        description="Nest Deploy signs in to your container with a key made just for it. You stay in control: removing the key in the Nest dashboard ends our access."
+        description="Egg signs in to your container with a key made just for it. You stay in control: removing the key in the Nest dashboard ends our access."
         actions={<DocsLink href="/docs/servers#servers-connection" topic="connecting a server" className="max-sm:hidden" />}
       />
 
@@ -345,7 +375,7 @@ export function ConnectFlow({ servers }: { servers: ServerView[] }) {
           </Step>
         </ol>
         <Alert tone="warning" className="mt-5">
-          This key gives Nest Deploy the same access as your own login, because SSH into Nest lands in a
+          This key gives Egg the same access as your own login, because SSH into Nest lands in a
           root shell inside your container. Only connect a container you are happy to deploy to.
         </Alert>
       </section>

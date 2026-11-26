@@ -32,7 +32,7 @@ Found, no test (low): the deploy log stream checks auth only on connect and runs
 |------|------|----------|--------|
 | Account deletion with servers, projects, deployments, webhooks, tokens, terminals | high | `account.ts:103-112` closes terminals first; FK cascades in `schema.ts`; a scratch run showed tokens die with the user | works |
 | Disconnect: what keeps running | high | `servers.ts:132` removes records only; apps and units stay, by design (`account.ts:99`) | works (bug 2 aside) |
-| Two servers, same Nest username | low | Unique per user only (`schema.ts:97`), so another account's `nd-` units look like removable orphans (`inventory.ts:277`). A global unique would let anyone squat a name | works, residual low |
+| Two servers, same Nest username | low | Unique per user only (`schema.ts:97`), so another account's `egg-` units look like removable orphans (`inventory.ts:277`). A global unique would let anyone squat a name | works, residual low |
 | Same repo imported twice | low | No check (`projects.ts:136`); both deploy on push, fine for monorepos | works |
 | Same port, two projects | medium | `projects.ts:166-176`; deploy probe `pipeline.ts:381` | works except bug 10 |
 | Token of a deleted user; scopes narrowed; 365-day token after a change | medium | `principalFor` reads the row each request (`api-tokens.ts:278-291`); edit capped (`:245`) | works |

@@ -82,7 +82,7 @@ describe("token routes", () => {
     const { res, body } = await createAs(sam);
     expect(res.status).toBe(201);
     expect(res.headers.get("cache-control")).toBe("no-store");
-    expect(body.secret).toMatch(/^ndp_[A-Za-z0-9_-]{20,}$/);
+    expect(body.secret).toMatch(/^egg_[A-Za-z0-9_-]{20,}$/);
     expect(body.token).toMatchObject({ name: "CI bot", scopes: valid.scopes, active: true, revokedAt: null });
     expect(body.token?.prefix).toBe(body.secret?.slice(0, 10));
     // The secret works as a bearer token straight away.
@@ -295,7 +295,7 @@ describe("token routes", () => {
         { scopes: "projects:read" },
         { expiresInDays: 45 },
         { expiresInDays: "30" },
-        { name: "Ok", prefix: "ndp_evil" },
+        { name: "Ok", prefix: "egg_evil" },
         { name: "Ok", hash: "abc" },
         { name: "Ok", revokedAt: null },
         { name: "Ok", userId: kim.id },

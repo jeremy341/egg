@@ -65,7 +65,7 @@ class FakeShell implements ShellHandle {
   }
 }
 
-const MANAGER_KEY = Symbol.for("nest-deploy.terminal-manager");
+const MANAGER_KEY = Symbol.for("egg.terminal-manager");
 let shells: FakeShell[] = [];
 let connects = 0;
 function freshManager() {
@@ -594,7 +594,7 @@ describe("reading files", () => {
     execReply = (kind) => (kind === "home" ? { code: 0, stdout: "/home/sam" } : { code: 0, stdout: `3\n${b64(Buffer.from([0, 1, 2]))}` });
     expect((await (await callSpec(SPECS().read_file, secret)).json()).file).toMatchObject({ binary: true, content: null });
 
-    execReply = (kind) => (kind === "home" ? { code: 0, stdout: "/home/sam" } : { code: 30, stderr: "/home/sam/.nest-deploy/app/shared/a.txt: no such file" });
+    execReply = (kind) => (kind === "home" ? { code: 0, stdout: "/home/sam" } : { code: 30, stderr: "/home/sam/.egg/app/shared/a.txt: no such file" });
     const missing = await callSpec(SPECS().read_file, secret);
     expect(await errorOf(missing)).toMatchObject({ status: 404, code: "not_found" });
   });

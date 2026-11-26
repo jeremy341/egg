@@ -113,6 +113,7 @@ function ConfirmDialog({
   trigger,
   title,
   description,
+  children,
   confirmLabel,
   pendingLabel,
   tone = "default",
@@ -121,6 +122,8 @@ function ConfirmDialog({
   trigger: React.ReactElement
   title: string
   description?: React.ReactNode
+  /** Extra content under the description, such as a choice the action depends on. */
+  children?: React.ReactNode
   confirmLabel: string
   pendingLabel: string
   tone?: "default" | "destructive"
@@ -178,6 +181,7 @@ function ConfirmDialog({
         {description ? (
           <AlertDialogDescription>{description}</AlertDialogDescription>
         ) : null}
+        {children}
         {error ? (
           <Alert tone="error" role="alert" className="mt-4">
             {error}

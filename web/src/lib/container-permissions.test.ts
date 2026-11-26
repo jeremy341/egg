@@ -124,16 +124,16 @@ describe("copy", () => {
     });
   });
 
-  it("describes leftover removal as off by default, limited to nd- services and ~/.nest-deploy folders, without claiming older servers keep their setting", () => {
+  it("describes leftover removal as off by default, limited to egg- services and ~/.egg folders, without claiming older servers keep their setting", () => {
     const d = PERMISSION_DESCRIPTIONS.orphanRemoval;
     expect(d).toMatch(/Off by default/);
     expect(d).not.toMatch(/On by default/);
-    expect(d).toContain("nd-");
-    expect(d).toContain("~/.nest-deploy");
+    expect(d).toContain("egg-");
+    expect(d).toContain("~/.egg");
     expect(d).not.toMatch(/earlier keeps/);
   });
 
-  it("tells the owner what the terminal can do to apps Nest Deploy did not deploy", () => {
+  it("tells the owner what the terminal can do to apps Egg did not deploy", () => {
     expect(PERMISSION_DESCRIPTIONS.terminal).toMatch(/not deploy/);
   });
 

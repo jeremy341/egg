@@ -78,7 +78,7 @@ export const SHORT_LIVED_NOTE = `A token with the terminal or file change permis
 export const holdsShortLivedScope = (scopes: readonly string[]) =>
   scopes.some((s) => (SHORT_LIVED_SCOPES as readonly string[]).includes(s));
 
-export const TOKEN_PREFIX = "ndp_";
+export const TOKEN_PREFIX = "egg_";
 const MAX_TOKENS_PER_USER = 25;
 const DAY = 86_400_000;
 

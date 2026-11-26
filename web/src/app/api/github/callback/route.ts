@@ -6,7 +6,7 @@ import { installationsForCode, saveInstallations } from "@/server/github/app";
 
 function back(status: string) {
   const res = NextResponse.redirect(new URL(`/new?github=${status}`, config().APP_URL), 303);
-  res.cookies.delete({ name: "nd_gh_state", path: "/api/github" });
+  res.cookies.delete({ name: "egg_gh_state", path: "/api/github" });
   return res;
 }
 
@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
 
   const code = req.nextUrl.searchParams.get("code");
   const state = req.nextUrl.searchParams.get("state");
-  const saved = req.cookies.get("nd_gh_state")?.value;
+  const saved = req.cookies.get("egg_gh_state")?.value;
   if (!code || !state || !saved || !safeEqual(saved, state)) return back("invalid_state");
 
   try {

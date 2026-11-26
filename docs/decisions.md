@@ -10,7 +10,7 @@ Newest decisions are at the bottom. Each entry says what was decided and why. Wh
 6. **Manual key paste for now.** No public API exists for SSH keys, and we decided not to reverse-engineer the dashboard's requests. The paste stays manual until Nest offers an API.
 7. **Build outside Nest.** Nest containers are small (2 vCPUs, 2 GB RAM). Builds should run on our own workers, and only the finished artifact goes to Nest. This is planned, not yet tested.
 8. **Docker considered, not decided.** A Docker image pins the runtime and dependencies. Rootless Docker inside a Nest container is unverified, so Docker versus plain release directories is still open.
-9. **Repo created and made public.** The repo is `jeremy341/nest-deploy`. The folder name has a space, but the repo name uses a hyphen because GitHub doesn't allow spaces.
+9. **Repo created and made public.** The repo is `jeremy341/egg`. The folder name has a space, but the repo name uses a hyphen because GitHub doesn't allow spaces.
 
 ## Superseded or inconsistent text in the planning docs
 
@@ -26,11 +26,11 @@ Newest decisions are at the bottom. Each entry says what was decided and why. Wh
 ## Backend (added 2026-11-04)
 
 13. **One Next.js process plus a queue.** API routes, pages and the deployment worker can run in a single process (`RUN_WORKER=1`), with the worker also runnable on its own. State lives in SQLite through libsql (prebuilt binaries; `better-sqlite3` needs a compiler on Windows).
-14. **Release folders and a symlink, not Docker, on Nest.** A deploy unpacks to `~/.nest-deploy/<project>/releases/<id>`, switches `current`, restarts a systemd unit and health-checks it; failure reverts the symlink. This answers the earlier "Docker or release folders" question with release folders, because rootless Docker inside a Nest container is still unverified.
+14. **Release folders and a symlink, not Docker, on Nest.** A deploy unpacks to `~/.egg/<project>/releases/<id>`, switches `current`, restarts a systemd unit and health-checks it; failure reverts the symlink. This answers the earlier "Docker or release folders" question with release folders, because rootless Docker inside a Nest container is still unverified.
 15. **Builds happen off Nest, in Docker.** The worker clones and builds in a resource-limited container and ships a tarball. Production dependencies are installed on Nest, so native modules match the server.
 16. **Uploads use an exec channel, not SFTP.** The bastion's SFTP support is unknown; `cat` over exec works if exec works.
 17. **Previews are real services on their own ports.** Newest two kept per project. Mapping a preview to a domain stays manual.
-18. **Domains are recorded, not configured.** There is no Nest API for mapping a domain to a port, so Nest Deploy tells the user what to enter and checks DNS.
+18. **Domains are recorded, not configured.** There is no Nest API for mapping a domain to a port, so Egg tells the user what to enter and checks DNS.
 19. **Hack Club Auth for identity only, GitHub App for repositories.** The GitHub App's user authorization is used once, to learn which installations belong to a user, and the user token is not stored.
 
 ## Brand and homepage (added 2026-11-04)

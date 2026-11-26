@@ -3,13 +3,13 @@
 ## What happens today
 
 - **Connecting** checks which tools exist (systemd, tar, curl, node, python) and disk space. It does not look at anything else on the container.
-- **Running apps Nest Deploy did not start** are invisible. Their ports are not checked against projects, so a project can be set to a port another process already holds, and the failure only shows at deploy time as a failed health check.
-- **Apps from earlier** (a project record deleted without removing its service, a server record removed, or a new account on the same container) keep their `nd-<slug>.service` units and release folders. Nothing finds them, so they keep running and use disk.
-- **Preview ports** are allocated only against Nest Deploy's own records, so a preview can pick a port something else is using.
+- **Running apps Egg did not start** are invisible. Their ports are not checked against projects, so a project can be set to a port another process already holds, and the failure only shows at deploy time as a failed health check.
+- **Apps from earlier** (a project record deleted without removing its service, a server record removed, or a new account on the same container) keep their `egg-<slug>.service` units and release folders. Nothing finds them, so they keep running and use disk.
+- **Preview ports** are allocated only against Egg's own records, so a preview can pick a port something else is using.
 
 ## Goals
 
-1. **Container inventory** (team level, `/container`): what is on the container, grouped into managed projects, orphaned Nest Deploy services and folders, and other listening ports. Shows disk per folder and warns about port clashes. Orphans can be stopped and removed, with confirmation. Nothing is deleted without an explicit confirm.
+1. **Container inventory** (team level, `/container`): what is on the container, grouped into managed projects, orphaned Egg services and folders, and other listening ports. Shows disk per folder and warns about port clashes. Orphans can be stopped and removed, with confirmation. Nothing is deleted without an explicit confirm.
 2. **File manager** (per project, `/projects/[slug]/files`): browse, read, write, create folder, rename, delete and upload/download, scoped to the project's own folder. Writes to `shared/` persist across deploys. Writes to a release folder are shown with a warning that the next deploy replaces them.
 3. **Terminal** (per project, `/projects/[slug]/terminal`): an interactive shell on the container, starting in the project's folder.
 

@@ -26,16 +26,16 @@ const failure = async (p: Promise<unknown>) => (await p.then(() => null, (e: unk
 describe("authenticate: guessing tokens", () => {
   it("stops answering an address that keeps sending tokens that are not valid", async () => {
     for (let i = 0; i < RATE_LIMITS.badToken.limit; i++) {
-      expect((await failure(authenticate(withToken(`ndp_bad${i}`, "203.0.113.7"))))?.status).toBe(401);
+      expect((await failure(authenticate(withToken(`egg_bad${i}`, "203.0.113.7"))))?.status).toBe(401);
     }
-    const blocked = await failure(authenticate(withToken("ndp_another", "203.0.113.7")));
+    const blocked = await failure(authenticate(withToken("egg_another", "203.0.113.7")));
     expect(blocked?.status).toBe(429);
     expect(Number(blocked?.headers?.["Retry-After"])).toBeGreaterThanOrEqual(1);
   });
 
   it("does not lock out other addresses, or count good tokens", async () => {
     for (let i = 0; i < RATE_LIMITS.badToken.limit + 5; i++) {
-      await failure(authenticate(withToken(`ndp_bad${i}`, "203.0.113.7")));
+      await failure(authenticate(withToken(`egg_bad${i}`, "203.0.113.7")));
     }
     expect((await authenticate(withToken(secret, "203.0.113.8"))).scopes).toContain("projects:read");
     for (let i = 0; i < RATE_LIMITS.badToken.limit + 5; i++) {
@@ -45,7 +45,7 @@ describe("authenticate: guessing tokens", () => {
 
   it("never throttles a request that names no address, since it cannot tell callers apart", async () => {
     for (let i = 0; i < RATE_LIMITS.badToken.limit + 5; i++) {
-      expect((await failure(authenticate(withToken(`ndp_bad${i}`))))?.status).toBe(401);
+      expect((await failure(authenticate(withToken(`egg_bad${i}`))))?.status).toBe(401);
     }
   });
 });

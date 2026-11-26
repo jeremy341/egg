@@ -490,40 +490,40 @@
 }
 
 /* ------------------------------------------------------------------ */
-/* Motion keyframes. Prefixed nd- because tw-animate-css owns "enter"  */
+/* Motion keyframes. Prefixed egg- because tw-animate-css owns "enter"  */
 /* and "exit" (they drive animate-in / animate-out on menus, dialogs). */
 /* ------------------------------------------------------------------ */
 
-@keyframes nd-enter {
+@keyframes egg-enter {
   from {
     opacity: 0;
     transform: translateY(4px);
   }
 }
-@keyframes nd-enter-up {
+@keyframes egg-enter-up {
   from {
     opacity: 0;
     transform: translateY(8px);
   }
 }
-@keyframes nd-fade-in {
+@keyframes egg-fade-in {
   from {
     opacity: 0;
   }
 }
-@keyframes nd-swap-in {
+@keyframes egg-swap-in {
   from {
     opacity: 0;
     transform: translateY(3px);
     filter: blur(2px);
   }
 }
-@keyframes nd-grow-y {
+@keyframes egg-grow-y {
   from {
     transform: scaleY(0);
   }
 }
-@keyframes nd-pixel-blink {
+@keyframes egg-pixel-blink {
   0% {
     opacity: 1;
   }
@@ -540,7 +540,7 @@
     background-position: 100vw 0;
   }
 }
-@keyframes nd-hairline-in {
+@keyframes egg-hairline-in {
   from {
     box-shadow: 0 1px 0 transparent;
   }
@@ -551,20 +551,20 @@
 
 /* M1. Route enter: the content root of a route arrives with a 4px rise. */
 @utility motion-enter {
-  animation: nd-enter var(--dur-enter) var(--ease-snappy) backwards;
+  animation: egg-enter var(--dur-enter) var(--ease-snappy) backwards;
   animation-delay: var(--enter-delay, 0ms);
 }
 
 /* M2. Fade: neutral appearance without movement. */
 @utility motion-fade {
-  animation: nd-fade-in var(--dur-base) var(--ease-snappy) backwards;
+  animation: egg-fade-in var(--dur-base) var(--ease-snappy) backwards;
 }
 
 /* M3. Stagger: children of the element rise in sequence on first view.
    <Stagger> sets data-settled after 700ms so later children never animate. */
 @utility motion-stagger {
   &:not([data-settled]) > * {
-    animation: nd-enter-up var(--dur-slow) var(--ease-snappy) backwards;
+    animation: egg-enter-up var(--dur-slow) var(--ease-snappy) backwards;
     animation-delay: calc(var(--i, 8) * var(--stagger-step));
   }
   &:not([data-settled]) > :nth-child(1) {
@@ -595,13 +595,13 @@
 
 /* M5. Swap: a value that just changed settles in. <Swap> applies it. */
 @utility motion-swap {
-  animation: nd-swap-in 180ms var(--ease-snappy);
+  animation: egg-swap-in 180ms var(--ease-snappy);
 }
 
 /* M15. Grow: bars rise from their baseline on first mount. */
 @utility motion-grow-y {
   transform-origin: bottom;
-  animation: nd-grow-y 400ms var(--ease-snappy) backwards;
+  animation: egg-grow-y 400ms var(--ease-snappy) backwards;
   animation-delay: var(--grow-delay, 0ms);
 }
 
@@ -730,7 +730,7 @@
     width: var(--px, 4px);
     height: var(--px, 4px);
     background: currentColor;
-    animation: nd-pixel-blink 800ms steps(1, end) infinite;
+    animation: egg-pixel-blink 800ms steps(1, end) infinite;
   }
   /* DOM order is TL, TR, BL, BR; clockwise is TL, TR, BR, BL. Negative delays
      start every square mid-cycle so the sequence is running from the first frame. */
@@ -764,7 +764,7 @@
 /* M16. Header hairline: appears once the page has scrolled 48px. No JS. */
 @utility scroll-hairline {
   @supports (animation-timeline: scroll()) {
-    animation: nd-hairline-in linear both;
+    animation: egg-hairline-in linear both;
     animation-timeline: scroll(root);
     animation-range: 0 48px;
   }

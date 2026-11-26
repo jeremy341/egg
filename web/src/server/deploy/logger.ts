@@ -3,6 +3,14 @@ import { maskSecrets, secretNeedles } from "@/server/deploy/redact";
 
 export type Level = "info" | "warn" | "error";
 
+/** Most rows stored for one deployment; a runaway build gets one "truncated" line instead of more. */
+const MAX_LOG_ROWS = 20_000;
+
+// ANSI escape sequences, then the remaining control characters (NUL truncates a stored line).
+// Tab, newline and carriage return are kept.
+const ANSI = /\u001b\[[0-?]*[ -/]*[@-~]/g;
+const CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g;
+
 /**
  * Writes deployment log lines to the database in small batches, so a noisy
  * build does not turn into thousands of single-row inserts. Secret values are
@@ -13,6 +21,8 @@ export class DeploymentLogger {
   private timer: NodeJS.Timeout | undefined;
   private flushing: Promise<void> = Promise.resolve();
   private secrets: string[] = [];
+  private rows = 0;
+  private warned = false;
 
   constructor(
     private readonly deploymentId: string,
@@ -29,7 +39,13 @@ export class DeploymentLogger {
   }
 
   log = (level: Level, message: string) => {
-    const clean = this.mask(message).slice(0, 4000);
+    if (this.rows >= MAX_LOG_ROWS) return;
+    this.rows++;
+    if (this.rows === MAX_LOG_ROWS) {
+      level = "warn";
+      message = "Further log output was dropped: this deployment reached its log limit.";
+    }
+    const clean = this.mask(message).replace(ANSI, "").replace(CONTROL, "").slice(0, 4000);
     this.buffer.push({ at: new Date(), level, message: clean });
     if (this.buffer.length >= 200) {
       void this.flush();
@@ -52,10 +68,21 @@ export class DeploymentLogger {
     this.buffer = [];
     if (batch.length === 0) return this.flushing;
     this.flushing = this.flushing.then(async () => {
-      const db = await getDb();
-      await db.insert(schema.deploymentLogs).values(
-        batch.map((b) => ({ deploymentId: this.deploymentId, ...b }))
-      );
+      const rows = batch.map((b) => ({ deploymentId: this.deploymentId, ...b }));
+      // The deployment, project, server or account may have been deleted mid-build, or the
+      // database may be busy: try once more, then drop the batch. Logging never throws.
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const db = await getDb();
+          await db.insert(schema.deploymentLogs).values(rows);
+          return;
+        } catch (err) {
+          if (attempt === 1 && !this.warned) {
+            this.warned = true;
+            console.warn(`Dropping log lines for deployment ${this.deploymentId}:`, err instanceof Error ? err.message : err);
+          }
+        }
+      }
     });
     return this.flushing;
   }

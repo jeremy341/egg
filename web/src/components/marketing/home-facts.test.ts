@@ -3,6 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { EXPIRY_OPTIONS, TOKEN_CANNOT } from "@/lib/developer";
 import { PAGEVIEW_KEEP_MS, snippet } from "@/server/analytics";
+import { DEFAULT_BUILD_MEMORY_MB } from "@/lib/build-memory";
 import { SCOPES, SHORT_LIVED_MAX_DAYS } from "@/server/api-tokens";
 import { REAUTH_WINDOW_MS } from "@/server/auth/session";
 import { KEEP_RELEASES } from "@/server/deploy/layout";
@@ -75,7 +76,8 @@ describe("homepage facts match the code", () => {
 
   it("states the health wait and the build memory limit", () => {
     expect(src("src/server/deploy/pipeline.ts")).toContain(`healthTimeoutSeconds: ${HOME_FACTS.healthWaitSeconds},`);
-    expect(src("src/server/deploy/build.ts")).toMatch(new RegExp(`"--memory",\\s+"${HOME_FACTS.buildMemoryGb}g",`));
+    expect(DEFAULT_BUILD_MEMORY_MB).toBe(HOME_FACTS.buildMemoryGb * 1024);
+    expect(src("src/server/deploy/build.ts")).toContain('"--memory",');
   });
 
   it("uses the new project form's default port in the sample logs", () => {
@@ -83,6 +85,6 @@ describe("homepage facts match the code", () => {
   });
 
   it("labels each server key the way the homepage shows it", () => {
-    expect(src("src/server/servers.ts")).toContain("generateServerKey(`nest-deploy:");
+    expect(src("src/server/servers.ts")).toContain("generateServerKey(`egg:");
   });
 });

@@ -12,7 +12,7 @@
 export type ScriptFeatures = {
   clicks: boolean;
   time: boolean;
-  /** data-nd-track names that are steps of the funnel. Empty when funnels are off. */
+  /** data-egg-track names that are steps of the funnel. Empty when funnels are off. */
   goals: string[];
 };
 
@@ -63,9 +63,9 @@ const VIEW = `  function send() {
 // buttons and elements the owner marked, and it reads a label, never a value.
 const CLICKS = `  on(document, "click", function (e) {
     var t = e.target;
-    var el = t && t.closest && t.closest("[data-nd-track],a,button,[role=button],[role=link],summary");
+    var el = t && t.closest && t.closest("[data-egg-track],a,button,[role=button],[role=link],summary");
     if (!el) return;
-    var name = el.getAttribute("data-nd-track");
+    var name = el.getAttribute("data-egg-track");
     var l = (name || el.getAttribute("aria-label") || el.textContent || "").replace(/\\s+/g, " ").trim().slice(0, 40);
     if (!l) return;
 @SEND@  }, true);

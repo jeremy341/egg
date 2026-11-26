@@ -144,8 +144,8 @@ const INVENTORY = [
   "has_systemctl=1",
   "disk_total_mb=10240",
   "disk_used_mb=4096",
-  ["UNIT", "nd-app.service", "loaded", "active", "running", "4242", "/etc/systemd/system/nd-app.service", "/system.slice/nd-app.service", `/usr/bin/node server.js ${EXEC_SECRET}`].join("\t"),
-  ["UNIT", "nd-ghost.service", "loaded", "failed", "failed", "0", "/etc/systemd/system/nd-ghost.service", "", ""].join("\t"),
+  ["UNIT", "egg-app.service", "loaded", "active", "running", "4242", "/etc/systemd/system/egg-app.service", "/system.slice/egg-app.service", `/usr/bin/node server.js ${EXEC_SECRET}`].join("\t"),
+  ["UNIT", "egg-ghost.service", "loaded", "failed", "failed", "0", "/etc/systemd/system/egg-ghost.service", "", ""].join("\t"),
   ["DIR", "app", "2048", "0"].join("\t"),
   ["DIR", "ghost", "100", "0"].join("\t"),
   "ports_format=none",
@@ -926,11 +926,11 @@ describe("the activity log", () => {
       userId: me.id,
       action: "project.update",
       target: projectId,
-      meta: JSON.stringify({ fields: "port", webhookUrl: PLANTED_URL, apiToken: "ndp_" + "a".repeat(40), note: PLANTED_URL, password: "hunter2" }),
+      meta: JSON.stringify({ fields: "port", webhookUrl: PLANTED_URL, apiToken: "egg_" + "a".repeat(40), note: PLANTED_URL, password: "hunter2" }),
       at: new Date(),
     });
     const text = await (await run(activityRoute, req("/activity?limit=5", { secret }))).text();
-    for (const leak of ["PLANTEDWEBHOOKSECRET", "ndp_aaaa", "hunter2"]) expect(text).not.toContain(leak);
+    for (const leak of ["PLANTEDWEBHOOKSECRET", "egg_aaaa", "hunter2"]) expect(text).not.toContain(leak);
   });
 });
 

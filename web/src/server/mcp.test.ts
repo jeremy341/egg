@@ -78,9 +78,9 @@ describe("authentication", () => {
   it("answers 401 with WWW-Authenticate: Bearer without a token, with a bad one, and with only a cookie", async () => {
     for (const res of [
       await send(rpc("tools/list")),
-      await send(rpc("tools/list"), "ndp_unknown"),
+      await send(rpc("tools/list"), "egg_unknown"),
       await send(rpc("tools/list"), "sk_wrong_prefix"),
-      await send(rpc("tools/list"), null, { cookie: "nd_session=abc" }),
+      await send(rpc("tools/list"), null, { cookie: "egg_session=abc" }),
     ]) {
       expect(res.status).toBe(401);
       expect(res.headers.get("www-authenticate")).toBe("Bearer");
@@ -114,7 +114,7 @@ describe("protocol", () => {
     expect(body).toMatchObject({
       jsonrpc: "2.0",
       id: 1,
-      result: { protocolVersion: "2025-03-26", capabilities: { tools: {} }, serverInfo: { name: "nest-deploy" } },
+      result: { protocolVersion: "2025-03-26", capabilities: { tools: {} }, serverInfo: { name: "egg" } },
     });
     const newer = await (await send(rpc("initialize", { protocolVersion: "2099-01-01" }), secret)).json();
     expect(newer.result.protocolVersion).toBe("2025-06-18");

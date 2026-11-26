@@ -278,7 +278,7 @@ function Body({
         size="compact"
         icon={<FileIcon />}
         title="Binary file, cannot preview"
-        description="It is not plain text, so Nest Deploy cannot show it."
+        description="It is not plain text, so Egg cannot show it."
         action={action}
       />
     );

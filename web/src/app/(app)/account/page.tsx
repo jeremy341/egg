@@ -56,7 +56,7 @@ export default async function AccountPage() {
         <Card
           id="github-heading"
           title="GitHub"
-          description="Accounts where the Nest Deploy app is installed. Change which repositories it can read on GitHub."
+          description="Accounts where the Egg app is installed. Change which repositories it can read on GitHub."
         >
           {installations.length === 0 ? (
             <p className="text-muted-foreground">Not connected yet. Import a project to install the app.</p>

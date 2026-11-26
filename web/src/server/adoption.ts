@@ -17,7 +17,7 @@ import {
  * moved or deleted, and the answer never includes command lines, environment
  * or file contents.
  *
- * Marker rule: a service or folder is Nest Deploy's only when it carries our
+ * Marker rule: a service or folder is Egg's only when it carries our
  * marker (see deploy/layout.ts). Without one it is the user's, and a deploy
  * refuses rather than overwrite it.
  */
@@ -32,8 +32,8 @@ export type Conflict = {
   detail: string;
   /** True when a deploy must not go ahead until this is dealt with. */
   blocking: boolean;
-  /** True when Nest Deploy created it (so it may be reused). */
-  managedByNestDeploy: boolean;
+  /** True when Egg created it (so it may be reused). */
+  managedByEgg: boolean;
 };
 
 /** A conflict plus when it blocks: always, or only for the first production deploy. */
@@ -54,7 +54,7 @@ export function detectConflicts(raw: AdoptionRaw, ctx: ConflictContext): Detecte
   const add = (c: Omit<DetectedConflict, "scope"> & { scope?: DetectedConflict["scope"] }) =>
     out.push({ scope: "always", ...c });
   const repo = ctx.repo ?? "this repository";
-  const dir = `~/.nest-deploy/${ctx.slug}`;
+  const dir = `~/.egg/${ctx.slug}`;
 
   const cg = raw.own.controlGroup;
   const isOwn = (pid: number | null, cgroups: string[]) =>
@@ -68,25 +68,25 @@ export function detectConflicts(raw: AdoptionRaw, ctx: ConflictContext): Detecte
     add({
       kind: "unit",
       name: ctx.unit,
-      detail: `A service called ${ctx.unit} already exists and Nest Deploy did not create it. It will not be replaced. Choose another project name.`,
+      detail: `A service called ${ctx.unit} already exists and Egg did not create it. It will not be replaced. Choose another project name.`,
       blocking: true,
-      managedByNestDeploy: false,
+      managedByEgg: false,
     });
   } else if (!raw.unitFile && raw.own.loaded) {
     add({
       kind: "unit",
       name: ctx.unit,
-      detail: `systemd already has a service called ${ctx.unit} that Nest Deploy did not create. Choose another project name.`,
+      detail: `systemd already has a service called ${ctx.unit} that Egg did not create. Choose another project name.`,
       blocking: true,
-      managedByNestDeploy: false,
+      managedByEgg: false,
     });
   } else if (raw.unitFile) {
     add({
       kind: "unit",
       name: ctx.unit,
-      detail: "Left by an earlier Nest Deploy project with this name. A deploy will update it.",
+      detail: "Left by an earlier Egg project with this name. A deploy will update it.",
       blocking: false,
-      managedByNestDeploy: true,
+      managedByEgg: true,
     });
   }
 
@@ -96,9 +96,9 @@ export function detectConflicts(raw: AdoptionRaw, ctx: ConflictContext): Detecte
     add({
       kind: "folder",
       name: dir,
-      detail: `${dir} is a link. Nest Deploy will not write through it. Remove the link or choose another project name.`,
+      detail: `${dir} is a link. Egg will not write through it. Remove the link or choose another project name.`,
       blocking: true,
-      managedByNestDeploy: false,
+      managedByEgg: false,
     });
   } else if (f?.kind === "file") {
     add({
@@ -106,32 +106,32 @@ export function detectConflicts(raw: AdoptionRaw, ctx: ConflictContext): Detecte
       name: dir,
       detail: `${dir} is a file, not a folder. Choose another project name.`,
       blocking: true,
-      managedByNestDeploy: false,
+      managedByEgg: false,
     });
   } else if (f?.kind === "dir") {
     if (f.managed) {
       add({
         kind: "folder",
         name: dir,
-        detail: "Left by an earlier Nest Deploy project with this name. It will be reused.",
+        detail: "Left by an earlier Egg project with this name. It will be reused.",
         blocking: false,
-        managedByNestDeploy: true,
+        managedByEgg: true,
       });
     } else if (f.git) {
       add({
         kind: "checkout",
         name: dir,
-        detail: `${dir} is a git checkout that is not Nest Deploy's. It will not be touched or deleted. Choose another project name.`,
+        detail: `${dir} is a git checkout that is not Egg's. It will not be touched or deleted. Choose another project name.`,
         blocking: true,
-        managedByNestDeploy: false,
+        managedByEgg: false,
       });
     } else if (f.entries > 0) {
       add({
         kind: "folder",
         name: dir,
-        detail: `${dir} already holds files that Nest Deploy did not create. They will not be touched. Choose another project name.`,
+        detail: `${dir} already holds files that Egg did not create. They will not be touched. Choose another project name.`,
         blocking: true,
-        managedByNestDeploy: false,
+        managedByEgg: false,
       });
     }
   }
@@ -142,9 +142,9 @@ export function detectConflicts(raw: AdoptionRaw, ctx: ConflictContext): Detecte
     add({
       kind: "port",
       name: `port ${ctx.port}`,
-      detail: `Nest Deploy could not read the listening ports on this container, so it could not check that port ${ctx.port} is free.`,
+      detail: `Egg could not read the listening ports on this container, so it could not check that port ${ctx.port} is free.`,
       blocking: false,
-      managedByNestDeploy: false,
+      managedByEgg: false,
     });
   } else if (holders.length > 0) {
     const haveNames = raw.ports.some((p) => p.pid !== null);
@@ -155,9 +155,9 @@ export function detectConflicts(raw: AdoptionRaw, ctx: ConflictContext): Detecte
       add({
         kind: "port",
         name: `port ${ctx.port}`,
-        detail: `Port ${ctx.port} is already in use${who}. Nest Deploy will not stop it. Choose another port, or stop that program yourself first.`,
+        detail: `Port ${ctx.port} is already in use${who}. Egg will not stop it. Choose another port, or stop that program yourself first.`,
         blocking: true,
-        managedByNestDeploy: false,
+        managedByEgg: false,
       });
     }
   }
@@ -170,18 +170,18 @@ export function detectConflicts(raw: AdoptionRaw, ctx: ConflictContext): Detecte
       add({
         kind: "process",
         name,
-        detail: `${p.comm} is running from ${dir} but Nest Deploy did not start it. Stop it first, or choose another project name.`,
+        detail: `${p.comm} is running from ${dir} but Egg did not start it. Stop it first, or choose another project name.`,
         blocking: true,
-        managedByNestDeploy: false,
+        managedByEgg: false,
       });
     } else if (p.sameRepo) {
       add({
         kind: "process",
         name,
-        detail: `${p.comm} is already running from ~/${p.cwd}, a checkout of ${repo}. Deploying would start a second copy. Stop it yourself first if you want Nest Deploy to take over.`,
+        detail: `${p.comm} is already running from ~/${p.cwd}, a checkout of ${repo}. Deploying would start a second copy. Stop it yourself first if you want Egg to take over.`,
         blocking: true,
         scope: "firstDeploy",
-        managedByNestDeploy: false,
+        managedByEgg: false,
       });
     }
   }
@@ -191,20 +191,20 @@ export function detectConflicts(raw: AdoptionRaw, ctx: ConflictContext): Detecte
       add({
         kind: "unit",
         name: u.name,
-        detail: `${u.name} runs from ${dir} but Nest Deploy did not create it. ${running ? "It is running. Stop it first, or choose another project name." : "It is stopped, so nothing is in the way for now."}`,
+        detail: `${u.name} runs from ${dir} but Egg did not create it. ${running ? "It is running. Stop it first, or choose another project name." : "It is stopped, so nothing is in the way for now."}`,
         blocking: running,
-        managedByNestDeploy: false,
+        managedByEgg: false,
       });
     } else if (u.sameRepo) {
       add({
         kind: "unit",
         name: u.name,
         detail: running
-          ? `${u.name} is already running ~/${u.cwd}, a checkout of ${repo}. Deploying would start a second copy. Stop it yourself first if you want Nest Deploy to take over.`
+          ? `${u.name} is already running ~/${u.cwd}, a checkout of ${repo}. Deploying would start a second copy. Stop it yourself first if you want Egg to take over.`
           : `${u.name} is set up to run ~/${u.cwd}, a checkout of ${repo}, but is stopped. Starting it later would run a second copy.`,
         blocking: running,
         scope: running ? "firstDeploy" : "always",
-        managedByNestDeploy: false,
+        managedByEgg: false,
       });
     }
   }
@@ -214,9 +214,9 @@ export function detectConflicts(raw: AdoptionRaw, ctx: ConflictContext): Detecte
     add({
       kind: "checkout",
       name: `~/${c}`,
-      detail: `You already have a checkout of ${repo} here. Nest Deploy builds elsewhere and deploys into ${dir}, so this folder is not touched.`,
+      detail: `You already have a checkout of ${repo} here. Egg builds elsewhere and deploys into ${dir}, so this folder is not touched.`,
       blocking: false,
-      managedByNestDeploy: false,
+      managedByEgg: false,
     });
   }
   return out;
@@ -235,7 +235,7 @@ function strip(c: DetectedConflict): Conflict {
     name: c.name,
     detail: c.detail,
     blocking: c.blocking,
-    managedByNestDeploy: c.managedByNestDeploy,
+    managedByEgg: c.managedByEgg,
   };
 }
 

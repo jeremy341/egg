@@ -11,7 +11,7 @@ Captured at 1440 and 375 with the demo data: projects, a project overview, deplo
 - The column is 34em and the "On this page" rail only starts at 1280px, where it leaves little room.
 - Limits tables clip their last column.
 - Missing from the docs: CSV exports and signed outbound webhooks.
-- The docs say "Nest Deploy" 74 times and the public site says Egg. Left alone: the server messages the docs quote still say Nest Deploy.
+- The docs said "Nest Deploy" 74 times and the public site said Egg. Now both say Egg, and so do the server messages the docs quote.
 
 ## Dashboard
 

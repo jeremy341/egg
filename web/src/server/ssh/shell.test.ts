@@ -8,23 +8,23 @@ describe("assertShellDir", () => {
     expect(assertShellDir(dir)).toBe(dir);
   });
 
-  it("rejects anything that is not <home>/.nest-deploy/<slug>", () => {
+  it("rejects anything that is not <home>/.egg/<slug>", () => {
     for (const bad of [
       "",
-      "relative/.nest-deploy/app",
-      "/home/sam/.nest-deploy/..",
-      "/home/sam/.nest-deploy/../../etc",
-      "/home/sam/../root/.nest-deploy/app",
-      "/home/sam/.nest-deploy/App",
-      "/home/sam/.nest-deploy/-bad",
+      "relative/.egg/app",
+      "/home/sam/.egg/..",
+      "/home/sam/.egg/../../etc",
+      "/home/sam/../root/.egg/app",
+      "/home/sam/.egg/App",
+      "/home/sam/.egg/-bad",
       "/home/sam/other/app",
-      "/home/sam/.nest-deploy/app/releases",
-      "/home/sam//.nest-deploy/app",
-      "/home/sam/.nest-deploy/./app",
-      "/home/sam/.nest-deploy/app'; rm -rf /; '",
-      "/home/sam/.nest-deploy/app$(id)",
-      "/home/sam/.nest-deploy/app\nid",
-      "/home/sam/.nest deploy/app",
+      "/home/sam/.egg/app/releases",
+      "/home/sam//.egg/app",
+      "/home/sam/.egg/./app",
+      "/home/sam/.egg/app'; rm -rf /; '",
+      "/home/sam/.egg/app$(id)",
+      "/home/sam/.egg/app\nid",
+      "/home/sam/.egg deploy/app",
     ]) {
       expect(() => assertShellDir(bad), JSON.stringify(bad)).toThrow();
     }
@@ -33,11 +33,11 @@ describe("assertShellDir", () => {
 
 describe("startupCommand", () => {
   it("is one line that changes into the folder and stays out of shell history", () => {
-    const cmd = startupCommand("/home/sam-r/.nest-deploy/recipe-api");
+    const cmd = startupCommand("/home/sam-r/.egg/recipe-api");
     expect(cmd.startsWith(" ")).toBe(true);
     expect(cmd.endsWith("\n")).toBe(true);
     expect(cmd.trimEnd().split("\n")).toHaveLength(1);
-    expect(cmd).toContain("cd -- '/home/sam-r/.nest-deploy/recipe-api'");
+    expect(cmd).toContain("cd -- '/home/sam-r/.egg/recipe-api'");
   });
 
   it("refuses a folder that fails validation", () => {

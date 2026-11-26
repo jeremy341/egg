@@ -30,6 +30,7 @@ import { dispatchDeploymentEvent } from "@/server/webhooks";
 import { connectToServer, type ServerRow } from "@/server/servers";
 import { shellQuote, type NestSession } from "@/server/ssh/connection";
 import { probeSession, type NestProbe } from "@/server/ssh/probe";
+import { reportedMemoryMb } from "@/lib/build-memory";
 
 export class DeployError extends Error {}
 
@@ -101,16 +102,19 @@ export async function envForDeployment(
  * Move a deployment to a new state. A canceled deployment stays canceled: the
  * cancel button writes the state straight to the database while this worker is
  * mid-step, so a later "deploying" or "ready" must not overwrite it. Returns
- * false when the move was refused for that reason.
+ * false when the move was refused for that reason. `released` is for a release
+ * that is already live: it is finished as ready even if a cancel arrived late,
+ * because "canceled" on a running release would hide it from rollback.
  */
 async function setState(
   id: string,
   state: Deployment["state"],
-  extra: Partial<typeof schema.deployments.$inferInsert> = {}
+  extra: Partial<typeof schema.deployments.$inferInsert> = {},
+  released = false
 ): Promise<boolean> {
   const db = await getDb();
   const where =
-    state === "canceled"
+    state === "canceled" || released
       ? eq(schema.deployments.id, id)
       : and(eq(schema.deployments.id, id), ne(schema.deployments.state, "canceled"));
   const moved = await db
@@ -150,7 +154,7 @@ async function run(
   if (res.code === remote.NOT_OURS_EXIT) {
     // Something on the container is not ours. The script says what, in plain words.
     throw new DeployError(
-      res.stderr.trim().slice(0, 300) || `${label} stopped: it would overwrite something Nest Deploy did not create.`
+      res.stderr.trim().slice(0, 300) || `${label} stopped: it would overwrite something Egg did not create.`
     );
   }
   if (res.code !== 0) {
@@ -311,6 +315,7 @@ export async function runDeployJob(
   const log = new DeploymentLogger(deploymentId);
   let workDir: string | null = null;
   let session: NestSession | null = null;
+  let previewUnitWritten = false;
 
   try {
     if ((await stateOf(deploymentId)) !== "queued") return;
@@ -344,6 +349,8 @@ export async function runDeployJob(
         sha: dep.source === "redeploy" ? dep.commitSha : null,
       },
       env,
+      memoryMb: server.buildMemoryMb,
+      serverMemoryMb: reportedMemoryMb(server.probe),
       log: log.log,
       signal,
     });
@@ -429,7 +436,7 @@ export async function runDeployJob(
       `${deps.unitDir}/${unitInfo.unit}`,
       remote.unitFile({
         slug: project.slug,
-        description: `Nest Deploy: ${project.name}${dep.env === "preview" ? ` (preview ${dep.releaseId.slice(0, 8)})` : ""}`,
+        description: `Egg: ${project.name}${dep.env === "preview" ? ` (preview ${dep.releaseId.slice(0, 8)})` : ""}`,
         workDir: unitInfo.workDir,
         envFile: unitInfo.envFile,
         port: dep.port,
@@ -437,6 +444,7 @@ export async function runDeployJob(
         pathPrefix: venv,
       })
     );
+    previewUnitWritten = dep.env === "preview";
     await run(session, log, "Registering the service", remote.installUnit(deps.unitDir, unitInfo.unit));
     throwIfCanceled(signal);
 
@@ -499,7 +507,8 @@ export async function runDeployJob(
         : `Preview is running on port ${dep.port}. Map a domain to it in the Nest dashboard to open it.`
     );
     // Mark ready first so this release counts when old ones are cleaned up.
-    await setState(deploymentId, "ready", { finishedAt: new Date() });
+    // The release is already live, so a cancel that arrived after the switch cannot undo it.
+    await setState(deploymentId, "ready", { finishedAt: new Date() }, true);
     await cleanup(session, log, project, home, deps.unitDir, dep.env === "production" ? dep.releaseId : (previous?.releaseId ?? null));
     await log.flush();
   } catch (err) {
@@ -507,6 +516,28 @@ export async function runDeployJob(
     log.error(message);
     await log.flush().catch(() => {});
     const canceled = signal.aborted || (await stateOf(deploymentId)) === "canceled";
+    if (previewUnitWritten && session) {
+      // A preview that did not come up must not stay behind as an enabled, restarting service.
+      const home = (await getProbe(session, server).catch(() => null))?.home;
+      if (home) {
+        const removed = await session
+          .script(
+            remote.removePreview({
+              home,
+              slug: project.slug,
+              releaseId: dep.releaseId,
+              unit: unitName(project.slug, { releaseId: dep.releaseId }),
+              unitDir: deps.unitDir,
+            }),
+            { timeoutMs: 60_000 }
+          )
+          .then(() => true)
+          .catch(() => false);
+        if (removed) {
+          await db.update(schema.deployments).set({ cleanedUp: true }).where(eq(schema.deployments.id, deploymentId));
+        }
+      }
+    }
     await setState(deploymentId, canceled ? "canceled" : "error", {
       error: log.mask(message).slice(0, 500),
       finishedAt: new Date(),

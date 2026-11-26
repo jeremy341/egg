@@ -3,7 +3,7 @@
  * Keyed by the section id in `nav.ts`; a test fails if a page has none.
  */
 export const SUMMARIES: Record<string, string> = {
-  overview: "What Nest Deploy does, what it needs from you and the steps it takes on every push.",
+  overview: "What Egg does, what it needs from you and the steps it takes on every push.",
   quickstart: "From a new account to a deployed app in four steps, with a sample repository to follow.",
   servers: "Connect your Nest account with its own SSH key, test the link, replace the key or disconnect.",
   projects: "Link a repository, choose a runtime, set the build and run commands, and see what every app can rely on.",
@@ -22,7 +22,7 @@ export const SUMMARIES: Record<string, string> = {
   activity: "A newest-first log of what you changed, with a search, filters and a CSV export.",
   account: "Your Hack Club sign-in, signed-in browsers, container permissions and how to delete your account.",
   security: "How your key, your builds and your secrets are handled, and who can see what.",
-  selfhost: "Run your own copy of Nest Deploy instead of the hosted one.",
-  limits: "Every number Nest Deploy enforces, grouped by what it limits.",
+  selfhost: "Run your own copy of Egg instead of the hosted one.",
+  limits: "Every number Egg enforces, grouped by what it limits.",
   troubleshooting: "What to check when a connection, build, domain, hook, alert or token call goes wrong.",
 };

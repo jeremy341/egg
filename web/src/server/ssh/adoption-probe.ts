@@ -14,17 +14,17 @@ import { shellQuote } from "@/server/ssh/connection";
  */
 
 export type AdoptionProbeArgs = {
-  /** Where Nest Deploy installs units. */
+  /** Where Egg installs units. */
   unitDir: string;
   slug: string;
-  /** The unit this deploy would write, for example nd-blog.service. */
+  /** The unit this deploy would write, for example egg-blog.service. */
   unit: string;
   port: number;
   /** owner/repo on GitHub, or null when it is not known. */
   repo: string | null;
 };
 
-const UNIT_NAME = /^nd-[a-z0-9]+(?:-[a-z0-9]+)*\.service$/;
+const UNIT_NAME = /^egg-[a-z0-9]+(?:-[a-z0-9]+)*\.service$/;
 const REPO = /^[A-Za-z0-9._-]{1,100}\/[A-Za-z0-9._-]{1,100}$/;
 
 export type AdoptionRaw = {
@@ -33,7 +33,7 @@ export type AdoptionRaw = {
   unitFile: { managed: boolean; active: string } | null;
   /** The unit as systemd knows it (loaded from somewhere), with its pid and cgroup. */
   own: { pid: number | null; controlGroup: string | null; loaded: boolean };
-  /** What is at ~/.nest-deploy/<slug>. */
+  /** What is at ~/.egg/<slug>. */
   folder:
     | { kind: "link" | "file" }
     | { kind: "dir"; managed: boolean; git: boolean; entries: number }
@@ -67,7 +67,7 @@ unit_dir=${shellQuote(args.unitDir)}
 slug=${shellQuote(args.slug)}
 unit=${shellQuote(args.unit)}
 repo=${shellQuote(args.repo ?? "")}
-base="$HOME/.nest-deploy"
+base="$HOME/.egg"
 dir="$base/$slug"
 repo_l=$(printf '%s' "$repo" | tr 'A-Z' 'a-z')
 ${SH_MARKER_HELPERS}
@@ -97,7 +97,7 @@ echo "home=$HOME"
 # The service file, and what systemd says about the name.
 f="$unit_dir/$unit"
 if [ -e "$f" ] || [ -L "$f" ]; then
-  m=0; if nd_unit_marked "$f"; then m=1; fi
+  m=0; if egg_unit_marked "$f"; then m=1; fi
   printf 'UNITFILE\\t%s\\t%s\\n' "$m" "$(systemctl is-active "$unit" 2>/dev/null)"
 fi
 load=""; pid=""; cg=""
@@ -109,7 +109,7 @@ printf 'OWN\\t%s\\t%s\\t%s\\n' "$load" "$pid" "$cg"
 # The project folder.
 if [ -L "$dir" ]; then printf 'FOLDER\\tlink\\n'
 elif [ -d "$dir" ]; then
-  mk=0; if nd_dir_managed "$dir"; then mk=1; fi
+  mk=0; if egg_dir_managed "$dir"; then mk=1; fi
   gt=0; if [ -e "$dir/.git" ]; then gt=1; fi
   cnt=$(ls -A "$dir" 2>/dev/null | wc -l | tr -d ' ')
   printf 'FOLDER\\tdir\\t%s\\t%s\\t%s\\n' "$mk" "$gt" "$cnt"
@@ -141,7 +141,7 @@ for uf in "$unit_dir"/*.service /etc/systemd/system/*.service; do
   [ -f "$uf" ] || continue
   n=$(basename "$uf")
   [ "$n" = "$unit" ] && continue
-  if nd_unit_marked "$uf"; then continue; fi
+  if egg_unit_marked "$uf"; then continue; fi
   wd=$(grep -m1 '^WorkingDirectory=' "$uf" 2>/dev/null | cut -d= -f2- | tr -d '\\r\\t')
   wd=\${wd#-}
   case "$wd" in "~"|"~/"*) wd="$HOME\${wd#\\~}";; "%h"*) wd="$HOME\${wd#%h}";; esac

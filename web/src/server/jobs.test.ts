@@ -101,6 +101,26 @@ describe("queue", () => {
   });
 });
 
+// Ceiling for the deployment to settle, and the per-test timeout that leaves room above it
+// for setup (mock host, project creation) and the assertions.
+const DEPLOY_SETTLE_CEILING_MS = 90_000;
+const WORKER_TEST_TIMEOUT_MS = 120_000;
+
+/** Polls the deployment until it is ready or failed; the error carries the last observed state. */
+async function waitForDeploymentSettled(deploymentId: string): Promise<string> {
+  const started = Date.now();
+  let last = "no row read yet";
+  while (Date.now() - started < DEPLOY_SETTLE_CEILING_MS) {
+    const row = await ctx.db.select().from(schema.deployments).where(eq(schema.deployments.id, deploymentId)).get();
+    last = row ? row.state : "deployment row missing";
+    if (last === "ready" || last === "error") return last;
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  throw new Error(
+    `Timed out after ${DEPLOY_SETTLE_CEILING_MS}ms waiting for deployment ${deploymentId} to become ready or error; last observed state: ${last}`,
+  );
+}
+
 describe("worker", () => {
   let mock: MockSsh;
 
@@ -132,18 +152,17 @@ describe("worker", () => {
     };
     const worker = startWorker({ pollMs: 100, deps, onError: (e) => { throw e; } });
 
-    const deadline = Date.now() + 15000;
-    let state = "queued";
-    while (Date.now() < deadline) {
-      const row = await ctx.db.select().from(schema.deployments).where(eq(schema.deployments.id, dep.id)).get();
-      state = row!.state;
-      if (state === "ready" || state === "error") break;
-      await new Promise((r) => setTimeout(r, 200));
+    let state: string;
+    try {
+      state = await waitForDeploymentSettled(dep.id);
+    } finally {
+      await worker.stop();
     }
-    await worker.stop();
 
     expect(state).toBe("ready");
     const job = await ctx.db.select().from(schema.jobs).where(eq(schema.jobs.deploymentId, dep.id)).get();
     expect(job?.state).toBe("done");
-  });
+    // The deploy runs through the mock WSL and SSH stack, whose speed depends on machine load.
+    // This test gets its own ceiling because the suite default (20s) is shorter than the wait below.
+  }, WORKER_TEST_TIMEOUT_MS);
 });

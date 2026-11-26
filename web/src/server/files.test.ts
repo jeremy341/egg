@@ -22,7 +22,7 @@ import { NestSession, shellQuote } from "@/server/ssh/connection";
 import { generateServerKey } from "@/server/ssh/keys";
 import { startMockSsh, wslEnabled, type MockSsh } from "@/server/test/mock-ssh";
 
-const ROOT = "/home/sam/.nest-deploy/app";
+const ROOT = "/home/sam/.egg/app";
 
 function recorder(result = { code: 0, stdout: "", stderr: "" }) {
   const exec = vi.fn(async () => result);
@@ -266,9 +266,9 @@ describe.skipIf(!hasLinux)("against a real shell", () => {
       username: "sam",
       privateKey: key.privateKey,
     });
-    root = `${mock.home}/.nest-deploy/app`;
+    root = `${mock.home}/.egg/app`;
     await sh(`
-r=.nest-deploy/app
+r=.egg/app
 mkdir -p $r/releases/r1/src $r/shared/data $r/incoming
 echo 'console.log(1)' > $r/releases/r1/index.js
 ln -s releases/r1 $r/current
@@ -361,7 +361,7 @@ ln -s ../releases/r1/.env $r/shared/env-via-release
     expect(await status(listDir(session, root, "shared/nope"))).toMatchObject({ status: 404 });
     expect(await status(listDir(session, root, "shared/data/a.txt"))).toMatchObject({ status: 409, code: "not_a_folder" });
     expect(await status(readFile(session, root, "shared/data"))).toMatchObject({ status: 409, code: "not_a_file" });
-    expect(await status(listDir(session, `${mock.home}/.nest-deploy/ghost`, ""))).toMatchObject({ status: 404, code: "no_folder" });
+    expect(await status(listDir(session, `${mock.home}/.egg/ghost`, ""))).toMatchObject({ status: 404, code: "no_folder" });
   });
 
   it("reads text, flags binary, and cuts at 1 MB", async () => {
@@ -533,7 +533,7 @@ ln -s ../releases/r1/.env $r/shared/env-via-release
   });
 
   it("refuses downloads over the 50 MB cap", async () => {
-    await sh(`truncate -s ${DOWNLOAD_LIMIT + 1} .nest-deploy/app/shared/huge.bin`);
+    await sh(`truncate -s ${DOWNLOAD_LIMIT + 1} .egg/app/shared/huge.bin`);
     expect(await status(downloadFile(session, root, "shared/huge.bin"))).toMatchObject({ status: 413, code: "too_large" });
   });
 });

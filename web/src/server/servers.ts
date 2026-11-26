@@ -1,4 +1,5 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, ne, sql } from "drizzle-orm";
+import { z } from "zod";
 import { audit } from "@/server/audit";
 import { config } from "@/server/config";
 import { newId, open, seal } from "@/server/crypto";
@@ -55,7 +56,7 @@ export async function listServers(userId: string) {
   return db
     .select()
     .from(schema.servers)
-    .where(eq(schema.servers.userId, userId))
+    .where(and(eq(schema.servers.userId, userId), ne(schema.servers.status, "disconnected")))
     .orderBy(schema.servers.createdAt);
 }
 
@@ -92,9 +93,41 @@ export async function createServer(
     throw new HttpError(409, `${username} is already connected.`, "conflict");
   }
 
-  const id = newId();
-  const key = generateServerKey(`nest-deploy:${username}`);
+  const key = generateServerKey(`egg:${username}`);
   const c = config();
+
+  // A disconnected account that kept its projects comes back as the same server, so they reattach.
+  const kept = await db
+    .select()
+    .from(schema.servers)
+    .where(
+      and(
+        eq(schema.servers.userId, userId),
+        eq(schema.servers.status, "disconnected"),
+        sql`lower(${schema.servers.nestUsername}) = ${username.toLowerCase()}`
+      )
+    )
+    .get();
+  if (kept) {
+    await db
+      .update(schema.servers)
+      .set({
+        nestUsername: username,
+        host: target?.host ?? c.NEST_HOST,
+        port: target?.port ?? c.NEST_PORT,
+        publicKey: key.publicKey,
+        privateKeyEnc: seal(key.privateKey, `server:${kept.id}`),
+        keyFingerprint: key.fingerprint,
+        hostKeyFingerprint: null,
+        status: "pending",
+        lastError: null,
+        probe: null,
+      })
+      .where(eq(schema.servers.id, kept.id));
+    return getServerForUser(userId, kept.id);
+  }
+
+  const id = newId();
   await db.insert(schema.servers).values({
     id,
     userId,
@@ -113,7 +146,7 @@ export async function createServer(
 /** Replace the key. The old one stops working once removed in the dashboard. */
 export async function rotateServerKey(userId: string, serverId: string) {
   const server = await getServerForUser(userId, serverId);
-  const key = generateServerKey(`nest-deploy:${server.nestUsername}`);
+  const key = generateServerKey(`egg:${server.nestUsername}`);
   const db = await getDb();
   await db
     .update(schema.servers)
@@ -130,12 +163,55 @@ export async function rotateServerKey(userId: string, serverId: string) {
   return getServerForUser(userId, serverId);
 }
 
-export async function deleteServer(userId: string, serverId: string) {
+/** What the owner chose in the disconnect confirmation. Keeping the projects is the default. */
+export const disconnectBody = z.object({ deleteProjects: z.boolean().default(false) });
+
+/**
+ * Disconnect a server. Terminals opened with its key close and Egg's key is
+ * removed either way. The projects are the owner's call: by default they are
+ * kept, still tied to the server record, and stop being managed until the
+ * same Nest account is connected again. With `deleteProjects` they, their
+ * deployments and logs are removed along with the server record.
+ */
+export async function deleteServer(
+  userId: string,
+  serverId: string,
+  options: { deleteProjects?: boolean } = {}
+) {
   const server = await getServerForUser(userId, serverId);
   // Root shells opened with this server's key must not outlive the key.
   await terminals().closeAllForUser(userId, "disabled", { serverId: server.id });
   const db = await getDb();
-  await db.delete(schema.servers).where(eq(schema.servers.id, server.id));
+  const projects = await db
+    .select({ id: schema.projects.id })
+    .from(schema.projects)
+    .where(eq(schema.projects.serverId, server.id));
+  const deleteProjects = options.deleteProjects === true;
+
+  if (deleteProjects || projects.length === 0) {
+    // Foreign keys remove the projects, deployments, logs, domains and samples with it.
+    await db.delete(schema.servers).where(eq(schema.servers.id, server.id));
+  } else {
+    // The projects need the record to point at. Drop the key and the pinned host,
+    // so nothing can connect until the account is connected again.
+    await db
+      .update(schema.servers)
+      .set({
+        status: "disconnected",
+        publicKey: "",
+        keyFingerprint: "",
+        privateKeyEnc: seal("removed", `server:${server.id}`),
+        hostKeyFingerprint: null,
+        lastError: null,
+        probe: null,
+      })
+      .where(eq(schema.servers.id, server.id));
+  }
+  await audit(userId, "server.disconnect", null, {
+    server: server.nestUsername,
+    projectsDeleted: deleteProjects ? projects.length : 0,
+    projectsKept: deleteProjects ? 0 : projects.length,
+  });
 }
 
 /**
@@ -146,6 +222,13 @@ export async function deleteServer(userId: string, serverId: string) {
  * files to whatever answers.
  */
 export async function connectToServer(server: ServerRow): Promise<NestSession> {
+  if (server.status === "disconnected") {
+    throw new HttpError(
+      409,
+      `${server.nestUsername} is disconnected. Connect it again to manage its projects.`,
+      "disconnected"
+    );
+  }
   const privateKey = open(server.privateKeyEnc, `server:${server.id}`);
   const session = await NestSession.connect({
     host: server.host,

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray } from "drizzle-orm";
 import { getDb, schema } from "@/server/db";
 import { notFound } from "@/server/http";
 import { getServerForUser, listServers, publicServer } from "@/server/servers";
@@ -215,10 +215,18 @@ export async function deploymentView(userId: string, deploymentId: string) {
 
 export async function serverViews(userId: string) {
   const rows = await listServers(userId);
+  const db = await getDb();
+  const counts = await db
+    .select({ serverId: schema.projects.serverId, n: count() })
+    .from(schema.projects)
+    .where(eq(schema.projects.userId, userId))
+    .groupBy(schema.projects.serverId);
+  const projectsOn = new Map(counts.map((c) => [c.serverId, c.n]));
   return rows.map((r) => {
     const view = publicServer(r);
     return {
       ...view,
+      projectCount: projectsOn.get(r.id) ?? 0,
       usage: view.probe ? usageFromProbe(view.probe, r.lastCheckedAt ?? new Date()) : null,
     };
   });

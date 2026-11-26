@@ -665,7 +665,7 @@ async function connectToContainer(
 // ---------------------------------------------------------------------------
 // The shared instance
 
-const KEY = Symbol.for("nest-deploy.terminal-manager");
+const KEY = Symbol.for("egg.terminal-manager");
 
 /**
  * One manager per process. It is kept on globalThis so route modules that are

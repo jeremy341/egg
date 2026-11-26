@@ -17,8 +17,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Nest Deploy",
-    template: "%s | Nest Deploy",
+    default: "Egg",
+    template: "%s | Egg",
   },
   description:
     "Push to GitHub and it goes live on your free Hack Club Nest container. Builds, logs, rollbacks and branch previews, no terminal needed.",

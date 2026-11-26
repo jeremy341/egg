@@ -1,7 +1,7 @@
 import { normalizePath } from "@/server/files-paths";
 
 /**
- * Nest Deploy writes a release's environment variables, in plain text, to
+ * Egg writes a release's environment variables, in plain text, to
  * `.env` at the top of the release (`current/.env`, `releases/<id>/.env`).
  * Values are write-only everywhere else, so neither the API nor the file
  * manager returns those files: both refuse them with 403 `secret_file`.

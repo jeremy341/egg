@@ -1,8 +1,8 @@
-> Scope decisions and final dispositions for every earlier “Could need” item are now in [[Nest Deploy Decided Feature Scope]].
+> Scope decisions and final dispositions for every earlier “Could need” item are now in [[Egg Decided Feature Scope]].
 
-# Vercel to Nest Deploy: Complete Feature Review
+# Vercel to Egg: Complete Feature Review
 
-Snapshot: 28 October 2026. This is the working master document for our feature review. It consolidates the detailed catalogs below and classifies capabilities by their fit for the Nest Deploy goal. Ratings are product judgments, not current Nest functionality.
+Snapshot: 28 October 2026. This is the working master document for our feature review. It consolidates the detailed catalogs below and classifies capabilities by their fit for the Egg goal. Ratings are product judgments, not current Nest functionality.
 
 ## Reading the decisions
 
@@ -18,9 +18,9 @@ Snapshot: 28 October 2026. This is the working master document for our feature r
 | REST API | [[REST API Feature Catalog]] | 938 endpoint pages, grouped by 46 route families with one linked entry per page. |
 | AI Gateway, AI SDK, agents, MCP, Connect, eve and Chat SDK | [[AI Agent Feature Catalog]] | 520 AI/agent pages, 32 Connect/eve pages, and section landing pages. |
 
-## Priority for Nest Deploy
+## Priority for Egg
 
-| Product area | Decision | What Nest Deploy needs to deliver |
+| Product area | Decision | What Egg needs to deliver |
 | --- | --- | --- |
 | Account and server workspaces | **Need** | Secure accounts; separately pair, identify, monitor, update and revoke each user's Nest server connection. |
 | Git provider and project import | **Need** | Begin with GitHub App and selected repositories; verify webhooks; support branch and commit selection. |
@@ -37,8 +37,8 @@ Snapshot: 28 October 2026. This is the working master document for our feature r
 | CDN, firewall, bot protection, DDoS mitigation | **Could need** | Integrate approved services if needed; a single user container cannot reproduce Vercel's global network. |
 | Teams, roles, enterprise SSO and compliance | **Could need / Do not need initially** | Begin with individual ownership; expand only with real users and verified operational capacity. |
 | AI Gateway, v0, AI SDK and Chat SDK | **Do not need** | These are separate products; they are not needed to deploy and manage Nest apps. |
-| MCP/API automation for Nest Deploy | **Could need** | Expose only after normal account, authorization, audit and revocation flows are secure. |
-| Storage and databases | **Could need** | Provide documentation or optional integrations; do not imply Nest Deploy manages databases by default. |
+| MCP/API automation for Egg | **Could need** | Expose only after normal account, authorization, audit and revocation flows are secure. |
+| Storage and databases | **Could need** | Provide documentation or optional integrations; do not imply Egg manages databases by default. |
 
 ## Recommended build sequence
 
@@ -54,5 +54,5 @@ See [[Vercel Docs Coverage and Audit Index]] for the 2,437-URL sitemap reconcili
 
 ## Combined requirements
 
-See [[Nest Deploy Full Feature Requirements]] for one consolidated document of all Need and Could need features plus the general product and implementation requirements.
+See [[Egg Full Feature Requirements]] for one consolidated document of all Need and Could need features plus the general product and implementation requirements.
 

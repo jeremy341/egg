@@ -174,7 +174,7 @@ describe("the pull request comment", () => {
     });
     expect(body).toContain("Preview failed");
     expect(body).toContain("aaaaaaa");
-    expect(body).toContain("<!-- nest-deploy-preview -->");
+    expect(body).toContain("<!-- egg-preview -->");
     expect(body).not.toMatch(/hackclub\.app/);
     const ok = previewComment({ projectName: "App", branch: "b", sha: null, state: "ready", port: 20001, link: "l" });
     expect(ok).toContain("Preview ready");
@@ -198,19 +198,19 @@ describe("the pull request comment", () => {
 
   it("creates the comment once, then updates it in place", async () => {
     const first = fakeGithub([]);
-    await upsertPullRequestComment(99, "sam/app", 7, "hello\n<!-- nest-deploy-preview -->", first.fetcher);
+    await upsertPullRequestComment(99, "sam/app", 7, "hello\n<!-- egg-preview -->", first.fetcher);
     expect(first.calls.some((c) => c.method === "POST" && c.url.endsWith("/issues/7/comments"))).toBe(true);
 
     clearTokenCacheForTests();
-    const second = fakeGithub([{ id: 55, body: "old\n<!-- nest-deploy-preview -->", user: { type: "Bot" } }]);
-    await upsertPullRequestComment(99, "sam/app", 7, "new\n<!-- nest-deploy-preview -->", second.fetcher);
+    const second = fakeGithub([{ id: 55, body: "old\n<!-- egg-preview -->", user: { type: "Bot" } }]);
+    await upsertPullRequestComment(99, "sam/app", 7, "new\n<!-- egg-preview -->", second.fetcher);
     expect(second.calls.some((c) => c.method === "PATCH" && c.url.endsWith("/issues/comments/55"))).toBe(true);
     expect(second.calls.some((c) => c.method === "POST" && c.url.includes("/issues/7/comments"))).toBe(false);
   });
 
   it("never edits a person's comment that happens to contain the marker", async () => {
-    const g = fakeGithub([{ id: 9, body: "quote: <!-- nest-deploy-preview -->", user: { type: "User" } }]);
-    await upsertPullRequestComment(99, "sam/app", 7, "x\n<!-- nest-deploy-preview -->", g.fetcher);
+    const g = fakeGithub([{ id: 9, body: "quote: <!-- egg-preview -->", user: { type: "User" } }]);
+    await upsertPullRequestComment(99, "sam/app", 7, "x\n<!-- egg-preview -->", g.fetcher);
     expect(g.calls.some((c) => c.method === "PATCH")).toBe(false);
     expect(g.calls.some((c) => c.method === "POST" && c.url.includes("/issues/7/comments"))).toBe(true);
   });

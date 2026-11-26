@@ -6,7 +6,7 @@ import { closeDbForTests, getDb } from "@/server/db";
 
 /** Point the app at a fresh SQLite file for the current test file. */
 export async function useFreshDb() {
-  const dir = mkdtempSync(path.join(tmpdir(), "nd-db-"));
+  const dir = mkdtempSync(path.join(tmpdir(), "egg-db-"));
   process.env.DATABASE_URL = `file:${path.join(dir, "test.db").replace(/\\/g, "/")}`;
   resetConfigForTests();
   await closeDbForTests();

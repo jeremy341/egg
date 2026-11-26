@@ -1,8 +1,8 @@
 # UI overhaul plan
 
-Goal: make every surface of Nest Deploy feel designed and enjoyable to use. That means a docs page that is a pleasure to read, motion that gives feedback and orientation (entrances, hovers, presses, state changes), skeletons that match each page's real layout, and consistent layouts. The product keeps a Vercel-like dashboard structure (sidebar, top bar, cards, hairlines, Geist), and the lead designer has freedom to bring in the homepage's own identity (the pixel grid, the pixel display face, the lit squares) where it helps.
+Goal: make every surface of Egg feel designed and enjoyable to use. That means a docs page that is a pleasure to read, motion that gives feedback and orientation (entrances, hovers, presses, state changes), skeletons that match each page's real layout, and consistent layouts. The product keeps a Vercel-like dashboard structure (sidebar, top bar, cards, hairlines, Geist), and the lead designer has freedom to bring in the homepage's own identity (the pixel grid, the pixel display face, the lit squares) where it helps.
 
-Backup of the tree before this work: `~/nest-deploy-backups/pre-ui-overhaul-*.tgz`.
+Backup of the tree before this work: `~/egg-backups/pre-ui-overhaul-*.tgz`.
 
 ## Team
 

@@ -105,7 +105,7 @@ export function probeIssues(p: NestProbe): ProbeIssue[] {
     issues.push({
       level: "error",
       message:
-        "systemd is not available in this container, so Nest Deploy cannot keep your apps running or restart them.",
+        "systemd is not available in this container, so Egg cannot keep your apps running or restart them.",
     });
   }
   if (p.uid !== 0) {

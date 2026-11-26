@@ -6,17 +6,17 @@ import { DIRECTION_WORDS, describeCount, formatDuration, type Direction } from "
 import { cn } from "@/lib/utils";
 import { getPublicStats } from "@/server/stats-cache";
 import { Figure, FrameLabel, NotEnough, SectionHead, Total, Value } from "./_components/figures";
-import { FRAME, GRID, SECTION, STACK, WRAP } from "./_components/layout";
+import { FRAME, GRID, SECTION, WRAP } from "./_components/layout";
 import { RuntimeBar } from "./_components/runtime-bar";
 import { StatsChart } from "./_components/stats-chart";
 import { StatsHeader } from "./_components/stats-header";
-import { HourStrip, WeekdayChart } from "./_components/stats-shape-charts";
+import { WeekdayChart } from "./_components/stats-shape-charts";
 import { StatsSkeleton } from "./_components/stats-skeleton";
 
 export const metadata = {
   title: "Stats",
   description:
-    "How Nest Deploy is being used, as rounded totals: sign-ups, deployments and how they end, build times, when the work happens and what it is made of. Nothing identifies a person or a project.",
+    "How Egg is being used, as rounded totals: sign-ups, deployments and how they end, build times, which days work happens on and what projects run on. Nothing identifies a person or a project.",
 };
 
 const updatedFormat = new Intl.DateTimeFormat("en-GB", {
@@ -214,23 +214,23 @@ async function StatsBody() {
 
       <section aria-labelledby="shape" className={SECTION}>
         <SectionHead id="shape" title="Shape of the work">
-          When deployments happen and what they are made of.
+          Which days deployments happen on, and what the projects are made of.
         </SectionHead>
 
-        <div className={STACK}>
-          <div className={GRID}>
-            <section aria-labelledby="weekday" className={FRAME}>
-              <h3 id="weekday" className="sr-only">
-                Deployments by weekday
-              </h3>
-              <div className="p-5">
-                <WeekdayChart buckets={d.byWeekday} windowDays={s.windowDays} />
-                <p className="mt-3 text-caption text-muted-foreground">
-                  The same {s.windowDays} days, so some weekdays are counted five times and others four.
-                </p>
-              </div>
-            </section>
+        <div className={cn(GRID, "mt-8")}>
+          <section aria-labelledby="weekday" className={FRAME}>
+            <h3 id="weekday" className="sr-only">
+              Deployments by weekday
+            </h3>
+            <div className="p-5">
+              <WeekdayChart buckets={d.byWeekday} windowDays={s.windowDays} />
+              <p className="mt-3 text-caption text-muted-foreground">
+                The same {s.windowDays} days, so some weekdays are counted five times and others four.
+              </p>
+            </div>
+          </section>
 
+          <div className="flex flex-col gap-[30px]">
             <section aria-labelledby="env" className={FRAME}>
               <h3 id="env" className="px-5 pt-5 text-label text-muted-foreground">
                 Deployments by environment, last {s.windowDays} days
@@ -243,17 +243,6 @@ async function StatsBody() {
                   <Figure count={d.byEnvironment.preview} small />
                 </Total>
               </dl>
-            </section>
-          </div>
-
-          <div className={GRID}>
-            <section aria-labelledby="hour" className={FRAME}>
-              <h3 id="hour" className="sr-only">
-                Deployments by hour of day
-              </h3>
-              <div className="p-5">
-                <HourStrip buckets={d.byHour.buckets} minimumBucket={d.byHour.minimumBucket} windowDays={s.windowDays} />
-              </div>
             </section>
 
             <section aria-labelledby="runtimes" className={FRAME}>
@@ -274,23 +263,44 @@ async function StatsBody() {
         </h2>
         <div className="mt-3 space-y-3 text-body-lg text-reading">
           <p>
-            Counts are rounded. Nothing here identifies a person or a project. Anything under 10 is shown as
-            &ldquo;fewer than 10&rdquo;, and larger numbers keep two significant figures. Each bar, hour and weekday
-            follows the same rule, so none of them can point at one person.
-          </p>
-          <p>
-            A percentage always says what it is a share of, and it appears only when at least 50 items sit behind it.
-            Below that it reads &ldquo;Not enough data&rdquo;.
-          </p>
-          <p>
-            They are totals from this Nest Deploy installation, with days and hours counted in UTC. They say how much
-            it is used. They are not a measure of uptime, and they say nothing about how any one app is running.
+            These are totals from Egg itself, with days counted in UTC. They say how much it is used. They are not a
+            measure of uptime, and they say nothing about how any one app is running.
           </p>
         </div>
-        <p className="mt-4 text-label text-muted-foreground">
+
+        <h3 className="mt-8 text-title-3">How they are rounded</h3>
+        <ul className="mt-3 list-disc space-y-2 pl-5 text-body-lg text-reading marker:text-muted-foreground">
+          <li>
+            A count under 10 reads &ldquo;fewer than 10&rdquo;. A larger one keeps two significant figures, so 1,234
+            shows as 1,200.
+          </li>
+          <li>
+            Each bar, weekday and runtime follows the same rule, so none of them can point at one person. The one
+            exception is a day with no deployments at all, which shows as 0.
+          </li>
+          <li>
+            A percentage says what it is a share of, and it appears only when at least 50 items sit behind it. Below
+            that it reads &ldquo;Not enough data&rdquo;. The same 50 is the minimum for build times, and the weekly
+            change in sign-ups needs 50 in both weeks.
+          </li>
+        </ul>
+
+        <h3 className="mt-8 text-title-3">What goes in, and what does not</h3>
+        <p className="mt-3 text-body-lg text-reading">
+          Only counts are read. No names, emails, repository or project names, domains, logs or file contents are used
+          for these numbers. The count of deployments through the API reads only how many were started by a token, not
+          whose they were. The last day of each 30 day window is today, so it is a part day. How Egg treats your data
+          beyond these totals is on the{" "}
+          <Link href="/security" className="link">
+            Security page
+          </Link>
+          .
+        </p>
+
+        <p className="mt-6 text-label text-muted-foreground">
           Last updated{" "}
           <time dateTime={s.generatedAt}>{updatedFormat.format(new Date(s.generatedAt))} UTC</time>. Refreshed at most
-          every 5 minutes. The same numbers as{" "}
+          every 5 minutes. Every number here is also in the{" "}
           <Link href="/api/stats" prefetch={false} className="link">
             JSON
           </Link>

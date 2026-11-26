@@ -1,16 +1,16 @@
 {
   "mcpServers": {
-    "nest-deploy": {
+    "egg": {
       "command": "npx",
       "args": [
         "-y",
         "mcp-remote",
-        "https://your-nest-deploy/api/mcp",
+        "https://your-egg/api/mcp",
         "--header",
         "Authorization:${NEST_AUTH}"
       ],
       "env": {
-        "NEST_AUTH": "Bearer ndp_..."
+        "NEST_AUTH": "Bearer egg_..."
       }
     }
   }

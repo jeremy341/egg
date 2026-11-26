@@ -13,7 +13,7 @@ import { shellQuote } from "@/server/ssh/connection";
 export type UnitState = "running" | "starting" | "failed" | "stopped" | "unknown";
 
 export type InventoryUnit = {
-  /** `nd-<slug>.service` or `nd-<slug>-pv-<8 hex>.service`. */
+  /** `egg-<slug>.service` or `egg-<slug>-pv-<8 hex>.service`. */
   name: string;
   state: UnitState;
   /** systemd's own word, for example "running" or "auto-restart". */
@@ -27,7 +27,7 @@ export type InventoryUnit = {
   /** cgroup of the unit, used to tell which listening process belongs to it. */
   controlGroup: string | null;
   /**
-   * Whether Nest Deploy wrote this unit (it carries our marker). False means
+   * Whether Egg wrote this unit (it carries our marker). False means
    * someone else made it, so it is never stopped or removed. Missing when the
    * container's answer did not say.
    */
@@ -35,12 +35,12 @@ export type InventoryUnit = {
 };
 
 export type InventoryFolder = {
-  /** Folder name under `~/.nest-deploy/`. */
+  /** Folder name under `~/.egg/`. */
   name: string;
   sizeKb: number | null;
   /** True when the entry is a symbolic link. Links are listed but never removed. */
   isLink: boolean;
-  /** Whether Nest Deploy created this folder (marker file, or only our own layout inside). */
+  /** Whether Egg created this folder (marker file, or only our own layout inside). */
   managed?: boolean;
 };
 
@@ -76,7 +76,7 @@ export class InventoryParseError extends Error {
   }
 }
 
-const UNIT_RE = /^nd-[a-z0-9-]+\.service$/;
+const UNIT_RE = /^egg-[a-z0-9-]+\.service$/;
 
 /**
  * Lists listening TCP ports with ss or netstat and the cgroup of each owning
@@ -110,22 +110,22 @@ done
 `;
 
 /**
- * The read-only script. `unitDir` is where Nest Deploy installs units (the
+ * The read-only script. `unitDir` is where Egg installs units (the
  * app's own setting, not user input), and is quoted regardless.
  */
 export function inventoryScript(unitDir: string): string {
   return `
 set +e
 unit_dir=${shellQuote(unitDir)}
-base="$HOME/.nest-deploy"
+base="$HOME/.egg"
 ${SH_MARKER_HELPERS}echo "home=$HOME"
 echo "unit_dir=$unit_dir"
 if command -v systemctl >/dev/null 2>&1; then echo "has_systemctl=1"; else echo "has_systemctl=0"; fi
 df -Pm "$HOME" 2>/dev/null | awk 'NR==2 { printf "disk_total_mb=%d\\ndisk_used_mb=%d\\n", $2, $3 }'
 
 names=$( {
-  ls -1 "$unit_dir" 2>/dev/null | grep -E '^nd-[a-z0-9-]+\\.service$'
-  systemctl list-unit-files --type=service --no-legend --no-pager 'nd-*.service' 2>/dev/null | awk '{print $1}' | grep -E '^nd-[a-z0-9-]+\\.service$'
+  ls -1 "$unit_dir" 2>/dev/null | grep -E '^egg-[a-z0-9-]+\\.service$'
+  systemctl list-unit-files --type=service --no-legend --no-pager 'egg-*.service' 2>/dev/null | awk '{print $1}' | grep -E '^egg-[a-z0-9-]+\\.service$'
 } | sort -u )
 for u in $names; do
   load=""; active=""; sub=""; pid=""; frag=""; cg=""
@@ -140,7 +140,7 @@ for u in $names; do
     esac
   done < <(systemctl show "$u" -p LoadState -p ActiveState -p SubState -p MainPID -p FragmentPath -p ControlGroup 2>/dev/null)
   if [ -z "$frag" ] && [ -f "$unit_dir/$u" ]; then frag="$unit_dir/$u"; fi
-  marked=0; if nd_unit_marked "$unit_dir/$u"; then marked=1; fi
+  marked=0; if egg_unit_marked "$unit_dir/$u"; then marked=1; fi
   exec_start=""
   if [ -n "$frag" ] && [ -r "$frag" ]; then
     exec_start=$(grep -m1 '^ExecStart=' "$frag" 2>/dev/null | cut -c11- | tr '\\t\\r' '  ' | cut -c1-400)
@@ -155,7 +155,7 @@ if [ -d "$base" ]; then
     n=$(basename "$d")
     link=0; if [ -L "\${d%/}" ]; then link=1; fi
     kb=$($T du -sk "$d" 2>/dev/null | cut -f1)
-    marked=0; if nd_dir_managed "\${d%/}"; then marked=1; fi
+    marked=0; if egg_dir_managed "\${d%/}"; then marked=1; fi
     printf 'DIR\\t%s\\t%s\\t%s\\t%s\\n' "$n" "$kb" "$link" "$marked"
   done
 fi
@@ -322,10 +322,10 @@ export function removeUnitScript(unitDir: string, unit: string): string {
     `set +e\n` +
     `unit=${shellQuote(unit)}\nfile=${shellQuote(file)}\n` +
     SH_MARKER_HELPERS +
-    // Only a unit file Nest Deploy wrote is ever stopped or removed. One that is
+    // Only a unit file Egg wrote is ever stopped or removed. One that is
     // missing here, is a link, or has no marker belongs to someone else.
-    `if [ ! -e "$file" ] && [ ! -L "$file" ]; then echo "That service is not in Nest Deploy's service folder, so it was left alone" >&2; exit ${REMOVE_EXIT.refused}; fi\n` +
-    `if ! nd_unit_marked "$file"; then echo "This service was not created by Nest Deploy, so it was left alone" >&2; exit ${REMOVE_EXIT.refused}; fi\n` +
+    `if [ ! -e "$file" ] && [ ! -L "$file" ]; then echo "That service is not in Egg's service folder, so it was left alone" >&2; exit ${REMOVE_EXIT.refused}; fi\n` +
+    `if ! egg_unit_marked "$file"; then echo "This service was not created by Egg, so it was left alone" >&2; exit ${REMOVE_EXIT.refused}; fi\n` +
     `systemctl stop "$unit" >/dev/null 2>&1\n` +
     `systemctl disable "$unit" >/dev/null 2>&1\n` +
     `rm -f -- "$file"\n` +
@@ -337,19 +337,19 @@ export function removeUnitScript(unitDir: string, unit: string): string {
 }
 
 /**
- * Delete one folder under `~/.nest-deploy`. Refuses a link, and anything that
+ * Delete one folder under `~/.egg`. Refuses a link, and anything that
  * does not resolve to a direct child of the base folder.
  */
 export function removeFolderScript(folder: string): string {
   return (
     `set +e\n` +
-    `name=${shellQuote(folder)}\nbase="$HOME/.nest-deploy"\ndir="$base/$name"\n` +
+    `name=${shellQuote(folder)}\nbase="$HOME/.egg"\ndir="$base/$name"\n` +
     SH_MARKER_HELPERS +
     `if [ -L "$dir" ]; then echo "That folder is a link, so it was left alone" >&2; exit ${REMOVE_EXIT.refused}; fi\n` +
     `if [ ! -d "$dir" ]; then exit ${REMOVE_EXIT.notFound}; fi\n` +
     `real=$(cd "$dir" 2>/dev/null && pwd -P)\nrealbase=$(cd "$base" 2>/dev/null && pwd -P)\n` +
     `if [ -z "$real" ] || [ -z "$realbase" ] || [ "$(dirname "$real")" != "$realbase" ]; then echo "Refusing a folder outside $base" >&2; exit ${REMOVE_EXIT.refused}; fi\n` +
-    `if ! nd_dir_managed "$dir"; then echo "This folder was not created by Nest Deploy, so it was left alone" >&2; exit ${REMOVE_EXIT.refused}; fi\n` +
+    `if ! egg_dir_managed "$dir"; then echo "This folder was not created by Egg, so it was left alone" >&2; exit ${REMOVE_EXIT.refused}; fi\n` +
     `rm -rf -- "$dir"\n` +
     `if [ -e "$dir" ]; then echo "The folder is still there" >&2; exit ${REMOVE_EXIT.notRemoved}; fi\n` +
     `exit 0\n`

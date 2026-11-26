@@ -1,4 +1,4 @@
-# Nest Deploy UI spec (locked)
+# Egg UI spec (locked)
 
 Owner: lead designer. Status: **locked** for phase 2 and 3. Implementers build exactly this. If something here is impossible or wrong, stop and raise it with the lead through the main session; do not improvise around it.
 
@@ -33,7 +33,7 @@ This spec was written from a full read of the code. No screenshots were availabl
 
 Dials. Dashboard: variance 3, motion 3, density 6. Docs: variance 4, motion 3, density 4. Marketing below the hero: variance 7, motion 6, density 4. DFII 14 (impact 4, fit 5, feasibility 4, performance 4, consistency risk 3).
 
-**Differentiation anchor.** With the logo removed you would still know it is Nest Deploy because: in-progress states are a 2x2 pixel scanner instead of a spinner, every project has a pixel identicon instead of a letter or Vercel's triangle, empty states sit on a faint fading pixel grid, the docs nav marks your place with a lit square, and section headings on public pages are set in Pixelify.
+**Differentiation anchor.** With the logo removed you would still know it is Egg because: in-progress states are a 2x2 pixel scanner instead of a spinner, every project has a pixel identicon instead of a letter or Vercel's triangle, empty states sit on a faint fading pixel grid, the docs nav marks your place with a lit square, and section headings on public pages are set in Pixelify.
 
 ### 1.1 What stays Vercel-like (all dashboard surfaces)
 - Shell: 256px sidebar on `lg+`, 56px sticky top bar, floating dock on phones.
@@ -461,7 +461,7 @@ The hero function, its classes and its inline styles do not change. Everything a
 
 ### 6.4 Dashboard shell (Dashboard A)
 **Sidebar (`components/sidebar.tsx`, lg+)**
-- Top row exactly 56px (`h-14 border-b px-2 flex items-center gap-1`) so it lines up with the top bar's hairline: `NestMark` 20px inside a 32px `Link href="/projects"` (`aria-label="Nest Deploy home"`, rounded-md, hover gray-alpha-100), then `ServerSwitcher` (flex-1, `h-9`).
+- Top row exactly 56px (`h-14 border-b px-2 flex items-center gap-1`) so it lines up with the top bar's hairline: `NestMark` 20px inside a 32px `Link href="/projects"` (`aria-label="Egg home"`, rounded-md, hover gray-alpha-100), then `ServerSwitcher` (flex-1, `h-9`).
 - Below: `FindButton` in `p-2` (`h-8`, remove `outline-none`; `kbd` "F").
 - Nav (`nav-list.tsx`): items per section 5. Project context: the back link, then a project label row `px-2 pt-3 pb-1 flex items-center gap-2 text-[12px] text-subtle-foreground` with `PixelAvatar size={16}` and the name.
 - Bottom group (`border-t p-2`): "Docs" (`Link href="/docs"`, `BookOpenTextIcon`), "Nest guides" (external, trailing `ArrowUpRightIcon` 12px `text-subtle-foreground`), `UserMenu`.
@@ -558,7 +558,7 @@ The hero function, its classes and its inline styles do not change. Everything a
 - `loading.tsx` → `DomainsSkeleton`. `PageHeader` with Docs link `/docs#domains`.
 - Add form: `NativeSelect`; domain input `aria-invalid` and `aria-describedby` to the footer message when the error belongs to it; port placeholder "3000"; Add button `loading` "Adding…".
 - Instructions: `Alert tone="info"` titled "Next: finish setup for {domain}" with the ordered steps and `CopyField`s, `motion-enter`.
-- List: `Stagger as="ul"` card with rows; status `StatusIndicator` (valid ready "Valid", pending neutral "Not checked", invalid error "Needs attention") wrapped in `Swap` keyed by status; Check (outline sm, spinning icon while checking); Edit and Remove icon buttons (40px on phones). Remove uses `ConfirmDialog tone="destructive"` title "Remove {domain}?", description "This removes the record from Nest Deploy.", confirm "Remove"; errors go to the dialog. Inline edit form `motion-enter`, Save `loading`. Notes `role="status"` with `Swap`.
+- List: `Stagger as="ul"` card with rows; status `StatusIndicator` (valid ready "Valid", pending neutral "Not checked", invalid error "Needs attention") wrapped in `Swap` keyed by status; Check (outline sm, spinning icon while checking); Edit and Remove icon buttons (40px on phones). Remove uses `ConfirmDialog tone="destructive"` title "Remove {domain}?", description "This removes the record from Egg.", confirm "Remove"; errors go to the dialog. Inline edit form `motion-enter`, Save `loading`. Notes `role="status"` with `Swap`.
 - Empty list: `EmptyState` icon `GlobeSimpleIcon`, title "No domains recorded yet", description "Add one above. Nest maps domains to ports on its own dashboard, so add it there too." No server: `EmptyState` icon `HardDrivesIcon`, title "Connect a server first", description "Then you can record domains for it.", action "Connect a server".
 - **AC**: rows on phones wrap so the three actions stay on one line under the name, no horizontal scroll; no destructive action without a dialog.
 
@@ -583,7 +583,7 @@ The hero function, its classes and its inline styles do not change. Everything a
 - **AC**: bars grow once, never on refresh; readout works with a mouse; chart summary remains for screen readers.
 
 ### 6.17 Login (`/login`, Marketing)
-- Keep the masked `PixelField` background and structure. Load `pixel`; title "Log in to Nest Deploy" in `font-pixel text-[28px] leading-8 font-medium`.
+- Keep the masked `PixelField` background and structure. Load `pixel`; title "Log in to Egg" in `font-pixel text-[28px] leading-8 font-medium`.
 - Entrance once: mark, title, card each `motion-enter` with `--enter-delay` 0, 60, 120ms.
 - Card `rounded-lg bg-card p-6 shadow-border-small`; error `Alert tone="error" role="alert"`; Hack Club button `Button size="lg"` full width (40px). When Hack Club is not configured render a disabled `Button` (not a focusable anchor) and show the existing explanation as `Alert tone="note"`.
 - Dev sign-in unchanged copy; input and button 40px on phones.

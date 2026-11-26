@@ -50,7 +50,7 @@ beforeEach(async () => {
 describe("GET /api/v1/me", () => {
   it("answers 401 without a valid token", async () => {
     expect((await get(null)).status).toBe(401);
-    expect((await get("ndp_nope")).status).toBe(401);
+    expect((await get("egg_nope")).status).toBe(401);
     const { secret, token } = await createApiToken(sam.id, { name: "gone", scopes: ["logs:read"] });
     await revokeApiToken(sam.id, token.id);
     expect((await get(secret)).status).toBe(401);

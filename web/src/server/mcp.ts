@@ -15,10 +15,10 @@ import { HttpError } from "@/server/http";
 const LATEST = "2025-06-18";
 const SUPPORTED = [LATEST, "2025-03-26", "2024-11-05"];
 
-export const SERVER_INFO = { name: "nest-deploy", title: "Nest Deploy", version: "1.0.0" };
+export const SERVER_INFO = { name: "egg", title: "Egg", version: "1.0.0" };
 
 const INSTRUCTIONS =
-  "Tools for the Nest Deploy projects of the token's owner. Call get_me first to see which scopes the token has, then list_projects to get project ids, " +
+  "Tools for the Egg projects of the token's owner. Call get_me first to see which scopes the token has, then list_projects to get project ids, " +
   "then list_deployments to see build state, and list_servers for server ids. " +
   "Tools that change things (create, update or delete a project, deploy, redeploy, cancel, rollback, set or remove " +
   "environment variables, add or remove domains, replace the deploy hook, write or delete files, use a terminal) change " +

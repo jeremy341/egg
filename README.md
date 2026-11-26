@@ -1,8 +1,12 @@
-# Nest Deploy
+# Egg
 
 A Vercel-style dashboard for deploying projects to [Hack Club Nest](https://guides.hackclub.app) servers.
 
 **Status:** working. The dashboard, deploy pipeline, GitHub integration and uptime monitor are built; the roadmap below lists what is not.
+
+## Run it yourself
+
+You can run the whole app privately on your own computer, with no Hack Club account. Set `LOCAL_MODE=1` and sign in with one button. The step-by-step guide is [docs/selfhost/README.md](docs/selfhost/README.md), and [docs/selfhost/customising.md](docs/selfhost/customising.md) covers the name, colours, ports and build memory.
 
 ## Start here
 

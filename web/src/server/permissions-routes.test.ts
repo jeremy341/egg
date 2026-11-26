@@ -136,7 +136,7 @@ beforeEach(async () => {
   });
   // Real ownership lookup, fake shell. Audit goes to the real log.
   manager = new TerminalManager({ connect });
-  (globalThis as unknown as Record<symbol, unknown>)[Symbol.for("nest-deploy.terminal-manager")] = manager;
+  (globalThis as unknown as Record<symbol, unknown>)[Symbol.for("egg.terminal-manager")] = manager;
 
   exec.mockClear();
   vi.mocked(withServerSession).mockReset();
@@ -162,7 +162,7 @@ describe("migration 0008: file changes off", () => {
   const drizzleDir = path.join(process.cwd(), "drizzle");
   let work: string;
   beforeAll(() => {
-    work = mkdtempSync(path.join(tmpdir(), "nd-mig-"));
+    work = mkdtempSync(path.join(tmpdir(), "egg-mig-"));
   });
   afterAll(() => {
     try {
@@ -489,7 +489,7 @@ describe("enforcement", () => {
 
   it("refuses leftover removal on a brand new server, with no switch ever touched, before SSH", async () => {
     const fresh = (await createServer(sam.id, "sam-p5")).id;
-    const res = await removeOrphansRoute(json("/x", "POST", { ids: ["nd-old.service"] }), idCtx(fresh));
+    const res = await removeOrphansRoute(json("/x", "POST", { ids: ["egg-old.service"] }), idCtx(fresh));
     expect(res.status).toBe(403);
     expect((await bodyOf(res)).error?.code).toBe("disabled");
     expect(sshWasUsed()).toBe(false);
@@ -498,7 +498,7 @@ describe("enforcement", () => {
 
   it("refuses leftover removal with 403 while it is off, before validating or touching SSH", async () => {
     await setPermissions(sam.id, samServer, { orphanRemoval: false });
-    for (const body of [{ ids: ["nd-old.service"] }, { ids: [] }, { nonsense: 1 }]) {
+    for (const body of [{ ids: ["egg-old.service"] }, { ids: [] }, { nonsense: 1 }]) {
       const res = await removeOrphansRoute(json("/x", "POST", body), idCtx(samServer));
       expect(res.status, JSON.stringify(body)).toBe(403);
       expect((await bodyOf(res)).error?.message).toContain("Removing leftovers is turned off");
@@ -510,7 +510,7 @@ describe("enforcement", () => {
   });
 
   it("answers 404 for leftover removal on someone else's server", async () => {
-    const res = await removeOrphansRoute(json("/x", "POST", { ids: ["nd-old.service"] }), idCtx(kimServer));
+    const res = await removeOrphansRoute(json("/x", "POST", { ids: ["egg-old.service"] }), idCtx(kimServer));
     expect(res.status).toBe(404);
     expect(sshWasUsed()).toBe(false);
   });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ENDPOINTS } from "@/server/api-v1";
-import { NestDeploy, NestDeployError, type FetchInit, type FetchLike, type FetchResponse } from "./nest-deploy";
+import { Egg, EggError, type FetchInit, type FetchLike, type FetchResponse } from "./egg";
 
 type Call = { url: string; init: FetchInit };
 
@@ -27,10 +27,10 @@ function fake(...answers: (FetchResponse | Error)[]) {
   return { fetch, calls };
 }
 
-const TOKEN = "ndp_secretsecretsecret";
+const TOKEN = "egg_secretsecretsecret";
 const BASE = "https://deploy.example.com";
-const client = (f: FetchLike, extra: Partial<ConstructorParameters<typeof NestDeploy>[0]> = {}) =>
-  new NestDeploy({ token: TOKEN, baseUrl: BASE, fetch: f, ...extra });
+const client = (f: FetchLike, extra: Partial<ConstructorParameters<typeof Egg>[0]> = {}) =>
+  new Egg({ token: TOKEN, baseUrl: BASE, fetch: f, ...extra });
 
 describe("requests", () => {
   it("sends the token as a bearer header and asks for JSON", async () => {
@@ -119,13 +119,13 @@ describe("every method calls a real endpoint of the API", () => {
 });
 
 describe("errors", () => {
-  it("maps an API error to a NestDeployError with its status, code and message", async () => {
+  it("maps an API error to a EggError with its status, code and message", async () => {
     const { fetch } = fake(reply(403, { error: { code: "forbidden", message: "This token does not have the logs:read permission." } }));
     const err = await client(fetch).getLogs("P").catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(NestDeployError);
+    expect(err).toBeInstanceOf(EggError);
     expect(err).toBeInstanceOf(Error);
     expect(err).toMatchObject({
-      name: "NestDeployError",
+      name: "EggError",
       status: 403,
       code: "forbidden",
       message: "This token does not have the logs:read permission.",
@@ -135,51 +135,51 @@ describe("errors", () => {
 
   it("keeps the Retry-After seconds on a 429", async () => {
     const { fetch } = fake(reply(429, { error: { code: "rate_limited", message: "Slow down." } }, { "retry-after": "17" }));
-    const err = (await client(fetch).listProjects().catch((e: unknown) => e)) as NestDeployError;
+    const err = (await client(fetch).listProjects().catch((e: unknown) => e)) as EggError;
     expect(err).toMatchObject({ status: 429, code: "rate_limited", retryAfterSeconds: 17 });
   });
 
   it("gives a generic error when a failure is not the API's JSON", async () => {
     const { fetch } = fake(reply(502, "<html>Bad gateway</html>"));
-    const err = (await client(fetch).listProjects().catch((e: unknown) => e)) as NestDeployError;
+    const err = (await client(fetch).listProjects().catch((e: unknown) => e)) as EggError;
     expect(err).toMatchObject({ status: 502, code: "http_error", message: "The server answered 502." });
   });
 
   it("reports a network failure as status 0 without the underlying text", async () => {
     const { fetch } = fake(new TypeError(`connect ECONNREFUSED with ${TOKEN}`));
-    const err = (await client(fetch).listProjects().catch((e: unknown) => e)) as NestDeployError;
+    const err = (await client(fetch).listProjects().catch((e: unknown) => e)) as EggError;
     expect(err).toMatchObject({ status: 0, code: "network_error" });
     expect(err.message).not.toContain(TOKEN);
   });
 
   it("reports a success that is not JSON as bad_response", async () => {
     const { fetch } = fake(reply(200, "ok"));
-    const err = (await client(fetch).listProjects().catch((e: unknown) => e)) as NestDeployError;
+    const err = (await client(fetch).listProjects().catch((e: unknown) => e)) as EggError;
     expect(err).toMatchObject({ status: 200, code: "bad_response" });
   });
 
   it("times out a request that never answers", async () => {
     const hang: FetchLike = (_url, init) =>
       new Promise((_resolve, reject) => init.signal?.addEventListener("abort", () => reject(new Error("aborted"))));
-    const err = (await client(hang, { timeoutMs: 20 }).listProjects().catch((e: unknown) => e)) as NestDeployError;
+    const err = (await client(hang, { timeoutMs: 20 }).listProjects().catch((e: unknown) => e)) as EggError;
     expect(err).toMatchObject({ status: 0, code: "timeout" });
   });
 
   it("never puts the token in an error", async () => {
     const { fetch } = fake(reply(401, { error: { code: "unauthorized", message: "That access token is not valid." } }));
-    const err = (await client(fetch).me().catch((e: unknown) => e)) as NestDeployError;
+    const err = (await client(fetch).me().catch((e: unknown) => e)) as EggError;
     expect(JSON.stringify({ ...err, message: err.message, stack: undefined })).not.toContain(TOKEN);
   });
 
   it("refuses to start without a token, an address or a fetch", () => {
     const { fetch } = fake(reply(200, {}));
-    expect(() => new NestDeploy({ token: " ", baseUrl: BASE, fetch })).toThrow(expect.objectContaining({ code: "missing_token" }));
-    expect(() => new NestDeploy({ token: TOKEN, baseUrl: "", fetch })).toThrow(expect.objectContaining({ code: "missing_base_url" }));
+    expect(() => new Egg({ token: " ", baseUrl: BASE, fetch })).toThrow(expect.objectContaining({ code: "missing_token" }));
+    expect(() => new Egg({ token: TOKEN, baseUrl: "", fetch })).toThrow(expect.objectContaining({ code: "missing_base_url" }));
     const original = globalThis.fetch;
     // @ts-expect-error simulate a runtime with no fetch
     delete globalThis.fetch;
     try {
-      expect(() => new NestDeploy({ token: TOKEN, baseUrl: BASE })).toThrow(expect.objectContaining({ code: "no_fetch" }));
+      expect(() => new Egg({ token: TOKEN, baseUrl: BASE })).toThrow(expect.objectContaining({ code: "no_fetch" }));
     } finally {
       globalThis.fetch = original;
     }

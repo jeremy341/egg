@@ -18,7 +18,7 @@ Date: 2026-11-06. Scope: `web/src/proxy.ts`, `server/auth/**`, `api-tokens.ts`, 
 ## Checked, no defect
 
 - Session cookie: httpOnly, SameSite=Lax, Secure in production, path `/` (`session.ts:112`). Token is 32 random bytes, only its SHA-256 is stored, expiry enforced in `userForSessionToken`.
-- API tokens: `ndp_` plus 32 random bytes, SHA-256 at rest, looked up by hash (no secret-dependent comparison, so no timing oracle). Expired, revoked and unknown tokens are indistinguishable (`principalFor`). OAuth state uses `safeEqual`.
+- API tokens: `egg_` plus 32 random bytes, SHA-256 at rest, looked up by hash (no secret-dependent comparison, so no timing oracle). Expired, revoked and unknown tokens are indistinguishable (`principalFor`). OAuth state uses `safeEqual`.
 - Scope: `callEndpoint` runs `requireScope` first; webhook and export routes call it themselves. Existing tests cover a 403 for every endpoint.
 - IDOR: every service reached from `/api/v1` filters by `userId` (projects, deployments, domains, servers, webhooks, tokens); other users' ids give 404. Token update and revoke are scoped to the owner.
 - CORS: `*` without credentials; no `cookies()` or session lookup under `/api/v1` or `/api/mcp`; tests confirm cookies are ignored. Dashboard API routes get no CORS headers.

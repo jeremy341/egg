@@ -6,7 +6,7 @@ import { getProjectForUser } from "@/server/projects";
 import { MIN_SAMPLE } from "@/server/stats";
 
 /**
- * Funnels: an ordered list of steps (a page path, or a data-nd-track name) and
+ * Funnels: an ordered list of steps (a page path, or a data-egg-track name) and
  * how many visitors got to each one.
  *
  * A visitor counts at a step only after reaching the steps before it, in order,

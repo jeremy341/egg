@@ -43,7 +43,7 @@ describe("package manager", () => {
     expect(d.warnings[0]).toContain("package-lock.json");
   });
 
-  it("flags bun as not built by Nest Deploy yet", () => {
+  it("flags bun as not built by Egg yet", () => {
     const d = detectRepo({ "package.json": pkg({}), "bun.lock": "" });
     expect(d.packageManagerSupported).toBe(false);
     expect(d.notes.join(" ")).toContain("Bun");
@@ -220,7 +220,7 @@ describe("environment names", () => {
     ]);
   });
 
-  it("drops names Nest Deploy sets itself", () => {
+  it("drops names Egg sets itself", () => {
     const d = detectRepo({ ".env.example": "PORT=3000\nHOST=0.0.0.0\nPATH=/x\nSECRET=1" });
     expect(d.env.map((e) => e.name)).toEqual(["SECRET"]);
   });

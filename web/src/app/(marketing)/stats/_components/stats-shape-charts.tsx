@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { countValue, describeCount, formatCount, formatHour, type Count } from "@/lib/stats-format";
+import { countValue, describeCount, formatCount, type Count } from "@/lib/stats-format";
 import { cn } from "@/lib/utils";
 import { TableDisclosure } from "./figures";
 import { PLOT_H } from "./layout";
@@ -10,7 +10,6 @@ import { PLOT_H } from "./layout";
 const STUB = 12;
 
 type Weekday = { weekday: string; count: Count };
-type Hour = { hour: number; count: Count };
 
 /** Mark kinds are drawn differently so nothing is implied that is not known. */
 function Legend({ children }: { children: React.ReactNode }) {
@@ -113,115 +112,6 @@ export function WeekdayChart({ buckets, windowDays }: { buckets: Weekday[]; wind
         caption={`Deployments per weekday in UTC over the last ${windowDays} days, rounded`}
         head={["Weekday (UTC)", "Deployments"]}
         rows={buckets.map((b) => [b.weekday, formatCount(b.count)])}
-      />
-    </figure>
-  );
-}
-
-/** Opacity of the lightest cell that carries a value, so a small value is still visible. */
-const FLOOR = 0.25;
-
-/**
- * Deployments per hour of the day (UTC) over the last 30 days: 24 cells.
- * Darker means more, on a scale from 10 to the busiest hour. An hour with
- * fewer than `minimumBucket` is an empty outlined cell with no value: it is
- * neither dark nor light, and it is never a zero. The table under the strip
- * carries the same facts.
- */
-export function HourStrip({
-  buckets,
-  minimumBucket,
-  windowDays,
-}: {
-  buckets: Hour[];
-  minimumBucket: number;
-  windowDays: number;
-}) {
-  const [hover, setHover] = useState<number | null>(null);
-  const values = buckets.map((b) => countValue(b.count));
-  const max = Math.max(0, ...values);
-  const shown = buckets.filter((b) => "approx" in b.count).length;
-  const active = hover !== null ? buckets[hover] : null;
-  const busiest = max >= minimumBucket ? buckets.find((b) => countValue(b.count) === max) : undefined;
-
-  const summary =
-    `Deployments for each hour of the day over the last ${windowDays} days, in UTC. ` +
-    (shown === 0
-      ? `No hour reached ${minimumBucket}, so no values are shown.`
-      : `${shown} of 24 hours had ${minimumBucket} or more. ${
-          busiest ? `The busiest started at ${formatHour(busiest.hour)} with ${describeCount(busiest.count)}. ` : ""
-        }The other ${24 - shown} had fewer than ${minimumBucket}.`);
-
-  return (
-    <figure>
-      <figcaption className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-        <span className="text-label font-medium">Deployments by hour of day (UTC)</span>
-        <span aria-hidden="true" className="tabular text-right text-caption text-muted-foreground">
-          {active
-            ? `${formatHour(active.hour)}: ${describeCount(active.count)}`
-            : busiest
-              ? `Busiest: ${formatHour(busiest.hour)}`
-              : `No hour reached ${minimumBucket}`}
-        </span>
-      </figcaption>
-
-      <div className="mt-3">
-        <div
-          role="img"
-          aria-label={summary}
-          className="grid h-12 grid-cols-[repeat(24,minmax(0,1fr))] gap-[2px]"
-          onPointerLeave={() => setHover(null)}
-        >
-          {buckets.map((b, i) => {
-            const isActive = hover === i;
-            const low = "lessThan" in b.count;
-            return (
-              <div
-                key={b.hour}
-                onPointerEnter={() => setHover(i)}
-                className={cn(
-                  "transition-[outline-color] duration-(--dur-fast)",
-                  low ? "border border-dashed border-foreground/50" : "bg-foreground",
-                  isActive && "outline-2 outline-offset-1 outline-brand"
-                )}
-                style={low ? undefined : { opacity: FLOOR + (1 - FLOOR) * (countValue(b.count) / max) }}
-              />
-            );
-          })}
-        </div>
-        <div
-          aria-hidden="true"
-          className="mt-2 grid grid-cols-[repeat(24,minmax(0,1fr))] gap-[2px] text-caption whitespace-nowrap text-muted-foreground"
-        >
-          {[0, 6, 12, 18].map((h) => (
-            <span key={h} style={{ gridColumnStart: h + 1 }}>
-              {formatHour(h)}
-            </span>
-          ))}
-        </div>
-      </div>
-
-      <Legend>
-        <li className="flex items-center gap-2">
-          <span
-            aria-hidden="true"
-            className="h-2.5 w-14 shrink-0"
-            style={{
-              background: `linear-gradient(to right, color-mix(in oklab, var(--foreground) ${FLOOR * 100}%, transparent), var(--foreground))`,
-            }}
-          />
-          {minimumBucket} to {busiest ? describeCount(busiest.count) : "the busiest hour"}, rounded
-        </li>
-        <li className="flex items-center gap-2">
-          <span aria-hidden="true" className="size-2.5 shrink-0 border border-dashed border-foreground/50" />
-          Fewer than {minimumBucket}, no value shown
-        </li>
-      </Legend>
-
-      <TableDisclosure
-        caption={`Deployments per hour of the day in UTC over the last ${windowDays} days, rounded`}
-        head={["Hour starting (UTC)", "Deployments"]}
-        rows={buckets.map((b) => [formatHour(b.hour), formatCount(b.count)])}
       />
     </figure>
   );

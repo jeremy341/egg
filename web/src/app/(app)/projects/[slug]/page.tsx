@@ -242,7 +242,7 @@ async function ProjectContent({ params }: Props) {
           <div className="px-4 py-10 text-center">
             <p className="font-medium">Nothing is live yet</p>
             <p className="mx-auto mt-1 max-w-[46ch] text-muted-foreground">
-              Press Deploy and Nest Deploy builds{" "}
+              Press Deploy and Egg builds{" "}
               <span className="font-mono text-[13px]">{project.branch}</span> and starts it on{" "}
               {project.nestUsername}.hackclub.app. The build log opens as it runs.
             </p>

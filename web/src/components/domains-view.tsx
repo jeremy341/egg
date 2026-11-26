@@ -256,7 +256,7 @@ export function DomainsView({
             className={cn("text-label", error ? "text-destructive" : "text-muted-foreground")}
           >
             {error?.text ??
-              "Nest maps domains to ports on its own dashboard. Add it here too so Nest Deploy can check DNS."}
+              "Nest maps domains to ports on its own dashboard. Add it here too so Egg can check DNS."}
           </p>
           <Button type="submit" disabled={!domain.trim()} loading={adding}>
             {adding ? "Adding…" : "Add domain"}
@@ -290,7 +290,7 @@ export function DomainsView({
         <EmptyState
           icon={<GlobeSimpleIcon />}
           title="No domains yet"
-          description="Type a domain and its port above to have Nest Deploy check its DNS. Nest does the routing, so add the same domain on its dashboard too."
+          description="Type a domain and its port above to have Egg check its DNS. Nest does the routing, so add the same domain on its dashboard too."
         />
       ) : (
         <Stagger
@@ -350,7 +350,7 @@ export function DomainsView({
                   <ConfirmDialog
                     tone="destructive"
                     title={`Remove ${d.domain}?`}
-                    description="This removes the record from Nest Deploy."
+                    description="This removes the record from Egg."
                     confirmLabel="Remove"
                     pendingLabel="Removing…"
                     onConfirm={() => remove(d.id)}

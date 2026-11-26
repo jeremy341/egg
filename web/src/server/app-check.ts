@@ -121,7 +121,7 @@ export function makeProbe(lookup?: Lookup, timeoutMs = CHECK_TIMEOUT_MS): Probe 
           servername: domain,
           rejectUnauthorized: true,
           timeout: timeoutMs,
-          headers: { host: domain, "user-agent": "nest-deploy-check", accept: "*/*" },
+          headers: { host: domain, "user-agent": "egg-check", accept: "*/*" },
           agent: false,
         },
         (res) => {

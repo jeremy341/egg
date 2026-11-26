@@ -26,7 +26,7 @@ export const NO_FEATURES: AnalyticsFeatures = { clicks: false, time: false, funn
 export const MIN_STEPS = 2;
 export const MAX_STEPS = 6;
 
-/** A data-nd-track name: short, plain, and safe to put inside a script. */
+/** A data-egg-track name: short, plain, and safe to put inside a script. */
 export const TRACK_NAME = /^[A-Za-z0-9][A-Za-z0-9 _.:-]{0,39}$/;
 
 const step = z

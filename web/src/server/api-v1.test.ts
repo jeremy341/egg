@@ -158,7 +158,7 @@ describe("authentication", () => {
 
   it("answers 401 for malformed and wrong-prefix tokens", async () => {
     const real = await token();
-    const bad = ["Basic abc", "Bearer", "Bearer ", `Bearer ${real} extra`, "Bearer sk_live_123", `Bearer ${real.replace("ndp_", "xyz_")}`, real, "Bearer ndp_"];
+    const bad = ["Basic abc", "Bearer", "Bearer ", `Bearer ${real} extra`, "Bearer sk_live_123", `Bearer ${real.replace("egg_", "xyz_")}`, real, "Bearer egg_"];
     for (const auth of bad) {
       const res = await run(listProjects, req("/projects", { auth }));
       expect(res.status, auth.slice(0, 20)).toBe(401);
@@ -172,7 +172,7 @@ describe("authentication", () => {
     const expired = await createApiToken(me.id, { name: "e", scopes: ALL, expiresInDays: 7 }, new Date(Date.now() - 30 * 86_400_000));
 
     const results = [];
-    for (const secret of ["ndp_" + "x".repeat(43), revoked.secret, expired.secret]) {
+    for (const secret of ["egg_" + "x".repeat(43), revoked.secret, expired.secret]) {
       const res = await run(listProjects, req("/projects", { secret }));
       results.push({ status: res.status, www: res.headers.get("www-authenticate"), body: await res.json() });
     }
@@ -182,7 +182,7 @@ describe("authentication", () => {
   });
 
   it("never accepts a cookie session, with or without a bad token", async () => {
-    const cookie = { cookie: "nd_session=whatever" };
+    const cookie = { cookie: "egg_session=whatever" };
     const res = await run(listProjects, new NextRequest("http://localhost:3000/api/v1/projects", { headers: cookie }));
     expect(res.status).toBe(401);
     const res2 = await run(
@@ -191,7 +191,7 @@ describe("authentication", () => {
       { projectId }
     );
     expect(res2.status).toBe(401);
-    const res3 = await run(listProjects, new NextRequest("http://localhost:3000/api/v1/projects", { headers: { ...cookie, authorization: "Bearer ndp_nope" } }));
+    const res3 = await run(listProjects, new NextRequest("http://localhost:3000/api/v1/projects", { headers: { ...cookie, authorization: "Bearer egg_nope" } }));
     expect(res3.status).toBe(401);
     // The signed-in user lookup is never even consulted.
     expect(getCurrentUser).not.toHaveBeenCalled();
@@ -442,7 +442,7 @@ describe("rate limits", () => {
 
   it("does not spend a token's allowance on requests that failed authentication", async () => {
     const secret = await token();
-    for (let i = 0; i < 150; i++) await run(listProjects, req("/projects", { secret: "ndp_wrong" }));
+    for (let i = 0; i < 150; i++) await run(listProjects, req("/projects", { secret: "egg_wrong" }));
     expect((await run(listProjects, req("/projects", { secret }))).status).toBe(200);
   });
 });

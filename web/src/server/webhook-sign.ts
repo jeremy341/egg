@@ -4,13 +4,13 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
  * Signing for outbound webhooks. The receiver can prove a request came from
  * this app and was not changed on the way.
  *
- * Header: `X-NestDeploy-Signature: t=<unix seconds>,v1=<hex>` where `v1` is
+ * Header: `X-Egg-Signature: t=<unix seconds>,v1=<hex>` where `v1` is
  * HMAC-SHA256, keyed with the webhook's secret, over `"<t>.<body>"`. The
  * timestamp is inside the signed text, so an old request cannot be replayed
  * with a fresh timestamp.
  */
 
-export const SIGNATURE_HEADER = "X-NestDeploy-Signature";
+export const SIGNATURE_HEADER = "X-Egg-Signature";
 export const SECRET_PREFIX = "whsec_";
 /** How old a signature may be before `verifyWebhookSignature` refuses it. */
 export const SIGNATURE_TOLERANCE_SECONDS = 300;

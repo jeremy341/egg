@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- Everything is inline and the page may only talk to https addresses (and localhost). -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src https: http://localhost:* http://127.0.0.1:*; base-uri 'none'; form-action 'none'">
-<title>My Nest Deploy dashboard</title>
+<title>My Egg dashboard</title>
 <style>
   :root { --bg: #fbfaf8; --fg: #1d1b19; --muted: #6a645d; --card: #fff; --line: #e4dfd8; --accent: #1f6feb; --good: #1a7f37; --bad: #b42318; --warn: #9a6700; }
   @media (prefers-color-scheme: dark) {
@@ -39,16 +39,16 @@
 </head>
 <body>
 <main>
-  <h1>My Nest Deploy dashboard</h1>
-  <p class="muted">A read-only page built on the Nest Deploy API. Your token stays in this page's memory: it is never saved, and it is gone when you close or reload the tab.</p>
+  <h1>My Egg dashboard</h1>
+  <p class="muted">A read-only page built on the Egg API. Your token stays in this page's memory: it is never saved, and it is gone when you close or reload the tab.</p>
 
   <section class="card" id="connect-card">
     <form id="connect" autocomplete="off">
-      <label>Your Nest Deploy address
-        <input id="base" type="url" placeholder="https://your-nest-deploy" required>
+      <label>Your Egg address
+        <input id="base" type="url" placeholder="https://your-egg" required>
       </label>
       <label>Access token (read-only scopes are enough)
-        <input id="token" type="password" placeholder="ndp_..." autocomplete="off" spellcheck="false" required>
+        <input id="token" type="password" placeholder="egg_..." autocomplete="off" spellcheck="false" required>
       </label>
       <div><button class="primary" type="submit">Connect</button></div>
       <p id="connect-error" class="error" role="alert" hidden></p>

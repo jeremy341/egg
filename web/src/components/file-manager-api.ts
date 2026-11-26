@@ -21,7 +21,7 @@ async function failure(res: Response): Promise<FileApiError> {
 }
 
 function networkFailure(): FileApiError {
-  return new FileApiError("Could not reach Nest Deploy. Check your connection and try again.", "network", 0);
+  return new FileApiError("Could not reach Egg. Check your connection and try again.", "network", 0);
 }
 
 export async function fileGet<T>(base: string, op: "list" | "read", path: string, signal?: AbortSignal): Promise<T> {

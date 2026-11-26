@@ -246,7 +246,7 @@ export const envInput = z.object({
     .trim()
     .regex(ENV_KEY, "Names use letters, digits and underscores, and do not start with a digit")
     .max(100)
-    .refine((k) => !RESERVED_ENV.has(k.toUpperCase()), "That name is set by Nest Deploy"),
+    .refine((k) => !RESERVED_ENV.has(k.toUpperCase()), "That name is set by Egg"),
   value: z.string().max(10_000),
   target: z.enum(["all", "production", "preview"]).default("all"),
 });

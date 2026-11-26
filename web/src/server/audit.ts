@@ -43,6 +43,8 @@ export const LABELS: Record<string, string> = {
   "domain.add": "Added domain",
   "domain.remove": "Removed domain",
   "server.rotate_key": "Replaced the SSH key for",
+  "server.build_memory": "Changed the build memory limit for",
+  "server.disconnect": "Disconnected",
   "domain.update": "Changed domain",
   "analytics.enable": "Turned on analytics for",
   "analytics.disable": "Turned off analytics for",

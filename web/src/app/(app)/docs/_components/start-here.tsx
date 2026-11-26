@@ -18,7 +18,7 @@ export function StartHere() {
       </h2>
       <ul className="mt-[30px] grid gap-[15px] sm:grid-cols-2">
         {START.map((id) => (
-          <li key={id} className="group relative border border-t-2 border-t-foreground bg-background p-4 transition-colors duration-(--dur-fast) hover:bg-[var(--ds-gray-alpha-100)] max-sm:p-3">
+          <li key={id} className="group relative rounded-md border bg-background-subtle p-4 transition-colors duration-(--dur-fast) hover:bg-[var(--ds-gray-alpha-100)] max-sm:p-3">
             <Link
               href={docsHref(id)}
               className="flex items-center justify-between gap-4 text-[19px] leading-[30px] font-semibold text-foreground after:absolute after:inset-0 after:content-[''] focus-visible:outline-offset-4"

@@ -38,9 +38,9 @@ describe("Build with it", () => {
   });
 
   it("shows placeholder tokens only", () => {
-    expect(meExample("https://x.test/")).toBe('curl -H "Authorization: Bearer ndp_..." https://x.test/api/v1/me');
+    expect(meExample("https://x.test/")).toBe('curl -H "Authorization: Bearer egg_..." https://x.test/api/v1/me');
     expect(sdkExample("https://x.test/")).toContain('baseUrl: "https://x.test"');
-    expect(sdkExample("https://x.test")).not.toMatch(/ndp_/);
+    expect(sdkExample("https://x.test")).not.toMatch(/egg_/);
   });
 });
 
@@ -49,7 +49,7 @@ describe("the examples folder", () => {
 
   it("never contains a real-looking token", () => {
     for (const f of files) {
-      expect(readFileSync(f, "utf8"), f).not.toMatch(/ndp_[A-Za-z0-9_-]{8,}/);
+      expect(readFileSync(f, "utf8"), f).not.toMatch(/egg_[A-Za-z0-9_-]{8,}/);
       expect(readFileSync(f, "utf8"), f).not.toMatch(/ndh_[A-Za-z0-9_-]{8,}/);
     }
   });

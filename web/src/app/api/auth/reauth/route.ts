@@ -3,7 +3,7 @@ import { createAuthRequest } from "@/server/auth/hackclub";
 import { OAUTH_COOKIE, SESSION_COOKIE, markFreshAuth, userForSessionToken } from "@/server/auth/session";
 import { safeNextPath } from "@/server/auth/redirect";
 import { throttleSignIn } from "@/server/auth/throttle";
-import { config, hackClubConfigured } from "@/server/config";
+import { config, hackClubConfigured, localModeEnabled } from "@/server/config";
 
 /**
  * Confirm with Hack Club again, to unlock the terminal and file changes. Only a
@@ -23,9 +23,9 @@ export async function GET(req: NextRequest) {
   const next = safeNextPath(req.nextUrl.searchParams.get("next"));
 
   if (!hackClubConfigured()) {
-    // Local development only: the development sign-in already skips Hack Club, so the
-    // confirmation is skipped the same way. Production never takes this branch.
-    if (config().DEV_LOGIN && process.env.NODE_ENV !== "production") {
+    // The development sign-in and local mode already skip Hack Club, so the confirmation
+    // is skipped the same way. Only local mode does this in a production build.
+    if (localModeEnabled() || (config().DEV_LOGIN && process.env.NODE_ENV !== "production")) {
       await markFreshAuth(token!);
       return NextResponse.redirect(new URL(next, home), 303);
     }

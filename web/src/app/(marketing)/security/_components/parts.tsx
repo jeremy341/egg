@@ -70,3 +70,34 @@ export function TextLink({ href, external, children }: { href: string; external?
     </a>
   );
 }
+
+/** A small two-column table: what is limited, and the limit. Scrolls sideways inside its box rather than widening the page. */
+export function LimitTable({ caption, head, rows }: { caption: string; head: [string, string]; rows: [ReactNode, ReactNode][] }) {
+  return (
+    <div className="overflow-x-auto border border-border">
+      <table className="w-full border-collapse text-left text-[0.9375rem] leading-6">
+        <caption className="sr-only">{caption}</caption>
+        <thead>
+          <tr className="border-b border-border bg-background-subtle">
+            <th scope="col" className="px-4 py-2.5 font-semibold text-foreground">
+              {head[0]}
+            </th>
+            <th scope="col" className="px-4 py-2.5 font-semibold text-foreground">
+              {head[1]}
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(([what, limit], i) => (
+            <tr key={i} className="border-t border-border first:border-t-0 align-top">
+              <th scope="row" className="px-4 py-2.5 font-normal text-reading">
+                {what}
+              </th>
+              <td className="px-4 py-2.5 text-foreground">{limit}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}

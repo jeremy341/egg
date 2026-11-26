@@ -1,4 +1,4 @@
-# Nest Deploy feature inventory
+# Egg feature inventory
 
 A working document for writers. Every statement was checked against the code in `web/src` and `web/drizzle`. Paths are relative to `web/src` unless they start with `web/`. A reference such as `server/projects.ts:241` means that file, that line, as of this writing.
 
@@ -7,7 +7,7 @@ Conventions used below:
 - "Label" is the text copied from the source: a button, a heading, or a field label.
 - "Needs" says whether the feature needs a container permission switch, a sign-in, a token scope, or nothing, and the default.
 - "UNCONFIRMED" marks anything the code does not settle, with the reason.
-- "Sign-in" means a Hack Club session cookie (`nd_session`, 30 days, `server/auth/session.ts:5-7`). API calls and the MCP endpoint use a bearer token instead and never read cookies (`server/api-v1-http.ts:6-10`).
+- "Sign-in" means a Hack Club session cookie (`egg_session`, 30 days, `server/auth/session.ts:5-7`). API calls and the MCP endpoint use a bearer token instead and never read cookies (`server/api-v1-http.ts:6-10`).
 - Every browser write route checks that the `Origin` header matches the site (`server/http.ts:79-89`). A request with no `Origin` header passes. The hook, collector, API and MCP routes skip this check on purpose.
 - The three container permission switches are Terminal, File changes and Removing leftovers. All three are off for a new server (`server/db/schema.ts:85-87`).
 
@@ -17,9 +17,9 @@ Shared rate limits (per signed-in user, per minute, in memory, reset on restart)
 
 ## Sign-in and account
 
-### Log in to Nest Deploy (Continue with Hack Club)
+### Log in to Egg (Continue with Hack Club)
 
-- **Label:** page heading "Log in to Nest Deploy"; button "Continue with Hack Club" (`app/(auth)/login/page.tsx:96-123`).
+- **Label:** page heading "Log in to Egg"; button "Continue with Hack Club" (`app/(auth)/login/page.tsx:96-123`).
 - **What it does:** signs you in with Hack Club Auth (OAuth with PKCE) and creates a session. Hack Club only confirms who you are; the scopes asked for are `openid`, `profile`, `email` (`server/auth/hackclub.ts:12`).
 - **Steps:** open the login page, press Continue with Hack Club, approve at Hack Club, land on Projects (`app/api/auth/callback/route.ts`).
 - **Limits:** session lasts 30 days (`server/auth/session.ts:7`). The sign-in handshake cookie lasts 10 minutes (`app/api/auth/login/route.ts`, `maxAge: 600`). Only a hash of the session token is stored (`session.ts:57-73`). Expired sessions are deleted whenever a new session is created (`session.ts:72`).
@@ -52,7 +52,7 @@ Shared rate limits (per signed-in user, per minute, in memory, reset on restart)
 
 - **Label:** heading "Account"; cards "Profile", "GitHub", "Container permissions", "Signed-in browsers", "Delete Account" (`app/(app)/account/page.tsx`, `components/account-view.tsx`).
 - **Profile:** Name and Email (shows "Not shared" when none). Read-only; "This comes from your Hack Club account. Change it there."
-- **GitHub:** lists the accounts where the Nest Deploy GitHub App is installed, each with a "Manage on GitHub" link to `https://github.com/settings/installations/<id>`. Empty text: "Not connected yet. Import a project to install the app."
+- **GitHub:** lists the accounts where the Egg GitHub App is installed, each with a "Manage on GitHub" link to `https://github.com/settings/installations/<id>`. Empty text: "Not connected yet. Import a project to install the app."
 - **Signed-in browsers:** each session shows a label such as "Chrome on Windows" and "Signed in <time ago>". The current one has a "This browser" badge. Others have a "Sign out" button. "Sign out everywhere else" appears when other sessions exist.
   - Errors: "That is the session you are using. Sign out instead." (`server/account.ts:39`); "Session not found" (404); client fallbacks "Could not sign that browser out" and "Could not sign the others out".
   - Signing out other sessions closes every open terminal of the account (`server/account.ts:48,60`).
@@ -79,7 +79,7 @@ Shared rate limits (per signed-in user, per minute, in memory, reset on restart)
   - "That does not look like a Nest username. Use the name you log in with, for example sam-r." (400)
   - "You can connect up to 5 servers." (400)
   - "<name> is already connected." (409)
-- **Warning shown on the page:** "This key gives Nest Deploy the same access as your own login, because SSH into Nest lands in a root shell inside your container. Only connect a container you are happy to deploy to."
+- **Warning shown on the page:** "This key gives Egg the same access as your own login, because SSH into Nest lands in a root shell inside your container. Only connect a container you are happy to deploy to."
 - **Needs:** sign-in.
 - **Files:** `components/connect-flow.tsx`, `app/(app)/connect/page.tsx`, `app/api/servers/route.ts`, `server/servers.ts`, `server/ssh/keys.ts`, `server/crypto.ts`.
 
@@ -90,7 +90,7 @@ Shared rate limits (per signed-in user, per minute, in memory, reset on restart)
 - **Host key:** the SHA-256 fingerprint of the Nest bastion is pinned the first time a test succeeds. After that, any other host key aborts the connection before anything is sent (`server/ssh/connection.ts:104-125`). Rotating the key does not clear the pin (`servers.ts:113-130`).
 - **Probe contents:** user id, OS, architecture, home folder, which of systemctl, node, npm, python3, tar, curl, git, sha256sum exist, Node and Python versions, CPU count, memory, disk, load, systemd state (`server/ssh/probe.ts:35-51`). 30 second timeout (`probe.ts:92`). Connect timeout is 20 seconds (`connection.ts:98`).
 - **Issues listed after a test** (`probe.ts:102-151`):
-  - error: "systemd is not available in this container, so Nest Deploy cannot keep your apps running or restart them."
+  - error: "systemd is not available in this container, so Egg cannot keep your apps running or restart them."
   - warning: "SSH did not log in as root. Nest normally does; without root, installing the service files may fail."
   - error: "tar is not installed."
   - warning: "sha256sum is missing, so uploads cannot be verified."
@@ -119,7 +119,7 @@ Shared rate limits (per signed-in user, per minute, in memory, reset on restart)
 ### Disconnect
 
 - **Label:** button "Disconnect"; dialog "Disconnect <name>?"; text "Your running apps are not touched. Remove the key from the Nest dashboard to end our access."; confirm "Disconnect" (`connect-flow.tsx:161-173`).
-- **What it does:** deletes the server record (`server/servers.ts:132-136`). Because projects, domains and usage samples reference the server with `ON DELETE CASCADE` (`schema.ts:121-123,290-292`) and SQLite foreign keys are on (`server/db/index.ts:25`), every project on that server is deleted from Nest Deploy too, with its deployments, logs, environment variables, hook and status page. Nothing is removed from the container. The dialog does not say projects are deleted.
+- **What it does:** deletes the server record (`server/servers.ts:132-136`). Because projects, domains and usage samples reference the server with `ON DELETE CASCADE` (`schema.ts:121-123,290-292`) and SQLite foreign keys are on (`server/db/index.ts:25`), every project on that server is deleted from Egg too, with its deployments, logs, environment variables, hook and status page. Nothing is removed from the container. The dialog does not say projects are deleted.
 - **Note:** the existing docs call this "Remove a server". The label is "Disconnect".
 - **Needs:** sign-in.
 
@@ -143,8 +143,8 @@ Common errors: "Could not save. Try again." (client fallback); 403 "Confirm with
 ### Terminal (switch)
 
 - **Label:** "Terminal". Default: off. Needs a fresh Hack Club sign-in to turn on.
-- **Description in the product:** "A shell on your container, running as root. Off by default. Anything you type runs for real, so it can stop or change any app on the container, including apps Nest Deploy did not deploy. Anyone with access to your Nest Deploy account can use it while it is on."
-- **What it can destroy:** anything the container user can touch, including apps and files Nest Deploy did not create.
+- **Description in the product:** "A shell on your container, running as root. Off by default. Anything you type runs for real, so it can stop or change any app on the container, including apps Egg did not deploy. Anyone with access to your Egg account can use it while it is on."
+- **What it can destroy:** anything the container user can touch, including apps and files Egg did not create.
 - **Refusal message:** "The terminal is turned off for this server. Turn it on in Account, under Container permissions." (`permissions.ts:38`).
 - **Switching off** also closes all of the owner's open terminals on that server (`app/api/servers/[id]/permissions/route.ts:45-47`).
 
@@ -159,8 +159,8 @@ Common errors: "Could not save. Try again." (client fallback); 403 "Confirm with
 ### Removing leftovers (switch)
 
 - **Label:** "Removing leftovers". Default: off for new servers. Does not need a fresh sign-in.
-- **Description in the product:** "Stop and remove services whose names start with nd- and folders inside ~/.nest-deploy that no project uses any more. Off by default. A server connected earlier keeps the setting it already had. Anything outside those names is never touched, but a service or folder you made yourself with a matching name would look like a leftover, so each removal asks you to confirm."
-- **What it can destroy:** Nest Deploy services (`nd-*.service`) that no project uses, and whole folders under `~/.nest-deploy` that no project uses, including their `shared/` data. In code, only items that carry the Nest Deploy marker are removed (see "Ownership markers").
+- **Description in the product:** "Stop and remove services whose names start with egg- and folders inside ~/.egg that no project uses any more. Off by default. A server connected earlier keeps the setting it already had. Anything outside those names is never touched, but a service or folder you made yourself with a matching name would look like a leftover, so each removal asks you to confirm."
+- **What it can destroy:** Egg services (`egg-*.service`) that no project uses, and whole folders under `~/.egg` that no project uses, including their `shared/` data. In code, only items that carry the Egg marker are removed (see "Ownership markers").
 - **Refusal message:** "Removing leftovers is turned off for this server. Turn it on in Account, under Container permissions."
 
 ### Defaults for servers that existed before
@@ -217,8 +217,8 @@ Common errors: "Could not save. Try again." (client fallback); 403 "Confirm with
 
 - **What it does:** reads the repository tree and a few files from GitHub and suggests package manager, runtime, commands, output folder, monorepo roots and environment variable names.
 - **Rules (`server/repo-detect.ts`, `server/repo-read.ts`):**
-  - Language: `package.json` means Node; `requirements.txt` or `pyproject.toml` Python; `go.mod`, `Gemfile`, `Cargo.toml` are named as not supported; a `Dockerfile` is ignored (Nest Deploy does not build Docker images).
-  - Package manager: the `packageManager` field, else a lockfile (`bun.lock`, `bun.lockb`, `pnpm-lock.yaml`, `yarn.lock`, `package-lock.json`), else npm. Bun is detected but "not built by Nest Deploy yet".
+  - Language: `package.json` means Node; `requirements.txt` or `pyproject.toml` Python; `go.mod`, `Gemfile`, `Cargo.toml` are named as not supported; a `Dockerfile` is ignored (Egg does not build Docker images).
+  - Package manager: the `packageManager` field, else a lockfile (`bun.lock`, `bun.lockb`, `pnpm-lock.yaml`, `yarn.lock`, `package-lock.json`), else npm. Bun is detected but "not built by Egg yet".
   - Vite or Astro without a `start` script is suggested as a Static site with output `dist`.
   - Monorepo: workspaces, `pnpm-workspace.yaml` or `packages/*` and `apps/*` folders with a `package.json` (up to 20 listed as "Apps in this repository" buttons).
   - Only `package.json` and the example env files are read: `.env.example`, `.env.sample`, `.env.template`, `.env.local.example`. A file larger than 200,000 bytes is skipped (`repo-read.ts:16`). Tree paths deeper than 3 levels under the root are ignored (`repo-read.ts:18`). At most 100 names (`repo-detect.ts:73`). Names that are invalid or reserved are dropped. Values are never returned.
@@ -230,17 +230,17 @@ Common errors: "Could not save. Try again." (client fallback); 403 "Confirm with
 
 ### Adopt an existing checkout and container conflict check
 
-- **Label:** checkbox "Adopt an existing checkout" with "This repository already runs on this container." Section "What is already on this container" with a status line and badges "Blocks the deploy", "Made by Nest Deploy", "Good to know" (`new-project-flow.tsx:402-427`, `components/project-conflicts.tsx`).
+- **Label:** checkbox "Adopt an existing checkout" with "This repository already runs on this container." Section "What is already on this container" with a status line and badges "Blocks the deploy", "Made by Egg", "Good to know" (`new-project-flow.tsx:402-427`, `components/project-conflicts.tsx`).
 - **What it does:** as soon as name, server and port are valid (600 ms pause), the form asks the container, read-only, whether the new project would collide with anything (`app/api/projects/conflicts/route.ts`, `server/adoption.ts`). The same check runs again at the start of every deploy, before anything is written (`server/deploy/pipeline.ts:360-381`).
 - **Limits:** 20 checks per minute per user (`conflicts/route.ts:11`), 429 "Too many checks. Wait <n> second(s) and try again." The probe has a 60 second timeout (`adoption.ts:256`). The probe never returns command lines, environment or file contents.
 - **What blocks a deploy (`server/adoption.ts:52-223`):**
-  - a service `nd-<slug>.service` that Nest Deploy did not create, or one systemd already has: "A service called nd-<slug>.service already exists and Nest Deploy did not create it. It will not be replaced. Choose another project name."
-  - the project folder `~/.nest-deploy/<slug>` being a link, a file, a git checkout that is not Nest Deploy's, or a folder with other files in it
-  - the port already used by another program ("Port <n> is already in use by <process>. Nest Deploy will not stop it. Choose another port, or stop that program yourself first.")
+  - a service `egg-<slug>.service` that Egg did not create, or one systemd already has: "A service called egg-<slug>.service already exists and Egg did not create it. It will not be replaced. Choose another project name."
+  - the project folder `~/.egg/<slug>` being a link, a file, a git checkout that is not Egg's, or a folder with other files in it
+  - the port already used by another program ("Port <n> is already in use by <process>. Egg will not stop it. Choose another port, or stop that program yourself first.")
   - a program or service already running from the project folder
   - the same repository already running by hand from another checkout: blocks only the first production deploy (`scope: "firstDeploy"`)
-- **What does not block:** the ports cannot be read ("Nest Deploy could not read the listening ports on this container, so it could not check that port <n> is free."); a stopped service for the same repo; a checkout that is only sitting there (up to 5 listed); leftovers made by an earlier Nest Deploy project with this name ("It will be reused").
-- **Form behaviour:** with blocking items, "Deploy is turned off because N thing(s) on this container is/are in the way. Nest Deploy will not stop or change it for you. Fix it on your container, or change the project name, server or port." and a link "Open container status". If the check itself fails: "Could not check this container just now: <reason>. The deploy checks again before it changes anything."
+- **What does not block:** the ports cannot be read ("Egg could not read the listening ports on this container, so it could not check that port <n> is free."); a stopped service for the same repo; a checkout that is only sitting there (up to 5 listed); leftovers made by an earlier Egg project with this name ("It will be reused").
+- **Form behaviour:** with blocking items, "Deploy is turned off because N thing(s) on this container is/are in the way. Egg will not stop or change it for you. Fix it on your container, or change the project name, server or port." and a link "Open container status". If the check itself fails: "Could not check this container just now: <reason>. The deploy checks again before it changes anything."
 - **Deploy-time error:** "Nothing was changed on your container. <up to 3 details>" (`pipeline.ts:375-380`).
 - **What "adopt" does:** the server creates the project with automatic deploys off (`server/projects.ts:169`). The form says "Adopted means the first deploy is manual, and automatic deploys start only after you confirm that first deploy works." No code turns automatic deploys on afterwards: the person must tick "Deploy automatically on push" in Settings, Build and Run. The adopt flag is not stored.
 - **Needs:** sign-in, connected server. Nothing is stopped, moved or deleted by this check.
@@ -263,14 +263,14 @@ Common errors: "Could not save. Try again." (client fallback); 403 "Confirm with
 - **Python:** no default build. The container runs `python3 -m venv .venv && .venv/bin/pip install --disable-pip-version-check -r requirements.txt` if `requirements.txt` exists. The service PATH starts with the venv `bin`. Default start: `python3 app.py`.
 - **Static site:** build as Node when `package.json` exists. The folder shipped is the Output directory (default the root `.`). Default start serves it with `python3 -m http.server <port> --bind 0.0.0.0`, or a one-line Node server if Python 3 is missing. Error: "Static sites need Python 3 or Node.js on your Nest container to be served."
 - **Custom command:** no detection, no remote install. Install, build and start commands come from you. Error: "Set a start command for this project (for example ./my-binary)."
-- **Always:** the app runs from its release folder with `PORT`, `HOST=0.0.0.0`, `NODE_ENV=production` (`server/deploy/remote.ts:108-109`). Reserved variable names: `PORT`, `HOST`, `PATH`, `HOME`, `NEST_DEPLOY` (`runtime.ts:162`).
+- **Always:** the app runs from its release folder with `PORT`, `HOST=0.0.0.0`, `NODE_ENV=production` (`server/deploy/remote.ts:108-109`). Reserved variable names: `PORT`, `HOST`, `PATH`, `HOME`, `EGG` (`runtime.ts:162`).
 - **Build image:** `node:22-bookworm` for Node, static and custom builds, `python:3.12-bookworm` for Python (`server/config.ts:33-34`).
 
 ### Delete Project
 
 - **Label:** card "Delete Project"; checkbox "Also stop the service and delete releases on <nest>.hackclub.app" (default checked); field "Type <slug> to confirm"; button "Delete" (`components/project-settings.tsx:354-396`).
-- **What it does:** with the box ticked, stops the service, removes production and preview releases and the `current` link, but only if the unit and folder carry the Nest Deploy marker, then deletes the records. The `shared/` folder is kept, because the browser never sends `data=1` (`app/api/projects/[id]/route.ts:20-32`, `server/deploy/remote.ts:233-253`). Unticked, only the records go and the app keeps running.
-- **Errors:** "Could not remove the project from your container." (502). Records are kept so you can retry. Messages `<path> was not created by Nest Deploy, so it was left alone.` appear in the script output, not in the UI.
+- **What it does:** with the box ticked, stops the service, removes production and preview releases and the `current` link, but only if the unit and folder carry the Egg marker, then deletes the records. The `shared/` folder is kept, because the browser never sends `data=1` (`app/api/projects/[id]/route.ts:20-32`, `server/deploy/remote.ts:233-253`). Unticked, only the records go and the app keeps running.
+- **Errors:** "Could not remove the project from your container." (502). Records are kept so you can retry. Messages `<path> was not created by Egg, so it was left alone.` appear in the script output, not in the UI.
 - **Needs:** sign-in.
 
 ---
@@ -279,9 +279,9 @@ Common errors: "Could not save. Try again." (client fallback); 403 "Confirm with
 
 ### Connect GitHub and install the app
 
-- **Label:** card "Connect GitHub": "Install the Nest Deploy GitHub App to pick repositories, deploy private ones, and deploy on every push." Buttons "Install the GitHub App" and "I already installed it"; link "Add another account or repository" (`components/new-project-flow.tsx:716-733,704-713`).
+- **Label:** card "Connect GitHub": "Install the Egg GitHub App to pick repositories, deploy private ones, and deploy on every push." Buttons "Install the GitHub App" and "I already installed it"; link "Add another account or repository" (`components/new-project-flow.tsx:716-733,704-713`).
 - **What it does:** "Install the GitHub App" goes to `https://github.com/apps/<slug>/installations/new`. "I already installed it" goes to `/api/github/connect`, which sends you through GitHub OAuth. The callback lists the installations your GitHub user can reach for this app and links them to your account (`server/github/app.ts:129-209`).
-- **Limits:** one installation belongs to the first Nest Deploy user who links it (`app.ts:190-193`). Repository lists fetch up to 5 pages of 100, newest push first (`app.ts:97`). The OAuth state cookie lasts 10 minutes. App JWT lifetime 9 minutes; installation tokens are cached until one minute before expiry (`app.ts:32-60`). The user's OAuth token is used once and not stored.
+- **Limits:** one installation belongs to the first Egg user who links it (`app.ts:190-193`). Repository lists fetch up to 5 pages of 100, newest push first (`app.ts:97`). The OAuth state cookie lasts 10 minutes. App JWT lifetime 9 minutes; installation tokens are cached until one minute before expiry (`app.ts:32-60`). The user's OAuth token is used once and not stored.
 - **Return notices (query `?github=`)**: `connected`, `invalid_state`, `failed`, `not_configured` (`app/api/github/{connect,callback}/route.ts`). The page turns them into a notice (`app/(flow)/new/page.tsx`). UNCONFIRMED exact notice text: not read.
 - **Errors from the code:**
   - "The GitHub App is not configured." (self-hosting: needs `GITHUB_APP_ID`, `GITHUB_APP_SLUG`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET`; `server/config.ts:80-89`)
@@ -334,14 +334,14 @@ Common errors: "Could not save. Try again." (client fallback); 403 "Confirm with
 
 ### Release folders on the container
 
-Layout under `<home>/.nest-deploy/<slug>/` (`server/deploy/layout.ts`, `remote.ts:31-43`):
+Layout under `<home>/.egg/<slug>/` (`server/deploy/layout.ts`, `remote.ts:31-43`):
 
 - `releases/<uuid>/` one folder per deployment (id is the deployment's release id; a rollback reuses an old one)
 - `incoming/<uuid>.tar.gz` upload area, emptied on cleanup
 - `current` a symlink to the live release, replaced atomically with `ln -sfn` then `mv -Tf` (`remote.ts:127-143`)
 - `shared/` created empty, never touched by deploys; survives releases
-- `.nest-deploy-managed` marker file
-- production unit `nd-<slug>.service`; preview units `nd-<slug>-pv-<first 8 chars of release id>.service`
+- `.egg-managed` marker file
+- production unit `egg-<slug>.service`; preview units `egg-<slug>-pv-<first 8 chars of release id>.service`
 - Production runs from `current/`; previews run from their own `releases/<id>/` folder (`pipeline.ts:154-161`). A `.env` file sits at the top of each release.
 - Unit: `Restart=always`, `RestartSec=3`, `WantedBy=multi-user.target`, `ExecStart=/bin/bash -lc "exec <start command>"`, `EnvironmentFile=<release>/.env` (`remote.ts:91-116`).
 
@@ -385,14 +385,14 @@ States in the database: `queued`, `building`, `deploying`, `ready`, `error`, `ca
 
 Errors that end in Error (exact text):
 
-- "Could not clone the repository. Check the branch name and that Nest Deploy has access to it."
+- "Could not clone the repository. Check the branch name and that Egg has access to it."
 - `The root directory "<dir>" does not exist in this repository.` ; `"<dir>" is outside the repository.`
 - "The build failed (exit <code>)." ; "The build timed out." ; "The build was canceled."
 - `The output folder "<dir>" was not created by the build.`
 - "The build output is <n> MB, over the 500 MB limit."
 - "Nothing was changed on your container. <details>"
 - `<label> failed (exit <code>).` for Preparing folders, Checking the service name, Unpacking the release, Registering the service, Switching the release, Starting the preview. "Upload is corrupted: checksum mismatch" appears as exit 20 in the log. "Upload failed (exit <code>): <stderr>".
-- "<path> is a link, so Nest Deploy will not write into it." / "<path> exists and is not a folder." / "<path> already exists and was not created by Nest Deploy, so it was left alone." / "<unit> already exists and was not created by Nest Deploy, so it was left alone." (exit 30)
+- "<path> is a link, so Egg will not write into it." / "<path> exists and is not a folder." / "<path> already exists and was not created by Egg, so it was left alone." / "<unit> already exists and was not created by Egg, so it was left alone." (exit 30)
 - "The new release did not become healthy on port <port>. Make sure your app listens on the PORT environment variable and on 0.0.0.0."
 - "The worker stopped while this deployment was running. Try again." and "The worker restarted while this deployment was running. Try again." (`server/jobs.ts:72,102`). A running job is presumed dead after 1 hour (`jobs.ts:15`).
 - "No free preview ports on this server." (409, at queue time)
@@ -446,7 +446,7 @@ Errors that end in Error (exact text):
 ### Restart (Service card)
 
 - **Label:** "Restart" on the Service card (see Monitoring). Dialog "Restart the service?" "The app is offline for a few seconds." confirm "Restart".
-- **What it does:** runs `systemctl restart nd-<slug>.service` for the production service, no build (`server/runtime-info.ts:45-55`).
+- **What it does:** runs `systemctl restart egg-<slug>.service` for the production service, no build (`server/runtime-info.ts:45-55`).
 - **Errors:** "Could not restart the service. It may not be deployed yet." (502). Disabled while not deployed or the container cannot be reached.
 - **Needs:** sign-in. Recorded as "Restarted <project>".
 
@@ -458,7 +458,7 @@ Errors that end in Error (exact text):
 
 - **What it does:** a deployment of any branch other than the production branch is a preview with its own service on its own port.
 - **Ports:** the lowest free port from 20000 to 29999 on that server, counting previews that are not cleaned up and are queued, building, deploying or ready (`PREVIEW_PORT_MIN/MAX`, `server/projects.ts:18-19,296-315`). Error: "No free preview ports on this server."
-- **Address:** none from Nest Deploy. The log says "Preview is running on port <port>. Map a domain to it in the Nest dashboard to open it." A domain can be recorded in Domains with that port.
+- **Address:** none from Egg. The log says "Preview is running on port <port>. Map a domain to it in the Nest dashboard to open it." A domain can be recorded in Domains with that port.
 - **Keeps:** the 2 newest Ready previews (`KEEP_PREVIEWS`). Older ones are stopped and deleted after the next successful deploy. A preview runs from its own release folder, with the same environment variables that target All or Preview.
 - **Same checks apply:** container conflict check, host marker checks, health check (but no automatic revert: there is no previous preview to restore).
 - **Where to see them:** project page card "Active branches" (one row per branch, linking to its latest deployment); Deployments page filter "Preview".
@@ -468,7 +468,7 @@ Errors that end in Error (exact text):
 
 - **What it does:** a pull request from the same repository, not a draft, and not from the production branch, builds a preview and gets one comment from the app that is updated as the build finishes (`server/github/webhook.ts:106-156`, `server/github/pulls.ts`).
 - **How it works:** the push to the PR branch normally starts the preview (as a branch preview). The pull request event links that deployment to the PR number. If none exists yet it queues one with the PR number.
-- **Comment text:** "### Preview ready" or "### Preview failed", project name, branch, short sha, "It is running on its own port (<port>) on the owner's Nest container. Nest only gives it a public address once a domain is mapped to that port." or "The build log is in Nest Deploy.", a link "Open the deployment", and a hidden marker `<!-- nest-deploy-preview -->` (`pulls.ts:31-49`). The comment includes no error output, server name or variable values. The link works only for the project's owner (it points to the signed-in deployment page).
+- **Comment text:** "### Preview ready" or "### Preview failed", project name, branch, short sha, "It is running on its own port (<port>) on the owner's Nest container. Nest only gives it a public address once a domain is mapped to that port." or "The build log is in Egg.", a link "Open the deployment", and a hidden marker `<!-- egg-preview -->` (`pulls.ts:31-49`). The comment includes no error output, server name or variable values. The link works only for the project's owner (it points to the signed-in deployment page).
 - **Rules:** one comment per PR; the app only edits a comment it wrote (type Bot with the marker). Up to 100 comments are read (`per_page=100`, `pulls.ts:65`).
 - **Closing a pull request:** cancels builds still queued or running and removes its Ready previews from the container, best effort. Marked as canceled with "Pull request closed" (`pulls.ts:131-192`).
 - **Not built:** forks ("pull request from a fork is not built"), drafts ("draft pull request"), PRs whose head branch is the production branch. Actions handled: `opened`, `reopened`, `synchronize`, `ready_for_review`, `closed` (`webhook.ts:99`).
@@ -503,11 +503,11 @@ Errors that end in Error (exact text):
 - **Import names from the repository:** reads the example env files in the repository and adds every name not already present with an empty value. Message "Added N name(s) with empty values. Use the pencil on each to set its value." Empty values are left out of the `.env` file (`runtime.ts:169-181`).
 - **Limits:**
   - name: letters, digits and underscores, not starting with a digit, at most 100 characters (`runtime.ts:159`, `projects.ts:205-212`)
-  - reserved: `PORT`, `HOST`, `PATH`, `HOME`, `NEST_DEPLOY` (case-insensitive)
+  - reserved: `PORT`, `HOST`, `PATH`, `HOME`, `EGG` (case-insensitive)
   - value: at most 10,000 characters
   - 100 variables per project, counted per name and target pair (`projects.ts:241`)
   - unique per name and target (`schema.ts:210`)
-- **Errors:** "Names use letters, digits and underscores, and do not start with a digit" ; "That name is set by Nest Deploy" ; "A project can have up to 100 variables." ; import: "No example env file (such as .env.example) was found in the repository." ; "Every name in the repository is already here." ; "<n> added, then it stopped: <reason>" ; "Could not look at the repository."
+- **Errors:** "Names use letters, digits and underscores, and do not start with a digit" ; "That name is set by Egg" ; "A project can have up to 100 variables." ; import: "No example env file (such as .env.example) was found in the repository." ; "Every name in the repository is already here." ; "<n> added, then it stopped: <reason>" ; "Could not look at the repository."
 - **Delete dialog:** `Delete <name>?` "Deployments after this one will not have it."
 - **Masking:** values of 4 or more characters are replaced by `***` in build and deploy log lines (`logger.ts:22-29`, `build.ts:176-183`). Shorter values and transformed values (for example base64) are not masked.
 - **If a name exists for All and for a specific target:** both are loaded and the later row wins (`pipeline.ts:91-95`). UNCONFIRMED which row is later: the query has no `ORDER BY`.
@@ -539,7 +539,7 @@ Errors that end in Error (exact text):
 - **Limits:** domain is a hostname (up to 253 characters, no IP, no URL; `domains.ts:18-31`); port 1 to 65535; a domain can be added once across all users (unique index `domains_domain_idx`, `schema.ts:304`); no cap on the number of domains found.
 - **Errors:** "Enter a domain name such as app.example.com (not an IP address or a URL)." ; "<domain> is already added." (409) ; "Enter a port between 1 and 65535." ; "Project not found" (project must be on the same server) ; "Could not add the domain" ; "Check failed".
 - **Edit:** the pencil changes the project and port. Moving to a project without a port uses that project's port. Changing the port resets the status to "Not checked" and says "Saved. Also change the target port to <n> on the Domains page of your Nest dashboard, then press Check." (`domains.ts:130-171`, `domains-view.tsx:163-167`)
-- **Remove:** "This removes the record from Nest Deploy." Nothing changes at Nest or your DNS.
+- **Remove:** "This removes the record from Egg." Nothing changes at Nest or your DNS.
 - **Which server:** the Add form always uses the first server in the list (`domains-view.tsx:79`, `servers[0]`). UNCONFIRMED how a second server's domains are added from the UI: no server selector exists in the form.
 - **Needs:** sign-in, a connected server. API: `domains:read`, `domains:write`.
 
@@ -555,11 +555,11 @@ See "Deployment page". Stored per deployment, searchable in the page ("Find in l
 
 - **Label:** page "Logs", region "Runtime logs" (`components/logs-view.tsx`).
 - **Controls:** project select, "Search logs" ("Search the last 1000 lines…"), "Time range" ("1 hour", "24 hours", "7 days", default 7 days), "Level" ("All lines", "Warnings and errors"), checkbox "Refresh every 5s" (shows "Live"), "Download", "Refresh".
-- **What it does:** reads the production service's journal over SSH (`journalctl -u nd-<slug>.service ... -o short-iso`) (`server/deploy/remote.ts:174-179`). Shows up to 300 lines. A search or the "Warnings and errors" level reads the newest 1000 lines first, filters them, then keeps the newest 300 (`server/runtime-info.ts:14-42`). The API clamps `lines` to 1 to 1000 (`app/api/projects/[id]/runtime-logs/route.ts:10-11`).
+- **What it does:** reads the production service's journal over SSH (`journalctl -u egg-<slug>.service ... -o short-iso`) (`server/deploy/remote.ts:174-179`). Shows up to 300 lines. A search or the "Warnings and errors" level reads the newest 1000 lines first, filters them, then keeps the newest 300 (`server/runtime-info.ts:14-42`). The API clamps `lines` to 1 to 1000 (`app/api/projects/[id]/runtime-logs/route.ts:10-11`).
 - **Level detection:** read from the line text: `[ERROR]`, `level=warn`, JSON level fields, pino numbers, systemd `<n>` priorities, words like error, failed, fatal, exception, traceback, warning, deprecated, error class names, stack frames, npm `ERR!`, Node `ERR_` codes. Counts of zero such as "0 errors" do not count. Stack trace lines take the level of the error above (`lib/log-filter.ts:39-258`). Lines marked "Error" or "Warning" in the "Warnings and errors" view.
 - **Download:** saves exactly the lines on screen as a plain text file named like `recipe-api-logs-24h-2026-11-05.txt` (`log-filter.ts:261-273`). The button label includes the count. Disabled with no lines.
 - **Errors:** "Could not read the logs from your container." (502) ; connection problems show "We can't reach your container right now" with details and a retry button (`lib/connection-error.ts:7`). Empty states: `No lines match “<term>”.` ; "No warnings or errors in this time range." ; "Nothing printed in this time range. Try a longer one." ; "Nothing to read yet" with no projects.
-- **Limits:** SSH script timeout 30 seconds. Search text is cut to 200 characters. Journal retention is whatever systemd keeps on the container, not set by Nest Deploy.
+- **Limits:** SSH script timeout 30 seconds. Search text is cut to 200 characters. Journal retention is whatever systemd keeps on the container, not set by Egg.
 - **Needs:** sign-in. API: `logs:read` for runtime logs; build output needs `deployments:read` and uses the SSH rate bucket.
 - **Files:** `components/logs-view.tsx`, `lib/log-filter.ts`, `server/runtime-info.ts`, `app/api/projects/[id]/runtime-logs/route.ts`.
 
@@ -601,7 +601,7 @@ See "Deployment page". Stored per deployment, searchable in the page ("Find in l
 - **What it does:** posts a short message to a Discord or Slack incoming webhook when a deployment finishes (Ready or Error), and the alerts below use the same webhook.
 - **Accepted URLs (`server/notify.ts:22-51`):** https, no port, query, hash or credentials. Discord hosts `discord.com`, `discordapp.com`, optionally with `ptb.` or `canary.`, path `/api/webhooks/<digits>/<token>`. Slack host `hooks.slack.com`, path `/services/<A-Z0-9>/<A-Z0-9>/<token>`. The URL is stored encrypted and never shown again; the card says "Sending to Discord for every finished deployment. The URL is hidden. Paste a new one to replace it."
 - **Message:** "<project> is live in production|a preview" or "<project> failed to deploy to production|a preview", then branch, short sha and commit message (or error up to 200 characters), duration, and a link. Discord messages block mentions (`allowed_mentions: { parse: [] }`). Posts time out after 5 seconds, redirects are refused, and a failed post is logged only (`notify.ts:100-116,191-193`).
-- **Test:** "Send test message" posts "Test from Nest Deploy for <project>". Messages: "Sent. Check the channel." ; "Add a webhook URL first." (400) ; "Discord answered <status>." / "Slack answered <status>." (502).
+- **Test:** "Send test message" posts "Test from Egg for <project>". Messages: "Sent. Check the channel." ; "Add a webhook URL first." (400) ; "Discord answered <status>." / "Slack answered <status>." (502).
 - **Errors:** "That is not a valid URL." ; "Use the plain https webhook URL from Discord or Slack." ; "Only Discord and Slack incoming webhook URLs are supported." ; "Could not save" ; "Could not send" ; "Could not remove".
 - **Filtering rules:** "Failures only" suppresses Ready messages. The "Deployment results" alert channel and an active pause also suppress them. The event is still written to history (`notify.ts:160-190`).
 - **Needs:** sign-in. API: `notifications:read` (read settings and send a test).
@@ -658,9 +658,9 @@ See "Deployment page". Stored per deployment, searchable in the page ("Find in l
 
 Card "What else to record". Each is off until turned on; with all off the script is the plain page-view script (`server/analytics-script.ts`).
 
-- **Clicks** ("Top clicks"): records the label of the clicked link, button, `[role=button]`, `[role=link]` or `summary`, or any element with `data-nd-track`. The label is `data-nd-track`, else `aria-label`, else the text, collapsed whitespace, at most 40 characters. A label containing an email address is dropped whole. URL-like words lose their query and fragment. Never records input values, form content or visitor ids; stores only the project, the UTC day and the label (`analytics-events.ts:22-44`). Top 10 shown.
+- **Clicks** ("Top clicks"): records the label of the clicked link, button, `[role=button]`, `[role=link]` or `summary`, or any element with `data-egg-track`. The label is `data-egg-track`, else `aria-label`, else the text, collapsed whitespace, at most 40 characters. A label containing an email address is dropped whole. URL-like words lose their query and fragment. Never records input values, form content or visitor ids; stores only the project, the UTC day and the label (`analytics-events.ts:22-44`). Top 10 shown.
 - **Time on page:** time the page was open and visible, bucketed "Under 10 seconds", "10 to 60 seconds", "1 to 5 minutes", "Over 5 minutes", with median and shares once there are 50 visits. Sent when the page is left or the route changes. Stores the day and bucket only (`analytics-events.ts:19,168-244`).
-- **Funnel:** 2 to 6 steps (`MIN_STEPS`, `MAX_STEPS`, `analytics-config.ts:26-27`), each a page path starting with `/` or a "Tracked name" (`data-nd-track`; letters, digits, spaces and `- _ . :`, at most 40 characters, `TRACK_NAME`). Shows visitors reaching each step and who dropped off. A visitor counts at a step only after reaching the ones before it, in order, on the same UTC day. Tracked-name steps store the name, the daily visitor hash and the time. A funnel with fewer than 2 steps counts as off.
+- **Funnel:** 2 to 6 steps (`MIN_STEPS`, `MAX_STEPS`, `analytics-config.ts:26-27`), each a page path starting with `/` or a "Tracked name" (`data-egg-track`; letters, digits, spaces and `- _ . :`, at most 40 characters, `TRACK_NAME`). Shows visitors reaching each step and who dropped off. A visitor counts at a step only after reaching the ones before it, in order, on the same UTC day. Tracked-name steps store the name, the daily visitor hash and the time. A funnel with fewer than 2 steps counts as off.
 - **Errors:** "A funnel needs at least 2 steps" ; "A funnel has at most 6 steps" ; `A page step starts with "/", like /pricing` ; "A tracked name uses letters, numbers, spaces and - _ . : and is at most 40 characters" ; "Could not save" ; "Could not change analytics".
 - **Needs:** sign-in; analytics on.
 - **Files:** `components/analytics-{setup,features,insights,chart,top-list}.tsx`, `server/analytics*.ts`, `app/api/{analytics/script,collect/[key],projects/[id]/analytics}/route.ts`.
@@ -672,7 +672,7 @@ Card "What else to record". Each is off until turned on; with all off the script
 ### Developer page and access tokens
 
 - **Label:** sidebar "Developer", page "Developer", section "Access tokens", button "Create token" opening the dialog "New token" (`components/developer-tokens.tsx`, `app/(app)/developer/page.tsx`).
-- **Create steps:** name the token ("Name", 1 to 60 characters), tick "Permissions" (quick picks "Read only" and "Deploy"), choose "Expires after" (7, 30, 90 or 365 days; default 90), press the create button, then copy the secret. The secret starts with `ndp_` and is shown once ("Copy it now. It will not be shown again.").
+- **Create steps:** name the token ("Name", 1 to 60 characters), tick "Permissions" (quick picks "Read only" and "Deploy"), choose "Expires after" (7, 30, 90 or 365 days; default 90), press the create button, then copy the secret. The secret starts with `egg_` and is shown once ("Copy it now. It will not be shown again.").
 - **Quick picks:** "Read only" ticks every permission whose id ends in `:read` (which includes `files:read`). "Deploy" ticks the deploy preset (`developer-tokens.tsx:443-444`, `lib/developer.ts`).
 - **Edit and revoke:** each active token has "Edit <name>" (name, permissions, expiry counted from now; a revoked token is final) and "Revoke <name>" (dialog `Revoke "<name>"?`). Groups: "Active", "Expired". Status words: Active, Expired, Revoked. Dropping the deploy permission shows "Deploys will stop working for anything that uses this token, including redeploys, cancels and rollbacks."
 - **Limits:**
@@ -712,14 +712,14 @@ Only `projects`, `deployments`, `env` and `domains` have a write scope. Notifica
 
 ### The REST API and the OpenAPI document
 
-- **Address:** `<site>/api/v1/...`, bearer token only (`Authorization: Bearer ndp_...`). The OpenAPI 3.1 document is at `/api/v1/openapi.json`, generated from the same endpoint list as the routes and MCP tools (`server/api-v1-openapi.ts`).
+- **Address:** `<site>/api/v1/...`, bearer token only (`Authorization: Bearer egg_...`). The OpenAPI 3.1 document is at `/api/v1/openapi.json`, generated from the same endpoint list as the routes and MCP tools (`server/api-v1-openapi.ts`).
 - **First call:** `GET /api/v1/me` needs no scope. Returns the owner's display name, the token's name, scopes and expiry, and counts of servers and projects. No email, no ids (`server/api-v1-me.ts`).
 - **Endpoint list (id, method, path, scope, rate bucket):** `list_projects`, `get_project`, `create_project`, `update_project`, `delete_project`; `list_deployments`, `deploy_branch` (POST `/projects/{id}/deployments`), `get_deployment`, `get_deployment_logs` (ssh bucket), `redeploy`, `cancel_deployment`, `rollback_deployment`; `get_logs`; `list_env_vars`, `set_env_var` (PUT `/projects/{id}/env/{key}`), `delete_env_var`; `list_domains`, `add_domain`, `verify_domain`, `remove_domain`; `rotate_deploy_hook`, `revoke_deploy_hook`; `get_notifications`, `test_notification`, `get_alerts`, `get_status_page`, `get_analytics`; `get_server_usage`, `get_resource_history` and `get_project_resources` (ssh bucket); `list_servers`, `get_container_inventory` (ssh bucket); `get_activity`; terminal: `terminal_status`, `terminal_open`, `terminal_send`, `terminal_read`, `terminal_resize`, `terminal_close`; files: `list_files`, `read_file`, `download_file`, `make_folder`, `rename_file`, `write_file`, `delete_file` (all ssh bucket).
 - **Limits:** per token per minute: 120 reads, 30 changes, 10 for SSH-opening calls, 300 for terminal input (`api-v1-kit.ts:24-29`). Request body at most 16 KB unless an endpoint says otherwise (`DEFAULT_MAX_BODY_BYTES`). API file write at most 1 MB; API file download at most 2 MB (`api-v1-shell.ts:151,260`). Unknown body fields are refused: `Unknown field "<name>". Allowed: ...` (400).
-- **Errors:** 401 "Send an access token as an Authorization: Bearer ndp_... header." ; 401 "That access token is not valid." (missing, revoked, expired and unknown look the same) ; 403 "This token does not have the <scope> permission." ; 404 "No such item, or it belongs to someone else." ; 413 "The request body is too large." ; 429 "Too many requests for this token. Wait <n> second(s) and try again." with `Retry-After` ; 502 container not reachable ; 503 "Too many terminals are open right now. Try again soon." Errors are JSON `{ "error": { "code", "message" } }`.
+- **Errors:** 401 "Send an access token as an Authorization: Bearer egg_... header." ; 401 "That access token is not valid." (missing, revoked, expired and unknown look the same) ; 403 "This token does not have the <scope> permission." ; 404 "No such item, or it belongs to someone else." ; 413 "The request body is too large." ; 429 "Too many requests for this token. Wait <n> second(s) and try again." with `Retry-After` ; 502 container not reachable ; 503 "Too many terminals are open right now. Try again soon." Errors are JSON `{ "error": { "code", "message" } }`.
 - **Audit:** deploys, redeploys, rollbacks, cancels, file and terminal actions made with a token record "via: api" and the token id; Activity shows the token name.
 - **Secrets:** environment values, webhook URLs and token secrets are never returned; the deploy hook URL is returned once by the call that creates it. The API refuses to read `current/.env` and `releases/<id>/.env` with 403 "That file holds the project's environment variable values, which are never returned by the API." (`api-v1-shell.ts:162-178`).
-- **Developer page extras:** "Build with it" lists the TypeScript client (one file, `web/src/lib/sdk/nest-deploy.ts`), a Node script, a Python script, a static dashboard, a GitHub Actions workflow and MCP config, each stating which permissions it needs (`lib/developer.ts:BUILD_RESOURCES`). Copyable examples use the placeholder `ndp_...`.
+- **Developer page extras:** "Build with it" lists the TypeScript client (one file, `web/src/lib/sdk/egg.ts`), a Node script, a Python script, a static dashboard, a GitHub Actions workflow and MCP config, each stating which permissions it needs (`lib/developer.ts:BUILD_RESOURCES`). Copyable examples use the placeholder `egg_...`.
 
 ### MCP endpoint
 
@@ -733,7 +733,7 @@ Only `projects`, `deployments`, `env` and `domains` have a write scope. Notifica
 ## Terminal
 
 - **Label:** project tab "Terminal"; heading "Terminal"; "Open terminal" (busy "Connecting…"); "Resume terminal"; "Close it"; "Open a new terminal"; "Reopen terminal" (`components/terminal-view.tsx`, `app/(app)/projects/[slug]/terminal/page.tsx`).
-- **What it does:** a live shell on the container, started in `~/.nest-deploy/<slug>`, in the browser. The page says "This is a shell on your Nest container." and, after it connects, who it runs as ("This shell runs as root on <host>." or "...as the container user (uid <n>) on <host>.").
+- **What it does:** a live shell on the container, started in `~/.egg/<slug>`, in the browser. The page says "This is a shell on your Nest container." and, after it connects, who it runs as ("This shell runs as root on <host>." or "...as the container user (uid <n>) on <host>.").
 - **Off by default.** With the switch off the page shows "The terminal is turned off for this server." and "Go to Account".
 - **Steps:** turn on Terminal in Account (fresh Hack Club sign-in), open the project's Terminal tab, press "Open terminal", type. "Close" ends it.
 - **Limits (`server/terminal.ts:22-40`):**
@@ -767,7 +767,7 @@ Only `projects`, `deployments`, `env` and `domains` have a write scope. Notifica
 ## File manager
 
 - **Label:** project tab "Files"; heading "Files"; "New folder", "Upload"; breadcrumb "Folder path"; dialogs "Create", "Rename", "Delete"; "Discard unsaved changes?"; "Replace" (`components/file-manager.tsx`).
-- **What it does:** browse, read and download files in the project's folder on the container (`~/.nest-deploy/<slug>`); with File changes on, create folders, upload, edit text, rename and delete inside `shared/`.
+- **What it does:** browse, read and download files in the project's folder on the container (`~/.egg/<slug>`); with File changes on, create folders, upload, edit text, rename and delete inside `shared/`.
 - **Areas (`server/files-paths.ts:1-12,81-101`):** `shared/**` writable (when the switch is on) and survives deploys; `current/**` the live release, read only always; `releases/**`, `incoming/**` and anything else read only. `shared` itself cannot be renamed or deleted.
 - **Notices:** "current/ is the live release and is read only." "Changing it here would change the code your app runs. Make code changes in your repository and deploy. Files that must last, like data or settings, belong in shared/." ; "This location is read only. Files in shared/ can be changed." ; with the switch off: "File changes are turned off for this server." plus an explanation and a link to Account ; "Uploads are not allowed here" / "Open shared/ first."
 - **Steps to edit:** switch on File changes, open `shared/`, select a file, edit and save; New folder; Upload; rename; delete (folders need typing the name).
@@ -781,7 +781,7 @@ Only `projects`, `deployments`, `env` and `domains` have a write scope. Notifica
   - an upload that arrives short is refused: "The upload arrived incomplete. Nothing was saved."
 - **Errors (`server/files.ts:189-200`):** "This project has no folder on your container yet. Deploy it first." ; "That path leaves the project folder." ; "This location is read only. Files in shared/ can be changed. The live release (current/) cannot." ; "Nothing exists at that path." ; "That path is not a folder." ; "That path is not a file." ; "That file is over the 50 MB limit." ; "That path is a symbolic link. Files are not written through links." ; "That path is a folder." ; "Something with that name already exists." ; "This container's tools are too limited to list files." ; "Your container could not finish that. Try again." ; "That is the same path." ; "A folder cannot move into itself." ; "Changing files is turned off for this server. Turn it on in Account, under Container permissions." ; "Could not save the file." ; "The upload failed." ; "Over the 50 MB limit." ; "A folder with this name already exists." ; "Could not load this folder".
 - **Binary and large files:** "Binary file, cannot preview" ; "Too large to preview" ; "This file is empty." ; "No file selected".
-- **The .env file:** Nest Deploy writes each release's variables to `.env` at the top of the release. The API refuses to read or download `current/.env` and `releases/<id>/.env` ("secret_file", 403). The browser file manager has no such refusal and can open them (read, list and download routes do not check). See the discrepancy list.
+- **The .env file:** Egg writes each release's variables to `.env` at the top of the release. The API refuses to read or download `current/.env` and `releases/<id>/.env` ("secret_file", 403). The browser file manager has no such refusal and can open them (read, list and download routes do not check). See the discrepancy list.
 - **Audit:** "Saved a file on", "Created a folder on", "Renamed a file on", "Deleted a file on" with the path. File contents are never recorded.
 - **Needs:** reading: sign-in only, no switch. Changing: File changes switch on for that server. API: `files:read`, `files:write` (7 day token) plus the switch.
 - **Files:** `server/files.ts`, `server/files-paths.ts`, `app/api/projects/[id]/files/*/route.ts`, `components/file-manager*.tsx`.
@@ -792,13 +792,13 @@ Only `projects`, `deployments`, `env` and `domains` have a write scope. Notifica
 
 ### Container page
 
-- **Label:** sidebar "Container"; heading "Container"; "What is running on <server>, and what Nest Deploy left behind."; "Refresh" (busy "Reading…"); server select when you have more than one (`components/container-view.tsx`).
+- **Label:** sidebar "Container"; heading "Container"; "What is running on <server>, and what Egg left behind."; "Refresh" (busy "Reading…"); server select when you have more than one (`components/container-view.tsx`).
 - **What it does:** reads the container in one SSH round trip, read-only (`server/inventory.ts:401-416`, `server/ssh/inventory-probe.ts:116-165`). Timeout 60 seconds.
 - **Sections:**
-  - disk bar "Disk used": "<n>% used." and how much of it is Nest Deploy folders (a warning colour from 80%)
+  - disk bar "Disk used": "<n>% used." and how much of it is Egg folders (a warning colour from 80%)
   - "Projects": the service per project (Running, Starting, Crashed, Stopped, or "No service yet"), port, folder size, previews and their ports, and a warning "Port <n> is held by <x>, not by <project>." with a "Change the port" link
   - "Orphans" (leftovers)
-  - "Other ports": programs listening that Nest Deploy did not start, read-only ("This container only" or "Open to the network"); "This container has neither ss nor netstat, so its listening ports could not be read." ; "The container did not share process names, so ports are matched to projects by their number only."
+  - "Other ports": programs listening that Egg did not start, read-only ("This container only" or "Open to the network"); "This container has neither ss nor netstat, so its listening ports could not be read." ; "The container did not share process names, so ports are matched to projects by their number only."
   - port conflict alert: "A port is already taken" / "Some ports are already taken": "<project>'s port ... The next deploy of <project> will fail its health check until that is sorted out."
 - **Empty states:** "Connect a server first" ; "Nothing is running here yet" ; "No leftovers".
 - **Errors:** connection errors become "We can't reach your container right now" with a retry; "The container's answer was cut short, so nothing was classified." (nothing is classified from a half-read answer) ; 502 and 504 with the SSH message.
@@ -806,25 +806,25 @@ Only `projects`, `deployments`, `env` and `domains` have a write scope. Notifica
 
 ### Removing leftovers (Orphans)
 
-- **What counts as a leftover:** a unit named `nd-<slug>.service` or `nd-<slug>-pv-<8 hex>.service` that no project (or live preview record) uses, and a folder under `~/.nest-deploy/` that is not a project's slug. Kinds: "Service", "Preview service", "Folder" (`inventory.ts:119-292`).
+- **What counts as a leftover:** a unit named `egg-<slug>.service` or `egg-<slug>-pv-<8 hex>.service` that no project (or live preview record) uses, and a folder under `~/.egg/` that is not a project's slug. Kinds: "Service", "Preview service", "Folder" (`inventory.ts:119-292`).
 - **Steps:** turn on Removing leftovers in Account, open Container, press "Remove" on a row, confirm.
   - Service dialog "Remove <unit>?": "This stops the service, turns off starting it at boot and deletes its unit file. Files in its folder are not touched." Confirm "Remove service".
-  - Folder dialog "Delete the folder <name>?": "This permanently deletes ~/.nest-deploy/<name> and everything inside it (<size>), including any data in its shared folder. It cannot be undone." You must type the folder name. Confirm "Delete folder".
-- **Safety rules (`inventory.ts:433-547`, `inventory-probe.ts:312-357`):** every id is validated against a strict pattern, then checked against a fresh read, so anything that belongs to a project is refused even if named. A removal runs only when the item carries the Nest Deploy marker and is not a symbolic link; the script checks again on the container. Folders must resolve to a direct child of `~/.nest-deploy`.
+  - Folder dialog "Delete the folder <name>?": "This permanently deletes ~/.egg/<name> and everything inside it (<size>), including any data in its shared folder. It cannot be undone." You must type the folder name. Confirm "Delete folder".
+- **Safety rules (`inventory.ts:433-547`, `inventory-probe.ts:312-357`):** every id is validated against a strict pattern, then checked against a fresh read, so anything that belongs to a project is refused even if named. A removal runs only when the item carries the Egg marker and is not a symbolic link; the script checks again on the container. Folders must resolve to a direct child of `~/.egg`.
 - **Limits:** at most 50 ids per request (`MAX_ORPHANS_PER_REQUEST`); 10 requests per minute per user; script timeout 120 seconds.
 - **Row notes:** "A link, so it cannot be removed here"; "Its folder is listed here too"; "What it runs" (the ExecStart line).
-- **Results and messages:** removed, gone, refused, failed. "It is no longer on the container." ("<id> was already gone" toast) ; "This belongs to one of your projects, so it was left alone." ; "Nest Deploy did not create this, so it was left alone." ; "This is a link, so it was left alone." ; "That is not a Nest Deploy name." ; "That service is not in Nest Deploy's service folder, so it was left alone" ; "This service was not created by Nest Deploy, so it was left alone" ; "That folder is a link, so it was left alone" ; "This folder was not created by Nest Deploy, so it was left alone" ; "Refusing a folder outside <base>" ; "The unit file is still there" ; "The folder is still there" ; "Choose something to remove." ; "Remove at most 50 items at a time." ; "Nothing was removed." (client). Success toasts "Removed <id>" and "Deleted the folder <id>".
+- **Results and messages:** removed, gone, refused, failed. "It is no longer on the container." ("<id> was already gone" toast) ; "This belongs to one of your projects, so it was left alone." ; "Egg did not create this, so it was left alone." ; "This is a link, so it was left alone." ; "That is not an Egg name." ; "That service is not in Egg's service folder, so it was left alone" ; "This service was not created by Egg, so it was left alone" ; "That folder is a link, so it was left alone" ; "This folder was not created by Egg, so it was left alone" ; "Refusing a folder outside <base>" ; "The unit file is still there" ; "The folder is still there" ; "Choose something to remove." ; "Remove at most 50 items at a time." ; "Nothing was removed." (client). Success toasts "Removed <id>" and "Deleted the folder <id>".
 - **Switch off:** a note "Removing leftovers is turned off for this server. Leftovers are still listed, but they cannot be removed from here. Turn removal back on in Account, under Container permissions." with "Go to Account". 403 from the API with the standard refusal text.
 - **Recorded:** "Removed a leftover from the container" with the kind and name only.
 - **Needs:** Removing leftovers switch on, sign-in. Not available to API tokens or MCP.
 
 ### Ownership markers
 
-How Nest Deploy tells what it created from what you made (`server/deploy/layout.ts:61-78`):
+How Egg tells what it created from what you made (`server/deploy/layout.ts:61-78`):
 
-- a unit file carries a first-lines comment `# nest-deploy:managed project=<slug>`; older units are recognised by `Description=Nest Deploy: ...`
-- a project folder carries the file `.nest-deploy-managed`; an older folder without it counts as ours only when it holds nothing but `releases`, `incoming`, `shared`, `current`, `current.new` and has no `.git`
-- anything without a marker is never overwritten, stopped, moved or deleted by Nest Deploy: the deploy refuses (exit 30), the cleanup refuses, project deletion leaves it ("<path> was not created by Nest Deploy, so it was left alone.")
+- a unit file carries a first-lines comment `# egg:managed project=<slug>`; there is no other rule for units
+- a project folder carries the file `.egg-managed`; an older folder without it counts as ours only when it holds nothing but `releases`, `incoming`, `shared`, `current`, `current.new` and has no `.git`
+- anything without a marker is never overwritten, stopped, moved or deleted by Egg: the deploy refuses (exit 30), the cleanup refuses, project deletion leaves it ("<path> was not created by Egg, so it was left alone.")
 - the marker file is created when the deploy first prepares the folder (`remote.ts:41`)
 
 ### Adoption checks
@@ -868,7 +868,7 @@ See "Adopt an existing checkout and container conflict check" under Projects. Th
 
 Claims the code contradicts or qualifies:
 
-1. `sections.tsx:120` "Rotate key" and `:123` "Remove a server": the labels in the product are "New key" and "Disconnect" (`components/connect-flow.tsx:149-173`). Disconnect also deletes every project on that server from Nest Deploy through the foreign-key cascade (`server/db/schema.ts:121-123`), which the docs and the dialog do not say.
+1. `sections.tsx:120` "Rotate key" and `:123` "Remove a server": the labels in the product are "New key" and "Disconnect" (`components/connect-flow.tsx:149-173`). Disconnect also deletes every project on that server from Egg through the foreign-key cascade (`server/db/schema.ts:121-123`), which the docs and the dialog do not say.
 2. `sections.tsx:214-216` "Deploy builds a branch now": the project page "Deploy" button can only build the production branch (`components/deploy-button.tsx`, no branch picker in the UI). It is labelled "Redeploy" when something is live (`app/(app)/projects/[slug]/page.tsx:146`) but builds the branch tip, not the same commit. The same-commit action is "Redeploy" in a row's actions menu. The rollback label is "Instant rollback", not "Rollback" (`sections.tsx:222`).
 3. `sections.tsx:232-235` "shows 25 at a time with a Show more button": the button reads "Show N more", and the page loads only the newest 100 deployments (`server/queries.ts:192`), so "25 at a time" is a window onto at most 100.
 4. `sections.tsx:238-239` "Production keeps your last five releases and the one that is live": correct for counting (`pipeline.ts:260-268`), but only Ready releases count and, after a rollback, up to six production releases can exist.

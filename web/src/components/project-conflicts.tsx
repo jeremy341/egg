@@ -10,9 +10,9 @@ const KIND: Record<ConflictKind, string> = {
   checkout: "Git checkout",
 };
 
-/** Blocking first, then what Nest Deploy made, then the rest. */
+/** Blocking first, then what Egg made, then the rest. */
 function order(a: Conflict, b: Conflict) {
-  const rank = (c: Conflict) => (c.blocking ? 0 : c.managedByNestDeploy ? 2 : 1);
+  const rank = (c: Conflict) => (c.blocking ? 0 : c.managedByEgg ? 2 : 1);
   return rank(a) - rank(b);
 }
 
@@ -37,7 +37,7 @@ export function ProjectConflicts({ conflicts, className }: { conflicts: Conflict
     <section className={cn("space-y-3", className)} aria-label="What is already on this container">
       <p className="text-sm" role="status">
         {blocking > 0
-          ? `${blocking} ${blocking === 1 ? "thing needs" : "things need"} your attention before the first deploy. Nest Deploy will not change them for you.`
+          ? `${blocking} ${blocking === 1 ? "thing needs" : "things need"} your attention before the first deploy. Egg will not change them for you.`
           : "Nothing blocks the first deploy. Here is what is already there."}
       </p>
       <ul className="divide-y rounded-lg border">
@@ -48,8 +48,8 @@ export function ProjectConflicts({ conflicts, className }: { conflicts: Conflict
               <code className="break-all text-sm font-medium">{c.name}</code>
               {c.blocking ? (
                 <Badge variant="destructive">Blocks the deploy</Badge>
-              ) : c.managedByNestDeploy ? (
-                <Badge variant="secondary">Made by Nest Deploy</Badge>
+              ) : c.managedByEgg ? (
+                <Badge variant="secondary">Made by Egg</Badge>
               ) : (
                 <Badge variant="outline">Good to know</Badge>
               )}

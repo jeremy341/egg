@@ -28,7 +28,7 @@ export default function FlowLayout({ children }: { children: React.ReactNode }) 
           <header className="relative flex h-[var(--topbar-height)] shrink-0 items-center gap-3 border-b bg-background-subtle px-4 lg:px-6">
             <Link
               href="/projects"
-              aria-label="Nest Deploy home"
+              aria-label="Egg home"
               className="flex size-10 shrink-0 items-center justify-center rounded-md transition-colors duration-(--dur-fast) hover:bg-[var(--ds-gray-alpha-100)]"
             >
               <NestMark className="size-6" />

@@ -11,7 +11,7 @@ export type Db = LibSQLDatabase<typeof schema>;
 type Holder = { client: Client; db: Db; ready: Promise<void> };
 
 // Next.js re-evaluates modules in dev, so keep one connection on globalThis.
-const g = globalThis as unknown as { __nestDeployDb?: Holder };
+const g = globalThis as unknown as { __eggDb?: Holder };
 
 function open(): Holder {
   const url = config().DATABASE_URL;
@@ -33,16 +33,16 @@ function open(): Holder {
 
 /** The database, with migrations applied. Await it before the first query. */
 export async function getDb(): Promise<Db> {
-  g.__nestDeployDb ??= open();
-  await g.__nestDeployDb.ready;
-  return g.__nestDeployDb.db;
+  g.__eggDb ??= open();
+  await g.__eggDb.ready;
+  return g.__eggDb.db;
 }
 
 /** For tests: close and forget the connection. */
 export async function closeDbForTests() {
-  if (g.__nestDeployDb) {
-    g.__nestDeployDb.client.close();
-    g.__nestDeployDb = undefined;
+  if (g.__eggDb) {
+    g.__eggDb.client.close();
+    g.__eggDb = undefined;
   }
 }
 

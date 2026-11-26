@@ -1,15 +1,17 @@
 import type { Metadata } from "next";
 import { HOME_FACTS, TOKEN_SCOPES, numberWord } from "@/components/marketing/home-facts";
 import { REPO_URL } from "@/lib/site";
-import { Code, Points, Section, Sub, Term, Terms, TextLink } from "./_components/parts";
+import { SECURITY_FACTS } from "./_components/facts";
+import { Code, LimitTable, Points, Section, Sub, Term, Terms, TextLink } from "./_components/parts";
 
 export const metadata: Metadata = {
   title: "Security",
   description:
-    "What Egg can and cannot touch on your Nest container, how it protects your keys and account, what it logs, how to report a vulnerability and how to remove it.",
+    "What Egg can and cannot touch on your Nest container, how it protects your keys, your account and your browser, the limits it enforces, what it logs, how to report a vulnerability and how to remove it.",
 };
 
-const { reauthMinutes, terminalIdleMinutes, terminalMaxMinutes, shortLivedDays } = HOME_FACTS;
+const { reauthMinutes, terminalIdleMinutes, terminalMaxMinutes, shortLivedDays, buildMemoryGb } = HOME_FACTS;
+const F = SECURITY_FACTS;
 
 /** The private advisory form on the repository, and the maintainer's GitHub profile, both built from REPO_URL. */
 const ADVISORY_URL = `${REPO_URL}/security/advisories/new`;
@@ -20,11 +22,15 @@ const SECTIONS = [
   { id: "switches", title: "The three switches" },
   { id: "secrets", title: "Keys and secrets" },
   { id: "accounts", title: "Accounts and sign-in" },
+  { id: "browser", title: "Your browser and this site" },
+  { id: "limits", title: "Rate and size limits" },
   { id: "tokens", title: "Access tokens" },
-  { id: "outbound", title: "Webhooks and outbound requests" },
+  { id: "webhooks", title: "Webhooks" },
+  { id: "builds", title: "Builds" },
   { id: "logs", title: "What is logged and what is not" },
+  { id: "remove", title: "Disconnect a server, remove Egg" },
+  { id: "gaps", title: "What is not covered" },
   { id: "report", title: "Report a vulnerability" },
-  { id: "remove", title: "Remove Egg" },
 ] as const;
 
 const title = (id: (typeof SECTIONS)[number]["id"]) => SECTIONS.find((s) => s.id === id)!.title;
@@ -38,9 +44,9 @@ export default function SecurityPage() {
         </h1>
         <p className="mt-5 max-w-[60ch] text-[1.0625rem] leading-[1.75rem] text-reading">
           Egg is an add-on that connects to a Hack Club Nest container you already own. It is an independent project,
-          not part of Nest. This page says what Egg reaches, what it keeps, what it writes down and how to get rid of
-          it. In short: it only manages what it created, the risky features start switched off, and every secret is
-          encrypted or hashed.
+          not part of Nest. This page says what Egg reaches, what it keeps, what it writes down, what it refuses and how
+          to get rid of it. In short: it only manages what it created, the risky features start switched off, every
+          secret is encrypted or hashed, and requests that are unsigned, too frequent or too large are turned away.
         </p>
       </header>
 
@@ -73,16 +79,16 @@ export default function SecurityPage() {
                 dashboard, and you can delete it there at any time.
               </Term>
               <Term name="A folder for each project">
-                <Code>~/.nest-deploy/&lt;project&gt;/</Code> holds the releases, an upload area, a <Code>shared/</Code>{" "}
-                folder that deploys never touch, and a marker file named <Code>.nest-deploy-managed</Code>.
+                <Code>~/.egg/&lt;project&gt;/</Code> holds the releases, an upload area, a <Code>shared/</Code>{" "}
+                folder that deploys never touch, and a marker file named <Code>.egg-managed</Code>.
               </Term>
               <Term name="One service for each project">
-                A systemd service named <Code>nd-&lt;project&gt;</Code>. A branch preview gets its own service, named{" "}
-                <Code>nd-&lt;project&gt;-pv-</Code> and eight more characters. Each one carries a{" "}
-                <Code># nest-deploy:managed</Code> comment.
+                A systemd service named <Code>egg-&lt;project&gt;</Code>. A branch preview gets its own service, named{" "}
+                <Code>egg-&lt;project&gt;-pv-</Code> and eight more characters. Each one carries a{" "}
+                <Code># egg:managed</Code> comment.
               </Term>
               <Term name="The current link">
-                <Code>~/.nest-deploy/&lt;project&gt;/current</Code> is a link to the live release. A deploy points it at
+                <Code>~/.egg/&lt;project&gt;/current</Code> is a link to the live release. A deploy points it at
                 the new release and a rollback points it back.
               </Term>
             </Terms>
@@ -93,10 +99,9 @@ export default function SecurityPage() {
             <Sub>What it never touches</Sub>
             <p className="m-0">
               Anything that does not carry one of those markers. A service or folder you made yourself is not
-              overwritten, stopped or removed, even if its name starts with <Code>nd-</Code>. Before a first deploy
+              overwritten, stopped or removed, even if its name starts with <Code>egg-</Code>. Before a first deploy
               Egg checks the container for apps that are already running and for ports and service names that are
-              already taken. Services and folders from older versions of Egg, from before the markers, are recognised
-              by their description or by holding only Egg&apos;s own folders.
+              already taken.
             </p>
           </Section>
 
@@ -119,19 +124,16 @@ export default function SecurityPage() {
                 access: a changed file can change the code your app runs the next time it restarts.
               </Term>
               <Term name="Removing leftovers (off by default)">
-                Stops and removes services whose names start with <Code>nd-</Code>, and folders inside{" "}
-                <Code>~/.nest-deploy</Code> that no project uses any more. It only removes what carries Egg&apos;s
+                Stops and removes services whose names start with <Code>egg-</Code>, and folders inside{" "}
+                <Code>~/.egg</Code> that no project uses any more. It only removes what carries Egg&apos;s
                 marker, and it asks you to confirm each removal.
               </Term>
             </Terms>
             <p className="m-0">
               To turn on the terminal or file changes, Egg sends you back to Hack Club to sign in again. The sign-in has
               to be from the last {numberWord(reauthMinutes)} minutes. Turning a switch off never asks. Browsing and
-              reading files in a project&apos;s folder works with every switch off, and it is read only.
-            </p>
-            <p className="m-0">
-              Servers connected before these defaults existed kept the value they already had. Open Account and check
-              each server.
+              reading files in a project&apos;s folder works with every switch off, and it is read only. The one thing
+              the Files page will not show is a release&apos;s <Code>.env</Code> file, explained next.
             </p>
           </Section>
 
@@ -146,14 +148,23 @@ export default function SecurityPage() {
                 it in the Nest dashboard.
               </Term>
               <Term name="The Nest host key">
-                The first time Egg connects, it remembers the SSH host key of Nest. If that key later changes, Egg stops
-                before sending anything and tells you.
+                The first time Egg connects to a server, it records the SSH host key that answered and keeps it. Every
+                connection after that, whether a deploy, a file change or anything else, is checked against it. If the
+                key has changed, Egg stops before it sends a key, a variable or a file, and tells you. If you expected
+                the change, disconnect the server and connect it again.
               </Term>
               <Term name="Environment variables">
                 Encrypted the same way as the SSH key, and write-only: the dashboard and the API list their names and
                 never their values. At deploy time Egg decrypts them, gives them to the build and writes them to a{" "}
                 <Code>.env</Code> file on your container with mode 600, so only your own user can read it. On the
                 container that file is plain text, protected by its permissions.
+              </Term>
+              <Term name="The .env file on the Files page">
+                The Files page and the API refuse to show a release&apos;s <Code>.env</Code>, in <Code>current/</Code> or
+                in any release folder. The refusal does not rely on the name alone: the scripts that read and write
+                files follow links first and then refuse that file, so a link placed in <Code>shared/</Code> that points
+                at it gets nothing. Someone with a terminal on the container can still read it, which is part of why the
+                terminal is off by default.
               </Term>
               <Term name="Tokens and hooks">
                 Access tokens and deploy hooks are stored as a SHA-256 hash and shown once, when you create them. Egg
@@ -169,32 +180,111 @@ export default function SecurityPage() {
             </p>
             <Points>
               <li>
-                A session is a random value in a cookie that scripts on the page cannot read. Egg stores only a hash of
-                it. A session lasts 30 days, and each new sign-in replaces the old one.
+                A session is a random value in a cookie that scripts on the page cannot read, that is sent only over
+                https in production, and that browsers hold back from most requests another site starts. Egg stores only
+                a hash of it. A session lasts 30 days, and each new sign-in ends the session it replaces.
               </li>
               <li>
                 Account lists every browser you are signed in on. You can sign one out, or sign out every browser except
                 the one you are using. Doing either closes any open terminal on your account.
               </li>
               <li>
+                When Egg asks you to sign in again to confirm a sensitive change, it has to be the same Hack Club
+                account. A different account is turned away and your session is left as it was.
+              </li>
+              <li>
                 Deleting your account asks you to type your name. It removes everything under the account, including
                 the activity log. Apps already running on your container are left running.
               </li>
             </Points>
-            <Sub>When you disconnect a server</Sub>
+          </Section>
+
+          <Section id="browser" title={title("browser")}>
+            <Terms>
+              <Term name="The return path after sign-in">
+                After you sign in, Egg sends you back to the page you came from, but only if that is a page on Egg. A
+                path that a browser could read as another site is replaced with your Account page. That includes paths
+                that start with a double slash, or that hide a backslash, a tab or a line break, which browsers quietly
+                turn into a different address. A crafted link cannot use the sign-in to land you on a look-alike page.
+              </Term>
+              <Term name="Changes from other sites">
+                Egg refuses a request that changes something when your browser says it came from another site. It checks
+                the <Code>Origin</Code> header and, when that is missing, the browser&apos;s own{" "}
+                <Code>Sec-Fetch-Site</Code> header. Tools such as curl and webhook senders send neither, and are not
+                affected.
+              </Term>
+              <Term name="Security headers">
+                Every page and every API route is sent with these.
+                <Points>
+                  <li>
+                    No other site can put Egg in a frame (<Code>frame-ancestors &apos;none&apos;</Code> and{" "}
+                    <Code>X-Frame-Options: DENY</Code>), which stops click-jacking.
+                  </li>
+                  <li>
+                    A content policy limits where scripts, styles, fonts and connections may load from to Egg itself,
+                    allows no plug-ins, and lets forms submit only to Egg. Images may come from any https address.
+                  </li>
+                  <li>
+                    Browsers may not guess a file&apos;s type (<Code>nosniff</Code>), and other sites are told only that
+                    you came from Egg, not which page.
+                  </li>
+                  <li>The camera, microphone, location and payment features are switched off for the page.</li>
+                  <li>In production, browsers use https only for two years (HSTS).</li>
+                </Points>
+              </Term>
+            </Terms>
+          </Section>
+
+          <Section id="limits" title={title("limits")}>
             <p className="m-0">
-              Egg deletes its record of that server: the encrypted SSH key, and with it every project on that server,
-              their environment variables, deployments and build logs, domains, usage and page-view numbers, and alert
-              history. It does not connect to the container while doing this, so nothing on the container is changed and
-              your apps keep running. Your tokens and your activity log are not tied to a server, so they stay.
+              Egg counts requests and turns away the ones over these limits with a message that says how long to wait.
+              Sign-in and access tokens are counted by network address, because the caller has no account yet. The rest
+              are counted for each account.
             </p>
+            <LimitTable
+              caption="Rate limits"
+              head={["What", "Limit"]}
+              rows={[
+                [
+                  "Sign-in requests (start, return from Hack Club, confirm)",
+                  `${F.signInPerMinute} a minute for each address`,
+                ],
+                ["Access tokens that are not valid", `${F.badTokenPerMinute} a minute for each address`],
+                ["Terminal input", `${F.terminalInputPerMinute} a minute`],
+                ["File changes", `${F.fileChangesPerMinute} a minute`],
+                ["Listing, reading and downloading files", `${F.fileReadsPerMinute} a minute`],
+                ["Removing leftovers", `${F.leftoverRemovalsPerMinute} a minute`],
+                ["Terminals open at once", `${F.terminalsPerAccount} for each account`],
+              ]}
+            />
+            <p className="m-0">
+              The token limit is checked before a token is looked up, so guessing tokens cannot be used to wear down the
+              database. Only tokens that turn out to be wrong count towards it.
+            </p>
+            <Sub>Size limits</Sub>
+            <p className="m-0">
+              Egg reads a request body only up to a limit, and counts the bytes as they arrive. A sender that lies about
+              the size, or sends no size at all, is cut off at the limit.
+            </p>
+            <LimitTable
+              caption="Size limits"
+              head={["Request", "Largest body"]}
+              rows={[
+                ["Deploy hook", `${F.deployHookBodyKb} KB`],
+                ["Most API requests", `${F.apiBodyKb} KB`],
+                ["MCP endpoint", `${F.mcpBodyKb} KB`],
+                ["GitHub delivery", `${F.githubBodyMb} MB`],
+                ["File upload", `${F.uploadMb} MB`],
+              ]}
+            />
           </Section>
 
           <Section id="tokens" title={title("tokens")}>
             <p className="m-0">
               An access token lets a script or an AI agent use the API and the MCP endpoint. Each token has a name, a
               list of permissions called scopes (there are {TOKEN_SCOPES.length}) and an expiry of 7, 30, 90 or 365
-              days. Revoking a token or letting it expire takes effect on the very next request.
+              days. Revoking a token or letting it expire takes effect on the very next request, and revoking one also
+              closes any terminal that token opened.
             </p>
             <Points>
               <li>
@@ -209,6 +299,15 @@ export default function SecurityPage() {
               <li>
                 Environment variables can be listed by name with <Code>env:read</Code>, never by value.
               </li>
+              <li>
+                A token is only read from the <Code>Authorization</Code> header. The API and the MCP endpoint ignore
+                cookies, so a signed-in browser cannot act through them. A wrong, expired or revoked token gets the same
+                answer.
+              </li>
+              <li>
+                A token reaches only your own projects, servers and domains. Another person&apos;s id is answered as not
+                found.
+              </li>
             </Points>
             <Sub>What a token cannot do</Sub>
             <p className="m-0">
@@ -217,14 +316,41 @@ export default function SecurityPage() {
             </p>
           </Section>
 
-          <Section id="outbound" title={title("outbound")}>
+          <Section id="webhooks" title={title("webhooks")}>
+            <Sub>From GitHub to Egg</Sub>
+            <p className="m-0">
+              The GitHub endpoint is public, so the only thing that lets a request in is a valid signature.
+            </p>
+            <Points>
+              <li>
+                Egg checks the HMAC-SHA256 signature over the exact bytes it received, with a comparison that takes the
+                same time whether it matches or not. A missing or wrong signature is refused and nothing runs.
+              </li>
+              <li>
+                Egg remembers each delivery id for {numberWord(F.deliveryHours)} hour. A signed delivery that arrives
+                again in that time, whether a replay or a retry that already worked, is answered without being run a
+                second time. If handling a delivery fails, the id is forgotten so GitHub&apos;s retry goes through.
+              </li>
+              <li>
+                The body is read up to {F.githubBodyMb} MB and no further. A branch name or commit hash from a push is
+                checked before it reaches git, so a branch name that starts with a dash is refused instead of being read
+                as a git option.
+              </li>
+            </Points>
+            <Sub>Deploy hooks</Sub>
+            <p className="m-0">
+              A deploy hook is a secret URL. The secret is 192 bits long, and Egg keeps only its hash, so there is
+              nothing in the database to copy. The request body is limited to {F.deployHookBodyKb} KB and may only name
+              a branch.
+            </p>
+            <Sub>From Egg to you</Sub>
             <p className="m-0">
               Egg can send a message to an address you choose when a deployment starts, succeeds or fails. Every request
               is signed so your receiver can tell it came from Egg and was not changed on the way.
             </p>
             <Points>
               <li>
-                The <Code>X-NestDeploy-Signature</Code> header carries a timestamp and an HMAC-SHA256 of the timestamp
+                The <Code>X-Egg-Signature</Code> header carries a timestamp and an HMAC-SHA256 of the timestamp
                 and the body, made with that webhook&apos;s secret. Your receiver should also refuse a timestamp more
                 than five minutes old.
               </li>
@@ -249,6 +375,32 @@ export default function SecurityPage() {
             </p>
           </Section>
 
+          <Section id="builds" title={title("builds")}>
+            <p className="m-0">
+              Your code is built in a Docker container on Egg&apos;s server, never on your Nest container.
+            </p>
+            <Points>
+              <li>
+                The build gets {buildMemoryGb} GB of memory, {F.buildCpus} CPUs and at most {F.buildProcesses}{" "}
+                processes. It has every Linux capability removed, cannot gain new privileges and publishes no ports. It
+                can reach the internet, because installing packages needs that.
+              </li>
+              <li>
+                Your environment variables reach the build, but a variable with a name such as <Code>DOCKER_HOST</Code>{" "}
+                or <Code>LD_PRELOAD</Code> cannot change how Egg runs Docker.
+              </li>
+              <li>
+                A root folder or output folder in your repository that is a link leading outside the repository is
+                refused, so a build cannot be made to upload other files from Egg&apos;s server.
+              </li>
+              <li>
+                When you import a project from GitHub, Egg checks that the GitHub connection belongs to your account
+                before it uses it, so nobody can use another person&apos;s connection to clone their private
+                repositories.
+              </li>
+            </Points>
+          </Section>
+
           <Section id="logs" title={title("logs")}>
             <p className="m-0">
               Egg keeps an audit log of what happens on your account. Your Activity page shows your own entries, newest
@@ -271,13 +423,86 @@ export default function SecurityPage() {
             <p className="m-0">
               Environment variable values, the SSH private key, token and webhook secrets, session values, file
               contents, and what you type in a terminal. The Activity page also drops any field whose name or value
-              looks like a secret before it shows anything. Build output is stored with your environment variable
-              values masked, but values shorter than 4 characters are not masked, so do not use a very short value as a
-              secret.
+              looks like a secret before it shows anything.
+            </p>
+            <Sub>Build output</Sub>
+            <p className="m-0">
+              Build output, and the error message shown for a failed deploy, are stored with your environment variable
+              values masked. A value that runs over several lines, such as a private key, is masked line by line for
+              every line of 8 characters or more. Values shorter than 4 characters are not masked, and neither is a
+              value the build prints in another form, such as base64 or URL encoded, so do not rely on masking for those.
+              At most {F.buildLogLines.toLocaleString("en-US")} lines are kept for one deployment, then one line says
+              the rest was cut.
             </p>
             <p className="m-0">
               If the log cannot be written, the action still goes through. The log is a record, not a gate.
             </p>
+          </Section>
+
+          <Section id="remove" title={title("remove")}>
+            <Sub>When you disconnect a server</Sub>
+            <p className="m-0">
+              Egg first closes any terminal open on that server, so a root shell cannot outlive its key. Then it deletes
+              its copy of the encrypted SSH key and the pinned host key, so Egg cannot connect to the container again. It
+              does not connect to the container while doing this, so nothing on the container is changed and your apps
+              keep running. Your tokens and your activity log are not tied to a server, so they stay.
+            </p>
+            <p className="m-0">
+              Whether the projects on that server go too is your choice. The confirmation has a box, unchecked, that
+              reads &quot;Also delete the projects on this server&quot; with the number of them. Left unchecked, the
+              projects stay, with their environment variables, deployments, build logs and domains. Their apps keep
+              running, but Egg stops managing them until you connect the same Nest account again. If you check the box,
+              the projects are deleted with their environment variables, deployments and build logs, domains, usage and
+              page-view numbers, and alert history.
+            </p>
+            <Sub>Remove Egg completely</Sub>
+            <p className="m-0">
+              Removing Egg takes two steps. Do the second even if you skip the first, because it is the one that cuts
+              off access.
+            </p>
+            <ol className="m-0 flex list-decimal flex-col gap-2 pl-5 marker:text-muted-foreground">
+              <li>In Egg, disconnect the server. Egg cannot connect to the container again. Check the box to also delete its projects, or leave it to keep them.</li>
+              <li>
+                In the Nest dashboard, delete the key on the SSH Keys page. Egg shows the key&apos;s fingerprint, and
+                the key&apos;s comment is <Code>egg:</Code> followed by your Nest username. Once it is deleted,
+                nothing can use it, even a copy.
+              </li>
+            </ol>
+            <Sub>What stays on the container</Sub>
+            <p className="m-0">
+              Your apps keep running. The <Code>~/.egg</Code> folder, with its releases, <Code>shared/</Code>{" "}
+              files and <Code>.env</Code> files, and the <Code>egg-</Code> services also stay, because Egg does not
+              reconnect to clean up. To clear them, stop and delete the <Code>egg-</Code> services and delete{" "}
+              <Code>~/.egg</Code> yourself. Do that after you have copied anything in <Code>shared/</Code> that
+              you want to keep.
+            </p>
+          </Section>
+
+          <Section id="gaps" title={title("gaps")}>
+            <p className="m-0">
+              The behaviour on this page was checked against the code, and each fix came with a test. These are the
+              gaps that are known.
+            </p>
+            <Points>
+              <li>
+                Egg cannot tell whether something sat between it and Nest the very first time it connected, because
+                there was no earlier host key to compare with. Every connection after that is checked.
+              </li>
+              <li>
+                The content policy still allows inline scripts, because the framework that renders Egg puts its start-up
+                scripts inline. The rules against framing, plug-ins and form hijacking are not affected.
+              </li>
+              <li>
+                Rate limits and the delivery list are kept in memory by each server process, so a restart clears them
+                and each process counts on its own. Limits by address go by the address the hosting proxy reports, and
+                are not applied when there is none.
+              </li>
+              <li>
+                Requests from a signed-in browser to the dashboard have no body limit of their own beyond an overall{" "}
+                {F.uploadMb} MB cap. The routes that take uploads need that room.
+              </li>
+              <li>The build container can reach the internet, as noted under Builds.</li>
+            </Points>
           </Section>
 
           <Section id="report" title={title("report")}>
@@ -304,32 +529,6 @@ export default function SecurityPage() {
             <p className="m-0">
               Please do not open a public issue for a vulnerability. Say what you found, the steps to repeat it and
               which page or endpoint it is on. Leave real keys, tokens and passwords out of the report.
-            </p>
-          </Section>
-
-          <Section id="remove" title={title("remove")}>
-            <p className="m-0">
-              Removing Egg takes two steps. Do the second even if you skip the first, because it is the one that cuts
-              off access.
-            </p>
-            <ol className="m-0 flex list-decimal flex-col gap-2 pl-5 marker:text-muted-foreground">
-              <li>
-                In Egg, disconnect the server. Egg deletes its record of the server and its encrypted key, and cannot
-                connect to the container again.
-              </li>
-              <li>
-                In the Nest dashboard, delete the key on the SSH Keys page. Egg shows the key&apos;s fingerprint, and
-                the key&apos;s comment is <Code>nest-deploy:</Code> followed by your Nest username. Once it is deleted,
-                nothing can use it, even a copy.
-              </li>
-            </ol>
-            <Sub>What stays on the container</Sub>
-            <p className="m-0">
-              Your apps keep running. The <Code>~/.nest-deploy</Code> folder, with its releases, <Code>shared/</Code>{" "}
-              files and <Code>.env</Code> files, and the <Code>nd-</Code> services also stay, because Egg does not
-              reconnect to clean up. To clear them, stop and delete the <Code>nd-</Code> services and delete{" "}
-              <Code>~/.nest-deploy</Code> yourself. Do that after you have copied anything in <Code>shared/</Code> that
-              you want to keep.
             </p>
           </Section>
         </article>

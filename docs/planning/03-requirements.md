@@ -1,4 +1,4 @@
-# Nest Deploy Requirements
+# Egg Requirements
 
 Status: product proposal, not an implementation or a claim of Nest support. Research snapshot: 28 October 2026. Related: [[Nest - Deploy]] · [[Vercel Feature Inventory]] · [[UI and Design Inspiration]].
 
@@ -25,7 +25,7 @@ A shared website provides a smooth Vercel-inspired experience for people who con
 ## 2. Server workspaces
 
 - **P0:** one server workspace per connected container with clear online/offline status, agent version and last contact; projects scoped to that server.
-- **P0:** manual connection repair, agent removal, stale-state indication and clear distinction between Nest Deploy availability and app availability.
+- **P0:** manual connection repair, agent removal, stale-state indication and clear distinction between Egg availability and app availability.
 - **P1:** multiple independently paired server workspaces; switch, rename and disconnect; explicitly show which workspace a project belongs to.
 - **P1:** overview of managed apps, process state, current deployments, resource trends and alerts where data is available.
 - **P2:** read-only discovery of existing services where supported; explicit opt-in adoption, with no automatic takeover or destructive configuration changes.
@@ -87,7 +87,7 @@ A shared website provides a smooth Vercel-inspired experience for people who con
 
 ## 9. Vercel capability mapping
 
-| Vercel area | Proposed Nest Deploy approach | Stage and constraint |
+| Vercel area | Proposed Egg approach | Stage and constraint |
 | --- | --- | --- |
 | Git, builds, deployments, CLI | GitHub App, release builder, deploy history, optional CLI | P0–P2; runtime and Nest compatibility |
 | Preview, promotion, rollback, rolling releases | retained release rollback first; preview and promotion later | P1–Explore; ports, routing, disk, database compatibility |
@@ -115,5 +115,5 @@ A user can pair one supported server, deploy a documented sample from a chosen c
 
 ## Release split
 
-The agreed scope is divided into [[Nest Deploy Decided Feature Scope#Version 1 private Nest deployment dashboard|Version 1]] and [[Nest Deploy Decided Feature Scope#Version 2 expanded platform and integrations|Version 2]]. Version 1 includes traffic analytics, previews, custom domain automation, multiple common runtimes, team access and advanced monitoring, subject to verifying data sources, routing, and Nest limits. Version 2 focuses on broader providers, integrations and scaling beyond that full first product. The implementation stages below are working sequencing notes and should be read with this release split.
+The agreed scope is divided into [[Egg Decided Feature Scope#Version 1 private Nest deployment dashboard|Version 1]] and [[Egg Decided Feature Scope#Version 2 expanded platform and integrations|Version 2]]. Version 1 includes traffic analytics, previews, custom domain automation, multiple common runtimes, team access and advanced monitoring, subject to verifying data sources, routing, and Nest limits. Version 2 focuses on broader providers, integrations and scaling beyond that full first product. The implementation stages below are working sequencing notes and should be read with this release split.
 

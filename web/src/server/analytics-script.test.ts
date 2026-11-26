@@ -137,9 +137,9 @@ describe("the analytics script", () => {
       expect((clicks[0].l as string).length).toBeLessThanOrEqual(40);
     });
 
-    it("prefers a data-nd-track name, then aria-label, then text", async () => {
+    it("prefers a data-egg-track name, then aria-label, then text", async () => {
       const b = browser(script);
-      b.fire("document", "click", clickOn("Buy", { "data-nd-track": "buy-button", "aria-label": "Buy now" }));
+      b.fire("document", "click", clickOn("Buy", { "data-egg-track": "buy-button", "aria-label": "Buy now" }));
       b.fire("document", "click", clickOn("X", { "aria-label": "Close dialog" }));
       const labels = (await b.sent()).filter((m) => m.e === "click").map((m) => m.l);
       expect(labels).toEqual(["buy-button", "Close dialog"]);
@@ -263,17 +263,17 @@ describe("the analytics script", () => {
   describe("funnel goals", () => {
     const script = buildScript({ clicks: false, time: false, goals: ["signup", 'we"ird</script>'] });
 
-    it("sends a goal for a click on an element whose data-nd-track name is a funnel step, and nothing else", async () => {
+    it("sends a goal for a click on an element whose data-egg-track name is a funnel step, and nothing else", async () => {
       const b = browser(script);
-      b.fire("document", "click", clickOn("Join", { "data-nd-track": "signup" }));
-      b.fire("document", "click", clickOn("Other", { "data-nd-track": "newsletter" }));
+      b.fire("document", "click", clickOn("Join", { "data-egg-track": "signup" }));
+      b.fire("document", "click", clickOn("Other", { "data-egg-track": "newsletter" }));
       b.fire("document", "click", clickOn("Plain link"));
       expect((await b.sent()).filter((m) => m.e)).toEqual([{ e: "goal", n: "signup" }]);
     });
 
     it("sends the click too when both are on", async () => {
       const b = browser(buildScript({ clicks: true, time: false, goals: ["signup"] }));
-      b.fire("document", "click", clickOn("Join", { "data-nd-track": "signup" }));
+      b.fire("document", "click", clickOn("Join", { "data-egg-track": "signup" }));
       expect((await b.sent()).filter((m) => m.e)).toEqual([
         { e: "click", l: "signup" },
         { e: "goal", n: "signup" },
