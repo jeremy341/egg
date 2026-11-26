@@ -5,7 +5,6 @@ import {
   GaugeIcon,
   CubeIcon,
   GearSixIcon,
-  ShieldWarningIcon,
   BookOpenTextIcon,
   FolderOpenIcon,
   TerminalWindowIcon,
@@ -267,7 +266,6 @@ export function findTargets(
     })),
     { href: "/account", label: "Account", group: "Pages", icon: UserCircleIcon },
     { href: "/settings", label: "Settings", group: "Pages", icon: GearSixIcon },
-    { href: "/security/report", label: "Report a vulnerability", group: "Pages", icon: ShieldWarningIcon },
     { href: "/new", label: "New project", group: "Pages", icon: PlusIcon },
     { href: DOCS_ITEM.href, label: DOCS_ITEM.label, group: "Pages", icon: DOCS_ITEM.icon },
     ...projects.map((p) => ({

@@ -6,7 +6,6 @@ import { usePathname } from "next/navigation";
 import {
   ArrowUpRightIcon,
   BookOpenIcon,
-  ShieldWarningIcon,
   MagnifyingGlassIcon,
 } from "@phosphor-icons/react";
 import { useFind } from "@/components/find-palette";
@@ -16,7 +15,6 @@ import {
   NavList,
   NavListSkeleton,
   navItemClass,
-  navItemCurrent,
   navItemIdle,
 } from "@/components/nav-list";
 import { ServerSwitcher } from "@/components/server-switcher";
@@ -50,9 +48,7 @@ export function FindButton({ className }: { className?: string }) {
 export function Sidebar() {
   // On a docs route the project and team links give way to the docs pages, from 1280px.
   // Below that the docs section bar holds the list, so the usual links stay.
-  const pathname = usePathname();
-  const onDocs = DOCS_ITEM.active(pathname);
-  const onReport = pathname.startsWith("/security/report");
+  const onDocs = DOCS_ITEM.active(usePathname());
   return (
     <aside
       aria-label="Sidebar"
@@ -105,14 +101,6 @@ export function Sidebar() {
           />
           <span className="sr-only">(opens in a new tab)</span>
         </a>
-        <Link
-          href="/security/report"
-          aria-current={onReport ? "page" : undefined}
-          className={cn(navItemClass, onReport ? navItemCurrent : navItemIdle)}
-        >
-          <ShieldWarningIcon aria-hidden="true" className="size-4 shrink-0" />
-          Report a vulnerability
-        </Link>
         <UserMenu />
       </div>
     </aside>

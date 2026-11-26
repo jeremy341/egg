@@ -142,6 +142,15 @@ export const WORKLOAD_KINDS = ["web", "worker"] as const;
 export const DEPLOYMENT_MODES = ["native", "dockerfile", "compose"] as const;
 
 /**
+ * How a new release replaces the running one. "rolling" (the default) starts the new copy before the
+ * old one stops; "recreate" stops first; "blue_green" brings the new copy up beside the old one and
+ * switches once it is healthy. An app whose containers mount a volume must use "recreate", because
+ * two copies must never share a volume at once.
+ */
+export const DEPLOY_STRATEGIES = ["rolling", "recreate", "blue_green"] as const;
+export type DeployStrategy = (typeof DEPLOY_STRATEGIES)[number];
+
+/**
  * Where a project is built. "container": on the user's Nest container, under a memory and CPU
  * cap. "github": in the user's own GitHub Actions workflow, which uploads the finished release;
  * the container then only installs production dependencies and runs it. Egg's own machine
@@ -178,6 +187,9 @@ export const projects = sqliteTable(
     runtime: text("runtime", { enum: RUNTIMES }).notNull(),
     workloadKind: text("workload_kind", { enum: WORKLOAD_KINDS }).notNull().default("web"),
     deploymentMode: text("deployment_mode", { enum: DEPLOYMENT_MODES }).notNull().default("native"),
+    deployStrategy: text("deploy_strategy", { enum: DEPLOY_STRATEGIES }).notNull().default("rolling"),
+    /** Set by the last Compose deploy: the main service mounts a named volume. Such an app must use "recreate". */
+    hasVolumes: integer("has_volumes", { mode: "boolean" }).notNull().default(false),
     /** Dockerfile path relative to the repository root; used only in "dockerfile" mode. */
     dockerfilePath: text("dockerfile_path"),
     /** Path of the Compose file relative to the repository root; used only in "compose" mode. */

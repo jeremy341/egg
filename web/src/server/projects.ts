@@ -6,7 +6,8 @@ import { newId, open, seal } from "@/server/crypto";
 import { getDb, schema, withLockRetry, type Db } from "@/server/db";
 import { isUniqueViolation } from "@/server/db/errors";
 import { pageLimit, selectDeploymentPage, type DeploymentFilter } from "@/server/deployment-page";
-import { BUILD_LOCATIONS, RUNTIMES, WORKLOAD_KINDS, DEPLOYMENT_MODES } from "@/server/db/schema";
+import { BUILD_LOCATIONS, DEPLOY_STRATEGIES, RUNTIMES, WORKLOAD_KINDS, DEPLOYMENT_MODES } from "@/server/db/schema";
+import { strategyRefusal } from "@/server/deploy/strategy";
 import { assertCloneUrl, BuildError } from "@/server/deploy/build";
 import { isValidSlug, slugify } from "@/server/deploy/layout";
 import { ENV_KEY, RESERVED_ENV } from "@/server/deploy/runtime";
@@ -101,6 +102,7 @@ export const createProjectInput = z.object({
   runtime: z.enum(RUNTIMES),
   workloadKind: z.enum(WORKLOAD_KINDS).default("web"),
   deploymentMode: z.enum(DEPLOYMENT_MODES).default("native"),
+  deployStrategy: z.enum(DEPLOY_STRATEGIES).default("rolling"),
   /** Dockerfile path relative to the repository root; used only in "dockerfile" mode. */
   dockerfilePath: repoFilePath.nullable().optional(),
   /** Compose file path relative to the repository root; used only in "compose" mode. */
@@ -142,6 +144,7 @@ export const updateProjectInput = createProjectInput
     autoDeploy: createProjectInput.shape.autoDeploy.removeDefault(),
     workloadKind: createProjectInput.shape.workloadKind.removeDefault(),
     deploymentMode: createProjectInput.shape.deploymentMode.removeDefault(),
+    deployStrategy: createProjectInput.shape.deployStrategy.removeDefault(),
   })
   .partial();
 
@@ -305,6 +308,7 @@ export async function createProject(userId: string, raw: unknown): Promise<Proje
       runtime: input.runtime,
       workloadKind: input.workloadKind,
       deploymentMode: input.deploymentMode,
+      deployStrategy: input.deployStrategy,
       // Container settings only mean something in Docker modes; native projects
       // store none, so switching modes never leaves stale file paths behind.
       dockerfilePath: input.deploymentMode === "dockerfile" ? input.dockerfilePath ?? null : null,
@@ -387,6 +391,8 @@ export async function updateProject(userId: string, projectId: string, raw: unkn
   if (selectedMode === "compose" && (input.composeFilePath ?? project.composeFilePath) == null) throw new HttpError(400, "A Compose project needs the Compose file path.", "validation");
   if (selectedMode === "compose" && (input.composeService ?? project.composeService) == null) throw new HttpError(400, "A Compose project needs the service to run.", "validation");
   if (selectedMode !== "native" && (input.buildLocation ?? project.buildLocation) === "github") throw new HttpError(400, "Container projects build their image on your server. GitHub build settings are for native projects.", "validation");
+  const refusal = strategyRefusal({ strategy: input.deployStrategy ?? project.deployStrategy, hasVolume: project.hasVolumes && selectedMode === "compose" });
+  if (refusal) throw new HttpError(400, refusal, "validation");
   const db = await getDb();
 
   const clean = Object.fromEntries(

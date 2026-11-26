@@ -386,6 +386,13 @@
       "when": 1795357514741,
       "tag": "0054_remove_project_team",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "6",
+      "when": 1795509697170,
+      "tag": "0061_deploy_features",
+      "breakpoints": true
     }
   ]
 }
