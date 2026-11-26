@@ -118,7 +118,7 @@
     "egg": "projects create",
     "endpoint": "create_project",
     "orchardTool": "create_project",
-    "reason": "Egg creates a deployable project from a repository on a server, while Orchard creates an organization project with optional description and slug.",
+    "reason": "Egg's SDK only creates deployable projects from a repository on a server and requires server, repository, and runtime inputs; it has no method for creating an organization project from name, slug, and description alone.",
     "spec": {
       "summary": "Create a project in the configured organization with a name and optional slug and description.",
       "args": [],
@@ -138,7 +138,7 @@
     "egg": "projects update",
     "endpoint": "update_project",
     "orchardTool": "update_project",
-    "reason": "Egg changes deployment settings, while Orchard also edits project name, description, repository link, icon, and background image.",
+    "reason": "Egg's updateProject SDK method only changes deployment settings; it has no fields for project name, description, repository URL, icon, or background image.",
     "spec": {
       "summary": "Change selected project metadata and linked repository details; empty nullable values clear those fields.",
       "args": ["project"],
@@ -156,11 +156,10 @@
   {
     "orchard": "project delete",
     "source": "project.go",
-    "status": "partial",
-    "egg": "projects delete",
+    "status": "present",
+    "egg": "projects purge",
     "endpoint": "delete_project",
     "orchardTool": "delete_project",
-    "reason": "Egg requires the exact project name but leaves its running service on the server by default, unlike Orchard's broader resource removal.",
     "spec": {
       "summary": "Permanently remove the project and its associated resources after explicit name confirmation.",
       "args": ["project"],

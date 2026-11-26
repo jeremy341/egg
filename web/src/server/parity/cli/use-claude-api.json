@@ -6,7 +6,7 @@
     "egg": null,
     "endpoint": null,
     "orchardTool": null,
-    "reason": "Egg's CLI has no command to save a default org, project, or environment in local client configuration.",
+    "reason": "needs SDK method resolveAndSetDefaultScope",
     "spec": {
       "summary": "Resolve an org, project, or environment and save its id and display name as the machine-local default scope for later commands.",
       "args": ["org|project|env", "id-or-slug"],
@@ -22,7 +22,7 @@
     "egg": null,
     "endpoint": null,
     "orchardTool": null,
-    "reason": "Egg's CLI has no local context view for the active connection and default scope.",
+    "reason": "needs SDK method showContext",
     "spec": {
       "summary": "Show the active connection and its machine-local org, project, and environment defaults, including a linked project override when present.",
       "args": [],
@@ -38,7 +38,7 @@
     "egg": null,
     "endpoint": null,
     "orchardTool": null,
-    "reason": "Egg's CLI has no command to clear machine-local default scope settings.",
+    "reason": "needs SDK method clearContext",
     "spec": {
       "summary": "Clear the active connection's saved org, project, and environment defaults without deleting the connection or its credentials.",
       "args": [],
@@ -182,7 +182,7 @@
     "egg": null,
     "endpoint": "compact:call_api",
     "orchardTool": "call_api",
-    "reason": "Egg's compact API tool is available, but Egg's CLI has no raw request command with token redaction and exact-target confirmation.",
+    "reason": "needs SDK method callApi",
     "spec": {
       "summary": "Call an API operation by operation id or method and path; allow GET and non-destructive requests, require exact-target confirmation for destructive requests, and never print bearer tokens.",
       "args": ["operationId | METHOD path"],
@@ -198,7 +198,7 @@
     "egg": null,
     "endpoint": "compact:search_api",
     "orchardTool": "search_api",
-    "reason": "Egg's compact API search tool exists, but Egg's CLI has no command to search API operations.",
+    "reason": "needs SDK method searchApi",
     "spec": {
       "summary": "Search API operation descriptions using one or more terms and optionally refresh the cached specification.",
       "args": ["query..."],
@@ -214,7 +214,7 @@
     "egg": null,
     "endpoint": "compact:describe_operation",
     "orchardTool": "describe_operation",
-    "reason": "Egg's compact operation description tool exists, but Egg's CLI has no command to describe API operations.",
+    "reason": "needs SDK method describeOperation",
     "spec": {
       "summary": "Show an API operation's parameters, request body, and response shape using its operation id or method and path.",
       "args": ["operationId | METHOD path"],

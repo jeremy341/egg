@@ -2,11 +2,11 @@
   {
     "orchard": "pod list",
     "source": "pod.go",
-    "status": "missing",
-    "egg": null,
+    "status": "partial",
+    "egg": "pod list",
     "endpoint": "list_project_containers",
     "orchardTool": "list_pods",
-    "reason": "Egg has project-scoped container listing, but its CLI command is not implemented and the endpoint does not list cluster-wide Kubernetes pods.",
+    "reason": "Egg can list project-scoped containers but cannot list cluster-wide Kubernetes pods or honor --namespace.",
     "spec": {
       "summary": "List the pods in the selected namespace.",
       "args": [],
@@ -20,11 +20,11 @@
   {
     "orchard": "pod get",
     "source": "pod.go",
-    "status": "missing",
-    "egg": null,
+    "status": "partial",
+    "egg": "pod get",
     "endpoint": "get_project_container",
     "orchardTool": "get_pod_details",
-    "reason": "Egg can read safe details for a project container, but the CLI command and a pod-name-to-container lookup are missing.",
+    "reason": "Egg can resolve a unique project container name and show safe details, but it has no pod address, node, or per-container restart details.",
     "spec": {
       "summary": "Show one pod's status, address, node, start time, and container restart details.",
       "args": ["name"],
@@ -140,7 +140,7 @@
     "egg": null,
     "endpoint": null,
     "orchardTool": null,
-    "reason": "Egg's deployment API builds configured repository sources; this local-directory flow needs an endpoint for build-context upload and deployment creation.",
+    "reason": "needs SDK method uploadBuildContextAndCreateDeployment",
     "spec": {
       "summary": "Package a local directory, upload its build context, start a deployment, and optionally wait for it to become live.",
       "args": ["directory?"],
@@ -199,11 +199,11 @@
   {
     "orchard": "top",
     "source": "top.go",
-    "status": "missing",
-    "egg": null,
+    "status": "partial",
+    "egg": "top",
     "endpoint": "get_project_health",
     "orchardTool": "get_pod_health",
-    "reason": "Egg can read project health, but the CLI command and live pod resource, traffic, and database metrics needed for this view are missing.",
+    "reason": "Egg can show one project health snapshot, but it cannot provide continuous pod resource or traffic monitoring or database activity metrics.",
     "spec": {
       "summary": "Monitor live pod resources and traffic for an app, or database activity, with an optional one-shot snapshot.",
       "args": ["id"],

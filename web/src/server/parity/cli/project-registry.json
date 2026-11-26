@@ -68,7 +68,7 @@
     "egg": null,
     "endpoint": "get_resource_quota",
     "orchardTool": null,
-    "reason": "Egg has no matching CLI command; get_resource_quota reports one project's recent usage and server measurements, not organization totals or caps.",
+    "reason": "The SDK only exposes getResourceQuota(projectId), which reports per-project limits and current project/server measurements; it cannot return organization totals, limits, default sizing or shared quota.",
     "spec": {
       "summary": "Compare the organization's CPU, memory, pod and service totals with its limits, including default sizing and shared quota information.",
       "args": [],
@@ -86,7 +86,7 @@
     "egg": null,
     "endpoint": "get_resource_quota",
     "orchardTool": "get_resource_quota",
-    "reason": "Egg has no matching CLI command; get_resource_quota reports project and server measurements, not a member's allowance or remaining quota.",
+    "reason": "The SDK exposes project-scoped CPU/memory limits and project/server measurements, not member allowances, remaining capacity or per-workload usage.",
     "spec": {
       "summary": "Show your organization's CPU and memory allowance, current use, remaining capacity and per-workload use.",
       "args": [],
@@ -104,7 +104,7 @@
     "egg": null,
     "endpoint": "get_resource_quota",
     "orchardTool": null,
-    "reason": "Egg has no matching CLI command; get_resource_quota does not provide member-level limits and usage.",
+    "reason": "Egg has no SDK method for member-level limits or usage; getResourceQuota is project-scoped.",
     "spec": {
       "summary": "Show organization member roles, individual CPU and memory allowances, and current use.",
       "args": [],
@@ -122,7 +122,7 @@
     "egg": null,
     "endpoint": "get_resource_quota",
     "orchardTool": null,
-    "reason": "Egg has no matching CLI command; get_resource_quota reports one project's measurements, not an organization-wide project limit and usage table.",
+    "reason": "The SDK does not provide organization-scoped project membership or pod usage; getResourceQuota returns one project's CPU/memory and server measurements.",
     "spec": {
       "summary": "Show organization resource totals and each project's CPU, memory and pod use against its limits.",
       "args": [],
@@ -140,7 +140,7 @@
     "egg": "projects create",
     "endpoint": "create_project",
     "orchardTool": null,
-    "reason": "Egg's projects create command can register a public repository, but it does not start the first deployment or return its resulting address.",
+    "reason": "Egg's createProject requires a name, server, repository URL and runtime, and only creates the project; it cannot perform org-based build detection, the initial deployment or return the protected address.",
     "spec": {
       "summary": "Create a project from a repository, detect its build setup, start an initial deployment and provide its protected address.",
       "args": [
