@@ -15,7 +15,6 @@ import {
 import {
   deploymentSchema,
   domainSchema,
-  paginateList,
   projectSchema,
   publicDomainFor,
   publicProjectFor,
@@ -34,7 +33,6 @@ import {
 } from "@/server/domains";
 import { HttpError, notFound } from "@/server/http";
 import { createDeployHook, revokeDeployHook } from "@/server/hooks";
-import { GithubError, listInstallationRepos, userInstallations } from "@/server/github/app";
 import { getInventory, type Inventory } from "@/server/inventory";
 import { getAlerts, notifySummary, sendTestNotification } from "@/server/notify";
 import {
@@ -162,61 +160,6 @@ export async function apiDeleteProject(p: Principal, projectId: string, removeFr
   return { deleted: true, projectId, removedFromServer: removeFromServer };
 }
 
-const githubRepoSchema = z.object({
-  id: z.number().int(),
-  installationId: z.number().int(),
-  account: z.string(),
-  accountType: z.string(),
-  fullName: z.string(),
-  private: z.boolean(),
-  defaultBranch: z.string(),
-  pushedAt: z.string().nullable(),
-});
-
-/** List repositories reachable through this token owner's GitHub App installations. */
-export async function apiListGithubRepos(p: Principal, installationId?: number) {
-  requireScope(p, "projects:read");
-  const installations = await userInstallations(p.userId);
-  const selected = installationId === undefined
-    ? installations
-    : installations.filter((installation) => installation.id === installationId);
-  if (installationId !== undefined && selected.length === 0) {
-    throw notFound("GitHub installation not found");
-  }
-
-  try {
-    const pages = await Promise.all(
-      selected.map(async (installation) => {
-        const repositories = await listInstallationRepos(installation.id);
-        return repositories.map((repo) => ({
-          id: repo.id,
-          installationId: installation.id,
-          account: installation.accountLogin,
-          accountType: installation.accountType,
-          fullName: repo.fullName,
-          private: repo.private,
-          defaultBranch: repo.defaultBranch,
-          pushedAt: repo.pushedAt,
-        }));
-      })
-    );
-    return {
-      repos: pages.flat().sort(
-        (a, b) => (b.pushedAt ?? "").localeCompare(a.pushedAt ?? "") || a.fullName.localeCompare(b.fullName)
-      ),
-    };
-  } catch (error) {
-    if (error instanceof GithubError) {
-      throw new HttpError(
-        error.status === 403 ? 403 : 502,
-        error.status === 403 ? "GitHub denied access to that installation." : "Could not list repositories from GitHub.",
-        "github"
-      );
-    }
-    throw error;
-  }
-}
-
 // ------------------------------------------------------------ build output
 
 const deploymentDetailSchema = deploymentSchema
@@ -266,16 +209,10 @@ const envEntrySchema = z.object({
   target: z.enum(["all", "production", "preview"]).describe("Which deployments get it."),
 });
 
-export async function apiListEnv(p: Principal, projectId: string, limit = 100, cursor?: string) {
+export async function apiListEnv(p: Principal, projectId: string) {
   requireScope(p, "env:read");
   const rows = await listEnvVars(p.userId, projectId);
-  // The store orders by name; add the target as a tie-breaker so the same name
-  // on two targets always has the same place in the pages.
-  const env = rows
-    .map((r) => ({ key: r.key, target: r.target }))
-    .sort((a, b) => a.key.localeCompare(b.key) || a.target.localeCompare(b.target));
-  // `env` keeps the whole list; `items` is the page requested by limit + cursor.
-  return { env, ...paginateList(env, { limit, cursor }, (r) => `${r.key}|${r.target}`) };
+  return { env: rows.map((r) => ({ key: r.key, target: r.target })) };
 }
 
 export async function apiSetEnv(p: Principal, projectId: string, key: string, value: string, target: "all" | "production" | "preview") {
@@ -510,20 +447,20 @@ const serverSchema = z.object({
   createdAt: z.string(),
 });
 
-export async function apiListServers(p: Principal, limit = 100, cursor?: string) {
+export async function apiListServers(p: Principal) {
   requireScope(p, "container:read");
   // Not exposed: key material, fingerprints and the last connection error text.
   const rows = await listServers(p.userId);
-  const servers = rows.map((r) => ({
-    id: r.id,
-    nestUsername: r.nestUsername,
-    host: r.host,
-    status: r.status,
-    lastCheckedAt: r.lastCheckedAt ? r.lastCheckedAt.toISOString() : null,
-    createdAt: r.createdAt.toISOString(),
-  }));
-  // `servers` keeps the whole list; `items` is the page requested by limit + cursor.
-  return { servers, ...paginateList(servers, { limit, cursor }, (s) => s.id) };
+  return {
+    servers: rows.map((r) => ({
+      id: r.id,
+      nestUsername: r.nestUsername,
+      host: r.host,
+      status: r.status,
+      lastCheckedAt: r.lastCheckedAt ? r.lastCheckedAt.toISOString() : null,
+      createdAt: r.createdAt.toISOString(),
+    })),
+  };
 }
 
 const unitState = z.enum(["running", "starting", "failed", "stopped", "unknown"]);
@@ -687,28 +624,6 @@ export const EXPANDED_ENDPOINTS: Endpoint[] = [
     },
   }),
   endpoint({
-    id: "list_github_repos",
-    method: "GET",
-    path: "/github/repos",
-    scope: "projects:read",
-    bucket: "read",
-    tag: "Projects",
-    summary: "List linked GitHub repositories",
-    description:
-      "List repositories visible through the token owner's GitHub App installations. Omit installation to include every linked installation, or pass an installation id to narrow the results. Repository names and settings are returned without clone URLs or credentials.",
-    query: {
-      installation: z
-        .coerce.number()
-        .int()
-        .positive()
-        .optional()
-        .describe("An installation id from your linked GitHub accounts. Omit to list repositories from all your installations."),
-    },
-    response: z.object({ repos: z.array(githubRepoSchema) }),
-    errors: [400, 403, 404, 502],
-    run: (p, i) => apiListGithubRepos(p, i.installation),
-  }),
-  endpoint({
     id: "delete_project",
     method: "DELETE",
     path: "/projects/{projectId}",
@@ -777,20 +692,11 @@ export const EXPANDED_ENDPOINTS: Endpoint[] = [
     summary: "List environment variable names",
     // Opt out of framing: only validated names and fixed targets come back.
     untrusted: false,
-    description: `List the names and targets (all, production or preview) of a project's environment variables, ordered by name then target. Values are never returned by any endpoint. Pass limit and then the returned nextCursor as cursor to page through them; items is the page, total is the number of entries, and env keeps the full list for older callers. ${NOT_FOUND_NOTE}`,
+    description: `List the names and targets (all, production or preview) of a project's environment variables. Values are never returned by any endpoint. ${NOT_FOUND_NOTE}`,
     pathParams: { projectId },
-    query: {
-      limit: z.coerce.number().int().min(1).max(100).default(100).describe("How many entries in a page, 1 to 100. Default 100."),
-      cursor: z.string().max(200).optional().describe("The nextCursor of the previous page. Omit for the first page."),
-    },
-    response: z.object({
-      env: z.array(envEntrySchema).describe("All the names and targets, unchanged for callers from before pagination."),
-      items: z.array(envEntrySchema).describe("This page of entries, in the same order as env."),
-      total: z.number().int().describe("Number of entries in all."),
-      nextCursor: z.string().nullable().describe("Pass as cursor for the next page, or null on the last page."),
-    }),
+    response: z.object({ env: z.array(envEntrySchema) }),
     errors: [400, 404],
-    run: (p, i) => apiListEnv(p, i.projectId, i.limit, i.cursor),
+    run: (p, i) => apiListEnv(p, i.projectId),
   }),
   endpoint({
     id: "set_env_var",
@@ -884,7 +790,6 @@ export const EXPANDED_ENDPOINTS: Endpoint[] = [
     path: "/projects/{projectId}/hook/rotate",
     scope: "deployments:write",
     bucket: "write",
-    sensitive: true,
     status: 201,
     tag: "Deployments",
     summary: "Create or replace the deploy hook",
@@ -1036,18 +941,9 @@ export const EXPANDED_ENDPOINTS: Endpoint[] = [
     tag: "Servers",
     summary: "List servers",
     description:
-      "List the owner's connected servers (Nest accounts) with their id, host and connection status. The server id is what get_server_usage, get_resource_history, get_container_inventory and add_domain need. Pass limit and then the returned nextCursor as cursor to page through them; items is the page, total is the number of servers, and servers keeps the full list for older callers.",
-    query: {
-      limit: z.coerce.number().int().min(1).max(100).default(100).describe("How many servers in a page, 1 to 100. Default 100."),
-      cursor: z.string().max(200).optional().describe("The nextCursor of the previous page. Omit for the first page."),
-    },
-    response: z.object({
-      servers: z.array(serverSchema).describe("All the owner's servers, unchanged for callers from before pagination."),
-      items: z.array(serverSchema).describe("This page of servers, in the same order as servers."),
-      total: z.number().int().describe("Number of servers in all."),
-      nextCursor: z.string().nullable().describe("Pass as cursor for the next page, or null on the last page."),
-    }),
-    run: (p, i) => apiListServers(p, i.limit, i.cursor),
+      "List the owner's connected servers (Nest accounts) with their id, host and connection status. The server id is what get_server_usage, get_resource_history, get_container_inventory and add_domain need.",
+    response: z.object({ servers: z.array(serverSchema) }),
+    run: (p) => apiListServers(p),
   }),
   endpoint({
     id: "get_container_inventory",

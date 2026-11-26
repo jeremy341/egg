@@ -57,11 +57,6 @@ export type Endpoint = {
   path: string;
   /** The scope a token needs, or null when any valid token may call it (only `get_me`). */
   scope: Scope | null;
-  /**
-   * The response carries a secret that is shown once. Such a response is never stored for
-   * Idempotency-Key replay: a repeat of the request is refused instead of answered again.
-   */
-  sensitive?: boolean;
   bucket: Bucket;
   /** Success status. */
   status: 200 | 201 | 202;
@@ -111,7 +106,6 @@ export function endpoint<P extends Shape = Empty, Q extends Shape = Empty, B ext
   path: string;
   scope: Scope | null;
   bucket: Bucket;
-  sensitive?: boolean;
   status?: Endpoint["status"];
   tag: Endpoint["tag"];
   summary: string;

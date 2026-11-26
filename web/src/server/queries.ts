@@ -12,6 +12,7 @@ import { projectReadableBy } from "@/server/project-roles";
 import { statusUrl } from "@/server/status-page";
 import { usageFromProbe } from "@/server/runtime-info";
 import { durationText, timeAgo, uiState, type UiState } from "@/lib/status";
+import { bucketPoints, type MetricRange } from "@/lib/metric-range";
 
 /**
  * Read models for the dashboard. They return plain, serialisable objects with
@@ -415,7 +416,11 @@ export type ProjectResource = {
 };
 
 /** What each of the user's projects used over the last `hours`, from the worker's samples. */
-export async function projectResources(userId: string, hours = 24): Promise<ProjectResource[]> {
+export async function projectResources(
+  userId: string,
+  hours = 24,
+  range?: MetricRange
+): Promise<ProjectResource[]> {
   const db = await getDb();
   const projects = await db
     .select({
@@ -452,8 +457,12 @@ export async function projectResources(userId: string, hours = 24): Promise<Proj
     byProject.set(r.projectId, list);
   }
 
+  const now = Date.now();
   return projects.map((p) => {
     const rows = byProject.get(p.id) ?? [];
+    const raw = rows.map((r) => ({ at: r.at.getTime(), memMb: r.memMb, cpuPercent: r.cpuPercent }));
+    // With a range, the points are averaged into that range's buckets.
+    const points = range ? bucketPoints(raw, range, now) : raw;
     const mem = rows.filter((r) => r.memMb !== null);
     const cpu = rows.filter((r) => r.cpuPercent !== null);
     return {
@@ -463,7 +472,7 @@ export async function projectResources(userId: string, hours = 24): Promise<Proj
       cpuNow: cpu.at(-1)?.cpuPercent ?? null,
       cpuPeak: cpu.length ? Math.max(...cpu.map((r) => r.cpuPercent as number)) : null,
       restarts: rows.at(-1)?.restarts ?? null,
-      points: rows.map((r) => ({ at: r.at.getTime(), memMb: r.memMb, cpuPercent: r.cpuPercent })),
+      points,
     };
   });
 }
