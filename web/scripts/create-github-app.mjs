@@ -15,10 +15,16 @@ import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseEnvFile } from "./doctor-checks.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const envPath = path.resolve(here, "..", ".env.local");
 const PORT = 4123;
+// The shell variable wins. Otherwise use the APP_URL that setup wrote to web/.env.local.
+if (!process.env.APP_URL && existsSync(envPath)) {
+  const fromFile = parseEnvFile(readFileSync(envPath, "utf8")).APP_URL;
+  if (fromFile) process.env.APP_URL = fromFile;
+}
 const APP_URL = process.env.APP_URL ?? "http://localhost:3100";
 const STATE = randomBytes(16).toString("hex");
 

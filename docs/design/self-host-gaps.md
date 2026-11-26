@@ -52,7 +52,7 @@ On Nest, a domain is mapped to a port in the Nest dashboard. Egg has no equivale
 
 - GitHub must open `<APP_URL>/api/webhooks/github` to deliver pushes (`app/api/webhooks/github/route.ts`). On `localhost` there are no push deploys, no pull request previews and no repository rename updates. A tunnel is the workaround; Egg has none built in, and a tunnel exposes the whole site.
 - GitHub is treated as set up only when all of the App ID, private key, client id, client secret and webhook secret are non-empty (`server/config.ts:129-138`). The webhook secret is useless on localhost but still required.
-- `scripts/create-github-app.mjs` makes the App from a manifest but is undocumented elsewhere, defaults `APP_URL` to `http://localhost:3100` (line 22), leaves the webhook secret empty (no `hook_attributes`, line 28 comment) and writes `GITHUB_WEBHOOK_SECRET=` blank (`:114`). Following it unchanged leaves GitHub "not configured".
+- `scripts/create-github-app.mjs` makes the App from a manifest but is undocumented elsewhere, reads `APP_URL` from `web/.env.local` (setup writes `http://localhost:3000`), falling back to `http://localhost:3100` only when neither is set, leaves the webhook secret empty (no `hook_attributes`, line 28 comment) and writes `GITHUB_WEBHOOK_SECRET=` blank (`:114`). Following it unchanged leaves GitHub "not configured".
 - Only `github.com` repositories can be cloned (`server/deploy/build.ts:66-83`). No GitLab, Gitea or other git hosts, and no git over SSH.
 - The callback and setup URLs are followed by the person's own browser, so they work on localhost. Only the webhook needs a public address.
 

@@ -140,9 +140,15 @@ export function NotificationsCard({ project }: { project: ProjectView }) {
   const [on, setOn] = useState<"all" | "failures">(project.notify?.on ?? "all");
   const [busy, setBusy] = useState<"save" | "test" | "remove" | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [urlError, setUrlError] = useState<string | null>(null);
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
+    if (!url.trim()) {
+      setUrlError("Paste the webhook URL to save. It is hidden once saved, so paste it again to change the Send setting.");
+      return;
+    }
+    setUrlError(null);
     setBusy("save");
     setMsg(null);
     try {
@@ -209,12 +215,22 @@ export function NotificationsCard({ project }: { project: ProjectView }) {
           <Input
             id="notify-url"
             value={url}
-            onChange={(e) => setUrl(e.target.value)}
+            onChange={(e) => {
+              setUrl(e.target.value);
+              if (urlError) setUrlError(null);
+            }}
+            aria-invalid={urlError ? true : undefined}
+            aria-describedby={urlError ? "notify-url-error" : undefined}
             placeholder="https://discord.com/api/webhooks/…"
             autoComplete="off"
             spellCheck={false}
             className="font-mono"
           />
+          {urlError ? (
+            <p id="notify-url-error" className="mt-1.5 text-label text-destructive">
+              {urlError}
+            </p>
+          ) : null}
         </div>
         <div>
           <Label htmlFor="notify-on">Send</Label>
@@ -229,7 +245,7 @@ export function NotificationsCard({ project }: { project: ProjectView }) {
         </div>
         <Button
           type="submit"
-          disabled={!url.trim() || busy !== null}
+          disabled={busy !== null}
           loading={busy === "save"}
         >
           {busy === "save" ? "Saving…" : "Save"}
