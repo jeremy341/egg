@@ -34,6 +34,8 @@ describe("checkDomainPolicy", () => {
     ["hackclub.app itself", "hackclub.app", RESERVED],
     ["a reserved name under hackclub.com", "status.hackclub.com", RESERVED],
     ["a reserved name deep under hackclub.dev", "x.admin.hackclub.dev", RESERVED],
+    ["an arbitrary name under hackclub.com", "club.hackclub.com", RESERVED],
+    ["an arbitrary deep name under hackclub.dev", "a.b.club.hackclub.dev", RESERVED],
     ["a reserved name under localhost", "admin.localhost", RESERVED],
     ["another person's Nest name", "kim.hackclub.app", NOT_YOURS],
     ["a subdomain of another person's Nest name", "app.kim.hackclub.app", NOT_YOURS],
@@ -74,6 +76,39 @@ describe("checkDomainPolicy", () => {
     expect(checkDomainPolicy("admin.hackclub.app", USER)).toMatchObject({ code: "reserved" });
     expect(checkDomainPolicy("kim.hackclub.app", USER)).toMatchObject({ code: "nest-name" });
     expect(checkDomainPolicy("10.0.0.1", USER)).toMatchObject({ code: "not-public" });
+    expect(checkDomainPolicy("club.hackclub.com", USER)).toMatchObject({ code: "reserved" });
+  });
+
+  it("keeps bare reserved names as a distinct refusal even though normalizeDomain hides them", () => {
+    expect(checkDomainPolicy("admin", USER)).toMatchObject({ code: "reserved", message: RESERVED });
+    expect(checkDomainPolicy("sam-r", USER)).toEqual({ allowed: true });
+  });
+
+  describe("user-owned carve-out for protected suffixes", () => {
+    const mine = [{ domain: "club.hackclub.com", status: "valid" }];
+
+    it("allows a name the user already verified, and subdomains of it", () => {
+      expect(checkDomainPolicy("club.hackclub.com", USER, mine)).toEqual({ allowed: true });
+      expect(checkDomainPolicy("app.club.hackclub.com", USER, mine)).toEqual({ allowed: true });
+    });
+
+    it("does not let a pending or invalid claim act as ownership", () => {
+      for (const status of ["pending", "invalid"]) {
+        expect(checkDomainPolicy("club.hackclub.com", USER, [{ domain: "club.hackclub.com", status }])).toMatchObject({
+          code: "reserved",
+        });
+      }
+    });
+
+    it("does not open up other people's names under the same suffix", () => {
+      expect(checkDomainPolicy("other.hackclub.com", USER, mine)).toMatchObject({ code: "reserved" });
+      expect(checkDomainPolicy("club.hackclub.dev", USER, mine)).toMatchObject({ code: "reserved" });
+    });
+
+    it("still handles the own-Nest-name case without any carve-out", () => {
+      expect(checkDomainPolicy("poorup.sam-r.hackclub.app", USER)).toEqual({ allowed: true });
+      expect(checkDomainPolicy("poorup.sam-r.hackclub.app", USER, mine)).toEqual({ allowed: true });
+    });
   });
 });
 

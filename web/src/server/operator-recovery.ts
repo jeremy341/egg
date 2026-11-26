@@ -4,7 +4,7 @@ import { audit } from "@/server/audit";
 import { isInstanceAdmin } from "@/server/admin-identity";
 import { getDb, schema, withLockRetry } from "@/server/db";
 import { LOCK_STALE_AFTER_MS, renewBuildLock } from "@/server/deploy/build-lock";
-import { isValidSlug, unitName } from "@/server/deploy/layout";
+import { isValidSlug, serverDiscriminator, unitName } from "@/server/deploy/layout";
 import * as remote from "@/server/deploy/remote";
 import { HttpError } from "@/server/http";
 import { connectToServer, type ServerRow } from "@/server/servers";
@@ -162,14 +162,15 @@ export async function recoverBuild(admin: string, serverId: string, raw: unknown
       })();
     }, 20_000);
     const preview = snapshot.row.deployment.env === "preview";
-    const unit = unitName(snapshot.row.project.slug, preview ? { releaseId: snapshot.row.deployment.releaseId } : undefined);
-    const container = remote.dockerContainerName(snapshot.row.project.slug, preview ? { releaseId: snapshot.row.deployment.releaseId } : undefined);
+    const scope = serverDiscriminator(snapshot.row.server.id);
+    const unit = unitName(snapshot.row.project.slug, preview ? { releaseId: snapshot.row.deployment.releaseId } : undefined, scope);
+    const container = remote.dockerContainerName(snapshot.row.project.slug, preview ? { releaseId: snapshot.row.deployment.releaseId } : undefined, scope);
     session = await connect(snapshot.row.server);
     const result = await session.script(recoveryStopScript({
       slug: snapshot.row.project.slug,
       unit,
       container,
-      composeProject: remote.dockerComposeProjectName(snapshot.row.project.slug),
+      composeProject: remote.dockerComposeProjectName(snapshot.row.project.slug, scope),
       activationBegun: snapshot.row.deployment.activationStartedAt !== null,
       production: !preview,
     }), { timeoutMs: 60_000 });

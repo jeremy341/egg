@@ -7,6 +7,7 @@ import { runDeployJob, type PipelineDeps } from "@/server/deploy/pipeline";
 import { createProject, deployBranch, type ProjectRow } from "@/server/projects";
 import { fetchServiceStatus, forgetServiceStatus, isFresh, lastKnownServiceStatus, parseServiceStatus } from "@/server/service-status";
 import { connectToServer, createServer, getServerForUser, type ServerRow } from "@/server/servers";
+import { serverDiscriminator, unitName } from "@/server/deploy/layout";
 import { NestSession } from "@/server/ssh/connection";
 import { fakeBuilder, freePort, containerReadyFacts, installFakeContainerBuild, installFakeSystemd, nodeApp } from "@/server/test/fake-nest";
 import { useFreshDb } from "@/server/test/db";
@@ -144,7 +145,7 @@ describe.skipIf(!linuxTestHostAvailable())("fetchServiceStatus on a mock Nest", 
   });
 
   it("notices when the service has stopped", async () => {
-    await sh("systemctl stop egg-status-app.service");
+    await sh(`systemctl stop ${unitName("status-app", undefined, serverDiscriminator(server.id))}`);
     const s = await fetchServiceStatus(userId, project.id);
     expect(["failed", "stopped"]).toContain(s.state);
     expect(s.http?.code).toBe(0);
@@ -164,7 +165,7 @@ describe.skipIf(!linuxTestHostAvailable())("fetchServiceStatus on a mock Nest", 
     expect(first.cached).toBe(false);
     expect(["failed", "stopped"]).toContain(first.status.state);
 
-    await sh("systemctl start egg-status-app.service");
+    await sh(`systemctl start ${unitName("status-app", undefined, serverDiscriminator(server.id))}`);
     clock += 10_000;
     const second = await lastKnownServiceStatus(userId, project.id, { now });
     expect(second.cached).toBe(true);

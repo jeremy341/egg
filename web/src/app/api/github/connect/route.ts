@@ -3,6 +3,7 @@ import { githubConfigured, config } from "@/server/config";
 import { githubAuthorizeUrl } from "@/server/github/app";
 import { getCurrentUser } from "@/server/auth/current";
 import { createOAuthStateBinding } from "@/server/auth/oauth-state";
+import { githubStateCookieName, oauthCookieOptions } from "@/server/auth/oauth-cookie";
 import { maintenanceBlocksUser } from "@/server/maintenance";
 
 export async function GET() {
@@ -18,12 +19,6 @@ export async function GET() {
   }
   const { url, state } = githubAuthorizeUrl();
   const res = NextResponse.redirect(url, 303);
-  res.cookies.set("egg_gh_state", createOAuthStateBinding(user.id, state), {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 600,
-  });
+  res.cookies.set(githubStateCookieName(), createOAuthStateBinding(user.id, state), oauthCookieOptions());
   return res;
 }

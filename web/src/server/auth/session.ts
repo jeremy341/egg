@@ -3,8 +3,9 @@ import { getDb, schema } from "@/server/db";
 import { newId, randomToken, sha256Hex } from "@/server/crypto";
 
 export const SESSION_COOKIE = "egg_session";
-export const OAUTH_COOKIE = "egg_oauth";
 export const SESSION_DAYS = 30;
+// OAuth state cookie names live in `@/server/auth/oauth-cookie`: they depend on
+// whether APP_URL is HTTPS (__Host- prefix) and this module must not own them.
 
 export type SessionUser = {
   id: string;

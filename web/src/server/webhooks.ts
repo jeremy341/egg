@@ -349,6 +349,10 @@ async function deliver(
   const now = deps.now ?? (() => new Date());
   const sleep = deps.sleep ?? realSleep;
   const deliveryId = newId();
+  // Capture the timestamps once: the row we store and the view we return must
+  // agree. Calling now() again when building the response could hand the caller
+  // timestamps that differ from what was actually recorded.
+  const createdAt = now();
   await db.insert(schema.webhookDeliveries).values({
     id: deliveryId,
     webhookId: row.id,
@@ -356,7 +360,7 @@ async function deliver(
     deploymentId,
     status: "pending",
     attempts: 0,
-    createdAt: now(),
+    createdAt,
   });
 
   const body = JSON.stringify(payload);
@@ -402,9 +406,10 @@ async function deliver(
     lastError = err instanceof HttpError ? "invalid_url" : "secret_unreadable";
   }
 
+  const finishedAt = now();
   await db
     .update(schema.webhookDeliveries)
-    .set({ status, attempts, lastErrorCode: lastError, finishedAt: now() })
+    .set({ status, attempts, lastErrorCode: lastError, finishedAt })
     .where(eq(schema.webhookDeliveries.id, deliveryId));
   return {
     id: deliveryId,
@@ -414,8 +419,8 @@ async function deliver(
     status,
     attempts,
     lastErrorCode: lastError,
-    createdAt: now().toISOString(),
-    finishedAt: now().toISOString(),
+    createdAt: createdAt.toISOString(),
+    finishedAt: finishedAt.toISOString(),
   };
 }
 
@@ -449,7 +454,31 @@ export const EVENT_FOR_STATE: Record<string, WebhookEventName | undefined> = {
   error: "deployment.failed",
 };
 
-let lastPrune = 0;
+/**
+ * Retention runs at most once an hour, and never twice at the same time. The
+ * timestamp advances only after a successful prune, so a failure does not
+ * suppress pruning for the next hour. Taking the operation as an argument keeps
+ * the scheduling testable without a live database.
+ */
+export function createPruneScheduler(prune: (at: Date) => Promise<void>) {
+  let lastPrune = 0;
+  let inFlight: Promise<void> | null = null;
+  return (at: Date): Promise<void> => {
+    const nowMs = at.getTime();
+    if (nowMs - lastPrune <= 3_600_000) return Promise.resolve();
+    if (inFlight) return inFlight;
+    inFlight = (async () => {
+      try {
+        await prune(at);
+        lastPrune = nowMs;
+      } finally {
+        inFlight = null;
+      }
+    })();
+    return inFlight;
+  };
+}
+const maybePrune = createPruneScheduler(pruneDeliveries);
 
 /**
  * Deployments are being deleted: the deliveries stay until retention removes
@@ -518,11 +547,7 @@ export async function dispatchDeploymentEvent(
     const payload = buildPayload(event, project, { ...dep, state }, at);
     await Promise.allSettled(targets.map((r) => deliver(r, payload, dep.id, deps, MAX_ATTEMPTS)));
 
-    const nowMs = at.getTime();
-    if (nowMs - lastPrune > 3_600_000) {
-      lastPrune = nowMs;
-      await pruneDeliveries(at);
-    }
+    await maybePrune(at);
   } catch (err) {
     console.warn("webhook dispatch failed", err instanceof Error ? err.message : err);
   }

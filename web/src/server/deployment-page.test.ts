@@ -279,19 +279,13 @@ describe("deployment pages", () => {
     expect(all).toHaveLength(63);
   });
 
-  it("deploymentView uses the ~id alias for members so the detail-page guard passes", async () => {
+  it("deploymentView is owner-only and uses the real slug", async () => {
     const real = (await ctx.db.select().from(schema.projects).where(eq(schema.projects.id, projectId)).get())!;
-    await ctx.db.insert(schema.projectMembers).values({
-      projectId, userId: otherUserId, role: "developer", createdAt: new Date(),
-    });
 
     const ownerView = await deploymentView(userId, "t-a");
     expect(ownerView.project.slug).toBe(real.slug);
+    expect(ownerView.deployment.projectSlug).toBe(real.slug);
 
-    const memberView = await deploymentView(otherUserId, "t-a");
-    expect(memberView.project.slug).toBe(`~${projectId}`);
-    expect(memberView.deployment.projectSlug).toBe(`~${projectId}`);
-
-    await ctx.db.delete(schema.projectMembers).where(eq(schema.projectMembers.userId, otherUserId));
+    await expect(deploymentView(otherUserId, "t-a")).rejects.toMatchObject({ status: 404 });
   });
 });

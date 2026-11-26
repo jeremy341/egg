@@ -974,21 +974,6 @@ export const maintenanceLeases = sqliteTable("maintenance_leases", {
   expiresAt: ts("expires_at").notNull(), updatedAt: ts("updated_at").notNull(),
 });
 
-export const projectMembers = sqliteTable("project_members", {
-  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
-  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  role: text("role", { enum: ["viewer", "developer"] }).notNull(),
-  createdAt: ts("created_at").notNull(),
-}, (t) => [uniqueIndex("project_members_pair_idx").on(t.projectId, t.userId), index("project_members_user_idx").on(t.userId)]);
-
-export const projectInvitations = sqliteTable("project_invitations", {
-  id: text("id").primaryKey(), projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
-  email: text("email").notNull(), role: text("role", { enum: ["viewer", "developer"] }).notNull(),
-  invitedUserId: text("invited_user_id").references(() => users.id, { onDelete: "cascade" }),
-  tokenHash: text("token_hash").notNull().unique(), createdAt: ts("created_at").notNull(),
-  expiresAt: ts("expires_at").notNull(), acceptedAt: ts("accepted_at"),
-});
-
 /** Expiring encrypted import plans; only the server owner may confirm a cutover. */
 export const adoptionPlans = sqliteTable("adoption_plans", {
   id: text("id").primaryKey(), userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),

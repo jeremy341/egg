@@ -67,6 +67,15 @@ export const CLONE_WATCH_MS = 2000;
 
 export class BuildError extends Error {}
 
+/**
+ * A single captured output line is bounded. Git can be asked to print a commit
+ * subject or author of arbitrary size; without a ceiling, accumulating one
+ * line with no newline (100-500 MB is easy to commit) OOM-kills the shared
+ * worker. Well below that while still leaving room for legitimate long output.
+ */
+export const MAX_LOG_LINE_CHARS = 1024 * 1024;
+const LOG_TRUNCATION_MARKER = "… [truncated]";
+
 const ALLOWED_GIT_HOSTS = ["github.com"];
 
 /** Only clone https URLs from hosts we expect. Blocks file://, ssh and internal hosts. */
@@ -187,6 +196,13 @@ export function runProcess(
   opts: RunOptions = {}
 ): Promise<number> {
   return new Promise((resolve, reject) => {
+    // An already-aborted signal will never fire an "abort" listener, so check it
+    // before spawning: otherwise the child runs to completion uncancelled and
+    // keeps a listener attached to a signal that can no longer fire.
+    if (opts.signal?.aborted) {
+      reject(new BuildError("The build was canceled."));
+      return;
+    }
     const child = spawn(command, args, {
       cwd: opts.cwd,
       env: opts.env ?? process.env,
@@ -204,20 +220,38 @@ export function runProcess(
       child.kill("SIGKILL");
     };
     opts.signal?.addEventListener("abort", abort, { once: true });
+    const removeAbort = () => opts.signal?.removeEventListener("abort", abort);
 
     const pump = (stream: NodeJS.ReadableStream) => {
       let buf = "";
+      let truncated = false;
       // Decode as a stream: a multi-byte character can straddle two chunks.
       const decoder = new StringDecoder("utf8");
+      const emit = (line: string) => {
+        if (!line.length && !truncated) return;
+        let text = line;
+        if (text.length > MAX_LOG_LINE_CHARS) {
+          text = text.slice(0, MAX_LOG_LINE_CHARS);
+          truncated = true;
+        }
+        opts.onLine?.(truncated ? text + LOG_TRUNCATION_MARKER : text);
+        truncated = false;
+      };
       stream.on("data", (d: Buffer) => {
         buf += decoder.write(d);
         const parts = buf.split(/\r?\n/);
         buf = parts.pop() ?? "";
-        for (const l of parts) if (l.length) opts.onLine?.(l);
+        for (const l of parts) emit(l);
+        // Cap the partial line: if no newline ever arrives, this is the only
+        // thing keeping the buffer from growing to the size of the input.
+        if (buf.length > MAX_LOG_LINE_CHARS) {
+          buf = buf.slice(0, MAX_LOG_LINE_CHARS);
+          truncated = true;
+        }
       });
       stream.on("end", () => {
         buf += decoder.end();
-        if (buf.length) opts.onLine?.(buf);
+        if (buf.length) emit(buf);
       });
     };
     pump(child.stdout);
@@ -225,11 +259,12 @@ export function runProcess(
 
     child.on("error", (e) => {
       if (timer) clearTimeout(timer);
+      removeAbort();
       reject(new BuildError(`Could not start ${command}: ${e.message}`));
     });
     child.on("close", (code) => {
       if (timer) clearTimeout(timer);
-      opts.signal?.removeEventListener("abort", abort);
+      removeAbort();
       if (timedOut) reject(new BuildError("The build timed out."));
       else if (opts.signal?.aborted) reject(new BuildError("The build was canceled."));
       else resolve(code ?? 1);
@@ -516,7 +551,9 @@ export async function cloneSource(
               env: gitEnv,
               onLine: (l) => output.push(l.trim()),
               timeoutMs: 30_000,
-              signal: req.signal,
+              // Use the combined signal so the disk/size watchdog can kill a stuck
+              // rev-parse too, not just a cancellation from the caller.
+              signal,
             });
             if (code !== 0 || !output[0]) throw new BuildError("Could not verify the requested commit. The branch tip was not used.");
             return output[0];
@@ -557,6 +594,7 @@ export async function cloneSource(
     cwd: srcDir,
     env: gitEnv,
     onLine: (l) => info.push(l),
+    timeoutMs: 30_000,
   });
   // An empty repository has no commits to anchor the deployment to: fail cleanly
   // instead of recording an empty commit.

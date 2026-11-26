@@ -4,7 +4,7 @@ import { upsertUser } from "@/server/auth/session";
 import { resetConfigForTests } from "@/server/config";
 import { open } from "@/server/crypto";
 import { getDb, schema } from "@/server/db";
-import { unitName } from "@/server/deploy/layout";
+import { serverDiscriminator, unitName } from "@/server/deploy/layout";
 import { runDeployJob, type PipelineDeps } from "@/server/deploy/pipeline";
 import { deleteProject } from "@/server/project-delete";
 import { claimNextJob } from "@/server/jobs";
@@ -21,6 +21,7 @@ describe.skipIf(!linuxTestHostAvailable())("deleting a project with a remote ste
   let mock: MockSsh;
   let userId: string;
   let server: ServerRow;
+  let scope = "";
   let deps: PipelineDeps;
   let unitDir: string;
   let home: string;
@@ -76,6 +77,7 @@ describe.skipIf(!linuxTestHostAvailable())("deleting a project with a remote ste
     const db = await getDb();
     await db.update(schema.servers).set({ port: mock.port, hostKeyFingerprint: mock.hostKeyFingerprint }).where(eq(schema.servers.id, server.id));
     server = await getServerForUser(userId, server.id);
+    scope = serverDiscriminator(server.id);
     home = await sh("echo $HOME");
     deps = {
       preflight: () => async () => containerReadyFacts,
@@ -104,7 +106,7 @@ describe.skipIf(!linuxTestHostAvailable())("deleting a project with a remote ste
     await expect(deleteProject(userId, p.id, { remote: true }, { removeRemote })).rejects.toMatchObject({ status: 409 });
     expect(removeRemote).not.toHaveBeenCalled();
     expect(await projectRow(p.id)).toBeDefined();
-    expect(await unitFiles()).toContain(unitName(p.slug));
+    expect(await unitFiles()).toContain(unitName(p.slug, undefined, scope));
     expect(await cleanupRows(p.id)).toEqual([]);
     await dropProject(p.id);
   });
@@ -120,7 +122,7 @@ describe.skipIf(!linuxTestHostAvailable())("deleting a project with a remote ste
     await expect(deleteProject(userId, p.id, { remote: true }, { removeRemote })).rejects.toMatchObject({ status: 409 });
     expect(removeRemote).not.toHaveBeenCalled();
     expect(await projectRow(p.id)).toBeDefined();
-    expect(await unitFiles()).toContain(unitName(p.slug));
+    expect(await unitFiles()).toContain(unitName(p.slug, undefined, scope));
     expect(await cleanupRows(p.id)).toEqual([]);
     await dropProject(p.id);
   });
@@ -160,12 +162,12 @@ describe.skipIf(!linuxTestHostAvailable())("deleting a project with a remote ste
   it("removes the units and releases from the container, marks the reservation done, and drops the project", async () => {
     const p = await newProject("Real Delete");
     await runDeployJob((await deployBranch(userId, p.id)).id, deps);
-    expect(await unitFiles()).toContain(unitName(p.slug));
+    expect(await unitFiles()).toContain(unitName(p.slug, undefined, scope));
     expect(await exists(`${home}/.egg/${p.slug}/releases`)).toBe(true);
 
     await deleteProject(userId, p.id, { remote: true });
 
-    expect(await unitFiles()).not.toContain(unitName(p.slug));
+    expect(await unitFiles()).not.toContain(unitName(p.slug, undefined, scope));
     expect(await exists(`${home}/.egg/${p.slug}/releases`)).toBe(false);
     expect(await projectRow(p.id)).toBeUndefined();
     const [reservation] = await cleanupRows(p.id);
@@ -177,7 +179,7 @@ describe.skipIf(!linuxTestHostAvailable())("deleting a project with a remote ste
     const p = await newProject("Data Delete");
     await runDeployJob((await deployBranch(userId, p.id)).id, deps);
     await deleteProject(userId, p.id, { remote: true, deleteData: true });
-    expect(await unitFiles()).not.toContain(unitName(p.slug));
+    expect(await unitFiles()).not.toContain(unitName(p.slug, undefined, scope));
     expect(await exists(`${home}/.egg/${p.slug}`)).toBe(false);
   });
 
@@ -192,7 +194,7 @@ describe.skipIf(!linuxTestHostAvailable())("deleting a project with a remote ste
     expect(await projectRow(p.id)).toBeDefined();
     const blocking = (await cleanupRows(p.id)).filter((row) => ["draining", "running", "failed"].includes(row.state));
     expect(blocking).toEqual([]);
-    expect(await unitFiles()).toContain(unitName(p.slug));
+    expect(await unitFiles()).toContain(unitName(p.slug, undefined, scope));
 
     // The project is usable again: a new deployment is accepted.
     await expect(deployBranch(userId, p.id)).resolves.toMatchObject({ state: "queued" });

@@ -35,7 +35,7 @@ Egg is made by a Hack Club member. It is not an official Hack Club product, and 
 - A public status page per project, and a public status page for Nest and Egg themselves
 - A file manager and terminal for each project, an Activity page, and an account page with signed-in browsers and account deletion
 - A guided first-project tour for new users
-- A Team page for each project: invite people by email as viewers (read) or developers (also deploy, roll back and restart), change or remove a role, and take back an open invitation. Egg sends no email, so you pass the one-time link on yourself
+- Projects are single-owner: each project belongs to one account, and only that account can see and manage it
 - A REST API (v1), an SDK and a command-line tool
 - Themes: several built in, a custom theme editor and VS Code theme import
 

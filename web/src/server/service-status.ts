@@ -1,4 +1,4 @@
-import { unitName } from "@/server/deploy/layout";
+import { serverDiscriminator, unitName } from "@/server/deploy/layout";
 import { serviceStatus } from "@/server/deploy/remote";
 import { HttpError } from "@/server/http";
 import { getReadableProject } from "@/server/projects";
@@ -94,7 +94,7 @@ export async function fetchServiceStatus(userId: string, projectId: string): Pro
   try {
     res = await withServerSession(server, (s) =>
       s.script(
-        serviceStatus({ unit: unitName(project.slug), port: project.workloadKind === "worker" ? null : project.port, path: project.healthPath }),
+        serviceStatus({ unit: unitName(project.slug, undefined, serverDiscriminator(server.id)), port: project.workloadKind === "worker" ? null : project.port, path: project.healthPath }),
         { timeoutMs: 20_000 }
       )
     );

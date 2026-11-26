@@ -1101,13 +1101,15 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
           encrypted path, nothing is baked into the image. A bot in a container mode can still open one
           optional listen port. Scheduled jobs run inside the running container with{" "}
           <C>docker exec</C>. Previews exist for Dockerfile projects; a Compose stack has no branch preview
-          yet.
+          yet. A preview on a Compose project is refused when it is queued, with a message saying to deploy
+          the branch to production instead, so no build time is wasted.
         </li>
         <li>
-          <B>What is refused.</B> Compose files that build images, add devices or privileged options, mount
-          bind paths instead of named volumes, or publish ports on other interfaces, are rejected before
-          anything starts, with the first reasons named in the logs. A Compose project also cannot use the
-          GitHub Actions build: the image is built on your server.
+          <B>What is refused.</B> Compose files that build images, set a container name, add depends_on,
+          links, devices or privileged options, mount bind paths or outside volumes, join external networks,
+          or publish ports on other interfaces, are rejected before anything starts, with the first reasons
+          named in the logs. Only a short allowlist of service fields is accepted. A Compose project also
+          cannot use the GitHub Actions build: the image is built on your server.
         </li>
       </List>
       <H2 id="projects-reference" title="Limits, errors and an example" />
@@ -2399,8 +2401,8 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
       <Callout tone="warning" title="Treat workflow editors as trusted operators">
         Test connection cannot see your GitHub secrets or environment settings, so check by hand that the production
         values are in the <C>egg-production</C> environment and not in the repository. Anyone who can edit workflows can run
-        code with the preview credentials and with whatever else the repository allows. Roles in Egg do not isolate Nest
-        accounts from that.
+        code with the preview credentials and with whatever else the repository allows. A project has a single owner, and
+        Egg does not isolate the Nest account from that.
       </Callout>
       <H2 id="github-reference" title="Limits, errors and an example" />
       {limits("github", [

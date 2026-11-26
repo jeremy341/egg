@@ -27,11 +27,9 @@ Deployment log messages have a default 4 MiB per-deployment byte budget, in addi
 - `POST` to the same endpoint with `{ "confirm": true, "expectedSha": "<40 hex commit>" }` explicitly queues a missed push. Egg verifies the branch head again, rejects a changed head and deduplicates concurrent requests. It never silently deploys a different commit.
 - Session owners or scoped bearer credentials may use this route. Bearer scope requirements are `deployments:read` for inspection and `deployments:write` for recovery, intersected with project authorization. GitHub calls have a deadline and a per-account request limit.
 
-## Project collaboration
+## Project ownership and deployment trust
 
-Owners manage invitations and membership through `/api/projects/:id/invitations` and `/api/projects/:id/members`; recipients accept through `/api/project-invitations/accept`. Invitations expire and are stored by token hash. Account-bound invitations require the exact recipient; email invitations additionally require a verified matching provider email. No global user directory is exposed.
-
-Viewers receive explicit project/deployment/analytics/log read access. Developers additionally deploy, redeploy, cancel, roll back and restart. Owners retain configuration, environment, credential, deletion, file, terminal, server and account authority. Token scopes cannot exceed membership permissions. Revocation takes effect on subsequent checks.
+Projects are single-owner: only the owning account can read or change a project. Every route and bearer token is checked against that owner, and token scopes cannot exceed the owner's authority.
 
 Deploy permission is a powerful trust grant: deployed code can access its environment and the Nest account's execution context. Hiding an environment endpoint does not isolate secrets from someone authorized to deploy code. Logs may also contain sensitive application output despite Egg's redaction.
 

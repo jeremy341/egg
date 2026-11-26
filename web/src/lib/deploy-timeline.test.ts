@@ -347,7 +347,6 @@ describe("buildTimeline: a canceled deploy", () => {
 
   it("says why when the system canceled it", () => {
     expect(explainCancel("Pull request closed")).toBe("Canceled because the pull request was closed.");
-    expect(explainCancel("Project role revoked")).toMatch(/lost access/);
     expect(explainCancel("Canceled")).toBe("This deployment was canceled.");
   });
 });

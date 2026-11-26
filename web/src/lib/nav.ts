@@ -8,7 +8,6 @@ import {
   BookOpenTextIcon,
   FolderOpenIcon,
   TerminalWindowIcon,
-  UsersIcon,
   CubeFocusIcon,
   CodeIcon,
   GlobeSimpleIcon,
@@ -123,14 +122,9 @@ const TEAM_TITLES: Record<string, string> = {
   "/connect": "Connect a server",
 };
 
-/** The role of whoever is looking at a project. Files, Terminal and Settings are the owner's alone. */
-export type ProjectNavRole = "owner" | "developer" | "viewer";
-
-type ProjectItem = NavItem & { ownerOnly?: boolean };
-
-function projectItems(slug: string, role: ProjectNavRole = "owner"): NavItem[] {
+function projectItems(slug: string): NavItem[] {
   const base = `/projects/${slug}`;
-  const items: ProjectItem[] = [
+  return [
     {
       href: base,
       label: "Overview",
@@ -154,31 +148,20 @@ function projectItems(slug: string, role: ProjectNavRole = "owner"): NavItem[] {
       label: "Files",
       icon: FolderOpenIcon,
       active: (p) => p.startsWith(`${base}/files`),
-      ownerOnly: true,
     },
     {
       href: `${base}/terminal`,
       label: "Terminal",
       icon: TerminalWindowIcon,
       active: (p) => p.startsWith(`${base}/terminal`),
-      ownerOnly: true,
-    },
-    {
-      href: `${base}/team`,
-      label: "Team",
-      icon: UsersIcon,
-      active: (p) => p.startsWith(`${base}/team`),
     },
     {
       href: `${base}/settings`,
       label: "Settings",
       icon: GearSixIcon,
       active: (p) => p.startsWith(`${base}/settings`),
-      ownerOnly: true,
     },
   ];
-  // Viewers cannot use the owner's pages: every request to them answers 404.
-  return role === "viewer" ? items.filter((i) => !i.ownerOnly) : items;
 }
 
 /** True where the page itself carries the "New project" button, so the top bar menu would repeat it. */
@@ -186,7 +169,7 @@ export function hasOwnCreateButton(pathname: string): boolean {
   return pathname === "/projects";
 }
 
-export function navFor(pathname: string, projectRole: ProjectNavRole = "owner"): NavContext {
+export function navFor(pathname: string): NavContext {
   const match = pathname.match(/^\/projects\/([^/]+)(\/.*)?$/);
 
   if (match) {
@@ -215,10 +198,6 @@ export function navFor(pathname: string, projectRole: ProjectNavRole = "owner"):
       title = "Terminal";
       crumb = "Terminal";
       backHref = `/projects/${slug}`;
-    } else if (rest.startsWith("/team")) {
-      title = "Team";
-      crumb = "Team";
-      backHref = `/projects/${slug}`;
     } else if (rest.startsWith("/settings")) {
       title = "Project settings";
       crumb = "Settings";
@@ -237,7 +216,7 @@ export function navFor(pathname: string, projectRole: ProjectNavRole = "owner"):
       deploymentId,
       backHref,
       backLabel: "All projects",
-      items: projectItems(slug, projectRole),
+      items: projectItems(slug),
       project: { slug, name },
     };
   }

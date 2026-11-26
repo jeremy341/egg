@@ -10,7 +10,7 @@ import { getDb, schema } from "@/server/db";
 import { defaultSourceBuilder, type Builder } from "@/server/deploy/build";
 import { BuildLockError } from "@/server/deploy/build-lock";
 import { ContainerBuildError, checkContainerReady, composeConfigFiles, discardBuildScript, runContainerBuild } from "@/server/deploy/container-build";
-import { composeMainVolumes, validateResolvedCompose } from "@/server/deploy/docker-target";
+import { composeMainImage, composeMainVolumes, validateResolvedCompose } from "@/server/deploy/docker-target";
 import { preflightNeeds, sessionPreflight, type PreflightRunner } from "@/server/deploy/container-probe";
 import {
   DEFAULT_UNIT_DIR,
@@ -21,13 +21,13 @@ import {
   currentLink,
   envFileOf,
   releaseDir,
+  serverDiscriminator,
   unitName,
 } from "@/server/deploy/layout";
 import { blockingConflicts, probeConflicts, repoNameOf } from "@/server/adoption";
 import { npmCachePlan } from "@/server/deploy/download-cache";
 import { deploymentRecorder, measureStage } from "@/server/deploy/performance";
 import { DeploymentLogger } from "@/server/deploy/logger";
-import { getProjectRole } from "@/server/project-roles";
 import * as remote from "@/server/deploy/remote";
 import {
   ENV_KEY,
@@ -247,9 +247,9 @@ async function getProbe(session: NestSession, server: ServerRow): Promise<NestPr
   return probe;
 }
 
-function unitPaths(project: Project, dep: Deployment, home: string) {
+function unitPaths(project: Project, dep: Deployment, home: string, scope: string) {
   const preview = dep.env === "preview" ? { releaseId: dep.releaseId } : undefined;
-  const unit = unitName(project.slug, preview);
+  const unit = unitName(project.slug, preview, scope);
   const workDir = preview
     ? releaseDir(home, project.slug, dep.releaseId)
     : currentLink(home, project.slug);
@@ -321,7 +321,8 @@ async function cleanup(
   project: Project,
   home: string,
   unitDir: string,
-  currentReleaseId: string | null
+  currentReleaseId: string | null,
+  scope: string
 ) {
   const db = await getDb();
   const all = await db
@@ -347,9 +348,10 @@ async function cleanup(
           home,
           slug: project.slug,
           releaseId: old.releaseId,
-          unit: unitName(project.slug, { releaseId: old.releaseId }),
+          unit: unitName(project.slug, { releaseId: old.releaseId }, scope),
           unitDir,
           docker: project.deploymentMode !== "native",
+          scope,
         }),
         { timeoutMs: 60_000 }
       )
@@ -383,7 +385,7 @@ async function cleanup(
   ).map((d) => d.releaseId);
 
   const pruned = await session
-    .script(remote.pruneReleases(home, project.slug, [...keep], building, unitDir, project.deploymentMode !== "native"), {
+    .script(remote.pruneReleases(home, project.slug, [...keep], building, unitDir, project.deploymentMode !== "native", scope), {
       timeoutMs: 120_000,
       onLine: (l) => log.info(l),
     })
@@ -416,6 +418,9 @@ export async function runDeployJob(
   signal: AbortSignal = new AbortController().signal
 ): Promise<void> {
   const { db, dep, project, server } = await load(deploymentId);
+  // Same-slug projects on other accounts of this host must never share a unit,
+  // container, image or Compose volume. Every host-global name carries this scope.
+  const scope = serverDiscriminator(server.id);
   const log = new DeploymentLogger(deploymentId);
   const recordStage = deploymentRecorder(deploymentId);
   let workDir: string | null = null;
@@ -439,7 +444,7 @@ export async function runDeployJob(
     const dockerMode = project.deploymentMode !== "native";
     if (dockerMode && githubBuild) throw new DeployError("Container projects build their image on your server. GitHub build settings are for native projects.");
     if (dockerMode && project.deploymentMode === "compose" && dep.env === "preview") throw new DeployError("PR previews are not available for Compose projects yet. Deploy the branch to production instead.");
-    if (dep.triggeredBy && dep.triggeredBy !== project.userId && await getProjectRole(dep.triggeredBy, project.id) !== "developer") {
+    if (dep.triggeredBy && dep.triggeredBy !== project.userId) {
       throw new DeployError("The deployment actor no longer has permission to deploy this project.");
     }
     if (!(await setState(deploymentId, "building", { startedAt: new Date() }))) return;
@@ -532,15 +537,15 @@ export async function runDeployJob(
     throwIfCanceled(signal);
     const probe = await getProbe(session, server);
     const home = probe.home;
-    const unitInfo = unitPaths(project, dep, home);
+    const unitInfo = unitPaths(project, dep, home, scope);
     productionUnitName = unitInfo.unit;
 
     // ---- Docker release naming, for both modes. The unit runs `docker start -a <container>`
     // so systemd keeps its restart, journal, and active checks for the container too.
     const previewRelease = dep.env === "preview" ? { releaseId: dep.releaseId } : undefined;
-    const dockerContainer = remote.dockerContainerName(project.slug, previewRelease);
-    const dockerImage = remote.dockerImageTag(project.slug, dep.releaseId, dep.env === "preview");
-    const composeProject = remote.dockerComposeProjectName(project.slug);
+    const dockerContainer = remote.dockerContainerName(project.slug, previewRelease, scope);
+    const dockerImage = remote.dockerImageTag(project.slug, dep.releaseId, dep.env === "preview", scope);
+    const composeProject = remote.dockerComposeProjectName(project.slug, scope);
     const composePaths = composeConfigFiles(home, project.slug, dep.releaseId);
     const composeMode = project.deploymentMode === "compose";
     // The aux services of the resolved Compose form, and the main service's named volumes, are
@@ -552,11 +557,14 @@ export async function runDeployJob(
     const dockerCreateFor = (releaseId: string, envFile: string) =>
       remote.dockerCreateCommand({
         container: dockerContainer,
-        image: remote.dockerImageTag(project.slug, releaseId, dep.env === "preview"),
+        image: remote.dockerImageTag(project.slug, releaseId, dep.env === "preview", scope),
         envFile,
         hostPort: dep.port === 0 ? null : dep.port,
         containerPort: project.containerPort ?? null,
         ...(composeMode ? { network: `${composeProject}_default`, volumes: composeVolumes } : {}),
+        memoryMb: probe.memTotalMb ?? undefined,
+        cpus: Math.max(0.5, Number(probe.cpus ?? reportedCpus(server.probe) ?? 1) - 0.5),
+        pidsLimit: 512,
       });
 
     let startCommand: string;
@@ -608,8 +616,8 @@ export async function runDeployJob(
     const preflight = deps.preflight ? deps.preflight(session) : sessionPreflight(session);
     // Look at the container before anything is uploaded or created: one fix line, nothing changed.
     await checkContainerReady({ preflight, needs, home, slug: project.slug, log, signal });
-    await run(session, log, "Preparing folders", remote.prepareDirs(home, project.slug), 120_000, signal);
-    await run(session, log, "Checking the service name", remote.guardUnitFree(deps.unitDir, unitInfo.unit, project.slug), 120_000, signal);
+    await run(session, log, "Preparing folders", remote.prepareDirs(home, project.slug, scope), 120_000, signal);
+    await run(session, log, "Checking the service name", remote.guardUnitFree(deps.unitDir, unitInfo.unit, project.slug, scope), 120_000, signal);
 
     // Install and build in the new release folder, under a cap, while the running app keeps serving.
     // Docker modes build the image (or prepare the Compose stack) in the same scope and watchdog.
@@ -665,10 +673,23 @@ export async function runDeployJob(
                 }
                 composeAux = parsed.aux;
                 composeVolumes = composeMainVolumes(json, project.composeService ?? "", composeProject);
-                return [{
-                  label: "Pulling the Compose images",
-                  command: `docker compose -f ${shellQuote(composePaths.canonical)} -p ${shellQuote(composeProject)} pull`,
-                }];
+                const mainImage = composeMainImage(json, project.composeService ?? "");
+                if (!mainImage) {
+                  throw new ContainerBuildError(`The main Compose service ${project.composeService ?? ""} has no image Docker could resolve.`);
+                }
+                return [
+                  {
+                    label: "Pulling the Compose images",
+                    command: `docker compose -f ${shellQuote(composePaths.canonical)} -p ${shellQuote(composeProject)} pull`,
+                  },
+                  // Compose only pulls; no image with Egg's release tag exists. Tag the
+                  // validated image inside the same capped scope so create, prune and
+                  // rollback keep using the same release-tag contract as Dockerfile mode.
+                  {
+                    label: "Tagging the main image",
+                    command: `docker tag ${shellQuote(mainImage)} ${shellQuote(dockerImage)}`,
+                  },
+                ];
               },
             },
           }
@@ -696,6 +717,7 @@ export async function runDeployJob(
           slug: project.slug,
           description: `Egg: ${project.name}${dep.env === "preview" ? ` (preview ${dep.releaseId.slice(0, 8)})` : ""}`,
           container: dockerContainer,
+          scope,
         })
       : remote.unitFile({
         slug: project.slug,
@@ -705,6 +727,7 @@ export async function runDeployJob(
         port: dep.port || null,
         startCommand,
         pathPrefix: venv,
+        scope,
       });
     if (dep.env === "production") {
       const currentUnit = await session.exec(`cat ${shellQuote(`${deps.unitDir}/${unitInfo.unit}`)}`);
@@ -845,7 +868,7 @@ export async function runDeployJob(
     // The release is already live, so a cancel that arrived after the switch cannot undo it.
     const finished = await setState(deploymentId, "ready", { finishedAt: new Date() }, dep.env === "production");
     if (!finished) throw new DeployError("The pull request closed while its preview was starting.");
-    await cleanup(session, log, project, home, deps.unitDir, dep.env === "production" ? dep.releaseId : (previous?.releaseId ?? null));
+    await cleanup(session, log, project, home, deps.unitDir, dep.env === "production" ? dep.releaseId : (previous?.releaseId ?? null), scope);
     await log.flush();
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -873,9 +896,10 @@ export async function runDeployJob(
               home,
               slug: project.slug,
               releaseId: dep.releaseId,
-              unit: unitName(project.slug, { releaseId: dep.releaseId }),
+              unit: unitName(project.slug, { releaseId: dep.releaseId }, scope),
               unitDir: deps.unitDir,
               docker: project.deploymentMode !== "native",
+              scope,
             }),
             { timeoutMs: 60_000 }
           )
@@ -886,9 +910,9 @@ export async function runDeployJob(
         } else {
           // The unit could not be removed whole; at least stop and disable it so a
           // preview that never came up does not restart-loop forever. Best effort.
-          const unit = unitName(project.slug, { releaseId: dep.releaseId });
+          const unit = unitName(project.slug, { releaseId: dep.releaseId }, scope);
           const stopped = await session
-            .script(SH_MARKER_HELPERS + remote.removeOwnUnit(deps.unitDir, unit, project.slug), { timeoutMs: 60_000 })
+            .script(SH_MARKER_HELPERS + remote.removeOwnUnit(deps.unitDir, unit, project.slug, scope), { timeoutMs: 60_000 })
             .then((result) => result.code === 0)
             .catch(() => false);
           if (!stopped) log.warn(`Could not remove or stop the preview service ${unit}; it may keep restarting on the server.`);
@@ -928,6 +952,8 @@ export async function runRollbackJob(
   signal: AbortSignal = new AbortController().signal
 ): Promise<void> {
   const { dep, project, server } = await load(deploymentId);
+  const scope = serverDiscriminator(server.id);
+  const composeProject = remote.dockerComposeProjectName(project.slug, scope);
   const log = new DeploymentLogger(deploymentId);
   let session: NestSession | null = null;
 
@@ -938,7 +964,7 @@ export async function runRollbackJob(
     // environment values into the stored log and the raw console error: register them with the
     // logger, exactly like the deploy path does, so log.mask actually masks them.
     log.setSecrets([...Object.values(await envForDeployment(project.id, dep.env))]);
-    if (dep.triggeredBy && dep.triggeredBy !== project.userId && await getProjectRole(dep.triggeredBy, project.id) !== "developer") {
+    if (dep.triggeredBy && dep.triggeredBy !== project.userId) {
       throw new DeployError("The deployment actor no longer has permission to deploy this project.");
     }
     if (!(await setState(deploymentId, "deploying", { startedAt: new Date() }))) return;
@@ -949,7 +975,7 @@ export async function runRollbackJob(
     throwIfCanceled(signal);
     const probe = await getProbe(session, server);
     const home = probe.home;
-    const unit = unitName(project.slug);
+    const unit = unitName(project.slug, undefined, scope);
     const previous = await currentProduction(project.id, dep.id);
 
     throwIfCanceled(signal);
@@ -968,7 +994,41 @@ export async function runRollbackJob(
     const previousUnitFile = oldUnit.code === 0 ? oldUnit.stdout : null;
     throwIfCanceled(signal);
     if (!(await beginActivation(deploymentId))) throw new DeployError("The rollback was canceled before activation.");
-    if (dockerMode) {
+    // Compose releases need their network and named volumes re-derived from the
+    // stored resolved form instead of being assumed to be defaults. The same
+    // helper is used for the rollback target and for the release restored when
+    // that target does not come back healthy.
+    const composeCreateExtras = async (releaseId: string, required: boolean) => {
+        if (project.deploymentMode !== "compose") return {};
+        const paths = composeConfigFiles(home, project.slug, releaseId);
+        const read = await session!.exec(`cat ${shellQuote(paths.json)}`, { signal });
+        if (read.code !== 0) {
+          if (required) throw new DeployError("The Compose form of that release is no longer on your server. Deploy the branch again instead.");
+          return {};
+        }
+        let json: unknown;
+        try {
+          json = JSON.parse(read.stdout);
+          const parsed = validateResolvedCompose(json, {
+            service: project.composeService ?? "",
+            containerPort: project.containerPort ?? null,
+            project: composeProject,
+          });
+          if (parsed.errors.length > 0) {
+            if (required) throw new DeployError("The Compose form of that release could not be read. Deploy the branch again instead.");
+            return {};
+          }
+          return {
+            network: `${composeProject}_default`,
+            volumes: composeMainVolumes(json, project.composeService ?? "", composeProject),
+          };
+        } catch (e) {
+          if (e instanceof DeployError) throw e;
+          if (required) throw new DeployError("The Compose form of that release could not be read. Deploy the branch again instead.");
+          return {};
+        }
+      };
+      if (dockerMode) {
       // The release folder and its image are kept together, so a rollback re-creates the
       // container from the same image and restarts the unit over it.
       if (project.deploymentMode === "compose") {
@@ -982,7 +1042,7 @@ export async function runRollbackJob(
           aux = validateResolvedCompose(JSON.parse(readAux.stdout), {
             service: project.composeService ?? "",
             containerPort: project.containerPort ?? null,
-            project: remote.dockerComposeProjectName(project.slug),
+            project: composeProject,
           }).aux;
         } catch {
           throw new DeployError("The Compose form of that release could not be read. Deploy the branch again instead.");
@@ -990,29 +1050,31 @@ export async function runRollbackJob(
         if (aux.length > 0) {
           await run(
             session, log, "Starting the Compose services",
-            remote.dockerComposeUpScript({
-              composeFile: composePaths.canonical,
-              project: remote.dockerComposeProjectName(project.slug),
-              services: aux,
-            }),
+            remote.dockerComposeUpScript({ composeFile: composePaths.canonical, project: composeProject, services: aux }),
             300_000
           );
         }
       }
+      const createExtras = await composeCreateExtras(dep.releaseId, true);
+      const container = remote.dockerContainerName(project.slug, undefined, scope);
       await run(
         session,
         log,
         "Switching the release",
         remote.dockerActivationScript({
           unit,
-          container: remote.dockerContainerName(project.slug),
-          candidate: `${remote.dockerContainerName(project.slug)}-back`,
+          container,
+          candidate: `${container}-back`,
           create: remote.dockerCreateCommand({
-            container: remote.dockerContainerName(project.slug),
-            image: remote.dockerImageTag(project.slug, dep.releaseId),
+            container,
+            image: remote.dockerImageTag(project.slug, dep.releaseId, false, scope),
             envFile: envFileOf(home, project.slug, dep.releaseId),
             hostPort: dep.port === 0 ? null : dep.port,
             containerPort: project.containerPort ?? null,
+            memoryMb: probe.memTotalMb ?? undefined,
+            cpus: Math.max(0.5, Number(probe.cpus ?? reportedCpus(server.probe) ?? 1) - 0.5),
+            pidsLimit: 512,
+            ...createExtras,
           }),
         })
       );
@@ -1043,15 +1105,22 @@ export async function runRollbackJob(
           dockerMode
             ? remote.dockerActivationScript({
                 unit,
-                container: remote.dockerContainerName(project.slug),
-                candidate: `${remote.dockerContainerName(project.slug)}-restore`,
-                create: remote.dockerCreateCommand({
-                  container: remote.dockerContainerName(project.slug),
-                  image: remote.dockerImageTag(project.slug, previous.releaseId),
-                  envFile: envFileOf(home, project.slug, previous.releaseId),
-                  hostPort: dep.port === 0 ? null : dep.port,
-                  containerPort: project.containerPort ?? null,
-                }),
+                container: remote.dockerContainerName(project.slug, undefined, scope),
+                candidate: `${remote.dockerContainerName(project.slug, undefined, scope)}-restore`,
+                create: await (async () => {
+                  const restoreExtras = await composeCreateExtras(previous.releaseId, false);
+                  return remote.dockerCreateCommand({
+                    container: remote.dockerContainerName(project.slug, undefined, scope),
+                    image: remote.dockerImageTag(project.slug, previous.releaseId, false, scope),
+                    envFile: envFileOf(home, project.slug, previous.releaseId),
+                    hostPort: dep.port === 0 ? null : dep.port,
+                    containerPort: project.containerPort ?? null,
+                    memoryMb: probe.memTotalMb ?? undefined,
+                    cpus: Math.max(0.5, Number(probe.cpus ?? reportedCpus(server.probe) ?? 1) - 0.5),
+                    pidsLimit: 512,
+                    ...restoreExtras,
+                  });
+                })(),
               })
             : remote.activateProduction({
                 home,

@@ -89,8 +89,11 @@ export type Endpoint = {
   destructive: boolean;
   /** Largest JSON request body, in bytes. */
   maxBodyBytes: number;
-  /** The success payload can carry attacker-controlled bytes (log lines, terminal output,
-   *  file names/content, DNS text): MCP wraps it in a nonce-delimited untrusted frame. */
+  /** MCP wraps everything this tool returns — success AND errors — in a
+   *  nonce-delimited untrusted frame, so remote bytes cannot pose as trusted
+   *  text. Defaults to true. Opt out with `untrusted: false` only when both the
+   *  payload and every error are static or strictly validated, with no
+   *  container, repository, DNS or other remote bytes. */
   untrusted: boolean;
   run: (p: Principal, input: never) => Promise<unknown>;
 };
@@ -113,6 +116,7 @@ export function endpoint<P extends Shape = Empty, Q extends Shape = Empty, B ext
   response: z.ZodType;
   errors?: number[];
   destructive?: boolean;
+  /** Set to false to opt out of the default untrusted framing. See `Endpoint`. */
   untrusted?: boolean;
   maxBodyBytes?: number;
   run: (p: Principal, input: z.output<z.ZodObject<P & Q & B>>) => Promise<unknown>;
@@ -139,7 +143,7 @@ export function endpoint<P extends Shape = Empty, Q extends Shape = Empty, B ext
     readOnly: def.method === "GET",
     destructive: def.destructive ?? false,
     maxBodyBytes: def.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES,
-    untrusted: def.untrusted ?? false,
+    untrusted: def.untrusted ?? true,
     run: def.run as Endpoint["run"],
   };
 }

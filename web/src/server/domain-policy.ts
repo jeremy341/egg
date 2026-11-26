@@ -5,6 +5,8 @@
  * domains it will record and show as active. These rules follow Nest's own checks
  * (mocinno/backend: addDomain, isWhitelisted, checkDNSVerification, isPublicDomain) and add
  * a reserved-name block so nobody records nest.hackclub.app or admin.hackclub.app as theirs.
+ * Names under Hack Club's other suffixes (hackclub.com/.dev) are denied outright unless the
+ * user has already verified them, so they cannot be claimed as custom domains either.
  */
 
 import { isIP } from "node:net";
@@ -140,6 +142,10 @@ export const RESERVED_NAMES: ReadonlySet<string> = new Set<string>([...NEST_RESE
 /** Suffixes whose names belong to Hack Club (or to the local machine), not to a user. */
 const PROTECTED_SUFFIXES = ["hackclub.app", "hackclub.com", "hackclub.dev", "localhost"] as const;
 const NEST_SUFFIX = "hackclub.app";
+const LOCAL_SUFFIX = "localhost";
+
+/** A domain the user already verified on this account: the explicit carve-out for protected suffixes. */
+export type OwnedDomain = { domain: string; status: string };
 
 /** From hackclub/nest cert.ts isPublicDomain, so Egg refuses what Nest cannot issue a certificate for. */
 const NON_PUBLIC_TLDS = /(\.localhost|\.local|\.internal|\.home\.arpa)$/i;
@@ -198,13 +204,22 @@ export function ownedParentOf<T extends { domain: string; status: string }>(
 /**
  * Whether Egg will record this domain for this Nest account. Pure: no DNS, no database.
  * Rules, in order:
- *  1. A reserved name is refused under hackclub.app, hackclub.com, hackclub.dev and localhost,
- *     and so is a bare reserved word. Under hackclub.app the label that is checked is the one
- *     right under the suffix (the account name), so `api.sam-r.hackclub.app` stays open to sam-r.
- *  2. Under hackclub.app only the account's own Nest name, and names under it, are allowed.
+ *  1. A bare reserved word is refused (call this before normalizeDomain, which rejects bare
+ *     words before they reach here).
+ *  2. Every subdomain of a protected suffix is refused: those names belong to Hack Club, not
+ *     to a user. Two exceptions: the account's own Nest name under hackclub.app (and anything
+ *     under it), and a domain the user has already verified on this server, which is an
+ *     explicit carve-out for legitimate user-owned names under those suffixes.
+ *     Under hackclub.app the reserved-label check looks only at the label right under the
+ *     suffix (the account name), so `api.sam-r.hackclub.app` stays open to sam-r. A `.localhost`
+ *     name is likewise checked for reserved labels, then refused as non-public.
  *  3. Anything else is a custom domain and must be a public domain name.
  */
-export function checkDomainPolicy(domain: string, nestUsername: string): PolicyResult {
+export function checkDomainPolicy(
+  domain: string,
+  nestUsername: string,
+  owned: readonly OwnedDomain[] = []
+): PolicyResult {
   const d = clean(domain);
   const deny = (code: "reserved" | "nest-name" | "not-public", message: string): PolicyResult => ({
     allowed: false,
@@ -214,12 +229,29 @@ export function checkDomainPolicy(domain: string, nestUsername: string): PolicyR
 
   if (!d.includes(".") && RESERVED_NAMES.has(d)) return deny("reserved", MESSAGES.reserved);
 
+  const userOwns = (name: string) =>
+    owned.some(
+      (o) => o.status === "valid" && (clean(o.domain) === name || isSubdomainOf(name, o.domain))
+    );
+
   for (const suffix of PROTECTED_SUFFIXES) {
     if (d === suffix) return deny("reserved", MESSAGES.reserved);
     if (!d.endsWith(`.${suffix}`)) continue;
-    const labels = d.slice(0, -(suffix.length + 1)).split(".");
-    const checked = suffix === NEST_SUFFIX ? [labels[labels.length - 1]] : labels;
-    if (checked.some((l) => RESERVED_NAMES.has(l))) return deny("reserved", MESSAGES.reserved);
+    // The own-Nest-name case is the one protected-suffix name a user gets without DNS proof.
+    if (isNestName(d, nestUsername)) return { allowed: true };
+    if (suffix === NEST_SUFFIX || suffix === LOCAL_SUFFIX) {
+      // For hackclub.app only the account label is checked; a subdomain may use a reserved word.
+      // localhost falls through to the public-domain check after this, so `mything.localhost`
+      // keeps its "not public" message while `admin.localhost` stays reserved.
+      const labels = d.slice(0, -(suffix.length + 1)).split(".");
+      const checked = suffix === NEST_SUFFIX ? [labels[labels.length - 1]] : labels;
+      if (checked.some((l) => RESERVED_NAMES.has(l))) return deny("reserved", MESSAGES.reserved);
+      continue;
+    }
+    // hackclub.com and hackclub.dev belong to Hack Club: only a name this user already
+    // verified is allowed to sit under them.
+    if (userOwns(d)) return { allowed: true };
+    return deny("reserved", MESSAGES.reserved);
   }
 
   if (d.endsWith(`.${NEST_SUFFIX}`)) {

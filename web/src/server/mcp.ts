@@ -96,11 +96,6 @@ export type McpOutcome =
   | { kind: "accepted" }
   | { kind: "response"; status: number; body: RpcResponse };
 
-/** Tool result for the model. Errors are results, never crashes. */
-function toolError(text: string) {
-  return { content: [{ type: "text", text }], isError: true };
-}
-
 const callParams = z.object({ name: z.string(), arguments: z.unknown().optional() });
 
 /** Markers around a tool result that can carry attacker-controlled bytes (log lines,
@@ -120,6 +115,17 @@ function untrustedResult(payload: string) {
   );
 }
 
+/**
+ * Every byte the model sees from an endpoint that can carry remote data goes
+ * through the frame — success AND failure. Otherwise an error could smuggle
+ * injected instructions in as plain, apparently-trusted text. Errors stay
+ * results, never crashes.
+ */
+function toolResult(ep: Endpoint, payload: string, isError: boolean) {
+  const text = ep.untrusted ? untrustedResult(payload) : payload;
+  return { content: [{ type: "text", text }], isError };
+}
+
 async function callTool(p: Principal, params: unknown, id: RpcId): Promise<RpcResponse> {
   const parsed = callParams.safeParse(params);
   if (!parsed.success) return rpcError(id, RPC.invalidParams, "tools/call needs a tool name.");
@@ -135,13 +141,14 @@ async function callTool(p: Principal, params: unknown, id: RpcId): Promise<RpcRe
   enforceApiRate(p, ep.bucket);
   try {
     const data = await callEndpoint(p, ep, args ?? {});
-    const payload = JSON.stringify(data, null, 2);
-    return rpcResult(id, { content: [{ type: "text", text: ep.untrusted ? untrustedResult(payload) : payload }], isError: false });
+    return rpcResult(id, toolResult(ep, JSON.stringify(data, null, 2), false));
   } catch (err) {
-    if (err instanceof HttpError) return rpcResult(id, toolError(`${err.code}: ${err.message}`));
+    // The message of an HttpError can itself carry remote bytes (SSH stderr,
+    // inventory/repo text), so it is framed just like a success payload.
+    if (err instanceof HttpError) return rpcResult(id, toolResult(ep, `${err.code}: ${err.message}`, true));
     // Control-flow errors from Next.js and anything unexpected: say nothing about internals.
     console.error("MCP tool failed", name, err instanceof Error ? err.name : "unknown");
-    return rpcResult(id, toolError("internal: Something went wrong on our side."));
+    return rpcResult(id, toolResult(ep, "internal: Something went wrong on our side.", true));
   }
 }
 

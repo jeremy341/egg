@@ -13,6 +13,9 @@ export const GET = handle<Ctx>(async (req, { params }) => {
   const user = await authed();
   const { id } = await params;
   const fresh = req.nextUrl.searchParams.get("fresh") === "1";
+  // `?fresh=1` (Check now) always opens a new SSH session, so it spends from the slow-SSH bucket.
+  // Cached reads are served without touching the container and do not need this gate.
+  if (fresh) enforceRateLimit("sshCall", user.id);
   // A reading older than 30 seconds opens an SSH session even without ?fresh=1, so every call counts.
   enforceRateLimit("sshSession", user.id);
   const { status, cached } = await lastKnownServiceStatus(user.id, id, { fresh });

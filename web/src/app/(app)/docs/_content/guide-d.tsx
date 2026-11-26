@@ -114,8 +114,8 @@ export const GUIDE_D: Record<string, () => ReactNode> = {
         </li>
         <li>
           Anyone who can push a workflow can run code with the preview credentials and with whatever else the repository
-          allows. Treat the people who can edit workflows as trusted operators of this project. Project roles in Egg do not
-          isolate Nest accounts.
+          allows. Treat the people who can edit workflows as trusted operators of this project. Each project has a single
+          owner.
         </li>
         <li>
           The credentials can send a release and read build variables, and nothing else. A production credential cannot

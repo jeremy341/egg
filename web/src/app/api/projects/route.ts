@@ -4,6 +4,8 @@ import { createProject, listProjects, projectResponse } from "@/server/projects"
 
 export const GET = handle(async () => {
   const user = await authed();
+  // listProjects, the dashboard (projectViews) and v1 list_projects all use the
+  // same owner predicate, so their project lists agree.
   return ok({ projects: (await listProjects(user.id)).map(projectResponse) });
 });
 
