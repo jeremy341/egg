@@ -206,7 +206,7 @@ export const SPECIES: readonly Species[] = [
     name: "chick",
     ramp: {
       dark: ["#b45309", "#d97706", "#f59e0b", "#fbbf24", "#fde68a"],
-      light: ["#f7b733", "#f09a0c", "#dd7d02", "#c26204", "#9a4a06"],
+      light: ["#f6dc7c", "#f0c53e", "#e6aa00", "#cc8c00", "#a96c00"],
     },
     frames: [
       CHICK_STAND,
@@ -235,7 +235,7 @@ export const SPECIES: readonly Species[] = [
       intro: [9, 10, 9, 11, 9, 10, 9, 12, 13, 14, 15, 15],
     },
     fps: 13,
-    count: [2, 3, 4],
+    count: [1, 1, 1],
     speed: 8,
     accel: 5,
     turn: 0,
@@ -244,7 +244,7 @@ export const SPECIES: readonly Species[] = [
     reach: 50,
     wake: ",'",
     glow: 2,
-    scale: 2,
+    scale: 3,
   },
 ];
 

@@ -1,99 +1,77 @@
 /**
- * The chickens of the site: one fixed canvas over the whole public page.
+ * The chicken of the site: one mascot, fixed to the bottom of the window of every public page.
  *
- * Everything is drawn as cells on a grid that divides the page's 30px grid (10px cells, 6px on a
- * phone), with fillRect only: no blur, no gradient. A chicken is a small sprite drawn `scale`
- * grid cells to a sprite cell, so it is big and still crisp. What makes it move smoothly:
+ * It is drawn as characters on a grid that divides the page's 30px grid (10px cells, 6px on a
+ * phone). A body cell is the character for how dense that bit of the chicken is (`.:-=+*#%@`, see
+ * RAMP). What keeps it clean, learned from how ascii-animals does it, is that nothing about the
+ * picture is left to chance or to the sub-cell position:
  *
- *   Position. A chicken's place is a real number, not a cell. Each cell of its sprite is shared
- *   out over the four grid cells it overlaps, by how much of each it covers (sim.ts `coverage`).
- *   A body therefore slides by cross-fading cells. At rest it sits exactly on the grid and is crisp.
+ *   Snapped. The body sits on whole cells, so a cell is covered or it is not. It never slides
+ *   half across two cells, which is what makes characters flicker as a body moves. It steps from
+ *   cell to cell, like a character on a terminal.
  *
- *   Pose. A chicken holds a weight for each of its frames. The weights ease towards the pose the
- *   animation asks for, so every change of frame (a hop, a flap, a cheep, the hatch) is a short
- *   cross-fade through the same cell blending, never a swap.
+ *   Anchored glyphs. Which of the characters a cell shows is worked out once from the cell of the
+ *   chicken it belongs to (its shade, and a fixed hash of its place in the sprite), never from
+ *   where it is on the screen and never from a per-frame random number. Each character stays
+ *   with its part of the body.
+ *
+ *   Whole poses. One pose is drawn at a time and it changes at a frame boundary. There is no
+ *   cross-fade, so there are no ghost legs; the turn is a flip.
  *
  *   Time. Every rate is integrated for the real time that passed, in steps of at most 1/60 s, so
  *   it moves the same at 60, 90 and 120 Hz and catches up after a late frame.
  *
- * The chickens live on the page, not on the screen. Their place is in page coordinates (the feet
- * stand on a line of the 30px page grid) and the canvas, which covers the window, shows the part
- * that is scrolled into view. They keep out of the text (the boxes of headings, paragraphs, links
- * and the like, collected from the page and re-collected when it changes), come to the pointer,
- * can be poked, petted, picked up and thrown, and run for seed dropped with a click. When the
- * page is scrolled far away from one, it walks in from the edge of the window.
+ * The chicken stands on the bottom of the window, not on the page, so it stays there while the
+ * page scrolls. It walks along the bottom, comes to the pointer, can be poked, stroked, picked up
+ * and thrown (it falls back down), and runs along the bottom for seed dropped with a click.
  *
  * The loop only runs while the tab is visible. With reduced motion it never runs: one still frame
- * is drawn, on the grid, and drawn again when the page scrolls. The canvas is decoration: hidden
- * from assistive technology, never focusable, and it takes no pointer events (the page listens).
+ * is drawn. The canvas is decoration: hidden from assistive technology, never focusable, and it
+ * takes no pointer events (the window listens).
  */
 
-import { INK, SHELL, SPECIES, TEXT_DIM } from "./creatures";
-import {
-  cellSize,
-  clearOf,
-  countIndex,
-  coverage,
-  glyphSet,
-  hash,
-  mirror,
-  mixHex,
-  parse,
-  pushOut,
-  rng,
-  smooth,
-  steer,
-  type Rect,
-} from "./sim";
+import { INK, SHELL, SPECIES } from "./creatures";
+import { cellSize, countIndex, coverage, glyphSet, hash, mirror, mixHex, parse, rng, smooth } from "./sim";
 
 interface Seed {
   x: number;
-  /** Page coordinates; it falls until it reaches `land`, a line of the page grid. */
   y: number;
   vy: number;
+  /** Where it comes to rest: the floor. */
   land: number;
   age: number;
   claimed: Chicken | null;
 }
 
 interface Chicken {
-  /** Page coordinates; y is where the feet stand. */
+  /** Window coordinates; y is where the feet stand. */
   x: number;
   y: number;
   vx: number;
   vy: number;
+  /** Where it is walking to along the floor. */
   tx: number;
-  ty: number;
   face: 1 | -1;
-  /** Facing as drawn: it eases from one side to the other through 0 (edge on). */
-  dir: number;
   /** Its own clock, in seconds, started at a random phase. */
   t: number;
   /** Where it is in a wing beat, in poses. */
   beat: number;
   /** Where it is in a hop, 0 to 1. 0: on the ground. */
   hop: number;
-  /** How much of each frame it shows. */
-  pose: Float32Array;
+  /** The frame it shows now. */
+  frame: number;
   seed: number;
-  /** Depth, 0.8 (a little slower) to 1. */
-  z: number;
   rest: number;
   panic: number;
-  /** What is left of a scatter push, and for how long it still acts. */
+  /** What is left of a startle push, and for how long it still acts. */
   kx: number;
   ky: number;
   kick: number;
   form: number;
-  delay: number;
   intro: number;
   lured: boolean;
-  wake: number;
-  /** Where it settles around the pointer, in cells. */
+  /** Where it settles beside the pointer, in cells. */
   ox: number;
-  oy: number;
-  /** 1 in the clear, down to TEXT_DIM over text. */
-  fade: number;
   /** Held by the pointer, and where on its body. */
   held: boolean;
   hx: number;
@@ -108,8 +86,6 @@ interface Chicken {
   over: number;
   pokes: number;
   pokedAt: number;
-  /** Next time to check it is where the reader can see it. */
-  look: number;
 }
 
 interface Mote {
@@ -132,25 +108,24 @@ export interface Field {
 
 const S = SPECIES[0];
 const SC = S.scale;
-const PAGE_CELL = 30;
-/** The fixed header covers this much of the top of the window. */
-const HEADER = 64;
 const INTRO = 2.1;
 const FORM = 0.5;
 const KICK = 0.14;
 const CHEEP = 0.5;
-const MAX_MOTES = 160;
+const MAX_MOTES = 120;
 const MAX_SEEDS = 10;
 const SEED_LIFE = 16;
-/** Shades are blended in quarter steps: 1, 1.25, ... 5. */
+/** How far above the bottom edge of the window the feet stand, in pixels. */
+const FLOOR_PAD = 12;
+/** Shades are mapped to colour in quarter steps: 1, 1.25, ... 5. */
 const LEVELS = 17;
 const EMOTES = "!?~*zo";
-/** Body characters, from the faintest to the densest: a cell is drawn as the one for how much of it is covered and how bright. */
+/** Body characters, from the faintest to the densest. */
 const RAMP = ".:-=+*#%@";
 const DOT = 0;
 const SEED = RAMP.indexOf("*");
 const GLYPHS = glyphSet(S.frames, S.wake + SHELL + EMOTES);
-/** The character to draw in place of each one when a chicken faces left. */
+/** The character to draw in place of each one when the chicken faces left. */
 const FLIPPED = [...GLYPHS].map((ch) => GLYPHS.indexOf(mirror([ch])[0]));
 const SPRITES = S.frames.map((f) => parse(f, SC));
 const SW = SPRITES[0].w;
@@ -160,17 +135,20 @@ const BW = SW * SC;
 const BH = SH * SC;
 const Q = S.seq;
 
-/** A click on one of these belongs to the page, not to a chicken. */
+/** A click on one of these belongs to the page, not to the chicken. */
 const BUSY = "a, button, input, textarea, select, summary, label, [role='button'], [role='link'], [contenteditable], iframe, video";
 /** A click on text is a click on text: it drops no seed. */
 const WORDS = "h1, h2, h3, h4, p, li, pre, code, table, blockquote, figure, img, svg";
+
+/** -1, 0 or 1, fixed for a cell of the sprite: it breaks up bands of one character. */
+const jitterOf = (x: number, y: number) => Math.floor(hash(x, y, 11) * 3) - 1;
 
 export function createField(canvas: HTMLCanvasElement, reduced: boolean): Field {
   const ctx = canvas.getContext("2d")!;
   const root = document.documentElement;
   const random = rng(20261114);
   const atlas = document.createElement("canvas");
-  /** The body characters, once per colour level: drawing a cell of a body is then a blit. */
+  /** The body characters, once per colour level: drawing a cell of the body is then a blit. */
   const ramp = document.createElement("canvas");
 
   let w = 0;
@@ -179,29 +157,22 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean): Field 
   let u = 10; // cell size
   let cols = 0;
   let rows = 0;
-  /** The page position at the top of grid row 0, always a whole number of cells. */
-  let base = 0;
-  /** How far the window is scrolled past `base`, 0 to one cell. */
-  let offY = 0;
-  let scrollY = 0;
-  let docH = 0;
   let trail = new Float32Array(0);
-  // What the bodies cover this frame, per grid cell: how much of the cell, how bright, which
-  // shade (summed, to be averaged), and how much is kept clear (eyes, characters).
+  // What the body covers this frame, per grid cell: how much of the cell, how bright, which
+  // shade, which character offset, and how much is kept clear (eyes, characters).
   let liveMark = new Uint32Array(0);
   let cover = new Float32Array(0);
   let light = new Float32Array(0);
   let shadeSum = new Float32Array(0);
   let clear = new Float32Array(0);
+  let jitter = new Int8Array(0);
   let glow = new Float32Array(0);
   let glowMark = new Uint32Array(0);
   let mark = 0;
   const touched: number[] = [];
   const glowing: number[] = [];
-  const buckets: number[][] = Array.from({ length: LEVELS }, () => []);
-  const liveGlyphs: number[] = []; // x, y (in cells, fractional), slot, alpha, size
+  const liveGlyphs: number[] = []; // x, y (in whole cells), slot, alpha, size
   const share: number[] = [];
-  let rects: Rect[] = [];
   let dark = root.classList.contains("dark");
   let fills: string[] = [];
   let list: Chicken[] = [];
@@ -213,11 +184,10 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean): Field 
   let last = 0;
   let raf = 0;
   let dead = false;
-  const aimed = new Float32Array(S.frames.length);
   const ptr = { x: 0, y: 0, on: false, fine: false };
-  /** The chicken under a button press, whether it is being carried, and the press itself. */
+  /** The chicken that is being carried, and the press (a button held on the page) itself. */
   let held: Chicken | null = null;
-  let press: { c: Chicken | null; x: number; y: number; at: number; drag: boolean; id: number } | null = null;
+  let press: { c: Chicken | null; x: number; y: number; drag: boolean; id: number } | null = null;
 
   const between = (a: number, b: number) => a + random() * (b - a);
   const ease = (rate: number, dt: number) => 1 - Math.exp(-rate * dt);
@@ -272,9 +242,9 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean): Field 
     u = cellSize(w);
     if (resized) {
       canvas.width = Math.round(w * dpr);
-      canvas.height = Math.round((h + u) * dpr);
+      canvas.height = Math.round(h * dpr);
       cols = Math.ceil(w / u);
-      rows = Math.ceil(h / u) + 1;
+      rows = Math.ceil(h / u);
       const n = cols * rows;
       trail = new Float32Array(n);
       liveMark = new Uint32Array(n);
@@ -282,138 +252,52 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean): Field 
       light = new Float32Array(n);
       shadeSum = new Float32Array(n);
       clear = new Float32Array(n);
+      jitter = new Int8Array(n);
       glow = new Float32Array(n);
       glowMark = new Uint32Array(n);
       buildAtlas();
     }
-    place();
-    collect();
     if (regroup || (reduced && resized)) spawn(!reduced);
+    else for (const c of list) c.y = floorY();
     if (reduced) still();
-  }
-
-  /** Where the window is on the page, as whole grid rows. Moves the trail with the page. */
-  function place() {
-    scrollY = window.scrollY;
-    const next = Math.floor(scrollY / u) * u;
-    const rowsMoved = Math.round((next - base) / u);
-    if (rowsMoved && trail.length) {
-      const n = Math.abs(rowsMoved) * cols;
-      if (n >= trail.length) trail.fill(0);
-      else if (rowsMoved > 0) {
-        trail.copyWithin(0, n);
-        trail.fill(0, trail.length - n);
-      } else {
-        trail.copyWithin(n, 0, trail.length - n);
-        trail.fill(0, 0, n);
-      }
-    }
-    base = next;
-    offY = scrollY - base;
-  }
-
-  /**
-   * The boxes chickens keep out of, in page coordinates: every line of text (so the empty end of
-   * a heading is free) and the small controls and pictures.
-   */
-  function collect() {
-    const sy = window.scrollY;
-    const out: Rect[] = [];
-    const add = (r: DOMRect) => {
-      if (r.width >= 4 && r.height >= 4) out.push({ x: r.left, y: r.top + sy, w: r.width, h: r.height });
-    };
-    const range = document.createRange();
-    for (const part of document.querySelectorAll("main, footer")) {
-      const walk = document.createTreeWalker(part, NodeFilter.SHOW_TEXT, {
-        acceptNode: (n) =>
-          n.nodeValue?.trim() && !n.parentElement?.closest("script, style, noscript, [data-chickens-ignore]")
-            ? NodeFilter.FILTER_ACCEPT
-            : NodeFilter.FILTER_REJECT,
-      });
-      for (let n = walk.nextNode(); n; n = walk.nextNode()) {
-        range.selectNodeContents(n);
-        for (const r of range.getClientRects()) add(r);
-      }
-    }
-    for (const el of document.querySelectorAll<HTMLElement>("main :is(button, a, input, textarea, select, img), footer :is(button, a)")) {
-      const r = el.getBoundingClientRect();
-      if (r.width < 420 && r.height < 90) add(r);
-    }
-    rects = out;
-    docH = Math.max(document.documentElement.scrollHeight, window.innerHeight);
   }
 
   const bodyW = () => BW * u;
   const bodyH = () => BH * u;
-  /** The nearest place where the sprite sits exactly on the grid, so a resting chicken is crisp. */
+  /** The row of the grid the feet stand on, in pixels. */
+  const floorY = () => Math.floor((h - FLOOR_PAD) / u) * u;
+  /** The nearest place where the sprite sits exactly on the grid. */
   const onGridX = (x: number) => (Math.round(x / u - BW / 2) + BW / 2) * u;
-  const onGridY = (y: number) => Math.round(y / PAGE_CELL) * PAGE_CELL;
-  /** The lowest the feet may be so that the head clears the header, and the highest the page allows. */
-  const minFeet = () => scrollY + HEADER + bodyH() * 0.95;
-  const maxFeet = () => Math.max(minFeet() + PAGE_CELL, Math.min(scrollY + h - 8, docH - 8));
-
-  /** A place on the grid in the window: clear of the text and, when it can be, of the others. */
-  function spot(apart: number, near?: Chicken): [number, number] {
-    const margin = bodyW() * 0.5;
-    const lo = minFeet();
-    const hi = maxFeet();
-    let best: [number, number] = [w / 2, hi];
-    let bestScore = -Infinity;
-    for (let i = 0; i < 40; i++) {
-      const x = margin + random() * Math.max(1, w - margin * 2);
-      const y = lo + random() * Math.max(1, hi - lo);
-      const open = clearOf(x, y - bodyH() * 0.5, rects, u * 5, 1);
-      let gap = Infinity;
-      for (const c of list) {
-        if (c === near) continue;
-        gap = Math.min(gap, Math.hypot(c.tx - x, c.ty - y));
-      }
-      if (open >= 1 && gap >= apart) return [x, y];
-      const score = open * 1e6 + Math.min(gap, apart);
-      if (score > bestScore) {
-        bestScore = score;
-        best = [x, y];
-      }
-    }
-    return best;
-  }
+  const margin = () => bodyW() * 0.5;
+  const clampX = (x: number) => Math.max(margin(), Math.min(w - margin(), x));
 
   function spawn(forming: boolean) {
     const n = S.count[countIndex(w)];
     list = [];
     for (let k = 0; k < n; k++) {
-      const [px, py] = spot(bodyW() * 1.1);
-      const x = onGridX(px);
-      const y = onGridY(py);
+      const x = onGridX(clampX(between(w * 0.25, w * 0.75)));
       const face = random() < 0.5 ? 1 : -1;
       const c: Chicken = {
         x,
-        y,
+        y: floorY(),
         vx: 0,
         vy: 0,
         tx: x,
-        ty: y,
         face,
-        dir: face,
         t: random() * 20,
         beat: random() * 8,
         hop: 0,
-        pose: new Float32Array(S.frames.length),
+        frame: 0,
         seed: random(),
-        z: between(0.85, 1),
-        rest: between(0.2, 1.5),
+        rest: between(0.6, 1.5),
         panic: 0,
         kx: 0,
         ky: 0,
         kick: 0,
         form: forming ? 0 : 1,
-        delay: forming ? k * 0.25 + random() * 0.2 : 0,
         intro: forming ? INTRO : 0,
         lured: false,
-        wake: 0,
         ox: (k - (n - 1) / 2) * BW * 0.8 + between(-2, 2),
-        oy: between(0, 5),
-        fade: 1,
         held: false,
         hx: 0,
         hy: 0,
@@ -424,9 +308,8 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean): Field 
         over: 0,
         pokes: 0,
         pokedAt: -9,
-        look: 0,
       };
-      aim(c, c.pose);
+      c.frame = pick(c);
       list.push(c);
     }
     held = null;
@@ -434,20 +317,15 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean): Field 
     seeds = [];
   }
 
-  /** A new place to go. `how`: 0 the nearest of three, 1 anywhere, 2 the farthest from the pointer. */
+  /** A new place to walk to along the floor. `how`: 0 not far from here, 1 anywhere, 2 away from the pointer. */
   function retarget(c: Chicken, how: 0 | 1 | 2) {
-    let best: [number, number] | null = null;
-    let score = -Infinity;
-    for (let k = how === 1 ? 1 : 3; k > 0; k--) {
-      const p = spot(bodyW() * 0.9, c);
-      const s = how === 2 ? Math.hypot(p[0] - ptr.x, p[1] - (ptr.y + scrollY)) : -Math.hypot(p[0] - c.x, p[1] - c.y);
-      if (s > score) {
-        score = s;
-        best = p;
-      }
-    }
-    c.tx = onGridX(best![0]);
-    c.ty = onGridY(best![1]);
+    let x: number;
+    if (how === 0) x = c.x + between(-0.3, 0.3) * w;
+    else if (how === 1) x = between(0, w);
+    else x = ptr.x < w / 2 ? between(w * 0.6, w) : between(0, w * 0.4);
+    c.tx = onGridX(clampX(x));
+    // Far enough to be worth the walk.
+    if (Math.abs(c.tx - c.x) < bodyW() * 0.4) c.tx = onGridX(clampX(c.x + (c.x < w / 2 ? 1 : -1) * bodyW() * between(0.6, 1.4)));
   }
 
   function mote(x: number, y: number, chars: string, vx: number, vy: number, life: number, size = SC * 0.7) {
@@ -463,69 +341,46 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean): Field 
     }
   }
 
-  /** Add a place in a pose sequence to the weights: the two frames around `p`, by how near each is. */
-  function along(out: Float32Array, seq: readonly number[], p: number, loops: boolean) {
-    const n = seq.length;
-    const at = loops ? ((p % n) + n) % n : Math.max(0, Math.min(n - 1, p));
-    const a = Math.floor(at);
-    const f = at - a;
-    out[seq[a]] += 1 - f;
-    out[seq[loops ? (a + 1) % n : Math.min(n - 1, a + 1)]] += f;
-  }
+  const flying = (c: Chicken) => c.held || c.panic > 0 || c.y < floorY() - u * 2;
+  const at = (seq: readonly number[], p: number) => seq[Math.max(0, Math.min(seq.length - 1, Math.floor(p)))];
 
-  const flying = (c: Chicken) => c.held || c.panic > 0 || Math.abs(c.vy) > u * 2.5;
-
-  /** The pose the chicken should be in now, as weights over its frames (they add up to 1). */
-  function aim(c: Chicken, out: Float32Array) {
-    out.fill(0);
-    if (c.intro > 0) return along(out, Q.intro, (1 - c.intro / INTRO) * (Q.intro.length - 1), false);
-    if (!reduced && flying(c)) return along(out, Q.flap, c.beat, true);
-    if (c.peck > 0) return along(out, [0, 1, 0, 1], (c.t * 9) % 4, true);
-    if (c.cheep > 0) return along(out, Q.peep, (1 - c.cheep / CHEEP) * (Q.peep.length - 1), false);
-    if (c.hop > 0) return along(out, Q.hop, c.hop * (Q.hop.length - 1), false);
+  /** The frame to show now. One at a time: the pose changes at a frame boundary, never as a blend. */
+  function pick(c: Chicken): number {
+    if (c.intro > 0) return at(Q.intro, (1 - c.intro / INTRO) * Q.intro.length);
+    if (reduced) return Q.rest[0];
+    if (flying(c)) return Q.flap[Math.floor(c.beat) % Q.flap.length];
+    if (c.peck > 0) return Math.floor(c.t * 9) % 2 ? Q.rest[0] : Q.move[0];
+    if (c.cheep > 0) return at(Q.peep, (1 - c.cheep / CHEEP) * Q.peep.length);
+    if (c.hop > 0) return at(Q.hop, c.hop * Q.hop.length);
     const p = (c.t + c.seed * 7) % (c.lured ? 1.5 : 3.8);
-    return along(out, p < 0.55 && !reduced ? Q.peep : Q.rest, (p / 0.55) * (Q.peep.length - 1), false);
+    return p < 0.55 ? at(Q.peep, (p / 0.55) * Q.peep.length) : Q.rest[0];
   }
 
-  const bodyAt = (c: Chicken): [number, number, number, number] => [
-    c.x - bodyW() * 0.42,
-    c.y - bodyH() * 0.95,
-    c.x + bodyW() * 0.42,
-    c.y,
-  ];
+  const bodyAt = (c: Chicken): [number, number, number, number] => [c.x - bodyW() * 0.42, c.y - bodyH() * 0.95, c.x + bodyW() * 0.42, c.y];
 
   /** The chicken under a point of the window, if any. */
-  function hit(clientX: number, clientY: number, slack: number): Chicken | null {
-    const px = clientX;
-    const py = clientY + scrollY;
-    let best: Chicken | null = null;
+  function hit(x: number, y: number, slack: number): Chicken | null {
     for (const c of list) {
-      if (c.intro > 0 || c.delay > 0) continue;
+      if (c.intro > 0) continue;
       const [x0, y0, x1, y1] = bodyAt(c);
-      if (px >= x0 - slack && px <= x1 + slack && py >= y0 - slack && py <= y1 + slack && (!best || c.y > best.y)) best = c;
+      if (x >= x0 - slack && x <= x1 + slack && y >= y0 - slack && y <= y1 + slack) return c;
     }
-    return best;
+    return null;
   }
 
-  function startle(c: Chicken, fromX: number, fromY: number, power: number) {
-    let dx = c.x - fromX;
-    let dy = c.y - bodyH() * 0.5 - fromY;
-    if (Math.hypot(dx, dy) < 1) {
-      dx = random() - 0.5;
-      dy = random() - 0.5;
-    }
-    const n = Math.hypot(dx, dy);
-    c.kx = (dx / n) * u * 62 * power * between(0.8, 1.2);
-    c.ky = (dy / n) * u * 40 * power * between(0.8, 1.2);
+  function startle(c: Chicken, fromX: number, power: number) {
+    const side = c.x >= fromX ? 1 : -1;
+    c.kx = side * u * 62 * power * between(0.8, 1.2);
+    c.ky = -u * 52 * power;
     c.kick = KICK;
-    c.panic = between(0.8, 1.3) * power;
+    c.panic = between(0.7, 1.1) * power;
     c.rest = 0;
     c.eat = null;
     c.peck = 0;
   }
 
-  /** A tap or a click on a chicken: it cheeps and hops. The third in a row sends it off. */
-  function poke(c: Chicken, x: number, y: number) {
+  /** A tap or a click on the chicken: it cheeps and hops. The third in a row sends it off. */
+  function poke(c: Chicken, x: number) {
     if (time - c.pokedAt < 0.2) return;
     c.pokes = time - c.pokedAt < 3 ? c.pokes + 1 : 1;
     c.pokedAt = time;
@@ -535,26 +390,21 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean): Field 
     c.peck = 0;
     if (c.pokes >= 3) {
       say(c, "!", 3);
-      startle(c, x, y + scrollY, 1);
+      startle(c, x, 1);
       c.pokes = 0;
       return;
     }
     say(c, c.pokes === 1 ? "!" : "!?");
     c.cheep = CHEEP;
-    c.hop = 0.0001;
-    c.vy = -u * 8;
+    c.vy = -u * 44;
   }
 
-  /** Seed from a click: it drops to the line of the grid below the pointer. */
+  /** Seed from a click: it drops from the pointer to the floor. */
   function sow(x: number, y: number) {
     for (let k = 0; k < 3; k++) {
-      const sy = y + scrollY + k * 2;
-      const sx = Math.max(u, Math.min(w - u, x + (k - 1) * u * 3 + between(-u, u)));
-      const land = Math.min(docH - 4, Math.ceil((sy + 2) / PAGE_CELL) * PAGE_CELL);
-      // Seed under a box of text could never be reached: the chickens keep out of those.
-      if (clearOf(sx, land - u, rects, u * 2, 1) < 1) continue;
       if (seeds.length >= MAX_SEEDS) seeds.shift()!.claimed = null;
-      seeds.push({ x: sx, y: sy, vy: 0, land, age: 0, claimed: null });
+      const sx = Math.max(u, Math.min(w - u, x + (k - 1) * u * 3 + between(-u, u)));
+      seeds.push({ x: sx, y: y + k * 2, vy: 0, land: floorY(), age: 0, claimed: null });
     }
   }
 
@@ -570,34 +420,56 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean): Field 
       c.vx *= cap / v;
       c.vy *= cap / v;
     }
-    c.panic = v > u * 12 ? 0.9 : 0.35;
+    c.panic = 0.5;
     c.kick = 0;
     c.pokes = 0;
     say(c, v > u * 12 ? "!" : "~");
     c.rest = 0;
-    retarget(c, 0);
+  }
+
+  /** The nearest seed that has landed and that nobody else is running for. */
+  function nearestSeed(c: Chicken): Seed | null {
+    let best: Seed | null = null;
+    let near = Infinity;
+    for (const s of seeds) {
+      if (s.claimed && s.claimed !== c) continue;
+      if (s.y < s.land - 1) continue;
+      const d = Math.abs(s.x - c.x);
+      if (d < near) {
+        near = d;
+        best = s;
+      }
+    }
+    if (best) best.claimed = c;
+    return best;
+  }
+
+  function land(c: Chicken, speed: number) {
+    if (speed > u * 14) {
+      for (let k = 0; k < 5; k++) mote(c.x + between(-6, 6) * u, c.y - u, ",'.", between(-8, 8) * u, -between(2, 8) * u, 0.5, 1.4);
+      c.hop = 0.0001;
+      c.rest = Math.max(c.rest, 0.25);
+    }
   }
 
   function step(dt: number) {
+    const G = u * 160;
     for (const c of list) {
       c.t += dt;
-      if (c.delay > 0) {
-        c.delay -= dt;
-        continue;
-      }
       if (c.form < 1) c.form = Math.min(1, c.form + dt / FORM);
       c.cheep = Math.max(0, c.cheep - dt);
       c.purr = Math.max(0, c.purr - dt);
-      const speed = S.speed * u * c.z;
+      const speed = S.speed * u;
+      const floor = floorY();
 
       if (c.held) {
         // Carried: it hangs from the pointer by the place it was taken, and its speed is what it
         // would be thrown with.
         const gx = ptr.x - c.hx;
-        const gy = ptr.y + scrollY - c.hy;
+        const gy = ptr.y - c.hy;
         const k = ease(28, dt);
         const nx = c.x + (gx - c.x) * k;
-        const ny = c.y + (gy - c.y) * k;
+        const ny = Math.min(floor, c.y + (gy - c.y) * k);
         const j = ease(14, dt);
         c.vx += ((nx - c.x) / dt - c.vx) * j;
         c.vy += ((ny - c.y) / dt - c.vy) * j;
@@ -605,7 +477,6 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean): Field 
         c.y = ny;
         c.hop = 0;
         c.rest = 0;
-        if (random() < dt * 3) mote(c.x, c.y - bodyH() * 0.5, "'", 0, -u * 2, 0.7, 1.3);
       } else if (c.intro > 0) {
         c.intro -= dt;
         if (c.intro <= 0) {
@@ -617,7 +488,8 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean): Field 
       } else {
         c.lured = false;
         if (c.panic > 0) {
-          // A scatter is a push that builds over a few frames, then drag takes the speed away.
+          // A startle is a push that builds over a few frames, then drag takes the sideways speed
+          // away and gravity brings it back down.
           c.panic -= dt;
           if (c.kick > 0) {
             const part = Math.min(dt, c.kick) / KICK;
@@ -625,40 +497,31 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean): Field 
             c.vy += c.ky * part;
             c.kick -= dt;
           }
-          const drag = Math.exp(-1.5 * dt);
-          c.vx *= drag;
-          c.vy *= drag;
-          if (c.panic <= 0) retarget(c, 1);
+          c.vx *= Math.exp(-1.5 * dt);
+          c.vy *= Math.exp(-0.4 * dt);
+          c.vy += G * dt;
+          if (c.panic <= 0 && c.y >= floor - 1) retarget(c, 1);
         } else {
-          let wx = 0;
-          let wy = 0;
+          const air = c.y < floor - 0.5;
           // Seed beats everything but a startle: it runs for the nearest it can have.
           if (!c.eat) c.eat = nearestSeed(c);
           if (c.eat && c.eat.claimed !== c) c.eat = null;
           if (c.eat) {
-            c.tx = onGridX(c.eat.x);
-            c.ty = onGridY(c.eat.land);
+            c.tx = onGridX(clampX(c.eat.x));
             c.rest = 0;
             c.lured = true;
           } else if (ptr.on && ptr.fine) {
-            const px = ptr.x - c.x;
-            const py = ptr.y + scrollY - (c.y - bodyH() * 0.45);
-            if (Math.hypot(px, py) < S.reach * u) {
-              // Curious: it settles at its own spot around the pointer, a little below it.
-              c.tx = onGridX(ptr.x + c.ox * u);
-              c.ty = onGridY(ptr.y + scrollY + bodyH() * 0.45 + c.oy * u);
-              c.rest = 0;
-              c.lured = true;
-            }
+            // Curious: it settles beside the pointer, along the floor.
+            c.tx = onGridX(clampX(ptr.x + c.ox * u));
+            c.rest = 0;
+            c.lured = true;
           }
           const dx = c.tx - c.x;
-          const dy = c.ty - c.y;
-          const d = Math.hypot(dx, dy);
+          const d = Math.abs(dx);
           if (c.peck > 0) {
             // Pecking: it stands and bobs, then the seed is gone.
             c.peck -= dt;
             c.vx *= Math.exp(-12 * dt);
-            c.vy *= Math.exp(-12 * dt);
             if (c.peck <= 0 && c.eat) {
               mote(c.eat.x, c.eat.y - u, ",", between(-2, 2) * u, -u * 3, 0.6, 1.2);
               seeds = seeds.filter((s) => s !== c.eat);
@@ -667,7 +530,7 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean): Field 
               c.hop = 0.0001;
               if (random() < 0.35) say(c, "~");
             }
-          } else if (c.eat && d < u * 3) {
+          } else if (c.eat && d < u * 3 && !air) {
             c.peck = between(0.55, 0.8);
           } else if (c.rest > 0) {
             c.rest -= dt;
@@ -675,65 +538,30 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean): Field 
           } else if (!c.lured && d < u * 0.5) {
             c.rest = between(S.rest[0], S.rest[1]);
           }
-          if (d > 0.01 && c.peck <= 0) {
+          let want = 0;
+          if (c.peck <= 0 && c.rest <= 0 && d > 0.01) {
             // Slowing into a stop: the last cells are covered ever more slowly, down to nothing.
-            const near = Math.min(1, d / (u * 4));
-            wx += (dx / d) * speed * near * (c.eat ? 1.25 : 1);
-            wy += (dy / d) * speed * near * (c.eat ? 1.25 : 1);
+            const near = Math.min(1, d / (u * 5));
+            want = Math.sign(dx) * speed * near * (c.eat ? 1.3 : 1);
           }
-          if (c.rest <= 0 && c.peck <= 0) {
-            const [fx, fy] = pushOut(c.x, c.y - bodyH() * 0.5, rects, u * 7);
-            wx += fx * speed * 1.5;
-            wy += fy * speed * 1.5;
-          }
-          // They do not stand on each other: two bodies that overlap are pushed apart.
-          for (const o of list) {
-            if (o === c || o.delay > 0 || o.intro > 0) continue;
-            const ax = (c.x - o.x) / (bodyW() * 0.7);
-            const ay = (c.y - o.y) / (bodyH() * 0.6);
-            const near = 1 - Math.hypot(ax, ay);
-            if (near > 0) {
-              const n = Math.hypot(ax, ay) || 1;
-              wx += (ax / n || (c.seed > o.seed ? 1 : -1)) * near * speed * 2.4;
-              wy += (ay / n) * near * speed * 2.4;
-            }
-          }
-          [c.vx, c.vy] = steer(c.vx, c.vy, wx, wy, S.turn, S.accel, dt);
+          c.vx += (want * (air ? 0.4 : 1) - c.vx) * ease(S.accel, dt);
+          if (air) c.vy += G * dt;
         }
         c.x += c.vx * dt;
         c.y += c.vy * dt;
-        // Never off the left or right of the window, nor above the header or under the page.
         c.x = Math.max(bodyW() * 0.2, Math.min(w - bodyW() * 0.2, c.x));
-        c.y = Math.max(bodyH() * 0.95 + 8, Math.min(docH - 4, c.y));
-      }
-
-      // Where the reader can see it: when the window has scrolled away, it walks in from the side.
-      c.look -= dt;
-      if (c.look <= 0 && !c.held && c.intro <= 0) {
-        c.look = 0.4;
-        const gone = c.y < scrollY - h * 0.6 || c.y - bodyH() > scrollY + h * 1.6;
-        if (gone) {
-          const side = random() < 0.5 ? -1 : 1;
-          c.x = side < 0 ? -bodyW() * 0.6 : w + bodyW() * 0.6;
-          const [, py] = spot(0);
-          c.y = onGridY(py);
-          c.vx = 0;
+        if (c.y >= floor) {
+          if (c.vy > 0) land(c, c.vy);
+          c.y = floor;
           c.vy = 0;
-          c.eat = null;
-          c.peck = 0;
-          c.panic = 0;
-          c.rest = 0;
-          retarget(c, 1);
-        } else if (c.panic <= 0 && c.peck <= 0 && !c.lured && (c.ty < minFeet() - PAGE_CELL || c.ty > maxFeet() + PAGE_CELL || c.y < minFeet() - PAGE_CELL * 2)) {
-          c.rest = 0;
-          retarget(c, 0);
         }
+        c.y = Math.max(bodyH() * 0.95 + 8, c.y);
       }
 
-      // Stroking: the pointer resting on a chicken, not moving off, makes it purr.
+      // Stroking: the pointer resting on the chicken, not moving off, makes it purr.
       if (!c.held && ptr.on && ptr.fine && !press) {
         const [x0, y0, x1, y1] = bodyAt(c);
-        const on = ptr.x >= x0 && ptr.x <= x1 && ptr.y + scrollY >= y0 && ptr.y + scrollY <= y1;
+        const on = ptr.x >= x0 && ptr.x <= x1 && ptr.y >= y0 && ptr.y <= y1;
         c.over = on ? c.over + dt : 0;
         if (on && c.over > 0.9 && c.purr <= 0 && c.panic <= 0 && c.peck <= 0) {
           c.purr = 1.4;
@@ -743,39 +571,31 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean): Field 
         }
       } else c.over = 0;
 
-      const v = Math.hypot(c.vx, c.vy);
+      // Which way it faces: where it is going, and a flip is a flip.
       if (c.held) c.face = c.vx > u * 2 ? 1 : c.vx < -u * 2 ? -1 : c.face;
       else if (Math.abs(c.vx) > u * 0.8) c.face = c.vx > 0 ? 1 : -1;
       else if (c.lured && Math.abs(ptr.x - c.x) > u * 2 && !c.eat) c.face = ptr.x > c.x ? 1 : -1;
-      c.dir += (c.face - c.dir) * ease(10, dt);
 
       // The beat: a hopping chicken takes a whole hop at a time and always lands before it stands.
-      c.beat += dt * (S.fps * (c.held ? 1.7 : 1));
-      const walking = v > u * 0.6 && !flying(c) && c.intro <= 0 && c.peck <= 0;
+      c.beat += dt * S.fps * (c.held ? 1.7 : 1);
+      const walking = Math.abs(c.vx) > u * 0.6 && !flying(c) && c.intro <= 0 && c.peck <= 0;
       if (walking || c.hop > 0) {
         c.hop += (dt * S.fps) / Q.hop.length;
         if (c.hop >= 1) c.hop = walking ? c.hop - 1 : 0;
       }
-      aim(c, aimed);
-      const k = ease(22, dt);
-      for (let f = 0; f < aimed.length; f++) c.pose[f] += (aimed[f] - c.pose[f]) * k;
+      c.frame = pick(c);
 
-      // Less of it shows over text, so the words keep their contrast.
-      const want = TEXT_DIM + (1 - TEXT_DIM) * clearOf(c.x, c.y - bodyH() * 0.45, rects, bodyW() * 0.18, u * 5);
-      c.fade += (want - c.fade) * ease(8, dt);
-
-      c.wake += v * dt;
-      if (c.wake > u * 5 && v > u && !c.held) {
-        c.wake = 0;
-        mote(c.x - (c.vx / v) * 8 * u, c.y - u * (c.panic > 0 ? 6 : 0.5), S.wake, 0, 0, 1.5, SC * 0.6);
+      // A little dust behind a quick walk.
+      if (walking && Math.abs(c.vx) > speed * 0.6 && random() < dt * 5) {
+        mote(c.x - Math.sign(c.vx) * bodyW() * 0.25, c.y - u, S.wake, 0, -u * 1.5, 0.7, SC * 0.5);
       }
     }
 
-    // Seed falls to its line.
+    // Seed falls to the floor.
     for (const s of seeds) {
       s.age += dt;
       if (s.y < s.land) {
-        s.vy += u * 120 * dt;
+        s.vy += G * dt;
         s.y = Math.min(s.land, s.y + s.vy * dt);
       }
     }
@@ -795,25 +615,8 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean): Field 
     if (motes.length && motes[0].life <= 0) motes = motes.filter((m) => m.life > 0);
   }
 
-  /** The nearest seed that has landed and that nobody else is running for. */
-  function nearestSeed(c: Chicken): Seed | null {
-    let best: Seed | null = null;
-    let near = Infinity;
-    for (const s of seeds) {
-      if (s.claimed && s.claimed !== c) continue;
-      if (s.y < s.land - 1) continue;
-      const d = Math.hypot(s.x - c.x, s.land - c.y);
-      if (d < near) {
-        near = d;
-        best = s;
-      }
-    }
-    if (best) best.claimed = c;
-    return best;
-  }
-
-  /** One sprite cell at a place between grid cells: shared out over the four cells it overlaps. */
-  function splat(x: number, y: number, shade: number, a: number, weight: number) {
+  /** One sprite cell at a place on the grid (whole cells, except for the rocking egg). */
+  function splat(x: number, y: number, shade: number, a: number, weight: number, j = 0) {
     coverage(x, y, share);
     const col = share[0];
     const row = share[1];
@@ -826,12 +629,14 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean): Field 
       if (liveMark[i] !== mark) {
         liveMark[i] = mark;
         cover[i] = light[i] = shadeSum[i] = clear[i] = 0;
+        jitter[i] = 0;
         touched.push(i);
       }
       if (shade) {
         cover[i] += part;
         light[i] += part * a;
         shadeSum[i] += part * shade;
+        jitter[i] = j;
       } else clear[i] += part;
     }
   }
@@ -841,72 +646,58 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean): Field 
     touched.length = 0;
     glowing.length = 0;
     liveGlyphs.length = 0;
-    for (const bucket of buckets) bucket.length = 0;
-    // The lower a chicken stands on the page, the nearer it is: it is drawn over the others.
-    const order = [...list].sort((p, q) => p.y - q.y);
-    for (const c of order) {
-      if (c.delay > 0) continue;
-      const depth = 0.88 + 0.12 * ((c.z - 0.85) / 0.15);
-      const a = depth * c.fade;
+    for (const c of list) {
       const seed = c.seed * 97;
       // A cell appears when the forming chicken reaches it, over a moment, not at once.
       const formed = (lx: number, ly: number) => (c.form >= 1 ? 1 : smooth((c.form * 1.2 - hash(lx, ly, seed)) / 0.2));
-
-      const X = c.x / u;
-      let Y = (c.y - base) / u;
+      const X = onGridX(c.x) / u;
+      const feet = Math.round(c.y / u);
       const lift = Math.sin(Math.PI * smooth((c.hop - 0.12) / 0.72)) * 1.7 * SC;
-      Y -= lift;
-      // A soft shadow on the line it stands on (the line below it while it is carried or thrown),
-      // smaller and fainter the higher it is.
-      const floor = c.held || c.panic > 0 ? Math.ceil((c.y - 1) / PAGE_CELL) * PAGE_CELL : c.y;
-      const up = Math.min(1, ((floor - c.y) / u + lift) / (4 * SC));
-      const half = BW * 0.3 * (1 - up * 0.4);
-      for (let k = -half; k <= half; k++) splat(X + k - 0.5, (floor - base) / u, 1, a * 0.7 * (1 - up * 0.6), 1);
-      // The egg rocks on its base before it cracks.
+      const Y = feet - Math.round(lift);
+      // A soft shadow on the floor, smaller and fainter the higher it is.
+      const up = Math.min(1, (feet - Y + (c.y < floorY() ? (floorY() - c.y) / u : 0)) / (4 * SC));
+      const half = Math.round(BW * 0.3 * (1 - up * 0.4));
+      const floorRow = Math.round(floorY() / u);
+      for (let k = -half; k <= half; k++) splat(X + k - 0.5, floorRow, 1, 0.7 * (1 - up * 0.6), 1);
+      // The egg rocks on its base before it cracks. It is the one thing that is not on whole cells.
       const rock = c.intro > INTRO * 0.4 ? Math.sin((INTRO - c.intro) * 9) * 0.05 * smooth((INTRO - c.intro) * 3) : 0;
       const cos = Math.cos(rock);
       const sin = Math.sin(rock);
-      const dir = reduced ? c.face : c.dir;
-      for (let index = 0; index < c.pose.length; index++) {
-        const weight = c.pose[index];
-        if (weight < 0.02) continue;
-        const f = SPRITES[index];
-        const cx = (f.w * SC) / 2;
-        const cy = f.h * SC;
-        for (let i = 0; i < f.cells.length; i += 3) {
-          const lx = f.cells[i];
-          const ly = f.cells[i + 1];
-          const ox = (lx + 0.5 - cx) * dir;
-          const oy = ly + 0.5 - cy;
-          splat(X + ox * cos - oy * sin - 0.5, Y + ox * sin + oy * cos - 0.5, f.cells[i + 2], a, weight * formed(lx, ly));
-        }
-        for (let i = 0; i < f.glyphs.length; i += 3) {
-          const ox = (f.glyphs[i] * SC + SC / 2 - cx) * dir;
-          const oy = f.glyphs[i + 1] * SC + SC / 2 - cy;
-          const gx = X + ox * cos - oy * sin - SC / 2;
-          const gy = Y + ox * sin + oy * cos - SC / 2;
-          const part = weight * formed(f.glyphs[i] * SC, f.glyphs[i + 1] * SC) * Math.min(1, Math.abs(dir) * 2.5);
-          // A character keeps its place clear, so the glow does not sit behind it.
-          for (let sa = 0; sa < SC; sa++) for (let sb = 0; sb < SC; sb++) splat(gx + sa, gy + sb, 0, a, part);
-          const slot = GLYPHS.indexOf(String.fromCharCode(f.glyphs[i + 2]));
-          liveGlyphs.push(gx, gy, dir < 0 ? FLIPPED[slot] : slot, (0.55 + 0.45 * a) * part, SC);
-        }
+      const dir = c.face;
+      const f = SPRITES[c.frame];
+      const cx = BW / 2;
+      const cy = BH;
+      for (let i = 0; i < f.cells.length; i += 3) {
+        const lx = f.cells[i];
+        const ly = f.cells[i + 1];
+        const ox = (lx + 0.5 - cx) * dir;
+        const oy = ly + 0.5 - cy;
+        splat(X + ox * cos - oy * sin - 0.5, Y + ox * sin + oy * cos - 0.5, f.cells[i + 2], 1, formed(lx, ly), jitterOf(lx, ly));
+      }
+      for (let i = 0; i < f.glyphs.length; i += 3) {
+        const ox = (f.glyphs[i] * SC + SC / 2 - cx) * dir;
+        const oy = f.glyphs[i + 1] * SC + SC / 2 - cy;
+        const gx = X + ox * cos - oy * sin - SC / 2;
+        const gy = Y + ox * sin + oy * cos - SC / 2;
+        const part = formed(f.glyphs[i] * SC, f.glyphs[i + 1] * SC);
+        // A character keeps its place clear, so the glow does not sit behind it.
+        for (let sa = 0; sa < SC; sa++) for (let sb = 0; sb < SC; sb++) splat(gx + sa, gy + sb, 0, 1, part);
+        const slot = GLYPHS.indexOf(String.fromCharCode(f.glyphs[i + 2]));
+        liveGlyphs.push(gx, gy, dir < 0 ? FLIPPED[slot] : slot, part * 0.8, SC);
       }
     }
 
-    // Each covered cell is sorted by its blended shade, leaves itself in the trail (the wake
-    // that fades behind a moving chicken) and lights a ring of faint cells around it (the glow).
+    // The covered cells leave a faint wake behind a moving body, and light a ring of faint dots
+    // around it (the glow).
     const R = S.glow;
     const own = dark ? 0.3 : 0.26;
-    const halo = dark ? 0.14 : 0.1;
+    const halo = dark ? 0.14 : 0.12;
     for (const i of touched) {
       if (cover[i] < 0.01) continue;
       const shade = shadeSum[i] / cover[i];
       const a = Math.min(1, light[i]);
-      buckets[Math.max(0, Math.min(LEVELS - 1, Math.round((shade - 1) * 4)))].push(i);
       const x = i % cols;
       const y = (i - x) / cols;
-      // Only the core leaves a wake, so a fast chicken draws a streak and not a smear.
       const left = own * a * (shade / 5) * smooth(shade - 2);
       if (trail[i] < left) trail[i] = left;
       if (a < 0.05) continue;
@@ -930,14 +721,11 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean): Field 
   }
 
   function draw(dt: number) {
-    const keep = dt ? Math.exp(-dt / 0.42) : 1;
-    /** How much of a cell is not covered by a body, an eye or a character this frame. */
+    const keep = dt ? Math.exp(-dt / 0.3) : 1;
+    /** How much of a cell is not covered by the body, an eye or a character this frame. */
     const open = (i: number) => (liveMark[i] === mark ? Math.max(0, 1 - cover[i] - clear[i]) : 1);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, w, h + u);
-    // The grid is fixed to the page: the whole drawing shifts by what the window is scrolled
-    // past the top row.
-    ctx.setTransform(dpr, 0, 0, dpr, 0, -offY * dpr);
+    ctx.clearRect(0, 0, w, h);
 
     // Characters at a cell: the density and colour level pick the one from the atlas.
     const put = (i: number, level: number, g: number, alpha: number) => {
@@ -946,45 +734,42 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean): Field 
       ctx.drawImage(ramp, (level * RAMP.length + g) * rampPx, 0, rampPx, rampPx, x * u, ((i - x) / cols) * u, u, u);
     };
 
-    // The wake: dots that fade on a smooth curve.
-    const wakeLevel = dark ? 8 : 4;
+    // The wake and the glow: dots, in a few steps of strength so they do not shimmer.
+    const wakeLevel = dark ? 8 : 6;
+    const dots = (a: number) => Math.round(Math.min(0.6, a * 2.2) * 6) / 6;
     for (let i = 0, n = cols * rows; i < n; i++) {
       const a = trail[i] * keep;
       trail[i] = a;
       if (a < 0.008 || (glowMark[i] === mark && glow[i] >= a)) continue;
-      const alpha = Math.min(0.6, a * 2.2) * open(i);
-      if (alpha < 0.02) continue;
-      put(i, wakeLevel, DOT, alpha);
+      const alpha = dots(a) * open(i);
+      if (alpha >= 0.05) put(i, wakeLevel, DOT, alpha);
     }
-
-    // The glow: a faint ring of dots.
     for (const i of glowing) {
       if (trail[i] > glow[i]) continue;
-      const alpha = Math.min(0.5, glow[i] * 2.4) * open(i);
-      if (alpha < 0.02) continue;
-      put(i, wakeLevel, DOT, alpha);
+      const alpha = dots(glow[i]) * open(i);
+      if (alpha >= 0.05) put(i, wakeLevel, DOT, alpha);
     }
 
-    // The bodies: each cell is the character for how much of it is covered and how bright it is.
-    for (let l = 0; l < LEVELS; l++) {
-      const tone = 0.25 + (0.75 * l) / (LEVELS - 1);
-      for (const i of buckets[l]) {
-        const c = Math.min(1, cover[i]);
-        const g = Math.min(RAMP.length - 1, Math.floor(c * tone * RAMP.length));
-        if (c * tone < 0.1) continue;
-        put(i, l, g, Math.min(1, light[i] / cover[i]) * (0.6 + 0.4 * (l / (LEVELS - 1))));
-      }
+    // The body: each cell is the character for its shade, moved a step by its own fixed offset.
+    for (const i of touched) {
+      const c = Math.min(1, cover[i]);
+      if (c < 0.3) continue;
+      const shade = shadeSum[i] / cover[i];
+      const level = Math.max(0, Math.min(LEVELS - 1, Math.round((shade - 1) * 4)));
+      const tone = 0.25 + 0.75 * ((shade - 1) / 4);
+      const g = Math.max(0, Math.min(RAMP.length - 1, Math.floor(c * tone * RAMP.length) + jitter[i]));
+      put(i, level, g, Math.min(1, light[i] / cover[i]) * (0.65 + 0.35 * (level / (LEVELS - 1))));
     }
 
     // Seed: a star each, fading out for the last seconds.
     for (const s of seeds) {
       const sx = Math.round(s.x / u - 0.5);
-      const sy = Math.round((s.y - base) / u - 1);
+      const sy = Math.round(s.y / u - 1);
       if (sx < 0 || sy < 0 || sx >= cols || sy >= rows) continue;
-      put(sy * cols + sx, dark ? 12 : 8, SEED, smooth((SEED_LIFE - s.age) / 3));
+      put(sy * cols + sx, dark ? 12 : 9, SEED, smooth((SEED_LIFE - s.age) / 3));
     }
 
-    // Characters are drawn where they really are, between cells.
+    // Characters are drawn where they are, on whole cells.
     const glyph = (gx: number, gy: number, slot: number, a: number, cells: number) => {
       if (slot < 0 || a < 0.02 || gx < -cells || gy < -cells || gx > cols || gy > rows) return;
       ctx.globalAlpha = a;
@@ -995,7 +780,8 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean): Field 
     }
     for (const m of motes) {
       if (m.life > 0) {
-        glyph(m.x / u - m.size / 2, (m.y - base) / u - m.size / 2, m.slot, smooth((m.life / m.max) * 1.6) * 0.8, m.size);
+        // On whole cells too, so a mote steps, it does not blur.
+        glyph(Math.round(m.x / u - m.size / 2), Math.round(m.y / u - m.size / 2), m.slot, smooth((m.life / m.max) * 1.6) * 0.8, m.size);
       }
     }
     ctx.globalAlpha = 1;
@@ -1007,10 +793,9 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean): Field 
     motes = [];
     for (const c of list) {
       c.form = 1;
-      c.delay = 0;
       c.intro = 0;
-      c.fade = TEXT_DIM + (1 - TEXT_DIM) * clearOf(c.x, c.y - bodyH() * 0.45, rects, bodyW() * 0.18, u * 5);
-      aim(c, c.pose);
+      c.y = floorY();
+      c.frame = pick(c);
     }
     stamp();
     draw(0);
@@ -1023,7 +808,6 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean): Field 
     const dt = Math.max(0, Math.min(0.1, (now - last) / 1000));
     last = now;
     time += dt;
-    place();
     for (let left = dt; left > 1e-5; left -= 1 / 60) step(Math.min(left, 1 / 60));
     stamp();
     draw(dt);
@@ -1034,24 +818,6 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean): Field 
     if (raf || reduced || dead || document.hidden) return;
     last = performance.now();
     raf = requestAnimationFrame(frame);
-  }
-
-  /** Reduced motion has no loop: a scroll draws the still picture again. */
-  function onScroll() {
-    if (!reduced || raf) return;
-    raf = requestAnimationFrame(() => {
-      raf = 0;
-      place();
-      // Nothing walks over to the reader, so when none of them is in the window any more they are
-      // set down again where it is.
-      if (!list.some((c) => c.y > scrollY + HEADER && c.y - bodyH() < scrollY + h)) {
-        collect();
-        spawn(false);
-        return still();
-      }
-      stamp();
-      draw(0);
-    });
   }
 
   // ---- the pointer -------------------------------------------------------------------------
@@ -1080,7 +846,7 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean): Field 
       c.panic = 0;
       c.vx = c.vy = 0;
       c.hx = press.x - c.x;
-      c.hy = press.y + scrollY - c.y;
+      c.hy = press.y - c.y;
       say(c, "!");
       root.setAttribute("data-chick-state", "held");
     }
@@ -1097,7 +863,7 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean): Field 
       ptr.x = e.clientX;
       ptr.y = e.clientY;
     }
-    press = { c: hit(e.clientX, e.clientY, ptr.fine ? u : u * 3), x: e.clientX, y: e.clientY, at: time, drag: false, id: e.pointerId };
+    press = { c: hit(e.clientX, e.clientY, ptr.fine ? u : u * 3), x: e.clientX, y: e.clientY, drag: false, id: e.pointerId };
   };
   const onUp = (e: PointerEvent) => {
     const p = press;
@@ -1105,8 +871,8 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean): Field 
     if (!p || p.id !== e.pointerId) return;
     if (p.drag) return release();
     if (Math.hypot(e.clientX - p.x, e.clientY - p.y) > 8) return;
-    if (p.c) return poke(p.c, e.clientX, e.clientY);
-    // A click on bare page feeds them. Not on words, and not at the end of selecting some.
+    if (p.c) return poke(p.c, e.clientX);
+    // A click on bare page feeds it. Not on words, and not at the end of selecting some.
     if (e.target instanceof Element && e.target.closest(WORDS)) return;
     if (window.getSelection()?.toString()) return;
     sow(e.clientX, e.clientY);
@@ -1115,7 +881,7 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean): Field 
     press = null;
     if (held) release();
   };
-  /** Pressing on a chicken must not start selecting the text underneath it. */
+  /** Pressing on the chicken must not start selecting the text underneath it. */
   const onMouseDown = (e: MouseEvent) => {
     if (reduced || e.button !== 0 || busy(e.target)) return;
     if (hit(e.clientX, e.clientY, u)) e.preventDefault();
@@ -1124,29 +890,12 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean): Field 
     if (e.key === "Escape" && held) release();
   };
 
-  const sizes = new ResizeObserver(() => {
-    collect();
-    if (reduced) still();
-  });
-  sizes.observe(document.body);
   const themes = new MutationObserver(() => {
     readTheme();
     if (reduced) still();
   });
   themes.observe(root, { attributes: true, attributeFilter: ["class"] });
-  // A new page, or new content in this one: the boxes of the text are collected again.
-  let recollect = 0;
-  const pages = new MutationObserver(() => {
-    window.clearTimeout(recollect);
-    recollect = window.setTimeout(() => {
-      collect();
-      if (reduced) still();
-    }, 250);
-  });
-  const main = document.querySelector("main");
-  pages.observe(main ?? document.body, { childList: true, subtree: true });
   window.addEventListener("resize", measure, { passive: true });
-  window.addEventListener("scroll", onScroll, { passive: true });
   if (!reduced) {
     window.addEventListener("pointermove", onMove, { passive: true });
     window.addEventListener("pointerdown", onDown, { passive: true });
@@ -1160,17 +909,11 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean): Field 
 
   readTheme();
   measure();
-  // The text settles after its entrance, and the characters need the site's mono font.
-  const settle = [400, 1700].map((ms) =>
-    window.setTimeout(() => {
-      collect();
-      if (reduced) still();
-    }, ms)
-  );
+  // The characters need the site's mono font.
   void document.fonts?.ready.then(() => {
     if (dead) return;
     buildAtlas();
-    collect();
+    if (reduced) still();
   });
   wake();
 
@@ -1179,13 +922,8 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean): Field 
     destroy() {
       dead = true;
       if (raf) cancelAnimationFrame(raf);
-      window.clearTimeout(recollect);
-      settle.forEach((t) => window.clearTimeout(t));
-      sizes.disconnect();
       themes.disconnect();
-      pages.disconnect();
       window.removeEventListener("resize", measure);
-      window.removeEventListener("scroll", onScroll);
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerdown", onDown);
       window.removeEventListener("pointerup", onUp);

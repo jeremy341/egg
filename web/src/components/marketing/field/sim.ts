@@ -40,10 +40,10 @@ export function mirror(frame: Frame): string[] {
 }
 
 /**
- * The cells of a frame drawn `k` times as large, as x, y, shade triples. For `k` 2 it is Scale2x,
- * the classic pixel-art enlargement: each cell becomes four, and a corner where two neighbours
- * agree and the other two differ takes the neighbour's shade, so the stair-steps of a diagonal
- * edge are cut into half steps and a big body is rounded instead of being a block-for-block
+ * The cells of a frame drawn `k` times as large, as x, y, shade triples. For `k` 2 and 3 it is
+ * Scale2x and Scale3x, the classic pixel-art enlargements: a corner where two neighbours agree
+ * and the other two differ takes the neighbour's shade, so the stair-steps of a diagonal edge
+ * are cut into smaller steps and a big body is rounded instead of being a block-for-block
  * magnification. Any other `k` is a plain magnification. Characters (beaks, legs) are not body,
  * and a hole (shade 0) is enlarged and rounded like any shade, so an eye stays an eye.
  */
@@ -61,6 +61,25 @@ export function upscale(frame: Frame, k: number): number[] {
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const p = at(x, y);
+      if (k === 3) {
+        // Scale3x. Letters as in the usual diagram: A B C over D E F over G H I, E is this cell.
+        const [A, B, C, D, F, G, H, I] = [at(x - 1, y - 1), at(x, y - 1), at(x + 1, y - 1), at(x - 1, y), at(x + 1, y), at(x - 1, y + 1), at(x, y + 1), at(x + 1, y + 1)];
+        const E = p;
+        const tl = D === B && B !== F && D !== H;
+        const tr = B === F && B !== D && F !== H;
+        const bl = D === H && D !== B && H !== F;
+        const br = F === H && F !== B && H !== D;
+        put(x * 3, y * 3, tl ? D : E);
+        put(x * 3 + 1, y * 3, (tl && E !== C) || (tr && E !== A) ? B : E);
+        put(x * 3 + 2, y * 3, tr ? F : E);
+        put(x * 3, y * 3 + 1, (tl && E !== G) || (bl && E !== A) ? D : E);
+        put(x * 3 + 1, y * 3 + 1, E);
+        put(x * 3 + 2, y * 3 + 1, (tr && E !== I) || (br && E !== C) ? F : E);
+        put(x * 3, y * 3 + 2, bl ? D : E);
+        put(x * 3 + 1, y * 3 + 2, (bl && E !== I) || (br && E !== G) ? H : E);
+        put(x * 3 + 2, y * 3 + 2, br ? H : E);
+        continue;
+      }
       if (k !== 2) {
         for (let b = 0; b < k; b++) for (let a = 0; a < k; a++) put(x * k + a, y * k + b, p);
         continue;
