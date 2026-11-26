@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# One image for the web app and the build worker. Build it from the repository root:
+# One image for the web app and the deployment worker. Build it from the repository root:
 #   docker build -f deploy/Dockerfile -t egg-app:local .
 # (compose.yaml does this.) The worker is the same image started with a different command.
 
@@ -23,12 +23,10 @@ RUN pnpm run build
 
 # --- Run --------------------------------------------------------------------
 FROM node:${NODE_VERSION}-bookworm-slim AS runtime
-# git clones the projects to build. The docker client talks to the host through the
-# socket in the worker (the app never has the socket).
+# git clones the projects. Nothing is built in this image: builds run on each user's Nest container.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends git ca-certificates bash \
  && rm -rf /var/lib/apt/lists/*
-COPY --from=docker:27-cli /usr/local/bin/docker /usr/local/bin/docker
 
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \

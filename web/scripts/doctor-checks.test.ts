@@ -6,7 +6,6 @@ import { afterAll, describe, expect, it } from "vitest";
 import {
   checkDatabaseUrl,
   checkDataFolder,
-  checkDocker,
   checkEnvFile,
   checkNode,
   checkOs,
@@ -215,28 +214,6 @@ describe("data folder", () => {
 
   it("skips a database that is not a file", () => {
     expect(checkDataFolder({ dir: null, probe: { exists: false, writable: false, error: null } }).ok).toBe(true);
-  });
-});
-
-describe("docker", () => {
-  it("passes when docker works", () => {
-    expect(checkDocker({ runner: "docker", dockerWorks: true }).ok).toBe(true);
-    expect(checkDocker({ runner: undefined, dockerWorks: true }).ok).toBe(true);
-  });
-
-  it("warns, never blocks, when docker is not running", () => {
-    const r = checkDocker({ runner: undefined, dockerWorks: false });
-    expect(r).toMatchObject({ ok: false, severity: "warning" });
-    expect(r.message).toContain("BUILD_RUNNER=local");
-    expect(hasBlocker([r])).toBe(false);
-  });
-
-  it("does not need docker for BUILD_RUNNER=local", () => {
-    expect(checkDocker({ runner: "local", dockerWorks: false }).ok).toBe(true);
-  });
-
-  it("blocks on a BUILD_RUNNER value the app would refuse", () => {
-    expect(checkDocker({ runner: "podman", dockerWorks: true })).toMatchObject({ ok: false, severity: "blocker" });
   });
 });
 

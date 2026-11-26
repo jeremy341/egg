@@ -79,6 +79,9 @@ export const RATE_LIMITS = {
   orphanRemoval: { limit: 10, windowMs: 60_000, what: "leftover removals" },
   signIn: { limit: 20, windowMs: 60_000, what: "sign-in attempts" },
   badToken: { limit: 60, windowMs: 60_000, what: "unrecognised access tokens" },
+  // GitHub builds: per project, per hour. Keyed by project id (the project the build credential belongs to).
+  buildUpload: { limit: 20, windowMs: 60 * 60_000, what: "build uploads" },
+  buildEnv: { limit: 30, windowMs: 60 * 60_000, what: "build variable reads" },
 } as const;
 
 export type RateBucket = keyof typeof RATE_LIMITS;

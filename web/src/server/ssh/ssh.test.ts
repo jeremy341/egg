@@ -1,4 +1,5 @@
 import { writeFileSync } from "node:fs";
+import { EventEmitter } from "node:events";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { utils } from "ssh2";
@@ -45,6 +46,28 @@ describe("writeFile", () => {
     expect(sent).toEqual([]);
     await session.writeFile("/tmp/x", "a", "600");
     expect(sent).toHaveLength(1);
+  });
+});
+
+describe("SSH cancellation while opening a channel", () => {
+  it("settles after the server closes a channel opened after cancellation", async () => {
+    const session = Object.create(NestSession.prototype) as NestSession;
+    const controller = new AbortController();
+    const stream = Object.assign(new EventEmitter(), {
+      stderr: new EventEmitter(),
+      signal: () => queueMicrotask(() => stream.emit("close", 1)),
+      end: () => {},
+    });
+    (session as unknown as { client: unknown }).client = {
+      exec: (_command: string, callback: (err: null, channel: typeof stream) => void) => {
+        controller.abort();
+        queueMicrotask(() => callback(null, stream));
+      },
+    };
+    const result = session.exec("test", { signal: controller.signal }).then(
+      () => "resolved", () => "canceled"
+    );
+    expect(await Promise.race([result, new Promise((resolve) => setTimeout(() => resolve("hung"), 200))])).toBe("canceled");
   });
 });
 

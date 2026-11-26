@@ -71,6 +71,22 @@ export function assertSameOrigin(req: NextRequest) {
 
 type Handler<C> = (req: NextRequest, ctx: C) => Promise<Response>;
 
+/** Route-layer backstop. Bearer APIs never inherit the browser's identity. */
+async function enforceRequestMaintenance(req: NextRequest) {
+  const { maintenanceExemptRequest, maintenanceState, maintenanceError } = await import("@/server/maintenance");
+  const path = new URL(req.url).pathname;
+  if (maintenanceExemptRequest(path, req.method.toUpperCase()) || !(await maintenanceState()).active) return;
+  let userId: string | null = null;
+  if (path.startsWith("/api/v1/")) {
+    const { bearerFrom, principalFor } = await import("@/server/api-tokens");
+    userId = (await principalFor(bearerFrom(req)))?.userId ?? null;
+  } else {
+    userId = (await getCurrentUser())?.id ?? null;
+  }
+  const { isInstanceAdmin } = await import("@/server/admin-identity");
+  if (!isInstanceAdmin(userId)) throw maintenanceError();
+}
+
 /** Wrap a route handler: same-origin check plus uniform JSON errors. */
 export function handle<C = unknown>(
   fn: Handler<C>,
@@ -79,6 +95,7 @@ export function handle<C = unknown>(
   return async (req, ctx) => {
     try {
       if (!options.skipOriginCheck) assertSameOrigin(req);
+      await enforceRequestMaintenance(req);
       return await fn(req, ctx);
     } catch (err) {
       // Let Next.js control-flow errors (dynamic-API bailouts, redirects) through.

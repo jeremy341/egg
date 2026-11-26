@@ -173,7 +173,7 @@ export default function SecurityPage() {
               To turn on the terminal or file changes, Egg sends you back to Hack Club to sign in again. The sign-in has
               to be from the last {numberWord(reauthMinutes)} minutes. Turning a switch off never asks. Browsing and
               reading files in a project&apos;s folder works with every switch off, and it is read only. The one thing
-              the Files page will not show is a release&apos;s <Code>.env</Code> file, explained next.
+              the Files page will not show is a project&apos;s variables files, explained next.
             </p>
           </Section>
 
@@ -199,12 +199,14 @@ export default function SecurityPage() {
               <Term name="Environment variables">
                 Encrypted the same way as the SSH key, and write-only: the dashboard and the API list their names and
                 never their values. At deploy time Egg decrypts them, gives them to the build on your container and writes them to a{" "}
-                <Code>.env</Code> file on your container with mode 600, so only your own user can read it. On the
-                container that file is plain text, protected by its permissions.
+                file in the <Code>env/</Code> folder of the project on your container, outside every release folder, with mode 600 (the
+                folder is mode 700), so only your own user can read it. Keeping it out of the release folder matters for static sites,
+                because the release folder is what they serve. On the container that file is plain text, protected by its permissions.
               </Term>
-              <Term name="The .env file on the Files page">
-                The Files page and the API refuse to show a release&apos;s <Code>.env</Code>, in <Code>current/</Code> or
-                in any release folder. The refusal does not rely on the name alone: the scripts that read and write
+              <Term name="The variables files on the Files page">
+                The Files page and the API refuse to show a project&apos;s variables files: anything in <Code>env/</Code>,
+                <Code>current.env</Code>, and the <Code>.env</Code> that releases made before the move still hold in <Code>current/</Code> or
+                in a release folder. The refusal does not rely on the name alone: the scripts that read and write
                 files follow links first and then refuse that file, so a link placed in <Code>shared/</Code> that points
                 at it gets nothing. Someone with a terminal on the container can still read it, which is part of why the
                 terminal is off by default.

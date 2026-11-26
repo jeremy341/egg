@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { resetConfigForTests } from "@/server/config";
-import { SESSION_COOKIE, createSession, upsertUser, userForSessionToken } from "@/server/auth/session";
+import { SESSION_COOKIE, createSession, isFreshAuth, upsertUser, userForSessionToken } from "@/server/auth/session";
 import { rateLimiter } from "@/server/rate-limit";
 import { useFreshDb } from "@/server/test/db";
 import { schema } from "@/server/db";
@@ -170,22 +170,24 @@ describe("confirming again in local mode", () => {
   async function confirm() {
     const user = await upsertUser({ id: "local:owner", name: "Owner", email: null, slackId: null });
     const { token } = await createSession(user.id);
-    return reauth(
+    const res = await reauth(
       new NextRequest("http://localhost:3000/api/auth/reauth?next=/projects", {
         headers: { cookie: `${SESSION_COOKIE}=${token}` },
       })
     );
+    return { res, token };
   }
 
   it("skips Hack Club and returns to the page in a production build", async () => {
     env({ NODE_ENV: "production", LOCAL_MODE: "1" });
-    const res = await confirm();
+    const { res, token } = await confirm();
     expect(res.headers.get("location")).toBe("http://localhost:3000/projects");
+    expect(await isFreshAuth(token)).toBe(true);
   });
 
   it("still reports that confirmation is not set up when local mode is off", async () => {
     env({ NODE_ENV: "production", LOCAL_MODE: undefined, DEV_LOGIN: "0" });
-    const res = await confirm();
+    const { res } = await confirm();
     expect(res.headers.get("location")).toContain("reauth=not_configured");
   });
 });

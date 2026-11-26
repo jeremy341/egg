@@ -31,6 +31,8 @@ export type ExecOptions = {
   /** Stream to pipe into stdin instead (for uploads). */
   stdinStream?: Readable;
   timeoutMs?: number;
+  /** Abort a remote command when its owning job is canceled or loses its lease. */
+  signal?: AbortSignal;
   /**
    * Most bytes of stdout plus stderr to keep. A container is the user's own
    * machine, so it can print without end; past this the command is cut off
@@ -94,6 +96,11 @@ export class NestSession {
     readonly hostKeyFingerprint: string
   ) {}
 
+  /** Called only after the transport confirms closure, including remote closure. */
+  onClosed(callback: () => void): void {
+    this.client.once("close", callback);
+  }
+
   static async connect(opts: ConnectOptions): Promise<NestSession> {
     const client = new Client();
     let seenHostKey = "";
@@ -151,6 +158,10 @@ export class NestSession {
   /** Run a command. Resolves with the exit code; rejects only on transport failure. */
   exec(command: string, opts: ExecOptions = {}): Promise<ExecResult> {
     return new Promise((resolve, reject) => {
+      if (opts.signal?.aborted) {
+        reject(new SshError("Command canceled", "exec"));
+        return;
+      }
       this.client.exec(command, (err, stream) => {
         if (err) {
           reject(friendlyConnectError(err));
@@ -164,14 +175,26 @@ export class NestSession {
         let settled = false;
         let timer: NodeJS.Timeout | undefined;
         let received = 0;
+        let stopError: SshError | null = null;
+        const requestStop = (error: SshError) => {
+          if (settled || stopError) return;
+          stopError = error;
+          if (timer) clearTimeout(timer);
+          opts.signal?.removeEventListener("abort", onAbort);
+          opts.stdinStream?.destroy();
+          // Keep the SSH channel open until the server reports command exit.
+          // Closing it immediately could release the queue guard while a remote
+          // child is still modifying the project.
+          stream.signal?.("TERM");
+        };
+        const onAbort = () => {
+          requestStop(new SshError("Command canceled", "exec"));
+        };
         const cap = opts.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
         const overflow = (n: number) => {
           received += n;
-          if (received <= cap || settled) return;
-          settled = true;
-          if (timer) clearTimeout(timer);
-          stream.close();
-          reject(new SshError("The container printed more output than Egg will read.", "exec"));
+          if (received <= cap || settled || stopError) return;
+          requestStop(new SshError("The container printed more output than Egg will read.", "exec"));
         };
 
         const flush = (buf: string, which: "stdout" | "stderr", final: boolean) => {
@@ -189,6 +212,11 @@ export class NestSession {
           if (settled) return;
           settled = true;
           if (timer) clearTimeout(timer);
+          opts.signal?.removeEventListener("abort", onAbort);
+          if (stopError) {
+            reject(stopError);
+            return;
+          }
           flush(outBuf, "stdout", true);
           flush(errBuf, "stderr", true);
           resolve({ code, stdout, stderr });
@@ -197,9 +225,7 @@ export class NestSession {
         if (opts.timeoutMs) {
           timer = setTimeout(() => {
             if (settled) return;
-            settled = true;
-            stream.close();
-            reject(
+            requestStop(
               new SshError(
                 `Command timed out after ${Math.round(opts.timeoutMs! / 1000)}s`,
                 "timeout"
@@ -210,14 +236,14 @@ export class NestSession {
 
         stream.on("data", (d: Buffer) => {
           overflow(d.length);
-          if (settled) return;
+          if (settled || stopError) return;
           const s = d.toString("utf8");
           stdout += s;
           outBuf = flush(outBuf + s, "stdout", false);
         });
         stream.stderr.on("data", (d: Buffer) => {
           overflow(d.length);
-          if (settled) return;
+          if (settled || stopError) return;
           const s = d.toString("utf8");
           stderr += s;
           errBuf = flush(errBuf + s, "stderr", false);
@@ -227,8 +253,17 @@ export class NestSession {
           if (settled) return;
           settled = true;
           if (timer) clearTimeout(timer);
+          opts.signal?.removeEventListener("abort", onAbort);
           reject(friendlyConnectError(e));
         });
+
+        // Install the close/error handlers before honoring an abort that raced
+        // channel creation, so the promise always observes the channel exit.
+        opts.signal?.addEventListener("abort", onAbort, { once: true });
+        if (opts.signal?.aborted) {
+          onAbort();
+          return;
+        }
 
         if (opts.stdinStream) {
           opts.stdinStream.pipe(stream);
@@ -250,10 +285,10 @@ export class NestSession {
    * Upload a local file by piping it into `cat`. Uses only an exec channel, so
    * it works even if the bastion does not forward SFTP.
    */
-  async uploadFile(localPath: string, remotePath: string): Promise<void> {
+  async uploadFile(localPath: string, remotePath: string, opts: { signal?: AbortSignal } = {}): Promise<void> {
     const result = await this.exec(
       `cat > ${shellQuote(remotePath)}.partial && mv ${shellQuote(remotePath)}.partial ${shellQuote(remotePath)}`,
-      { stdinStream: createReadStream(localPath), timeoutMs: 10 * 60_000 }
+      { stdinStream: createReadStream(localPath), timeoutMs: 10 * 60_000, signal: opts.signal }
     );
     if (result.code !== 0) {
       throw new SshError(
@@ -263,12 +298,12 @@ export class NestSession {
     }
   }
 
-  async writeFile(remotePath: string, content: string, mode = "644") {
+  async writeFile(remotePath: string, content: string, mode = "644", opts: { signal?: AbortSignal } = {}) {
     // The mode goes into the command line, so it must be octal digits and nothing else.
     if (!/^[0-7]{3,4}$/.test(mode)) throw new SshError("Invalid file mode", "exec");
     const result = await this.exec(
       `umask 077 && cat > ${shellQuote(remotePath)} && chmod ${mode} ${shellQuote(remotePath)}`,
-      { stdin: content }
+      { stdin: content, signal: opts.signal }
     );
     if (result.code !== 0) {
       throw new SshError(

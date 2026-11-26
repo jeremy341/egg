@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { config } from "@/server/config";
 import { getDb, schema } from "@/server/db";
 import { unitName } from "@/server/deploy/layout";
@@ -125,43 +125,47 @@ export async function commentDeploymentOnPr(deploymentId: string, fetchImpl: Fet
 
 /**
  * A pull request closed: stop anything of its still building and remove the
- * previews it left on the server. Best effort; the periodic cleanup catches
- * whatever this misses.
+ * previews it left on the server. Canceled rows retain cleanup intent across
+ * worker completion and restarts; the monitor retries unfinished removals.
  */
 export async function closePullRequestPreviews(projectId: string, prNumber: number) {
   const db = await getDb();
   const project = await db.select().from(schema.projects).where(eq(schema.projects.id, projectId)).get();
   if (!project) return { canceled: 0, removed: 0 };
 
-  const rows = await db
-    .select()
-    .from(schema.deployments)
-    .where(
-      and(
-        eq(schema.deployments.projectId, project.id),
-        eq(schema.deployments.env, "preview"),
-        eq(schema.deployments.prNumber, prNumber),
-        eq(schema.deployments.cleanedUp, false)
-      )
-    );
-
-  const running = rows.filter((d) => ["queued", "building", "deploying"].includes(d.state));
-  for (const d of running) {
-    await db
-      .update(schema.deployments)
+  const matches = and(eq(schema.deployments.projectId, project.id), eq(schema.deployments.env, "preview"),
+    eq(schema.deployments.prNumber, prNumber), eq(schema.deployments.cleanedUp, false));
+  const canceled = await db.transaction(async (tx) => {
+    const active = await tx.update(schema.deployments)
       .set({ state: "canceled", finishedAt: new Date(), error: "Pull request closed" })
-      .where(eq(schema.deployments.id, d.id));
-    await db
-      .update(schema.jobs)
-      .set({ state: "failed", error: "Pull request closed" })
-      .where(and(eq(schema.jobs.deploymentId, d.id), eq(schema.jobs.state, "queued")));
-  }
+      .where(and(matches, inArray(schema.deployments.state, ["queued", "building", "deploying"])))
+      .returning({ id: schema.deployments.id });
+    // Include releases that crossed the ready boundary before this transaction.
+    await tx.update(schema.deployments)
+      .set({ state: "canceled", finishedAt: new Date(), error: "Pull request closed" })
+      .where(and(matches, inArray(schema.deployments.state, ["ready", "error", "canceled"])));
+    await tx.update(schema.jobs).set({ state: "failed", error: "Pull request closed" })
+      .where(and(eq(schema.jobs.state, "queued"), inArray(schema.jobs.deploymentId,
+        tx.select({ id: schema.deployments.id }).from(schema.deployments).where(matches))));
+    return active.length;
+  });
+  return { canceled, removed: await removeCanceledPreviews(projectId, prNumber) };
+}
 
-  const onServer = rows.filter((d) => d.state === "ready");
-  if (onServer.length === 0) return { canceled: running.length, removed: 0 };
+async function removeCanceledPreviews(projectId: string, prNumber: number): Promise<number> {
+  const db = await getDb();
+  const project = await db.select().from(schema.projects).where(eq(schema.projects.id, projectId)).get();
+  if (!project) return 0;
+  const matches = and(eq(schema.deployments.projectId, projectId), eq(schema.deployments.env, "preview"),
+    eq(schema.deployments.prNumber, prNumber), eq(schema.deployments.cleanedUp, false));
+  // A live worker owns its release until it finishes. Never remove files underneath it.
+  const onServer = await db.select().from(schema.deployments).where(and(matches,
+    eq(schema.deployments.state, "canceled"),
+    sql`not exists (select 1 from ${schema.jobs} where ${schema.jobs.deploymentId} = ${schema.deployments.id} and ${schema.jobs.state} = 'running')`));
+  if (onServer.length === 0) return 0;
 
   const server = await db.select().from(schema.servers).where(eq(schema.servers.id, project.serverId)).get();
-  if (!server) return { canceled: running.length, removed: 0 };
+  if (!server) return 0;
   let removed = 0;
   try {
     await withServerSession(server, async (s) => {
@@ -188,7 +192,18 @@ export async function closePullRequestPreviews(projectId: string, prNumber: numb
   } catch (err) {
     console.warn("pull request cleanup failed", err instanceof Error ? err.message : err);
   }
-  return { canceled: running.length, removed };
+  return removed;
+}
+
+/** Retry durable PR-close cleanup after a worker finished or a server came back. */
+export async function reconcileClosedPreviews() {
+  const db = await getDb();
+  const pending = await db.selectDistinct({ projectId: schema.deployments.projectId, prNumber: schema.deployments.prNumber })
+    .from(schema.deployments).where(and(eq(schema.deployments.env, "preview"),
+      eq(schema.deployments.state, "canceled"), eq(schema.deployments.cleanedUp, false),
+      eq(schema.deployments.error, "Pull request closed"), isNotNull(schema.deployments.prNumber)));
+  // Retry only canceled releases. A reopened PR may already have a fresh build.
+  for (const row of pending) await removeCanceledPreviews(row.projectId, row.prNumber!);
 }
 
 /** Mark finished deployments of a branch and commit as belonging to a pull request. */

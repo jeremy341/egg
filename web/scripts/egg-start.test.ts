@@ -160,7 +160,6 @@ APP_URL=http://localhost:3777
 function fakeProbes() {
   return {
     pnpmVersion: () => "11.0.0",
-    dockerWorks: () => true,
     portFree: async () => true,
     directory: () => ({ exists: true, writable: true, error: null }),
   };

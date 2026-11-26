@@ -181,6 +181,7 @@
   --z-header: 50; /* marketing header, docs sticky bar uses 40 */
   --z-popover: 50; /* menus, tooltips (Base UI positioners) */
   --z-dock: 60; /* phone dock */
+  --z-tour: 200; /* guided tour: the dimming layer; its popover is one above */
   --z-overlay: 300; /* find palette, dialogs */
   --z-toast: 350;
   --z-skip: 400; /* skip links */

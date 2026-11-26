@@ -261,7 +261,9 @@ async function handlePullRequest(payload: unknown): Promise<WebhookResult> {
 
   if (action === "closed") {
     // Not awaited: it talks to the user's server, and GitHub wants a quick answer.
-    for (const project of trusted) void closePullRequestPreviews(project.id, number);
+    for (const project of trusted) void closePullRequestPreviews(project.id, number).catch((err) => {
+      console.warn("pull request cleanup failed", err instanceof Error ? err.message : err);
+    });
     return { handled: true, deployments: [], note: "pull request closed" };
   }
 

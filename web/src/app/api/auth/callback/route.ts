@@ -55,7 +55,12 @@ export async function GET(req: NextRequest) {
       return res;
     }
     const user = await upsertUser(profile);
-    const session = await createSession(user.id, req.headers.get("user-agent"), req.cookies.get(SESSION_COOKIE)?.value);
+    const session = await createSession(
+      user.id,
+      req.headers.get("user-agent"),
+      req.cookies.get(SESSION_COOKIE)?.value,
+      { freshHackClubAuth: true }
+    );
     const res = NextResponse.redirect(new URL("/projects", config().APP_URL), 303);
     res.cookies.set(SESSION_COOKIE, session.token, sessionCookieOptions(session.expiresAt));
     res.cookies.delete({ name: OAUTH_COOKIE, path: "/api/auth" });

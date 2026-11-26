@@ -172,6 +172,11 @@ export function startWorker(options: {
   deps?: PipelineDeps;
   workerId?: string;
   onError?: (err: unknown) => void;
+  /** Injectable worker operations for deterministic lifecycle tests. */
+  workerOps?: {
+    claimNextJob?: typeof claimNextJob;
+    processJob?: typeof processJob;
+  };
 } = {}): WorkerHandle {
   const workerId = options.workerId ?? `worker-${randomUUID().slice(0, 8)}`;
   const concurrency = options.concurrency ?? 2;
@@ -179,6 +184,7 @@ export function startWorker(options: {
   let running = 0;
   let stopped = false;
   const inFlight = new Set<Promise<void>>();
+  let activeTick: Promise<void> | null = null;
   let staleReported = false;
 
   const reportStale = async () => {
@@ -193,22 +199,30 @@ export function startWorker(options: {
     }
   };
 
-  const tick = async () => {
-    if (stopped) return;
-    try {
-      while (running < concurrency && !stopped) {
-        const job = await claimNextJob(workerId);
-        if (!job) break;
-        running++;
-        const p = processJob(job, options.deps).finally(() => {
-          running--;
-          inFlight.delete(p);
-        });
-        inFlight.add(p);
+  const tick = () => {
+    if (stopped || activeTick) return activeTick ?? Promise.resolve();
+    const runTick = async () => {
+      try {
+        while (running < concurrency && !stopped) {
+          const job = await (options.workerOps?.claimNextJob ?? claimNextJob)(workerId);
+          if (!job) break;
+          // A claim made before stop owns a running queue row, so start and track it
+          // even if stop was requested while the database claim was in progress.
+          running++;
+          const p = (options.workerOps?.processJob ?? processJob)(job, options.deps).finally(() => {
+            running--;
+            inFlight.delete(p);
+          });
+          inFlight.add(p);
+        }
+      } catch (err) {
+        options.onError?.(err);
       }
-    } catch (err) {
-      options.onError?.(err);
-    }
+    };
+    activeTick = runTick().finally(() => {
+      activeTick = null;
+    });
+    return activeTick;
   };
 
   void (async () => {
@@ -262,6 +276,7 @@ export function startWorker(options: {
       clearInterval(staleTimer);
       if (monitorTimer) clearInterval(monitorTimer);
       if (statusTimer) clearInterval(statusTimer);
+      await activeTick;
       await Promise.allSettled([...inFlight]);
     },
   };

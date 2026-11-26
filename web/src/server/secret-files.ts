@@ -1,20 +1,18 @@
 import { normalizePath } from "@/server/files-paths";
 
 /**
- * Egg writes a release's environment variables, in plain text, to
- * `.env` at the top of the release (`current/.env`, `releases/<id>/.env`).
- * Values are write-only everywhere else, so neither the API nor the file
- * manager returns those files: both refuse them with 403 `secret_file`.
- * The check is by name, after the path rules. (A shell can still read them:
- * that is part of what the owner allows by turning the terminal on.)
+ * Egg writes runtime environment variables to `.env` in a release, and build
+ * variables to `incoming/<release-id>.buildenv`. Neither may be returned by
+ * the file manager or API, including through a symlink, with 403 `secret_file`.
  *
  * Pure, with no server imports, so the file manager's UI can use it too.
  */
-const ENV_FILE = /^(?:current|releases\/[^/]+)\/\.env$/;
+const RELEASE_ID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+const SECRET_FILE = new RegExp(`^(?:(?:current|releases/[^/]+)/\\.env|incoming/${RELEASE_ID}\\.buildenv)$`);
 
 export const SECRET_FILE_CODE = "secret_file";
 
-/** True for a path that names a release's `.env` file. A bad path is not one. */
+/** True for a runtime or build environment file. A bad path is rejected separately. */
 export function isSecretFile(raw: string): boolean {
   let path: string;
   try {
@@ -22,5 +20,5 @@ export function isSecretFile(raw: string): boolean {
   } catch {
     return false; // The file service reports a bad path itself.
   }
-  return ENV_FILE.test(path);
+  return SECRET_FILE.test(path);
 }

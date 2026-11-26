@@ -43,6 +43,8 @@ const schema = z
      * who can reach the site could then sign in as the owner.
      */
     LOCAL_MODE: bool,
+    /** Private first-sign-in and password-reset key; created by setup, never the regular password. */
+    LOCAL_MODE_SECRET: z.string().min(32, "LOCAL_MODE_SECRET must be at least 32 characters").optional(),
     /** Explicit override that lets LOCAL_MODE run on a non-local APP_URL. Use only behind your own access control. */
     LOCAL_MODE_ALLOW_REMOTE: bool,
     /** Believe X-Forwarded-For and X-Real-IP for client addresses. See trustProxyEnabled. */
@@ -56,11 +58,7 @@ const schema = z
     GITHUB_APP_PRIVATE_KEY: z.string().optional(),
     GITHUB_WEBHOOK_SECRET: z.string().optional(),
 
-    /** docker isolates builds; local runs them on this machine (dev only). */
-    BUILD_RUNNER: z.enum(["docker", "local"]).default("docker"),
-    BUILD_IMAGE_NODE: z.string().default("node:22-bookworm"),
-    BUILD_IMAGE_PYTHON: z.string().default("python:3.12-bookworm"),
-    BUILD_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(900),
+    /** Where a deployment's source is cloned and packed before it is uploaded. Nothing is built here. */
     DEPLOY_WORK_DIR: z.string().default("./data/work"),
     /** Where systemd units are written on the container. Only change for testing. */
     UNIT_DIR: z.string().default("/etc/systemd/system"),
@@ -69,6 +67,14 @@ const schema = z
     NEST_PORT: z.coerce.number().int().positive().default(22),
   })
   .superRefine((c, ctx) => {
+    if (c.LOCAL_MODE && !c.LOCAL_MODE_SECRET) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["LOCAL_MODE_SECRET"],
+        message:
+          "LOCAL_MODE requires a private LOCAL_MODE_SECRET. Existing installs must add a random secret of at least 32 characters to .env.local; the setup command will not overwrite that file.",
+      });
+    }
     if (!c.LOCAL_MODE || c.LOCAL_MODE_ALLOW_REMOTE) return;
     if (isLoopbackHost(new URL(c.APP_URL).hostname)) return;
     ctx.addIssue({

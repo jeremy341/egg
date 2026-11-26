@@ -1,5 +1,5 @@
 import { rmSync } from "node:fs";
-import { and, desc, eq, inArray, isNull, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { open } from "@/server/crypto";
 import { receiveGithubRelease } from "@/server/builds/release";
 import { GithubBuildError, discardUpload } from "@/server/builds/uploads";
@@ -144,7 +144,10 @@ async function setState(
       : and(eq(schema.deployments.id, id), ne(schema.deployments.state, "canceled"));
   const moved = await db
     .update(schema.deployments)
-    .set({ state, ...extra })
+    .set({ state, ...extra, ...(state === "canceled" ? {
+      // Keep durable PR-close cleanup intent when a canceled worker exits.
+      error: sql`coalesce(${schema.deployments.error}, ${extra.error ?? null})`,
+    } : {}) })
     .where(where)
     .returning({ id: schema.deployments.id });
   if (moved.length === 0) return false;
@@ -305,9 +308,10 @@ async function cleanup(
 
   // Previews: keep the newest few, stop the rest.
   const previews = all.filter((d) => d.env === "preview");
+  const previewsWithFailedCleanup = new Set<string>();
   for (const old of previews.slice(KEEP_PREVIEWS)) {
     log.info(`Removing old preview ${old.releaseId.slice(0, 8)}`);
-    await session
+    const removed = await session
       .script(
         remote.removePreview({
           home,
@@ -318,13 +322,18 @@ async function cleanup(
         }),
         { timeoutMs: 60_000 }
       )
-      .catch(() => {});
-    await db.update(schema.deployments).set({ cleanedUp: true }).where(eq(schema.deployments.id, old.id));
+      .then((result) => result.code === 0)
+      .catch(() => false);
+    if (removed) {
+      await db.update(schema.deployments).set({ cleanedUp: true }).where(eq(schema.deployments.id, old.id));
+    } else {
+      previewsWithFailedCleanup.add(old.releaseId);
+    }
   }
   const keptPreviewReleases = previews.slice(0, KEEP_PREVIEWS).map((d) => d.releaseId);
 
   // Production: keep the newest few distinct releases plus the current one.
-  const keep = new Set<string>(keptPreviewReleases);
+  const keep = new Set<string>([...keptPreviewReleases, ...previewsWithFailedCleanup]);
   if (currentReleaseId) keep.add(currentReleaseId);
   const seen = new Set<string>();
   for (const d of all.filter((x) => x.env === "production")) {
@@ -631,7 +640,8 @@ export async function runDeployJob(
     );
     // Mark ready first so this release counts when old ones are cleaned up.
     // The release is already live, so a cancel that arrived after the switch cannot undo it.
-    await setState(deploymentId, "ready", { finishedAt: new Date() }, true);
+    const finished = await setState(deploymentId, "ready", { finishedAt: new Date() }, dep.env === "production");
+    if (!finished) throw new DeployError("The pull request closed while its preview was starting.");
     await cleanup(session, log, project, home, deps.unitDir, dep.env === "production" ? dep.releaseId : (previous?.releaseId ?? null));
     await log.flush();
   } catch (err) {
@@ -654,7 +664,7 @@ export async function runDeployJob(
             }),
             { timeoutMs: 60_000 }
           )
-          .then(() => true)
+          .then((result) => result.code === 0)
           .catch(() => false);
         if (removed) {
           await db.update(schema.deployments).set({ cleanedUp: true }).where(eq(schema.deployments.id, deploymentId));

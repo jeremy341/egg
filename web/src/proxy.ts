@@ -10,6 +10,9 @@ const PUBLIC = [
   /^\/api\/auth\//,
   /^\/api\/webhooks\//,
   /^\/api\/hooks\//,
+  // GitHub builds: POST /api/builds/upload and GET /api/builds/env check their own scoped bearer credential
+  // (and the matcher below skips these paths). Nothing is read from the URL.
+  /^\/api\/builds\//,
   // Public by design: the analytics snippet, its collector, and status pages.
   /^\/api\/analytics\/script$/,
   /^\/api\/collect\//,
@@ -18,6 +21,9 @@ const PUBLIC = [
   // API and agent endpoints check their own bearer token; the proxy only lets them through.
   /^\/stats$/,
   /^\/api\/stats$/,
+  // The public Nest status page and its data: whether Egg can reach Nest, nothing about any user.
+  /^\/nest-status$/,
+  /^\/api\/status\/nest$/,
   /^\/api\/v1\//,
   /^\/api\/mcp$/,
 ];
@@ -41,7 +47,7 @@ const API_CORS = {
  * Dashboard routes. Signed-out visitors are sent to sign-in only for these, so a
  * mistyped public address reaches the not-found page instead of the login page.
  */
-const DASHBOARD = new RegExp("^/(account|activity|connect|container|deployments|developer|docs|domains|logs|projects|resources|new)(/|$)");
+const DASHBOARD = new RegExp("^/(account|activity|admin|connect|container|deployments|developer|docs|domains|logs|projects|resources|new)(/|$)");
 
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -68,5 +74,6 @@ export function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)"],
+  // /api/builds/ is skipped so a release of up to 500 MB streams straight to its route and is not buffered here.
+  matcher: ["/((?!_next/static|_next/image|favicon\\.ico|api/builds/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)"],
 };

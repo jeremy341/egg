@@ -1,9 +1,10 @@
-import { and, desc, eq, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, ne } from "drizzle-orm";
 import { audit } from "@/server/audit";
 import { sha256Hex } from "@/server/crypto";
 import { getDb, schema } from "@/server/db";
 import { HttpError, notFound } from "@/server/http";
 import { terminals } from "@/server/terminal";
+import { assertNoCleanupDeletion } from "@/server/cleanup-guards";
 
 /** Everything the account page shows and changes. */
 
@@ -101,12 +102,20 @@ export function browserLabel(ua: string | null): string {
  * container are left alone: we stop managing them, we do not remove them.
  */
 export async function deleteAccount(userId: string, userName: string, typedName: unknown) {
+  await assertNoCleanupDeletion(userId);
   if (typeof typedName !== "string" || typedName.trim() !== userName.trim()) {
     throw new HttpError(400, "Type your name exactly to confirm.", "validation");
   }
   // Close first (and wait for its audit entry) so nothing is written after the account is gone.
   await terminals().closeAllForUser(userId, "signed-out");
   const db = await getDb();
-  await db.delete(schema.auditLog).where(eq(schema.auditLog.userId, userId));
-  await db.delete(schema.users).where(eq(schema.users.id, userId));
+  await db.transaction(async (tx) => {
+    // A cleanup may have been scheduled while terminal closure was awaited.
+    // Keep the check in the write transaction so its credentials and progress survive.
+    const cleanup = await tx.select({ id: schema.cleanupJobs.id }).from(schema.cleanupJobs)
+      .where(and(eq(schema.cleanupJobs.userId, userId), inArray(schema.cleanupJobs.state, ["draining", "running", "failed"]))).get();
+    if (cleanup) throw new HttpError(409, "Finish the pending cleanup before deleting account records.", "cleanup_in_progress");
+    await tx.delete(schema.auditLog).where(eq(schema.auditLog.userId, userId));
+    await tx.delete(schema.users).where(eq(schema.users.id, userId));
+  });
 }

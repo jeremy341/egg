@@ -7,11 +7,11 @@ How to run Egg for real: what to register, what to configure, and how the pieces
 ```bash
 cd web
 pnpm install
-pnpm run setup    # writes .env.local with a fresh APP_SECRET and DEV_LOGIN=1
+pnpm run setup    # writes .env.local with a fresh APP_SECRET and LOCAL_MODE_SECRET
 pnpm dev          # http://localhost:3000, with the deployment worker built in
 ```
 
-Open the app and use the **Development sign-in** form. It only appears when `DEV_LOGIN=1` and the build is not a production build.
+Open the app and use the **Development sign-in** form. It only appears when `DEV_LOGIN=1` and the build is not a production build. Setup leaves `DEV_LOGIN=0`; enable it explicitly for development. With `LOCAL_MODE=1`, it also requires your local password.
 
 To try deploys without a Nest account, run a stand-in container:
 
@@ -95,12 +95,15 @@ browser ──> Next.js app ──> SQLite          (users, servers, projects, l
 
 ## Security notes
 
-- **Build sandbox.** `BUILD_RUNNER=docker` runs install and build in a container with 2 GB of memory, 2 CPUs, no added capabilities and `no-new-privileges`. `local` runs user code directly on the host and is for development only; the worker warns at startup.
-- **Network from builds.** Builds have normal outbound network access, because installing dependencies needs it. Run the worker on a machine with nothing private reachable from it.
+- **Where builds run.** Never on Egg's host. Install and build run on the user's own Nest container inside a `systemd-run` scope with a memory cap (512 MB for a new server, changeable on the Container page, and never reaching into the 512 MB kept for the running app) and a CPU cap. A project can instead build in GitHub Actions and send Egg the finished release.
+- **Network from builds.** Builds have normal outbound network access, because installing dependencies needs it. They run on the user's container, so what a build can reach is what that container can reach.
 - **SSH keys.** One ed25519 key per server. Stored sealed with AES-256-GCM, bound to the server's id. The host key is pinned on first connection, and a change aborts the connection before anything is sent.
 - **Root.** SSH into Nest lands in a root shell in the user's own container, so this key is effectively root there. The Connect page says so before the user adds it. Removing the key in the Nest dashboard revokes access.
-- **Sessions.** Random tokens in an httpOnly, SameSite=Lax cookie. Only a hash is stored. Writes also check the `Origin` header.
-- **Webhooks.** Accepted only with a valid HMAC signature over the raw body.
+- **Sessions.** Random tokens in an httpOnly, SameSite=Lax cookie. Only a hash is stored. Writes also check the `Origin` header. Turning on password sign-in needs a Hack Club sign-in from the last 5 minutes, so an old session cannot add a sign-in method that outlives it.
+- **Webhooks.** Accepted only with a valid HMAC signature over the raw body. A request without `Content-Length`, over 5 MiB, or without a well-formed signature header is refused before the body is read. At most 4 bodies are read at once, each must keep arriving (15 s idle) and finish in 30 s. Caddy holds the same 5 MiB cap. Rate limiting is left to the operator's firewall or load balancer, because stock Caddy has none.
+- **Security reports.** The private inbox takes 12 reports an hour and 60 a day in total, counted in the database so a restart does not reset it. One network may use a tenth of the remaining space per day; for that Egg keeps a keyed digest of the address for one day, never the address. From 80% full the hourly budget drops to 2 and the administrator is warned.
+- **Build uploads.** A build sent from GitHub Actions is dropped after 60 s without data or 15 minutes in total, and its partial file is deleted. Egg receives at most 4 at once, 2 per project.
+- **Scheduled jobs.** A job is a systemd timer and a oneshot service written next to the app's service (`egg-<slug>-job-<id>.timer` and `.service`), both marked as ours. The command runs in `current` with the app's `.env`, at lower priority, for at most 30 minutes, and never more often than every 5 minutes. The schedule is five cron fields in UTC, expanded to explicit numbers before it reaches the unit file. Adding one needs a first deployment, since there is nothing to run it in before that.
 - **Deploy hooks.** `POST /api/hooks/deploy/:token` starts a deployment for scripts and CI. The token is shown once; only its SHA-256 is stored, so a copy of the database cannot be turned into working URLs. Creating a new one replaces the old one. A call is refused with 409 while a deployment for that project is still queued or running, and an optional `{ "branch" }` body is validated like a branch name. Unknown tokens answer exactly like missing ones.
 - **Notifications.** The project's Discord or Slack webhook URL is sealed at rest and never returned by the API. Because the server posts to it, only `https` URLs on `discord.com`, `discordapp.com` (including `ptb.` and `canary.`) and `hooks.slack.com` with those services' own path shapes are accepted: no ports, credentials or query strings. Redirects are refused and the request times out after 5 seconds, so it cannot be used to reach internal addresses. A failing webhook is logged and never affects the deployment.
 - **Repositories.** Only `https://github.com/...` URLs can be cloned.
@@ -126,6 +129,10 @@ All routes except auth and the webhook need a signed-in session. Errors are `{ "
 | `GET /api/projects/:id/env`, `POST`, `DELETE /api/projects/:id/env/:envId` | Environment variables (names only are returned) |
 | `GET /api/projects/:id/runtime-logs?lines=` | Service output from journald |
 | `GET /api/projects/:id/status` | Live state of the production service: running or crashed, uptime, memory, restarts, and one real request to the health path |
+| `GET /api/projects/:id/jobs` (`?status=1` adds live state), `POST` | List the project's scheduled jobs, or add one `{ name, schedule, command, enabled? }`; at most 5 per project |
+| `PATCH /api/projects/:id/jobs/:jobId`, `DELETE` | Change a job (including pause and resume with `{ enabled }`) or remove it from the container |
+| `POST /api/projects/:id/jobs/:jobId/run` | Start the job once now, in the background |
+| `GET /api/projects/:id/jobs/:jobId/logs` | The job's recent output from the journal |
 | `GET /api/deployments?project=` | Deployments |
 | `GET /api/deployments/:id`, `/logs?after=`, `/stream` | One deployment, its log, a live server-sent event stream |
 | `POST /api/deployments/:id/redeploy`, `/rollback`, `/cancel` | Actions |

@@ -9,7 +9,7 @@ function env(vars: Record<string, string | undefined>) {
   resetConfigForTests();
 }
 
-beforeEach(() => env({ LOCAL_MODE: undefined, LOCAL_MODE_ALLOW_REMOTE: undefined }));
+beforeEach(() => env({ LOCAL_MODE: undefined, LOCAL_MODE_ALLOW_REMOTE: undefined, LOCAL_MODE_SECRET: "test-local-mode-secret-test-local-mode-secret" }));
 afterEach(() => {
   vi.unstubAllEnvs();
   resetConfigForTests();
@@ -40,6 +40,11 @@ describe("local mode defaults", () => {
     expect(localModeEnabled()).toBe(true);
     env({ LOCAL_MODE: "true", APP_URL: "http://localhost:3000" });
     expect(localModeEnabled()).toBe(true);
+  });
+
+  it("requires a separate local sign-in secret before enabling local mode", () => {
+    env({ LOCAL_MODE: "1", APP_URL: "http://localhost:3000", LOCAL_MODE_SECRET: undefined });
+    expect(() => config()).toThrow(/LOCAL_MODE_SECRET/);
   });
 });
 

@@ -10,7 +10,6 @@ import { fileURLToPath } from "node:url";
 import {
   checkDatabaseUrl,
   checkDataFolder,
-  checkDocker,
   checkEnvFile,
   checkNode,
   checkOs,
@@ -37,10 +36,6 @@ export const realProbes = {
         ? spawnSync("pnpm --version", { encoding: "utf8", timeout: 15000, shell: true })
         : spawnSync("pnpm", ["--version"], { encoding: "utf8", timeout: 15000 });
     return r.status === 0 ? String(r.stdout).trim() : null;
-  },
-  dockerWorks() {
-    const r = spawnSync("docker", ["info"], { stdio: "ignore", timeout: 20000 });
-    return r.status === 0;
   },
   portFree: isPortFree,
   directory: probeDirectory,
@@ -79,7 +74,6 @@ export async function runDoctor({ webDir = WEB_DIR, env = process.env, platform 
     checkEnvFile({ exists: file.exists, env: merged }),
     checkPort({ server, free: server.ok ? await probes.portFree(server.port, server.host) : true }),
     checkDataFolder({ dir, probe: dir === null ? { exists: false, writable: false, error: null } : probes.directory(dir) }),
-    checkDocker({ runner: merged.BUILD_RUNNER, dockerWorks: merged.BUILD_RUNNER === "local" ? false : probes.dockerWorks() }),
     checkSignIn({ env: merged, dev }),
     checkOs({ platform }),
     checkDatabaseUrl({ url: merged.DATABASE_URL }),

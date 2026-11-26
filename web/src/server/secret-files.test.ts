@@ -7,6 +7,12 @@ describe("isSecretFile", () => {
     expect(isSecretFile("releases/abc123/.env")).toBe(true);
   });
 
+  it("names only Egg's temporary build-environment files as secrets", () => {
+    expect(isSecretFile("incoming/11111111-1111-4111-8111-111111111111.buildenv")).toBe(true);
+    expect(isSecretFile("incoming/11111111-1111-4111-8111-111111111111.tar.gz")).toBe(false);
+    expect(isSecretFile("incoming/notes.txt")).toBe(false);
+  });
+
   it("leaves other files alone, including a .env the owner keeps in shared/", () => {
     expect(isSecretFile("shared/.env")).toBe(false);
     expect(isSecretFile("current/.env.example")).toBe(false);

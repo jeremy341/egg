@@ -5,18 +5,42 @@
  */
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
+
+  const cleanupState = globalThis as unknown as { __eggCleanupWorker?: unknown };
+  if (!cleanupState.__eggCleanupWorker) {
+    const { startCleanupWorker } = await import("@/server/cleanup");
+    cleanupState.__eggCleanupWorker = startCleanupWorker({ onError: (err) => console.error("cleanup worker failed", err) });
+  }
+
+  // Retention is an application data policy, not a deployment-worker feature.
+  // Keep it active when builds run in a separate process or uptime checks are off.
+  const prunerState = globalThis as unknown as { __eggAnalyticsPruner?: ReturnType<typeof setInterval> };
+  if (!prunerState.__eggAnalyticsPruner) {
+    const prune = async () => {
+      try {
+        const { prunePageviews } = await import("@/server/analytics");
+        await prunePageviews();
+      } catch (err) {
+        console.error("analytics retention cleanup failed", err);
+      }
+      try {
+        // The privacy notice says a report's source digest is kept for one day at most.
+        const { pruneReportSources } = await import("@/server/security-reports");
+        await pruneReportSources();
+      } catch (err) {
+        console.error("report source cleanup failed", err);
+      }
+    };
+    void prune();
+    prunerState.__eggAnalyticsPruner = setInterval(() => void prune(), 15 * 60_000);
+    prunerState.__eggAnalyticsPruner.unref?.();
+  }
   if (process.env.RUN_WORKER !== "1") return;
 
   const g = globalThis as unknown as { __eggWorker?: unknown };
   if (g.__eggWorker) return;
 
   const { startWorker } = await import("@/server/jobs");
-  const { config } = await import("@/server/config");
-  if (config().BUILD_RUNNER === "local") {
-    console.warn(
-      "WARNING: BUILD_RUNNER=local runs project builds on this machine with no isolation."
-    );
-  }
   g.__eggWorker = startWorker({
     concurrency: Number(process.env.WORKER_CONCURRENCY ?? 2),
     onError: (err) => console.error("worker error", err),

@@ -97,6 +97,14 @@ export default function PrivacyPage() {
                 sampled CPU, memory, and disk figures. A public status page can disclose a project’s current state,
                 recent outages, and 30-day uptime to anyone with its unguessable status-page address.
               </Term>
+              <Term name="Homepage listing (opt-in)">
+                Off for every project. If a project’s owner turns it on, and only for a repository that GitHub confirms is
+                public, the Egg homepage shows that project’s latest deployments to anyone: the first line of the commit
+                message, the short commit, the branch, the state, Production or Preview, the time and the repository name,
+                each linking to the commit on GitHub. It never shows build logs, servers, ports, environment variables or
+                account names. The list is rebuilt at most once a minute and asks GitHub again each time, so a repository
+                that turns private, or an owner who turns the setting off, leaves the homepage within a minute.
+              </Term>
               <Term name="Integrations">
                 Egg stores GitHub App installation IDs and account names/types. It does not store the temporary GitHub
                 user OAuth token used while linking an installation; short-lived installation tokens are held in

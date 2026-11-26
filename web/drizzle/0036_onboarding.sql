@@ -1,0 +1,1 @@
+ALTER TABLE `user_preferences` ADD `onboarding` text DEFAULT '{}' NOT NULL;

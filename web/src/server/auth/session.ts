@@ -60,7 +60,8 @@ export async function upsertUser(profile: {
 export async function createSession(
   userId: string,
   userAgent?: string | null,
-  replacing?: string
+  replacing?: string,
+  options: { freshHackClubAuth?: boolean } = {}
 ): Promise<{ token: string; expiresAt: Date }> {
   const db = await getDb();
   if (replacing) await db.delete(schema.sessions).where(eq(schema.sessions.id, sha256Hex(replacing)));
@@ -72,7 +73,7 @@ export async function createSession(
     expiresAt,
     createdAt: new Date(),
     userAgent: userAgent?.slice(0, 200) ?? null,
-    freshAuthAt: new Date(),
+    freshAuthAt: options.freshHackClubAuth ? new Date() : null,
   });
   // Opportunistic cleanup keeps the table small without a cron job.
   await db.delete(schema.sessions).where(lt(schema.sessions.expiresAt, new Date()));

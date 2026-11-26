@@ -221,7 +221,7 @@ export function PixelField({
     }
 
     /** Things you click to use, not to make a splash: fields, buttons, links. */
-    const INTERACTIVE = "input, textarea, select, button, a, label, summary, [contenteditable], [role='button']";
+    const INTERACTIVE = "input, textarea, select, button, a, label, summary, [contenteditable], [role='button'], [data-no-ripple]";
 
     const onDown = (e: PointerEvent) => {
       if (reduced) return;

@@ -253,6 +253,62 @@
       "when": 1794553967955,
       "tag": "0035_scheduled_jobs",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "6",
+      "when": 1794562199220,
+      "tag": "0036_onboarding",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "6",
+      "when": 1794577328041,
+      "tag": "0037_backend_efficiency",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "6",
+      "when": 1794577450275,
+      "tag": "0038_backend_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "6",
+      "when": 1794577698132,
+      "tag": "0039_scoped_build_cache",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "6",
+      "when": 1794578236624,
+      "tag": "0040_invitation_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "6",
+      "when": 1794595209949,
+      "tag": "0041_log_retention_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "6",
+      "when": 1794595269949,
+      "tag": "0042_job_project_lock",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "6",
+      "when": 1794595329949,
+      "tag": "0043_homepage_feed",
+      "breakpoints": true
     }
   ]
 }
