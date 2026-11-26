@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { NestSession, shellQuote } from "@/server/ssh/connection";
 import { generateServerKey } from "@/server/ssh/keys";
 import { freePort } from "@/server/test/fake-nest";
-import { startMockSsh, wslEnabled, type MockSsh } from "@/server/test/mock-ssh";
+import { linuxTestHostAvailable, startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
 import { STATIC_NODE_SCRIPT, STATIC_PYTHON_SCRIPT } from "./runtime";
 
 let mock: MockSsh | undefined;
@@ -24,7 +24,7 @@ const suites = [
 ];
 
 describe.each(suites)("$name static server", ({ script, command }) => {
-  it.skipIf(process.platform === "win32" && !wslEnabled())("serves public files and refuses secrets, escapes, malformed paths, and listings", async () => {
+  it.skipIf(!linuxTestHostAvailable())("serves public files and refuses secrets, escapes, malformed paths, and listings", async () => {
     const key = generateServerKey("static-security-test");
     mock = await startMockSsh({ authorizedKeys: [key.publicKey] });
     session = await NestSession.connect({ host: "127.0.0.1", port: mock.port, username: "test", privateKey: key.privateKey });

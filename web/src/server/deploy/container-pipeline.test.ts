@@ -25,7 +25,7 @@ import {
   type FixtureFiles,
 } from "@/server/test/fake-nest";
 import { useFreshDb } from "@/server/test/db";
-import { startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
+import { linuxTestHostAvailable, startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
 
 /**
  * A deploy that builds on the container, against the fake Nest. systemd-run and timeout are
@@ -121,7 +121,7 @@ afterAll(async () => {
 
 const LOOP_TIMEOUT = 120_000;
 
-describe("a container project", () => {
+describe.skipIf(!linuxTestHostAvailable())("a container project", () => {
   let app: ProjectRow;
   let v1: typeof schema.deployments.$inferSelect;
 
@@ -227,7 +227,7 @@ describe("a container project", () => {
   }, LOOP_TIMEOUT);
 });
 
-describe("the disk watchdog", () => {
+describe.skipIf(!linuxTestHostAvailable())("the disk watchdog", () => {
   let app: ProjectRow;
   let live: typeof schema.deployments.$inferSelect;
   const disk = (cmd: string) => sh(`mkdir -p $HOME/.fake-disk && ${cmd}`);
@@ -383,7 +383,7 @@ describe("a container project that cannot build here", () => {
   }, LOOP_TIMEOUT);
 });
 
-describe("two builds on one container", () => {
+describe.skipIf(!linuxTestHostAvailable())("two builds on one container", () => {
   it("run one after the other, preview or production, never together", async () => {
     const a = await makeProject("Lock A", { buildCommand: 'echo "start-a" >> "$HOME/order.log"; sleep 1; echo "end-a" >> "$HOME/order.log"' });
     const b = await makeProject("Lock B", { buildCommand: 'echo "start-b" >> "$HOME/order.log"; sleep 1; echo "end-b" >> "$HOME/order.log"' });

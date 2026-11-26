@@ -14,9 +14,9 @@ import { createWebhook } from "@/server/webhooks";
 import { NestSession } from "@/server/ssh/connection";
 import { containerReadyFacts, fakeBuilder, freePort, installFakeContainerBuild, installFakeSystemd, nodeApp } from "@/server/test/fake-nest";
 import { useFreshDb } from "@/server/test/db";
-import { startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
+import { linuxTestHostAvailable, startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
 
-describe("deleting a project with a remote step on a mock Nest", () => {
+describe.skipIf(!linuxTestHostAvailable())("deleting a project with a remote step on a mock Nest", () => {
   let ctx: Awaited<ReturnType<typeof useFreshDb>>;
   let mock: MockSsh;
   let userId: string;

@@ -13,7 +13,7 @@ import { cancelDeployment, createProject, deployBranch, type ProjectRow } from "
 import { connectToServer, createServer, getServerForUser } from "@/server/servers";
 import { fakeBuilder, freePort, containerReadyFacts, installFakeContainerBuild, installFakeSystemd, nodeApp } from "@/server/test/fake-nest";
 import { useFreshDb } from "@/server/test/db";
-import { startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
+import { linuxTestHostAvailable, startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
 
 let ctx: Awaited<ReturnType<typeof useFreshDb>>;
 let userId: string;
@@ -153,7 +153,7 @@ async function waitForDeploymentSettled(deploymentId: string): Promise<string> {
   );
 }
 
-describe("worker", () => {
+describe.skipIf(!linuxTestHostAvailable())("worker", () => {
   let mock: MockSsh;
 
   afterAll(async () => {
