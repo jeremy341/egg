@@ -53,7 +53,7 @@ export const SCOPE_LABEL: Record<Scope, string> = {
   "jobs:read": "List scheduled command jobs and read their latest status and logs",
   "jobs:write": "Create, change, run and delete scheduled command jobs",
   "logs:read": "Read runtime logs",
-  "env:read": "List environment variable names (never their values)",
+  "env:read": "Read environment variable names, targets, secret flags and values explicitly marked non-secret",
   "env:write": "Set and remove environment variables",
   "domains:read": "Read domains",
   "domains:write": "Add, check and remove domains",

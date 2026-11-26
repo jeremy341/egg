@@ -461,6 +461,7 @@ export const envVars = sqliteTable(
     target: text("target", { enum: ["all", "production", "preview"] })
       .notNull()
       .default("all"),
+    secret: integer("secret", { mode: "boolean" }).notNull().default(true),
     createdAt: ts("created_at").notNull(),
   },
   (t) => [uniqueIndex("env_project_key_idx").on(t.projectId, t.key, t.target)]

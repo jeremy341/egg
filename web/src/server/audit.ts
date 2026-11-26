@@ -52,6 +52,7 @@ export const LABELS: Record<string, string> = {
   "project.image": "Changed the image source of",
   "project.workflow.publish": "Opened a pull request that adds the build workflow to",
   "env.set": "Saved environment variable on",
+  "env.secret": "Changed the secret setting for an environment variable on",
   "env.delete": "Removed environment variable from",
   "env.replace": "Replaced environment variables on",
   "env.sets.create": "Created shared environment",

@@ -876,28 +876,63 @@ export async function replaceEnvVars(userId: string, projectId: string, raw: unk
   const removed = await withLockRetry(() => db.transaction(async (tx) => {
     await assertCleanupAllowsWork(tx, userId, project.id);
     const existing = await tx
-      .select({ key: schema.envVars.key, target: schema.envVars.target })
+      .select({ key: schema.envVars.key, target: schema.envVars.target, secret: schema.envVars.secret })
       .from(schema.envVars)
       .where(eq(schema.envVars.projectId, project.id));
+    const existingByKey = new Map(existing.map((entry) => [entry.key + "\u0000" + entry.target, entry]));
     const desired = new Set(entries.map((entry) => entry.key + "\u0000" + entry.target));
     const removedRows = existing.filter((entry) => !desired.has(entry.key + "\u0000" + entry.target));
 
     await tx.delete(schema.envVars).where(eq(schema.envVars.projectId, project.id));
     if (entries.length > 0) {
       const createdAt = new Date();
-      await tx.insert(schema.envVars).values(entries.map((entry) => ({
-        id: newId(),
-        projectId: project.id,
-        key: entry.key,
-        valueEnc: seal(entry.value, "env:" + project.id + ":" + entry.key + ":" + entry.target),
-        target: entry.target,
-        createdAt,
-      })));
+      await tx.insert(schema.envVars).values(entries.map((entry) => {
+        const existing = existingByKey.get(entry.key + "\u0000" + entry.target);
+        return {
+          id: newId(),
+          projectId: project.id,
+          key: entry.key,
+          valueEnc: seal(entry.value, "env:" + project.id + ":" + entry.key + ":" + entry.target),
+          target: entry.target,
+          ...(existing ? { secret: existing.secret } : {}),
+          createdAt,
+        };
+      }));
     }
     return removedRows;
   }));
   await audit(userId, "env.replace", project.id, { count: entries.length, deleted: removed.length });
   return removed.map(({ key, target }) => ({ key, target }));
+}
+
+/** Mark one project variable's value as secret or explicitly readable. */
+export async function setEnvVarSecret(
+  userId: string,
+  projectId: string,
+  key: string,
+  target: "all" | "production" | "preview",
+  secret: boolean,
+) {
+  const project = await getProjectAtLevel(userId, projectId, "edit");
+  const db = await getDb();
+  const updated = await withLockRetry(() => db.transaction(async (tx) => {
+    await assertAccountCanWrite(userId, { db: tx });
+    await assertCleanupAllowsWork(tx, userId, project.id);
+    const rows = await tx
+      .update(schema.envVars)
+      .set({ secret })
+      .where(and(
+        eq(schema.envVars.projectId, project.id),
+        eq(schema.envVars.key, key),
+        eq(schema.envVars.target, target),
+      ))
+      .returning({ key: schema.envVars.key, target: schema.envVars.target, secret: schema.envVars.secret });
+    const row = rows[0];
+    if (!row) throw notFound("Environment variable not found");
+    return row;
+  }));
+  await audit(userId, "env.secret", project.id, { name: key, target, secret });
+  return updated;
 }
 
 export async function deleteEnvVar(userId: string, projectId: string, envId: string) {
