@@ -1,1 +1,244 @@
-[]
+[
+  {
+    "orchard": "job list",
+    "source": "job.go",
+    "status": "partial",
+    "egg": "jobs list",
+    "endpoint": "list_jobs",
+    "orchardTool": "list_jobs",
+    "reason": "Egg lists jobs for a named project, while Orchard can also list jobs across the organization.",
+    "spec": {
+      "summary": "List scheduled jobs in the current project, or across the organization when no project is selected.",
+      "args": [],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "job get",
+    "source": "job.go",
+    "status": "partial",
+    "egg": "jobs show",
+    "endpoint": "get_job",
+    "orchardTool": "get_job",
+    "reason": "Egg can show its scheduled command but cannot return Orchard's ordered multi-step definition.",
+    "spec": {
+      "summary": "Show a job's settings, schedule, state, and ordered steps.",
+      "args": ["id"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "job create",
+    "source": "job.go",
+    "status": "partial",
+    "egg": "jobs create",
+    "endpoint": "create_job",
+    "orchardTool": "create_job",
+    "reason": "Egg creates one scheduled command, while Orchard accepts a multi-step pipeline and manual-only jobs.",
+    "spec": {
+      "summary": "Create a scheduled or manual job from an ordered step list.",
+      "args": [],
+      "flags": [
+        { "name": "name", "type": "value", "required": true, "description": "Unique name for this job within its project." },
+        { "name": "cron", "type": "value", "required": false, "description": "Five-field schedule; omit it for a job that runs only when triggered." },
+        { "name": "description", "type": "value", "required": false, "description": "Optional text describing the job." },
+        { "name": "timezone", "type": "value", "required": false, "description": "IANA zone used to interpret scheduled times; defaults to UTC." },
+        { "name": "concurrency", "type": "value", "required": false, "description": "Choose whether a scheduled trigger may overlap an active run." },
+        { "name": "paused", "type": "flag", "required": false, "description": "Create the schedule disabled." },
+        { "name": "steps", "type": "value", "required": true, "description": "Path to JSON containing one to ten ordered steps." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "job update",
+    "source": "job.go",
+    "status": "partial",
+    "egg": "jobs update",
+    "endpoint": "update_job",
+    "orchardTool": "update_job",
+    "reason": "Egg does not expose Orchard's schedule timezone or concurrency policy and stores only one command per job.",
+    "spec": {
+      "summary": "Change selected job settings without altering fields that were not provided.",
+      "args": ["id"],
+      "flags": [
+        { "name": "name", "type": "value", "required": false, "description": "Set a new job name." },
+        { "name": "cron", "type": "value", "required": false, "description": "Set a five-field schedule, or an empty value for manual-only runs." },
+        { "name": "description", "type": "value", "required": false, "description": "Replace the job description." },
+        { "name": "concurrency", "type": "value", "required": false, "description": "Set the policy for overlapping scheduled runs." },
+        { "name": "paused", "type": "flag", "required": false, "description": "Pause the schedule when true, or resume it when false." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "job pause",
+    "source": "job.go",
+    "status": "present",
+    "egg": "jobs update",
+    "endpoint": "update_job",
+    "orchardTool": "update_job",
+    "reason": "Egg's update command can disable a job's schedule while leaving manual runs available.",
+    "spec": {
+      "summary": "Disable scheduled triggers for a job while keeping manual runs available.",
+      "args": ["id"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "job resume",
+    "source": "job.go",
+    "status": "present",
+    "egg": "jobs update",
+    "endpoint": "update_job",
+    "orchardTool": "update_job",
+    "reason": "Egg's update command can re-enable a paused job's schedule.",
+    "spec": {
+      "summary": "Re-enable scheduled triggers for a paused job.",
+      "args": ["id"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "job delete",
+    "source": "job.go",
+    "status": "partial",
+    "egg": "jobs delete",
+    "endpoint": "delete_job",
+    "orchardTool": "delete_job",
+    "reason": "Egg deletes the scheduled job and its units, but it does not keep Orchard-style run records to remove.",
+    "spec": {
+      "summary": "Remove a job and its schedule, stop any active run, and remove the job's run records.",
+      "args": ["id"],
+      "flags": [
+        { "name": "confirm", "type": "value", "required": true, "description": "Must exactly match the job's name." }
+      ],
+      "destructive": true,
+      "confirm": "exact job name"
+    }
+  },
+  {
+    "orchard": "job steps set",
+    "source": "job.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "replace_job_steps",
+    "orchardTool": "replace_job_steps",
+    "reason": "Egg has the step-replacement endpoint but no CLI command, and the endpoint accepts only one command step.",
+    "spec": {
+      "summary": "Replace the job's complete ordered step list for future runs.",
+      "args": ["id"],
+      "flags": [
+        { "name": "file", "type": "value", "required": true, "description": "Path to JSON containing the replacement step list." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "job run",
+    "source": "job.go",
+    "status": "partial",
+    "egg": "jobs run",
+    "endpoint": "run_job",
+    "orchardTool": "run_job",
+    "reason": "Egg starts a single command but does not provide pipeline concurrency controls or wait-for-completion behavior.",
+    "spec": {
+      "summary": "Start a job run immediately, with optional overlap permission and completion waiting.",
+      "args": ["id"],
+      "flags": [
+        { "name": "allow-concurrent", "type": "flag", "required": false, "description": "Permit another run to start while one is active." },
+        { "name": "wait", "type": "flag", "required": false, "description": "Keep checking until the run reaches a final state." },
+        { "name": "timeout", "type": "value", "required": false, "description": "Maximum time to wait for completion." },
+        { "name": "confirm", "type": "value", "required": true, "description": "Must exactly match the job's name before its command is run." }
+      ],
+      "destructive": true,
+      "confirm": "exact job name"
+    }
+  },
+  {
+    "orchard": "job runs",
+    "source": "job.go",
+    "status": "partial",
+    "egg": "jobs runs",
+    "endpoint": "list_job_runs",
+    "orchardTool": "list_job_runs",
+    "reason": "Egg exposes only the latest status snapshot and has no run history to page through.",
+    "spec": {
+      "summary": "List a job's run history from newest to oldest.",
+      "args": ["id"],
+      "flags": [
+        { "name": "limit", "type": "value", "required": false, "description": "Maximum number of runs to fetch per page." },
+        { "name": "cursor", "type": "value", "required": false, "description": "Continue from a cursor returned by an earlier page." },
+        { "name": "all", "type": "flag", "required": false, "description": "Fetch later pages until history is exhausted or the safety cap is reached." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "job-run get",
+    "source": "job_run.go",
+    "status": "partial",
+    "egg": "jobs runs",
+    "endpoint": "get_job_run",
+    "orchardTool": "get_job_run",
+    "reason": "Egg reports only the scheduled job's latest systemd state and has no distinct historical run records.",
+    "spec": {
+      "summary": "Show one run's status, timing, and results for each step.",
+      "args": ["runId"],
+      "flags": [
+        { "name": "watch", "type": "flag", "required": false, "description": "Refresh the run view while it is active; requires a terminal." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "job-run cancel",
+    "source": "job_run.go",
+    "status": "partial",
+    "egg": "jobs cancel",
+    "endpoint": "cancel_job_run",
+    "orchardTool": "cancel_job_run",
+    "reason": "Egg pauses future scheduled runs but cannot stop a command that is already running.",
+    "spec": {
+      "summary": "Stop an active run and skip its remaining steps.",
+      "args": ["runId"],
+      "flags": [
+        { "name": "confirm", "type": "value", "required": true, "description": "Must exactly match the run's job name." }
+      ],
+      "destructive": true,
+      "confirm": "exact job name"
+    }
+  },
+  {
+    "orchard": "job-run logs",
+    "source": "job_run.go",
+    "status": "partial",
+    "egg": "jobs logs",
+    "endpoint": "get_job_run_logs",
+    "orchardTool": "get_job_run_logs",
+    "reason": "Egg returns recent output per job, rather than logs scoped to a specific run or step.",
+    "spec": {
+      "summary": "Print logs for a selected step or for all steps in order, with an option to follow active output.",
+      "args": ["runId"],
+      "flags": [
+        { "name": "step", "type": "value", "required": false, "description": "One-based step number; omit it to include every step." },
+        { "name": "follow", "type": "flag", "required": false, "description": "Poll for new output until the run reaches a final state." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  }
+]

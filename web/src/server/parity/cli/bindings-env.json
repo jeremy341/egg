@@ -1,1 +1,254 @@
-[]
+[
+  {
+    "orchard": "deploy bindings list",
+    "source": "deploy_bindings.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg has no resource-binding model or managed database service.",
+    "spec": {
+      "summary": "Show the resources connected to a deployment, including their type, status, endpoint, and consumers.",
+      "args": ["deployment-id"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "deploy bindings options",
+    "source": "deploy_bindings.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg has no resource-binding model or managed database service.",
+    "spec": {
+      "summary": "List same-project databases and apps that could be connected to a deployment, with suggested variable names.",
+      "args": ["deployment-id"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "deploy bindings add",
+    "source": "deploy_bindings.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg has no resource-binding model or managed database service.",
+    "spec": {
+      "summary": "Connect one same-project database or app to a deployment and optionally add a variable that resolves to its connection value.",
+      "args": ["deployment-id"],
+      "flags": [
+        { "name": "database", "type": "value", "required": false, "description": "Database name or ID; provide this or app." },
+        { "name": "app", "type": "value", "required": false, "description": "App name or ID; provide this or database." },
+        { "name": "as", "type": "value", "required": false, "description": "Choose the binding name used in resource references." },
+        { "name": "env", "type": "value", "required": false, "description": "Choose the variable key to add for the connection." },
+        { "name": "no-env", "type": "flag", "required": false, "description": "Create the binding without adding a variable." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "deploy bindings remove",
+    "source": "deploy_bindings.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg has no resource-binding model or managed database service.",
+    "spec": {
+      "summary": "Disconnect a named resource binding from a deployment.",
+      "args": ["deployment-id", "binding-name"],
+      "flags": [
+        { "name": "confirm", "type": "value", "required": true, "description": "Must exactly match the binding name being removed." }
+      ],
+      "destructive": true,
+      "confirm": "confirm"
+    }
+  },
+  {
+    "orchard": "db rotate-password",
+    "source": "deploy_bindings.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg has no managed database service or database password to rotate.",
+    "spec": {
+      "summary": "Replace a database password and refresh environment values for apps bound to that database.",
+      "args": ["database-id"],
+      "flags": [
+        { "name": "confirm", "type": "value", "required": true, "description": "Must exactly match the database name being changed." }
+      ],
+      "destructive": true,
+      "confirm": "confirm"
+    }
+  },
+  {
+    "orchard": "env list",
+    "source": "env.go",
+    "status": "partial",
+    "egg": "env sets list",
+    "endpoint": "list_environments",
+    "orchardTool": "list_environments",
+    "reason": "Egg lists account-wide shared sets, while Orchard lists per-project namespaces and resource counts.",
+    "spec": {
+      "summary": "List a project's environments with their names, slugs, namespace, default status, and deployment counts.",
+      "args": [],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "env get",
+    "source": "env.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "list_environments",
+    "orchardTool": "list_environments",
+    "reason": "Egg has no command for one project's environment details, and its existing endpoint only lists account-wide shared sets.",
+    "spec": {
+      "summary": "Show one environment's name, slug, namespace, default status, resource counts, and creation time; use the default environment when no name or ID is supplied.",
+      "args": ["name-or-id"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "env create",
+    "source": "env.go",
+    "status": "partial",
+    "egg": "env sets create",
+    "endpoint": "create_environment",
+    "orchardTool": "create_environment",
+    "reason": "Egg creates account-wide variable sets but does not create a per-project namespace or accept a slug.",
+    "spec": {
+      "summary": "Create an empty environment in the current project with a required name and an optional URL-safe slug.",
+      "args": [],
+      "flags": [
+        { "name": "name", "type": "value", "required": true, "description": "Environment name." },
+        { "name": "slug", "type": "value", "required": false, "description": "Optional URL-safe identifier; otherwise derive it from the name." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "env delete",
+    "source": "env.go",
+    "status": "partial",
+    "egg": "env sets delete",
+    "endpoint": "delete_environment",
+    "orchardTool": "delete_environment",
+    "reason": "Egg can delete a shared set with exact-name confirmation, but it has no project namespace and cannot remove all resources in one.",
+    "spec": {
+      "summary": "Permanently remove a project environment and every app, database, domain, and job inside its namespace after exact-name confirmation.",
+      "args": ["name-or-id"],
+      "flags": [
+        { "name": "confirm", "type": "value", "required": true, "description": "Must exactly match the environment name being deleted." }
+      ],
+      "destructive": true,
+      "confirm": "confirm"
+    }
+  },
+  {
+    "orchard": "env set-default",
+    "source": "env.go",
+    "status": "partial",
+    "egg": "env sets default",
+    "endpoint": "set_default_environment",
+    "orchardTool": "set_default_environment",
+    "reason": "Egg chooses one account-wide shared set, while Orchard chooses the default namespace within a project.",
+    "spec": {
+      "summary": "Make the selected project environment the default destination for new resources.",
+      "args": ["name-or-id"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "env vars get",
+    "source": "env.go",
+    "status": "partial",
+    "egg": "env shared list",
+    "endpoint": "get_shared_env_vars",
+    "orchardTool": "get_shared_env_vars",
+    "reason": "Egg lists shared variable names and targets but its endpoint never returns values, so opt-in display of non-secret values is still absent.",
+    "spec": {
+      "summary": "List shared variable names and targets for the selected or default environment; hide values unless explicitly requested and never print secret values.",
+      "args": ["environment-name-or-id"],
+      "flags": [
+        { "name": "show-values", "type": "flag", "required": false, "description": "Request non-secret values explicitly; secret values remain hidden." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "env vars set",
+    "source": "env.go",
+    "status": "partial",
+    "egg": "env shared add",
+    "endpoint": "add_shared_env_vars",
+    "orchardTool": "add_shared_env_vars",
+    "reason": "Egg can merge shared variables from JSON, but the CLI lacks inline assignments, dotenv input, and the secret marker.",
+    "spec": {
+      "summary": "Merge one or more key-value entries into the selected or default environment without changing other keys; never echo submitted values.",
+      "args": ["KEY=VALUE..."],
+      "flags": [
+        { "name": "file", "type": "value", "required": false, "description": "Read key-value entries from a dotenv file." },
+        { "name": "secret", "type": "flag", "required": false, "description": "Mark the submitted entries as secret and write-only." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "env vars unset",
+    "source": "env.go",
+    "status": "partial",
+    "egg": "env shared delete",
+    "endpoint": "delete_shared_env_vars",
+    "orchardTool": "delete_shared_env_vars",
+    "reason": "Egg can remove shared keys but currently requires a JSON file instead of key arguments.",
+    "spec": {
+      "summary": "Remove the named shared variables from the selected or default environment while retaining every other key.",
+      "args": ["KEY", "KEY..."],
+      "flags": [
+        { "name": "confirm", "type": "value", "required": true, "description": "Must exactly match the environment name containing the variables." }
+      ],
+      "destructive": true,
+      "confirm": "confirm"
+    }
+  },
+  {
+    "orchard": "env pull",
+    "source": "env_pull.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "get_shared_env_vars",
+    "orchardTool": "get_shared_env_vars",
+    "reason": "Egg has no file-writing pull command, and its shared-variable endpoint exposes names only rather than non-secret values.",
+    "spec": {
+      "summary": "Write shared variables to .env.orchard by default, optionally merging deployment variables; secrets become commented placeholders, non-secret values go only to the requested file or explicit JSON output, and an existing output path is replaced only after exact-path confirmation.",
+      "args": ["environment-name-or-id"],
+      "flags": [
+        { "name": "out", "type": "value", "required": false, "description": "Destination path; defaults to .env.orchard." },
+        { "name": "deployment", "type": "value", "required": false, "description": "Merge this deployment's variables over shared entries." },
+        { "name": "force", "type": "flag", "required": false, "description": "Allow replacing a non-generated file only with exact-path confirmation." },
+        { "name": "confirm", "type": "value", "required": false, "description": "When replacing an existing file, must exactly match the output path." },
+        { "name": "output", "type": "value", "required": false, "description": "JSON writes entries to stdout; secrets have no value, and --out also writes the file." }
+      ],
+      "destructive": true,
+      "confirm": "confirm"
+    }
+  }
+]

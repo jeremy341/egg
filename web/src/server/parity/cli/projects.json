@@ -1,1 +1,308 @@
-[]
+[
+  {
+    "orchard": "project transfer request",
+    "source": "project.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Request that another project member take ownership of the scoped project.",
+      "args": ["email-or-user-id"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "project transfer cancel",
+    "source": "project.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Withdraw the scoped project's pending ownership change request.",
+      "args": [],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "project transfer list",
+    "source": "project.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Show ownership change requests awaiting the current user's response.",
+      "args": [],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "project transfer accept",
+    "source": "project.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Accept an ownership change request and take responsibility for the project's resource usage.",
+      "args": ["request-id"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "project transfer decline",
+    "source": "project.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Decline an ownership change request offered to the current user.",
+      "args": ["request-id"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "project list",
+    "source": "project.go",
+    "status": "present",
+    "egg": "projects list",
+    "endpoint": "list_projects",
+    "orchardTool": "list_projects",
+    "reason": "Egg lists every project visible to the token owner; Orchard additionally supports organization scoping, which Egg does not use.",
+    "spec": {
+      "summary": "List projects visible across organizations or within the configured organization.",
+      "args": [],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "project get",
+    "source": "project.go",
+    "status": "present",
+    "egg": "projects show",
+    "endpoint": "get_project",
+    "orchardTool": "get_project",
+    "reason": "Egg can look up a project by slug or ID and show its settings, while its detail fields focus on deployments.",
+    "spec": {
+      "summary": "Show one project, including its organization, namespace, and resource counts.",
+      "args": ["project"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "project create",
+    "source": "project.go",
+    "status": "partial",
+    "egg": "projects create",
+    "endpoint": "create_project",
+    "orchardTool": "create_project",
+    "reason": "Egg creates a deployable project from a repository on a server, while Orchard creates an organization project with optional description and slug.",
+    "spec": {
+      "summary": "Create a project in the configured organization with a name and optional slug and description.",
+      "args": [],
+      "flags": [
+        { "name": "name", "type": "value", "required": true, "description": "Project name." },
+        { "name": "slug", "type": "value", "required": false, "description": "Optional URL slug; otherwise derive one from the name." },
+        { "name": "description", "type": "value", "required": false, "description": "Optional project description." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "project update",
+    "source": "project.go",
+    "status": "partial",
+    "egg": "projects update",
+    "endpoint": "update_project",
+    "orchardTool": "update_project",
+    "reason": "Egg changes deployment settings, while Orchard also edits project name, description, repository link, icon, and background image.",
+    "spec": {
+      "summary": "Change selected project metadata and linked repository details; empty nullable values clear those fields.",
+      "args": ["project"],
+      "flags": [
+        { "name": "name", "type": "value", "required": false, "description": "Replace the project name." },
+        { "name": "description", "type": "value", "required": false, "description": "Set or clear the project description." },
+        { "name": "repository-url", "type": "value", "required": false, "description": "Set or clear the linked repository URL." },
+        { "name": "icon", "type": "value", "required": false, "description": "Set or clear the project icon value." },
+        { "name": "background-image", "type": "value", "required": false, "description": "Set or clear the project background image URL." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "project delete",
+    "source": "project.go",
+    "status": "partial",
+    "egg": "projects delete",
+    "endpoint": "delete_project",
+    "orchardTool": "delete_project",
+    "reason": "Egg requires the exact project name but leaves its running service on the server by default, unlike Orchard's broader resource removal.",
+    "spec": {
+      "summary": "Permanently remove the project and its associated resources after explicit name confirmation.",
+      "args": ["project"],
+      "flags": [
+        { "name": "confirm", "type": "value", "required": true, "description": "Must exactly match the target project's name." }
+      ],
+      "destructive": true,
+      "confirm": "exact project name"
+    }
+  },
+  {
+    "orchard": "project sync",
+    "source": "project.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg deploys services directly and has no Kubernetes namespace state to import into its project model.",
+    "spec": {
+      "summary": "Refresh Orchard's project view from the live Kubernetes namespace.",
+      "args": ["project"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "project icon set",
+    "source": "project.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg's project model and API do not provide a project icon upload feature.",
+    "spec": {
+      "summary": "Upload an image file as the selected project's icon.",
+      "args": ["project", "file"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "project background set",
+    "source": "project.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg's project model and API do not provide project background image uploads.",
+    "spec": {
+      "summary": "Upload an image file as the background for the configured project.",
+      "args": ["file"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "project member list",
+    "source": "project.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "List members and their project roles for the configured project.",
+      "args": [],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "project member add",
+    "source": "project.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Add an organization member to the configured project with an optional role, inviting them if needed.",
+      "args": ["email"],
+      "flags": [
+        { "name": "role", "type": "value", "required": false, "description": "Project role; defaults to member and accepts admin, member, or viewer." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "project member remove",
+    "source": "project.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Remove the selected member from the configured project after an exact identity check.",
+      "args": ["member-id"],
+      "flags": [
+        { "name": "confirm", "type": "value", "required": true, "description": "Must exactly match the selected member's name." }
+      ],
+      "destructive": true,
+      "confirm": "exact member name"
+    }
+  },
+  {
+    "orchard": "project member set-role",
+    "source": "project.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Change the selected project member's role to admin, member, or viewer.",
+      "args": ["member-id", "role"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "project invitation revoke",
+    "source": "project.go",
+    "status": "not_applicable",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "managed in the dashboard; the API does not manage accounts, tokens or permissions",
+    "spec": {
+      "summary": "Revoke the selected pending project invitation after confirming its recipient identity.",
+      "args": ["invitation-id"],
+      "flags": [
+        { "name": "confirm", "type": "value", "required": true, "description": "Must exactly match the invited person's email address." }
+      ],
+      "destructive": true,
+      "confirm": "exact invitee email"
+    }
+  }
+]

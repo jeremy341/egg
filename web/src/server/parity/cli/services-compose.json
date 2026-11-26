@@ -1,1 +1,260 @@
-[]
+[
+  {
+    "orchard": "service list",
+    "source": "service.go",
+    "status": "partial",
+    "egg": "services list",
+    "endpoint": "list_services",
+    "orchardTool": "list_services",
+    "reason": "Egg can list services, but its command does not scope them to one deployment.",
+    "spec": {
+      "summary": "List the services attached to a deployment, including their ports and exposure settings.",
+      "args": [],
+      "flags": [
+        { "name": "deployment", "type": "value", "required": true, "description": "Deployment whose services should be listed." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "service create",
+    "source": "service.go",
+    "status": "partial",
+    "egg": "services create",
+    "endpoint": "create_service",
+    "orchardTool": "create_service",
+    "reason": "Egg creates a deployable service from source, while this command adds a port service to an existing deployment.",
+    "spec": {
+      "summary": "Add a named service port to a deployment and optionally make it publicly reachable.",
+      "args": [],
+      "flags": [
+        { "name": "deployment", "type": "value", "required": true, "description": "Deployment that will own the service." },
+        { "name": "name", "type": "value", "required": false, "description": "Service name; defaults to a name based on its port." },
+        { "name": "port", "type": "value", "required": true, "description": "Port exposed by the service." },
+        { "name": "target-port", "type": "value", "required": false, "description": "Container port to receive traffic; defaults to the service port." },
+        { "name": "protocol", "type": "value", "required": false, "description": "Port protocol, TCP by default." },
+        { "name": "node-port", "type": "value", "required": false, "description": "Fixed public port to use when exposing the service." },
+        { "name": "public", "type": "flag", "required": false, "description": "Make the service reachable from outside the cluster." },
+        { "name": "domain", "type": "value", "required": false, "description": "Custom domain for the service." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "service update",
+    "source": "service.go",
+    "status": "present",
+    "egg": "services configure",
+    "endpoint": "update_service",
+    "orchardTool": "update_service",
+    "reason": "Egg's configure command already changes a service's ports and internal domain.",
+    "spec": {
+      "summary": "Replace a service's port mapping or set or clear its internal domain.",
+      "args": ["service-id"],
+      "flags": [
+        { "name": "deployment", "type": "value", "required": true, "description": "Deployment that owns the service." },
+        { "name": "port", "type": "value", "required": false, "description": "Port exposed by the service when changing its port mapping." },
+        { "name": "target-port", "type": "value", "required": false, "description": "Container port to receive traffic; defaults to the service port." },
+        { "name": "protocol", "type": "value", "required": false, "description": "Port protocol, TCP by default." },
+        { "name": "node-port", "type": "value", "required": false, "description": "Fixed public port to use for the mapping." },
+        { "name": "domain", "type": "value", "required": false, "description": "Set or clear the service's internal domain." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "service delete",
+    "source": "service.go",
+    "status": "partial",
+    "egg": "services delete",
+    "endpoint": "delete_service",
+    "orchardTool": "delete_service",
+    "reason": "Egg confirms deletion with the exact name, but its command deletes a deployable service rather than a deployment port service.",
+    "spec": {
+      "summary": "Remove a service from a deployment and stop routing traffic to its ports.",
+      "args": ["service-id"],
+      "flags": [
+        { "name": "deployment", "type": "value", "required": true, "description": "Deployment that owns the service." },
+        { "name": "confirm", "type": "value", "required": true, "description": "Exact name of the service being deleted." }
+      ],
+      "destructive": true,
+      "confirm": "--confirm <service-name>"
+    }
+  },
+  {
+    "orchard": "service exposure set",
+    "source": "service.go",
+    "status": "partial",
+    "egg": "services exposure",
+    "endpoint": "set_service_exposure",
+    "orchardTool": "set_service_exposure",
+    "reason": "Egg attaches or removes a domain, while this command switches the service between public and internal networking.",
+    "spec": {
+      "summary": "Switch a service between public access and cluster-only access.",
+      "args": ["service-id", "exposure"],
+      "flags": [
+        { "name": "deployment", "type": "value", "required": true, "description": "Deployment that owns the service." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "service port public enable",
+    "source": "service.go",
+    "status": "partial",
+    "egg": "services port",
+    "endpoint": "set_service_port_public",
+    "orchardTool": "set_service_port_public",
+    "reason": "Egg can change a service's public port number, but it does not enable exposure for one selected port.",
+    "spec": {
+      "summary": "Make one port on a service publicly reachable.",
+      "args": ["service-id", "port-id"],
+      "flags": [
+        { "name": "deployment", "type": "value", "required": true, "description": "Deployment that owns the service." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "service port public disable",
+    "source": "service.go",
+    "status": "partial",
+    "egg": "services port",
+    "endpoint": "set_service_port_public",
+    "orchardTool": "set_service_port_public",
+    "reason": "Egg can change a service's public port number, but it does not disable exposure for one selected port.",
+    "spec": {
+      "summary": "Stop making one port on a service publicly reachable.",
+      "args": ["service-id", "port-id"],
+      "flags": [
+        { "name": "deployment", "type": "value", "required": true, "description": "Deployment that owns the service." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "compose list",
+    "source": "compose.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "list_compose_stacks",
+    "orchardTool": "list_compose_stacks",
+    "reason": "Egg has the stack-list endpoint, but its CLI has no command to list Compose stacks.",
+    "spec": {
+      "summary": "List the Compose stacks in the currently selected project.",
+      "args": [],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "compose get",
+    "source": "compose.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "get_compose_stack",
+    "orchardTool": "get_compose_stack",
+    "reason": "Egg has the stack-detail endpoint, but its CLI has no command to show a Compose stack.",
+    "spec": {
+      "summary": "Show a stack's source settings and the deployments it manages.",
+      "args": ["stack-id"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "compose deploy",
+    "source": "compose.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": null,
+    "orchardTool": null,
+    "reason": "Egg has no endpoint or CLI command to create a Compose stack from a repository file.",
+    "spec": {
+      "summary": "Create a stack by reading a Compose file from a GitHub repository.",
+      "args": [],
+      "flags": [
+        { "name": "name", "type": "value", "required": true, "description": "Name for the new stack." },
+        { "name": "github", "type": "value", "required": true, "description": "Repository URL or owner and repository, optionally followed by a branch." },
+        { "name": "path", "type": "value", "required": false, "description": "Location of the Compose file; defaults to the repository's standard file." },
+        { "name": "auto-deploy", "type": "flag", "required": false, "description": "Enable deployments when the watched branch receives changes." }
+      ],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "compose redeploy",
+    "source": "compose.go",
+    "status": "missing",
+    "egg": null,
+    "endpoint": "redeploy_compose_stack",
+    "orchardTool": "redeploy_compose_stack",
+    "reason": "Egg has the stack-redeploy endpoint, but its CLI has no command to invoke it.",
+    "spec": {
+      "summary": "Read the current Compose file again and apply its services to the stack.",
+      "args": ["stack-id"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "compose auto-deploy enable",
+    "source": "compose.go",
+    "status": "partial",
+    "egg": "projects update",
+    "endpoint": "enable_auto_deploy",
+    "orchardTool": null,
+    "reason": "Egg can change a project's auto-deploy setting, but has no stack-specific toggle command.",
+    "spec": {
+      "summary": "Turn on automatic deployment for changes to the stack's watched branch.",
+      "args": ["stack-id"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "compose auto-deploy disable",
+    "source": "compose.go",
+    "status": "partial",
+    "egg": "projects update",
+    "endpoint": "disable_auto_deploy",
+    "orchardTool": null,
+    "reason": "Egg can change a project's auto-deploy setting, but has no stack-specific toggle command.",
+    "spec": {
+      "summary": "Turn off automatic deployment for changes to the stack's watched branch.",
+      "args": ["stack-id"],
+      "flags": [],
+      "destructive": false,
+      "confirm": null
+    }
+  },
+  {
+    "orchard": "compose delete",
+    "source": "compose.go",
+    "status": "partial",
+    "egg": "projects delete",
+    "endpoint": "delete_project",
+    "orchardTool": null,
+    "reason": "Egg can delete the backing project with exact-name confirmation, but removing it from the server is optional.",
+    "spec": {
+      "summary": "Delete a Compose stack and all deployments it manages.",
+      "args": ["stack-id"],
+      "flags": [
+        { "name": "confirm", "type": "value", "required": true, "description": "Exact name of the stack being deleted." }
+      ],
+      "destructive": true,
+      "confirm": "--confirm <stack-name>"
+    }
+  }
+]
