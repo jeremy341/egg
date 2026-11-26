@@ -2,7 +2,7 @@
 
 Generated from the Orchard parity manifest (`orchard-parity.json`). Our side: `ENDPOINTS` in `web/src/server/api-v1*.ts`, plus the compact server's three tools in `web/src/server/mcp-compact.ts`. Test-only names are excluded.
 
-Totals: 217 Orchard product tools. Present: 121. Partial: 12. Missing: 0. Not applicable: 84. Ours only: 27.
+Totals: 217 Orchard product tools. Present: 124. Partial: 9. Missing: 0. Not applicable: 84. Ours only: 33.
 
 `present` means an equivalent endpoint exists with the same job. `partial` means it covers part of the job. `missing` means no equivalent yet.
 
@@ -59,9 +59,9 @@ Totals: 217 Orchard product tools. Present: 121. Partial: 12. Missing: 0. Not ap
 | [x] `get_deployment` | present | `get_deployment` |
 | [x] `get_deployment_http_metrics` | present | `get_deployment_http_metrics` |
 | [x] `get_deployment_logs` | present | `get_deployment_logs` |
-| [~] `get_deployment_metrics` | partial | `get_resource_history` |
+| [~] `get_deployment_metrics` | partial | `get_deployment_metrics` |
 | [x] `get_deployment_volumes` | present | `get_deployment_volumes` |
-| [~] `get_env_vars` | partial | `list_env_vars` |
+| [x] `get_env_vars` | present | `get_env_vars` |
 | [x] `get_github_status` | present | `get_github_status` |
 | [x] `get_image_history` | present | `get_image_history` |
 | [x] `get_ingress` | present | `get_ingress` |
@@ -72,7 +72,7 @@ Totals: 217 Orchard product tools. Present: 121. Partial: 12. Missing: 0. Not ap
 | [x] `get_repo_branches` | present | `get_repo_branches` |
 | [x] `get_repo_contents` | present | `get_repo_contents` |
 | [x] `get_repo_dockerfiles` | present | `get_repo_dockerfiles` |
-| [~] `get_resource_quota` | partial | `get_project_resources` |
+| [~] `get_resource_quota` | partial | `get_resource_quota` |
 | [-] `get_template` | not applicable | - |
 | [-] `get_template_instance` | not applicable | - |
 | [-] `get_template_yaml_guide` | not applicable | - |
@@ -104,11 +104,11 @@ Totals: 217 Orchard product tools. Present: 121. Partial: 12. Missing: 0. Not ap
 
 | Orchard tool | Status | Our endpoint |
 |---|---|---|
-| [~] `cancel_build` | partial | `cancel_deployment` |
+| [x] `cancel_build` | present | `cancel_deployment` |
 | [~] `create_deploy_webhook_token` | partial | `rotate_deploy_hook` |
 | [x] `create_deployment` | present | `create_deployment` |
 | [~] `deploy_from_github` | partial | `deploy_branch` |
-| [~] `deploy_from_github_url` | partial | `deploy_branch` |
+| [x] `deploy_from_github_url` | present | `deploy_from_github_url` |
 | [x] `disable_auto_deploy` | present | `disable_auto_deploy` |
 | [x] `enable_auto_deploy` | present | `enable_auto_deploy` |
 | [x] `get_auto_deploy_status` | present | `get_auto_deploy_status` |
@@ -264,7 +264,7 @@ Totals: 217 Orchard product tools. Present: 121. Partial: 12. Missing: 0. Not ap
 | [x] `get_anomalies` | present | `get_anomalies` |
 | [x] `get_attack_signals` | present | `get_attack_signals` |
 | [x] `get_build_history` | present | `get_build_history` |
-| [~] `get_changes` | partial | `get_activity` |
+| [~] `get_changes` | partial | `get_changes` |
 | [x] `get_deploy_verdict` | present | `get_deploy_verdict` |
 | [x] `get_log_context` | present | `get_log_context` |
 | [x] `get_observability_link` | present | `get_observability_link` |
@@ -300,7 +300,7 @@ Totals: 217 Orchard product tools. Present: 121. Partial: 12. Missing: 0. Not ap
 
 ## Ours only (no Orchard equivalent)
 
-`delete_env_var`, `delete_file`, `download_file`, `get_analytics`, `get_container_inventory`, `get_logs`, `get_notification_channel`, `get_notifications`, `get_organization`, `get_server_usage`, `get_status_page`, `list_compose_releases`, `list_files`, `list_servers`, `make_folder`, `read_file`, `rename_file`, `restart_service`, `set_env_var`, `terminal_close`, `terminal_open`, `terminal_read`, `terminal_resize`, `terminal_send`, `terminal_status`, `test_notification`, `write_file`
+`delete_env_var`, `delete_file`, `download_file`, `get_analytics`, `get_container_inventory`, `get_crash_report`, `get_logs`, `get_notification_channel`, `get_notifications`, `get_organization`, `get_project_resources`, `get_resource_history`, `get_server_usage`, `get_status_page`, `list_compose_releases`, `list_crash_reports`, `list_env_vars`, `list_files`, `list_servers`, `make_folder`, `read_file`, `rename_file`, `restart_service`, `set_env_var`, `set_env_var_secret`, `terminal_close`, `terminal_open`, `terminal_read`, `terminal_resize`, `terminal_send`, `terminal_status`, `test_notification`, `write_file`
 
 ## Not in the MCP list (ported or not, tracked separately)
 
