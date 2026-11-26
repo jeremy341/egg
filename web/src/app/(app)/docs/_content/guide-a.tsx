@@ -799,6 +799,113 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
     </Section>
   ),
 
+  keys: () => (
+    <Section
+      id="keys"
+      intro="Keys are the SSH keys Egg makes for your projects and for you. Each one is a pair: the public half can be shared, and Egg keeps the private half sealed in its database."
+    >
+      <P>
+        The Keys page lists the keys you make for a project and for yourself. The key Egg makes for each server is
+        listed there too, with a copy button for its public half and a <B>New key</B> action. That server key is
+        described on the Servers page.
+      </P>
+      <H3 id="keys-kinds" />
+      <List>
+        <li>
+          <B>GitHub deploy key.</B> A read-only key that Egg installs on the GitHub repository linked to one project,
+          through the Egg GitHub App. You paste nothing. Once GitHub confirms it, the row shows an “On GitHub”
+          badge.
+        </li>
+        <li>
+          <B>Git key.</B> A key for a git host you run yourself. Egg makes the pair, you paste the public half into
+          your host, and the private half is shown once.
+        </li>
+        <li>
+          <B>Personal key.</B> A key that belongs to your account rather than a project, for a script or a tool you
+          use outside Egg. Its private half is shown once, too.
+        </li>
+      </List>
+      <H3 id="keys-deploy" />
+      <P>
+        A deploy key can read the repository and nothing else: it is read-only, so it cannot push. Egg adds it when
+        the project is linked to a repository. Until it is, Egg refuses to add one and says a repository is needed.
+      </P>
+      {why(
+        <>
+          A read-only key cannot change your code, even if it leaks. Revoking a deploy key removes it from GitHub
+          before Egg marks it revoked, so the key cannot keep opening the repository after you have revoked it.
+        </>
+      )}
+      <H3 id="keys-git" />
+      <P>
+        Use a git key for a git host that is not on GitHub, such as a server you run yourself. Add it to a project
+        from the Keys page, and name it if you want. Copy its public half into your host’s SSH key settings. The
+        private half is shown once, in the same dialog, so copy it before you press <B>I have copied it</B>. Egg
+        keeps it sealed, and the page never shows it again.
+      </P>
+      <H3 id="keys-personal" />
+      <P>
+        Press <B>Generate key</B> in the Personal keys card and give the key a name. Egg shows the private and the
+        public half once. Copy both, then press <B>I have copied it</B>. A personal key is not tied to a project, and
+        revoking it in Egg does not change anything outside Egg.
+      </P>
+      <H3 id="keys-manage" />
+      <List>
+        <li>
+          <B>Add key</B> is on each project’s group. It opens “Add a key to NAME”. Pick <B>GitHub deploy key</B> or{" "}
+          <B>Git key</B>, name a git key if you want, and press <B>Add key</B>. A deploy key then reads “Added to
+          GitHub automatically.”
+        </li>
+        <li>
+          <B>Replace key</B> is on a GitHub deploy key. The dialog says Egg makes a new read-only key, installs it on
+          GitHub and removes the old one there. If GitHub would not remove the old key, the page says so, and you
+          must delete the old deploy key in the repository’s settings on GitHub yourself.
+        </li>
+        <li>
+          <B>Revoke</B> asks first. A deploy key is removed from GitHub before it is revoked here, and if GitHub
+          cannot be reached nothing changes and the key stays active. A git key or a personal key is only marked as
+          revoked, so remove its public half from your host or from anything else that trusts it.
+        </li>
+        <li>
+          Revoked keys move under <B>Revoked</B> with the date they were revoked, and they cannot be used again.
+        </li>
+      </List>
+      <H2 id="keys-reference" title="Limits and problems" />
+      {limits("keys", [
+        ["Key name", "1 to 60 characters, on one line", "“Give the key a name.” or “Keep the name to one line.”", "server/ssh-keys.ts"],
+      ])}
+      {wrong("keys", [
+        [
+          "The private key is gone.",
+          <>It was shown once. Revoke that key and add a new one; Egg cannot show the private half again.</>,
+        ],
+        [
+          "Revoking a deploy key is refused, or the key stays active.",
+          <>
+            Egg could not remove the deploy key from GitHub, so it kept the key. Check that the Egg GitHub App is still
+            installed on the repository, then try again.
+          </>,
+        ],
+        [
+          "Replacing a deploy key says the old key is still on GitHub.",
+          <>
+            The new key is in place, but GitHub did not let Egg remove the old one. Delete the old deploy key in the
+            repository’s settings on GitHub.
+          </>,
+        ],
+        [
+          "Adding a deploy key says a repository is needed.",
+          <>The project is not linked to a GitHub repository yet. Link one to the project, then add the key.</>,
+        ],
+      ])}
+      {related([
+        ["servers", "Servers"],
+        ["security", "Security"],
+        ["api", "Access tokens and the API"],
+      ])}
+    </Section>
+  ),
+
   projects: () => (
     <Section id="projects" intro="A project ties one GitHub repository to one app on one server.">
       <P>
