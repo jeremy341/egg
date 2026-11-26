@@ -288,7 +288,10 @@ const SPECS: Record<string, Spec> = {
     owned: true,
   },
   update_project: { scope: "projects:write", handler: updateProjectRoute, method: "PATCH", path: proj(""), params: projParams, body: () => ({ healthPath: "/up" }), owned: true },
-  delete_project: { scope: "projects:write", handler: deleteProjectRoute, method: "DELETE", path: proj(""), params: projParams, owned: true },
+  delete_project: {
+    scope: "projects:write", handler: deleteProjectRoute, method: "DELETE", path: proj(""), params: projParams,
+    body: (i) => ({ confirmName: i.projectId === projectId ? "App" : "Theirs" }), owned: true,
+  },
   get_deployment: { scope: "deployments:read", handler: getDeploymentRoute, method: "GET", path: (i) => `/deployments/${i.deploymentId}`, params: (i) => ({ deploymentId: i.deploymentId }), owned: true },
   get_deployment_logs: { scope: "deployments:read", handler: deploymentLogsRoute, method: "GET", path: (i) => `/deployments/${i.deploymentId}/logs`, params: (i) => ({ deploymentId: i.deploymentId }), owned: true },
   search_logs: { scope: "logs:read", handler: searchLogsRoute, method: "GET", path: proj("/logs/search"), params: projParams, owned: true },
@@ -297,15 +300,24 @@ const SPECS: Record<string, Spec> = {
   triage_deployment_error: { scope: "projects:write", handler: triageErrorRoute, method: "POST", path: (i) => `/projects/${i.projectId}/errors/${errorFingerprint}`, params: (i) => ({ projectId: i.projectId, fingerprint: errorFingerprint }), body: () => ({ action: "assign", assigneeId: null }), owned: true },
   list_env_vars: { scope: "env:read", handler: listEnvRoute, method: "GET", path: proj("/env"), params: projParams, owned: true },
   set_env_var: { scope: "env:write", handler: setEnvRoute, method: "PUT", path: proj("/env/NEW_KEY"), params: (i) => ({ projectId: i.projectId, key: "NEW_KEY" }), body: () => ({ value: "x" }), owned: true },
-  delete_env_var: { scope: "env:write", handler: deleteEnvRoute, method: "DELETE", path: proj("/env/API_KEY"), params: (i) => ({ projectId: i.projectId, key: "API_KEY" }), owned: true },
+  delete_env_var: {
+    scope: "env:write", handler: deleteEnvRoute, method: "DELETE", path: proj("/env/API_KEY"),
+    params: (i) => ({ projectId: i.projectId, key: "API_KEY" }), body: () => ({ confirmName: "API_KEY" }), owned: true,
+  },
   add_domain: {
     scope: "domains:write", handler: addDomainRoute, method: "POST", path: () => "/domains", params: () => ({}),
     body: (i) => ({ serverId: i.serverId, domain: "new.example.com", port: 3000, projectId: i.projectId }), owned: true,
   },
   verify_domain: { scope: "domains:write", handler: verifyDomainRoute, method: "POST", path: (i) => `/domains/${i.domainId}/verify`, params: (i) => ({ domainId: i.domainId }), owned: true },
   remove_domain: { scope: "domains:write", handler: removeDomainRoute, method: "DELETE", path: (i) => `/domains/${i.domainId}`, params: (i) => ({ domainId: i.domainId }), owned: true },
-  rotate_deploy_hook: { scope: "deployments:write", handler: rotateHookRoute, method: "POST", path: proj("/hook/rotate"), params: projParams, owned: true },
-  revoke_deploy_hook: { scope: "deployments:write", handler: revokeHookRoute, method: "DELETE", path: proj("/hook"), params: projParams, owned: true },
+  rotate_deploy_hook: {
+    scope: "deployments:write", handler: rotateHookRoute, method: "POST", path: proj("/hook/rotate"), params: projParams,
+    body: (i) => ({ confirmName: i.projectId === projectId ? "App" : "Theirs" }), owned: true,
+  },
+  revoke_deploy_hook: {
+    scope: "deployments:write", handler: revokeHookRoute, method: "DELETE", path: proj("/hook"), params: projParams,
+    body: (i) => ({ confirmName: i.projectId === projectId ? "App" : "Theirs" }), owned: true,
+  },
   get_notifications: { scope: "notifications:read", handler: notifyRoute, method: "GET", path: proj("/notify"), params: projParams, owned: true },
   test_notification: { scope: "notifications:read", handler: notifyTestRoute, method: "POST", path: proj("/notify/test"), params: projParams, owned: true },
   get_alerts: { scope: "alerts:read", handler: alertsRoute, method: "GET", path: proj("/alerts"), params: projParams, owned: true },
@@ -352,7 +364,9 @@ describe("the endpoint list", () => {
       expect(byId.get(id)!.bucket, id).toBe("ssh");
     }
     for (const ep of ENDPOINTS.filter((e) => !e.readOnly && e.tag !== "Terminal" && e.tag !== "Files")) {
-      expect(ep.bucket, ep.id).toBe("write");
+      // Job runs, lifecycle actions and a few deployment steps open an SSH
+      // session, so they deliberately use the smaller ssh allowance instead.
+      expect(["write", "ssh"], ep.id).toContain(ep.bucket);
     }
   });
 });
@@ -559,7 +573,7 @@ describe("create, change and delete a project", () => {
   it("deletes records only by default, and audits it with the token", async () => {
     const t = await mint(["projects:write"]);
     const doomed = await createProject(me.id, { serverId: myServerId, name: "Doomed", repoUrl: "https://github.com/sam/d.git", runtime: "node", port: 3910 });
-    const res = await run(deleteProjectRoute, req(`/projects/${doomed.id}`, { secret: t.secret, method: "DELETE" }), { projectId: doomed.id });
+    const res = await run(deleteProjectRoute, req(`/projects/${doomed.id}`, { secret: t.secret, method: "DELETE", body: { confirmName: "Doomed" } }), { projectId: doomed.id });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ deleted: true, projectId: doomed.id, removedFromServer: false });
     expect(await ctx.db.select().from(schema.projects).where(eq(schema.projects.id, doomed.id))).toHaveLength(0);
@@ -572,7 +586,7 @@ describe("create, change and delete a project", () => {
     const secret = await token();
     const doomed = await createProject(me.id, { serverId: myServerId, name: "Doomed Two", repoUrl: "https://github.com/sam/d2.git", runtime: "node", port: 3911 });
     scriptReply = () => ({ code: 0, stdout: "home=/home/sam\nuid=0\n" });
-    const ok = await run(deleteProjectRoute, req(`/projects/${doomed.id}?removeFromServer=true`, { secret, method: "DELETE" }), { projectId: doomed.id });
+    const ok = await run(deleteProjectRoute, req(`/projects/${doomed.id}?removeFromServer=true`, { secret, method: "DELETE", body: { confirmName: "Doomed Two" } }), { projectId: doomed.id });
     expect(ok.status).toBe(200);
     expect((await ok.json()).removedFromServer).toBe(true);
     expect(sshWasUsed()).toBe(true);
@@ -580,13 +594,13 @@ describe("create, change and delete a project", () => {
 
     const stays = await createProject(me.id, { serverId: myServerId, name: "Stays", repoUrl: "https://github.com/sam/s.git", runtime: "node", port: 3912 });
     scriptReply = (command) => (command.includes("rm") || command.includes("systemctl") ? { code: 7, stderr: "/home/sam/secret path" } : { code: 0, stdout: "home=/home/sam\nuid=0\n" });
-    const failed = await run(deleteProjectRoute, req(`/projects/${stays.id}?removeFromServer=true`, { secret, method: "DELETE" }), { projectId: stays.id });
+    const failed = await run(deleteProjectRoute, req(`/projects/${stays.id}?removeFromServer=true`, { secret, method: "DELETE", body: { confirmName: "Stays" } }), { projectId: stays.id });
     expect(failed.status).toBe(502);
     expect((await failed.text())).not.toContain("secret path");
     expect(await ctx.db.select().from(schema.projects).where(eq(schema.projects.id, stays.id))).toHaveLength(1);
 
     for (const bad of ["maybe", "1", ""]) {
-      expect((await run(deleteProjectRoute, req(`/projects/${stays.id}?removeFromServer=${bad}`, { secret, method: "DELETE" }), { projectId: stays.id })).status, bad).toBe(400);
+      expect((await run(deleteProjectRoute, req(`/projects/${stays.id}?removeFromServer=${bad}`, { secret, method: "DELETE", body: { confirmName: "Stays" } }), { projectId: stays.id })).status, bad).toBe(400);
     }
     await ctx.db.delete(schema.projects).where(eq(schema.projects.id, stays.id));
   });
@@ -600,7 +614,7 @@ describe("create, change and delete a project", () => {
     }
     const statuses: number[] = [];
     for (const id of ids) {
-      statuses.push((await run(deleteProjectRoute, req(`/projects/${id}?removeFromServer=true`, { secret, method: "DELETE" }), { projectId: id })).status);
+      statuses.push((await run(deleteProjectRoute, req(`/projects/${id}?removeFromServer=true`, { secret, method: "DELETE", body: { confirmName: `Bulk ${ids.indexOf(id)}` } }), { projectId: id })).status);
     }
     expect(statuses.slice(0, 10).every((s) => s === 200)).toBe(true);
     expect(statuses[10]).toBe(429);
@@ -706,7 +720,11 @@ describe("environment variables", () => {
   it("lists names and targets only", async () => {
     const res = await run(listEnvRoute, req(`/projects/${projectId}/env`, { secret: await token(["env:read"]) }), { projectId });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ env: [{ key: "API_KEY", target: "production" }] });
+    const body = await res.json();
+    expect(body.env).toEqual([{ key: "API_KEY", target: "production" }]);
+    expect(body.items).toEqual(body.env);
+    expect(body.total).toBe(1);
+    expect(body.nextCursor).toBeNull();
   });
 
   it("sets a variable write-only, stores it sealed, audits it with the token, and never echoes the value", async () => {
@@ -760,7 +778,7 @@ describe("environment variables", () => {
     for (const target of ["production", "preview"]) {
       await setEnvVar(me.id, projectId, { key: "TMP_VAR", value: "tmp", target });
     }
-    const del = (q: string) => run(deleteEnvRoute, req(`/projects/${projectId}/env/TMP_VAR${q}`, { secret: t.secret, method: "DELETE" }), { projectId, key: "TMP_VAR" });
+    const del = (q: string) => run(deleteEnvRoute, req(`/projects/${projectId}/env/TMP_VAR${q}`, { secret: t.secret, method: "DELETE", body: { confirmName: "TMP_VAR" } }), { projectId, key: "TMP_VAR" });
     const one = await del("?target=preview");
     expect(one.status).toBe(200);
     expect((await one.json()).deleted).toEqual([{ key: "TMP_VAR", target: "preview" }]);
@@ -851,7 +869,7 @@ describe("domains", () => {
 describe("the deploy hook", () => {
   it("returns the URL once, when it is made, and never again", async () => {
     const t = await mint(["deployments:write", "projects:read", "deployments:read"]);
-    const first = await run(rotateHookRoute, req(`/projects/${projectId}/hook/rotate`, { secret: t.secret, method: "POST" }), { projectId });
+    const first = await run(rotateHookRoute, req(`/projects/${projectId}/hook/rotate`, { secret: t.secret, method: "POST", body: { confirmName: "App" } }), { projectId });
     expect(first.status).toBe(201);
     const { hook } = await first.json();
     expect(hook.url).toMatch(/^http:\/\/localhost:3000\/api\/hooks\/deploy\/ndh_[A-Za-z0-9_-]+$/);
@@ -867,7 +885,7 @@ describe("the deploy hook", () => {
 
     // Nothing that reads afterwards shows it.
     const project = await run(listProjectsRoute, req("/projects", { secret: t.secret }));
-    const after = await (await run(rotateHookRoute, req(`/projects/${projectId}/hook/rotate`, { secret: t.secret, method: "POST" }), { projectId })).json();
+    const after = await (await run(rotateHookRoute, req(`/projects/${projectId}/hook/rotate`, { secret: t.secret, method: "POST", body: { confirmName: "App" } }), { projectId })).json();
     expect(after.hook.url).not.toBe(hook.url);
     expect(await project.text()).not.toContain("ndh_");
     const replaced = await ctx.db.select().from(schema.projects).where(eq(schema.projects.id, projectId)).get();
@@ -882,12 +900,12 @@ describe("the deploy hook", () => {
 
   it("revokes it, and is happy to revoke one that is not there", async () => {
     const t = await mint(["deployments:write"]);
-    const res = await run(revokeHookRoute, req(`/projects/${projectId}/hook`, { secret: t.secret, method: "DELETE" }), { projectId });
+    const res = await run(revokeHookRoute, req(`/projects/${projectId}/hook`, { secret: t.secret, method: "DELETE", body: { confirmName: "App" } }), { projectId });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ revoked: true, projectId });
     expect((await ctx.db.select().from(schema.projects).where(eq(schema.projects.id, projectId)).get())!.hookHash).toBeNull();
     expect((await auditRows("hook.revoke")).some((r) => r.meta?.token === t.id)).toBe(true);
-    expect((await run(revokeHookRoute, req(`/projects/${projectId}/hook`, { secret: t.secret, method: "DELETE" }), { projectId })).status).toBe(200);
+    expect((await run(revokeHookRoute, req(`/projects/${projectId}/hook`, { secret: t.secret, method: "DELETE", body: { confirmName: "App" } }), { projectId })).status).toBe(200);
   });
 });
 
