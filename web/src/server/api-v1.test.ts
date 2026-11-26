@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { eq } from "drizzle-orm";
 import { createApiToken, revokeApiToken, SCOPES, type Scope } from "@/server/api-tokens";
 import { ENDPOINTS } from "@/server/api-v1";
+import { buildOpenApi } from "@/server/api-v1-openapi";
 import { upsertUser } from "@/server/auth/session";
 import { newId } from "@/server/crypto";
 import { schema } from "@/server/db";
@@ -416,7 +417,7 @@ describe("logs, domains and usage", () => {
 });
 
 describe("rate limits", () => {
-  it("allows 120 reads a minute per token, then 429 with Retry-After", async () => {
+  it("allows 120 reads a minute per user, then 429 with Retry-After", async () => {
     const secret = await token();
     for (let i = 0; i < 120; i++) expect((await run(listProjects, req("/projects", { secret }))).status).toBe(200);
     const res = await run(listProjects, req("/projects", { secret }));
@@ -424,9 +425,12 @@ describe("rate limits", () => {
     expect(Number(res.headers.get("retry-after"))).toBeGreaterThanOrEqual(1);
     expect((await errorOf(res)).code).toBe("rate_limited");
 
-    // Another token has its own allowance.
+    // A second token of the SAME user draws from the same bucket: holding many tokens cannot multiply the limit.
     const second = await token();
-    expect((await run(listProjects, req("/projects", { secret: second }))).status).toBe(200);
+    expect((await run(listProjects, req("/projects", { secret: second }))).status).toBe(429);
+    // A different user has their own allowance.
+    const theirs = await token(ALL, other.id);
+    expect((await run(listProjects, req("/projects", { secret: theirs }))).status).toBe(200);
   });
 
   it("allows 30 deploy-type writes a minute, separately from reads", async () => {
@@ -484,5 +488,16 @@ describe("OpenAPI", () => {
     expect(refs.length).toBeGreaterThan(0);
     for (const r of refs) expect(doc.components.schemas, r).toHaveProperty(r);
     expect(text).not.toContain("$defs");
+  });
+
+  it("is built once per process, not per request, and the ETag answer still works", async () => {
+    expect(buildOpenApi()).toBe(buildOpenApi());
+    const first = openapi();
+    expect(first.status).toBe(200);
+    const etag = first.headers.get("etag");
+    expect(etag).toBeTruthy();
+    const again = openapi(new NextRequest("http://localhost:3000/api/v1/openapi.json", { headers: { "if-none-match": etag! } }));
+    expect(again.status).toBe(304);
+    expect(again.headers.get("etag")).toBe(etag);
   });
 });

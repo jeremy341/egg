@@ -1,5 +1,7 @@
 import { NextRequest } from "next/server";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { eq } from "drizzle-orm";
+import { schema } from "@/server/db";
 import { useFreshDb } from "@/server/test/db";
 import { upsertUser } from "@/server/auth/session";
 import { createServer } from "@/server/servers";
@@ -47,5 +49,15 @@ describe("cleanup route authorization and confirmation", () => {
     vi.mocked(getCurrentUser).mockResolvedValue(owner);
     expect((await request(req("POST", { confirm: "wrong" }), { params: Promise.resolve({ id: project.id }) })).status).toBe(400);
     expect((await retry(req("PATCH", { confirmIdle: "yes" }), ctx())).status).toBe(400);
+  });
+
+  it("shows the cancel button for a failed cleanup and lets the owner drop it", async () => {
+    vi.mocked(getCurrentUser).mockResolvedValue(owner);
+    await db.db.update(schema.cleanupJobs).set({ state: "failed", attempts: 1 }).where(eq(schema.cleanupJobs.id, job.id));
+    const statusRes = await status(req("GET"), ctx());
+    expect(statusRes.status).toBe(200);
+    expect((await statusRes.json()).cleanup.canCancel).toBe(true);
+    expect((await cancel(req("DELETE"), ctx())).status).toBe(200);
+    expect(await db.db.select().from(schema.cleanupJobs).where(eq(schema.cleanupJobs.id, job.id)).get()).toBeUndefined();
   });
 });

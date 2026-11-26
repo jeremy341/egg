@@ -123,9 +123,14 @@ const TEAM_TITLES: Record<string, string> = {
   "/connect": "Connect a server",
 };
 
-function projectItems(slug: string): NavItem[] {
+/** The role of whoever is looking at a project. Files, Terminal and Settings are the owner's alone. */
+export type ProjectNavRole = "owner" | "developer" | "viewer";
+
+type ProjectItem = NavItem & { ownerOnly?: boolean };
+
+function projectItems(slug: string, role: ProjectNavRole = "owner"): NavItem[] {
   const base = `/projects/${slug}`;
-  return [
+  const items: ProjectItem[] = [
     {
       href: base,
       label: "Overview",
@@ -149,12 +154,14 @@ function projectItems(slug: string): NavItem[] {
       label: "Files",
       icon: FolderOpenIcon,
       active: (p) => p.startsWith(`${base}/files`),
+      ownerOnly: true,
     },
     {
       href: `${base}/terminal`,
       label: "Terminal",
       icon: TerminalWindowIcon,
       active: (p) => p.startsWith(`${base}/terminal`),
+      ownerOnly: true,
     },
     {
       href: `${base}/team`,
@@ -167,8 +174,11 @@ function projectItems(slug: string): NavItem[] {
       label: "Settings",
       icon: GearSixIcon,
       active: (p) => p.startsWith(`${base}/settings`),
+      ownerOnly: true,
     },
   ];
+  // Viewers cannot use the owner's pages: every request to them answers 404.
+  return role === "viewer" ? items.filter((i) => !i.ownerOnly) : items;
 }
 
 /** True where the page itself carries the "New project" button, so the top bar menu would repeat it. */
@@ -176,7 +186,7 @@ export function hasOwnCreateButton(pathname: string): boolean {
   return pathname === "/projects";
 }
 
-export function navFor(pathname: string): NavContext {
+export function navFor(pathname: string, projectRole: ProjectNavRole = "owner"): NavContext {
   const match = pathname.match(/^\/projects\/([^/]+)(\/.*)?$/);
 
   if (match) {
@@ -227,7 +237,7 @@ export function navFor(pathname: string): NavContext {
       deploymentId,
       backHref,
       backLabel: "All projects",
-      items: projectItems(slug),
+      items: projectItems(slug, projectRole),
       project: { slug, name },
     };
   }

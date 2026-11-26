@@ -4,11 +4,13 @@ import { audit } from "@/server/audit";
 import { config } from "@/server/config";
 import { newId, open, seal } from "@/server/crypto";
 import { getDb, schema, type Db } from "@/server/db";
+import { isUniqueViolation } from "@/server/db/errors";
 import { HttpError, notFound } from "@/server/http";
 import { terminals } from "@/server/terminal";
 import { NestSession, SshError } from "@/server/ssh/connection";
 import { generateServerKey } from "@/server/ssh/keys";
 import { assertNoAccountCleanup, assertNoServerCleanup } from "@/server/cleanup-guards";
+import { forgetDeliveriesForDeployments } from "@/server/webhooks";
 import { DEFAULT_CONTAINER_BUILD_MEMORY_MB } from "@/lib/build-memory";
 import {
   probeIssues,
@@ -95,6 +97,19 @@ export async function createServer(
   if (mine.some((s) => s.nestUsername.toLowerCase() === username.toLowerCase())) {
     throw new HttpError(409, `${username} is already connected.`, "conflict");
   }
+  // The whole server namespace (units, containers, ~/.egg) lives in the Nest
+  // account's home, so one Egg instance must not connect the same login twice
+  // — it would let two accounts overwrite each other's deployments. A unique
+  // index backs this; the check here gives the clearer message. The caller's
+  // own rows are fine: theirs to reattach.
+  const elsewhere = await db
+    .select({ id: schema.servers.id })
+    .from(schema.servers)
+    .where(and(sql`lower(${schema.servers.nestUsername}) = ${username.toLowerCase()}`, ne(schema.servers.userId, userId)))
+    .get();
+  if (elsewhere) {
+    throw new HttpError(409, `${username} is already connected to this Egg instance.`, "conflict");
+  }
 
   const key = generateServerKey(`egg:${username}`);
   const c = config();
@@ -143,6 +158,12 @@ export async function createServer(
     buildMemoryMb: DEFAULT_CONTAINER_BUILD_MEMORY_MB,
     status: "pending",
     createdAt: new Date(),
+  }).catch((err: unknown) => {
+    // The unique indexes above have the final word when two requests race.
+    if (isUniqueViolation(err)) {
+      throw new HttpError(409, `${username} is already connected to this Egg instance.`, "conflict");
+    }
+    throw err;
   });
   return getServerForUser(userId, id);
 }
@@ -218,11 +239,33 @@ export async function deleteServer(
   await assertDisconnectAllowed(db);
   // Root shells opened with this server's key must not outlive the key.
   await terminals().closeAllForUser(userId, "disabled", { serverId: server.id });
+  // Deleting the projects deletes their deployments with them, so the server
+  // gets the same work guard as a per-project delete: a queued, building or
+  // deploying deployment, or a job still running, blocks it.
+  const assertNoServerWork = async (tx: Db | Parameters<Parameters<Db["transaction"]>[0]>[0]) => {
+    const active = await tx.select({ id: schema.deployments.id }).from(schema.deployments)
+      .innerJoin(schema.projects, eq(schema.projects.id, schema.deployments.projectId))
+      .where(and(eq(schema.projects.serverId, server.id), inArray(schema.deployments.state, ["queued", "building", "deploying"]))).get();
+    if (active) throw new HttpError(409, "A deployment is queued or running on this server. Wait for it to finish or cancel it first.", "deployment_active");
+    const job = await tx.select({ id: schema.jobs.id }).from(schema.jobs)
+      .innerJoin(schema.deployments, eq(schema.deployments.id, schema.jobs.deploymentId))
+      .innerJoin(schema.projects, eq(schema.projects.id, schema.deployments.projectId))
+      .where(and(eq(schema.projects.serverId, server.id), eq(schema.jobs.state, "running"))).get();
+    if (job) throw new HttpError(409, "A deployment job is still running on this server. Check the project page before disconnecting.", "job_active");
+  };
   await db.transaction(async (tx) => {
     const projects = await assertDisconnectAllowed(tx);
+    if (deleteProjects && projects.length > 0) await assertNoServerWork(tx);
     if (deleteProjects || projects.length === 0) {
+      const deployments = await tx
+        .select({ id: schema.deployments.id })
+        .from(schema.deployments)
+        .innerJoin(schema.projects, eq(schema.projects.id, schema.deployments.projectId))
+        .where(eq(schema.projects.serverId, server.id));
       // Foreign keys remove the projects, deployments, logs, domains and samples with it.
       await tx.delete(schema.servers).where(and(eq(schema.servers.id, server.id), eq(schema.servers.userId, userId)));
+      // Delivery history survives the cascade, so links to the deleted deployments are forgotten.
+      await forgetDeliveriesForDeployments(tx, deployments.map((d) => d.id));
     } else {
       // The projects need the record to point at. Drop the key and the pinned host,
       // so nothing can connect until the account is connected again.
@@ -430,6 +473,9 @@ export async function testServer(
       session.close();
     }
   } catch (err) {
+    // A policy refusal (a cutover in progress, cleanup) is not a connection
+    // failure; recording it as one would flip the server to error state.
+    if (err instanceof HttpError) throw err;
     const error = err instanceof SshError ? err : null;
     const message = error?.message ?? "Could not connect to Nest.";
     await db

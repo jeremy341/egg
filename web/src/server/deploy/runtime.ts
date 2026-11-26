@@ -218,7 +218,7 @@ process.on('uncaughtException',(e)=>{console.error(String(e&&e.stack||e))});
 
 export const STATIC_PYTHON_SCRIPT = `
 import http.server, os, sys
-from urllib.parse import urlsplit, unquote
+from urllib.parse import quote, unquote, urlsplit
 ROOT = os.path.realpath(os.getcwd())
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else int(os.environ.get('PORT') or 3000)
 BS = chr(92)
@@ -266,6 +266,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 if os.path.exists(candidate) and not inside(candidate):
                     self.send_error(404, 'Not found')
                     return None
+        # The base class decides trailing slashes (and redirects) from the raw
+        # path, where an encoded slash (/d%2f) is not one: hand it the path the
+        # checks above settled on, so a folder's index is served, never a redirect loop.
+        self.path = '/' + '/'.join(quote(s, safe='') for s in parts)
+        if p.endswith('/') and self.path != '/':
+            self.path += '/'
         return super().send_head()
 http.server.ThreadingHTTPServer(('0.0.0.0', PORT), Handler).serve_forever()
 `.trim();

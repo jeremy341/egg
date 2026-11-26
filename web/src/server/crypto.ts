@@ -41,7 +41,10 @@ export function seal(plaintext: string, context: string): string {
 
 export function open(sealed: string, context: string): string {
   const [version, iv, tag, ct] = sealed.split(".");
-  if (version !== VERSION || !iv || !tag || !ct) {
+  // An empty ciphertext base64-decodes to the empty string, which is the
+  // legitimate sealing of "" (GCM appends no padding); only a missing
+  // segment means the value has the wrong shape.
+  if (version !== VERSION || !iv || !tag || ct === undefined) {
     throw new Error("Unrecognised sealed value");
   }
   const decipher = createDecipheriv(

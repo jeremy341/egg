@@ -98,6 +98,52 @@ describe("admitRequest", () => {
     expect(rateLimiter().activeBans()).toBe(0);
   });
 
+  it("keys the unknown-client path by a supplied user id, separate from the anonymous flood", () => {
+    // Fill the shared anonymous bucket first: a signed-in user must not inherit its 429.
+    for (let i = 0; i < RATE_LIMITS.ingressGlobal.limit; i++) {
+      expect(admitRequest(h(), { trustProxy: false, bucket: "all" }).refused).toBe(false);
+    }
+    expect(admitRequest(h(), { trustProxy: false, bucket: "all" }).refused).toBe(true);
+
+    const signedIn = (userId: string) => admitRequest(h(), { trustProxy: false, bucket: "all", userId });
+    expect(signedIn("u1").refused).toBe(false);
+    expect(signedIn("u2").refused).toBe(false);
+    // u1's own ingress gate applies: 600 a minute, independently of both the flood and u2.
+    for (let i = 0; i < RATE_LIMITS.ingress.limit - 1; i++) expect(signedIn("u1").refused).toBe(false);
+    expect(signedIn("u1")).toEqual({ refused: true, banned: false, retryAfterSeconds: expect.any(Number) });
+    expect(signedIn("u2").refused).toBe(false);
+    expect(admitRequest(h(), { trustProxy: false, bucket: "all" }).refused).toBe(true);
+  });
+
+  it("applies the JSON route gate per user id when the address is unknown", () => {
+    const json = (userId: string) => admitRequest(h(), { trustProxy: false, bucket: "json", userId });
+    for (let i = 0; i < RATE_LIMITS.ingressJson.limit; i++) expect(json("u1").refused).toBe(false);
+    expect(json("u1").refused).toBe(true);
+    // The page gate for the same user is a separate allowance, and another user starts fresh.
+    expect(admitRequest(h(), { trustProxy: false, bucket: "all", userId: "u1" }).refused).toBe(false);
+    expect(json("u2").refused).toBe(false);
+  });
+
+  it("bans a user id that keeps getting refused on the unknown-client path", () => {
+    const call = () => admitRequest(h(), { trustProxy: false, bucket: "all", userId: "u1" });
+    for (let i = 0; i < RATE_LIMITS.ingress.limit; i++) expect(call().refused).toBe(false);
+    for (let i = 0; i < INGRESS_BAN.refusals; i++) expect(call()).toMatchObject({ refused: true, banned: false });
+    expect(call()).toMatchObject({ refused: true, banned: true });
+    expect(rateLimiter().activeBans()).toBe(1);
+    expect(admitRequest(h(), { trustProxy: false, bucket: "all", userId: "u2" }).refused).toBe(false);
+  });
+
+  it("falls back to the session cookie for an unknown client with no user id", () => {
+    const cookie = (token: string) => h({ cookie: `other=1; egg_session=${token}` });
+    const call = (token: string) => admitRequest(cookie(token), { trustProxy: false, bucket: "all" });
+    for (let i = 0; i < RATE_LIMITS.ingress.limit; i++) expect(call("token-one").refused).toBe(false);
+    expect(call("token-one").refused).toBe(true);
+    expect(call("token-two").refused).toBe(false);
+    // Unrelated cookies and non-token values are still anonymous, sharing the global ceiling.
+    expect(admitRequest(h({ cookie: "other=1" }), { trustProxy: false, bucket: "all" }).refused).toBe(false);
+    expect(admitRequest(h({ cookie: "egg_session=not a token" }), { trustProxy: false, bucket: "all" }).refused).toBe(false);
+  });
+
   it("never limits or bans the webhook when the address is unknown, so no one can block GitHub's deliveries", () => {
     for (let i = 0; i < RATE_LIMITS.ingressGlobal.limit + 10; i++) {
       expect(admitRequest(h(), { trustProxy: false, bucket: "webhook" }).refused).toBe(false);

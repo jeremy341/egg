@@ -146,6 +146,27 @@ function tooFast(key: string, now: number): boolean {
   return false;
 }
 
+/**
+ * At most this many reports a minute for one project, whatever addresses they
+ * come from. The per-address rules only help when the address is real: without
+ * TRUST_PROXY every visitor shares UNKNOWN_IP and they never apply, so a flood
+ * could otherwise fill the database unhindered. This cap bounds a project's
+ * writes in every case, with room left for a genuinely busy site.
+ */
+export const PROJECT_WRITE_LIMIT = 200;
+const PROJECT_WRITE_WINDOW_MS = 60_000;
+const projectWrites = new Map<string, { start: number; n: number }>();
+export function overProjectWriteLimit(projectId: string, nowMs: number): boolean {
+  const w = projectWrites.get(projectId);
+  if (!w || nowMs - w.start >= PROJECT_WRITE_WINDOW_MS) {
+    if (projectWrites.size > 5000) for (const [k, v] of projectWrites) if (nowMs - v.start >= PROJECT_WRITE_WINDOW_MS) projectWrites.delete(k);
+    projectWrites.set(projectId, { start: nowMs, n: 1 });
+    return false;
+  }
+  w.n += 1;
+  return w.n > PROJECT_WRITE_LIMIT;
+}
+
 export async function recordPageview(
   key: string,
   raw: unknown,
@@ -160,6 +181,9 @@ export async function recordPageview(
   if (!found) return false;
   const project = { id: found.projectId };
   const f = found.features;
+  // The per-project cap bounds writes whatever the address, and keeps applying
+  // when every visitor shares the unknown one.
+  if (overProjectWriteLimit(project.id, now.getTime())) return false;
   // Per-address throttling only applies to a real address: the shared unknown
   // one must not throttle the whole project as a single visitor.
   if (who.ip !== UNKNOWN_IP && tooFast(`${project.id}|${who.ip}`, now.getTime())) return false;

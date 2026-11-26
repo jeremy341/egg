@@ -101,11 +101,6 @@ export async function addDomain(userId: string, raw: unknown) {
     if (!project || project.serverId !== server.id) throw notFound("Project not found");
     if (project.workloadKind === "worker" && !project.listenPort) throw new HttpError(400, "This worker exposes no port. Give it a listen port in Settings first.", "validation");
   }
-  // One answer whether the domain is yours already or on someone else's server: it is taken.
-  if (await db.select().from(schema.domains).where(eq(schema.domains.domain, domain)).get()) {
-    throw new HttpError(409, `${domain} is already added.`, "conflict");
-  }
-
   // Nest names need no check, and neither does a subdomain of a domain already verified on this server.
   const mine = await db
     .select()
@@ -118,16 +113,28 @@ export async function addDomain(userId: string, raw: unknown) {
       : "dns";
 
   const id = newId();
+  const staleBefore = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   try {
-    await db.insert(schema.domains).values({
-      id,
-      userId,
-      serverId: server.id,
-      projectId: input.projectId ?? null,
-      domain,
-      port: input.port,
-      status: verifiedBy === "dns" ? "pending" : "valid",
-      createdAt: new Date(),
+    await db.transaction(async (tx) => {
+      const existing = await tx.select().from(schema.domains).where(eq(schema.domains.domain, domain)).get();
+      if (existing) {
+        // A pending claim nobody ever verified must not reserve the name forever.
+        // Valid, invalid and recent pending rows keep the normal 409.
+        const stale = existing.status === "pending" && existing.userId !== userId &&
+          existing.createdAt < staleBefore;
+        if (!stale) throw new HttpError(409, `${domain} is already added.`, "conflict");
+        await tx.delete(schema.domains).where(eq(schema.domains.id, existing.id));
+      }
+      await tx.insert(schema.domains).values({
+        id,
+        userId,
+        serverId: server.id,
+        projectId: input.projectId ?? null,
+        domain,
+        port: input.port,
+        status: verifiedBy === "dns" ? "pending" : "valid",
+        createdAt: new Date(),
+      });
     });
   } catch (err) {
     if (isUniqueViolation(err)) throw new HttpError(409, `${domain} is already added.`, "conflict");
@@ -307,13 +314,14 @@ export function clearDnsCache() {
 /**
  * Check DNS and the stored status together. A verified domain whose record is gone
  * becomes "invalid" (never deleted); a domain still waiting stays "pending"; a failed
- * lookup changes nothing.
+ * lookup changes nothing and is reported as it is, so it is never mistaken for a
+ * verdict about the record.
  */
 export async function verifyDomain(
   userId: string,
   domainId: string,
   resolver: Resolver = dns
-): Promise<{ status: "valid" | "invalid"; reason: string | null }> {
+): Promise<{ status: "valid" | "invalid" | "unknown"; reason: string | null }> {
   const db = await getDb();
   const row = await db
     .select()
@@ -347,7 +355,8 @@ export async function verifyDomain(
     const status = result.state === "ok" ? "valid" : lost ? "invalid" : row.status;
     await db.update(schema.domains).set({ status, lastCheckedAt: new Date() }).where(eq(schema.domains.id, row.id));
   }
-  return { status: result.state === "ok" ? "valid" : "invalid", reason: result.reason };
+  const status = result.state === "ok" ? "valid" : result.state === "missing" ? "invalid" : "unknown";
+  return { status, reason: result.reason };
 }
 
 type ActiveRow = { id: string; domain: string; status: string; nestUsername: string };
@@ -422,7 +431,7 @@ export type DomainAppCheck =
 export async function checkDomainApp(
   userId: string,
   domainId: string,
-  dnsStatus: "valid" | "invalid",
+  dnsStatus: "valid" | "invalid" | "unknown",
   probe?: Probe
 ): Promise<DomainAppCheck> {
   const db = await getDb();

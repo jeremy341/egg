@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { audit } from "@/server/audit";
 import { config } from "@/server/config";
 import { newId } from "@/server/crypto";
@@ -13,6 +13,7 @@ import { connectToServer, getServerForUser, type ServerRow } from "@/server/serv
 import { parseProbe, PROBE_SCRIPT } from "@/server/ssh/probe";
 import type { NestSession } from "@/server/ssh/connection";
 import { cleanupBlockingStates } from "@/server/cleanup-guards";
+import { forgetDeliveriesForDeployments } from "@/server/webhooks";
 
 export const CLEANUP_DRAIN_MS = 5 * 60_000;
 const CLEANUP_LEASE_MS = 2 * 60_000;
@@ -190,7 +191,7 @@ export async function getCleanupStatus(userId: string, cleanupId: string): Promi
     notBefore: job.notBefore,
     error: job.error,
     recoveryRequired: job.state === "running" && !!job.leaseUntil && job.leaseUntil.getTime() < Date.now(),
-    canCancel: job.state === "draining" && job.attempts === 0,
+    canCancel: (job.state === "draining" && job.attempts === 0) || job.state === "failed",
     items: items.map((item) => ({
       id: item.id,
       projectId: item.projectId,
@@ -261,12 +262,19 @@ export async function retryCleanup(userId: string, cleanupId: string, confirmIdl
   return getCleanupStatus(userId, job.id);
 }
 
-/** A drain can be canceled only before the executor has started any remote step. */
+/**
+ * A drain can be canceled before the executor has started any remote step, and
+ * a failed job can always be dropped: its remote step has stopped, and leaving
+ * the row in place would block account deletion forever.
+ */
 export async function cancelCleanup(userId: string, cleanupId: string) {
   const db = await getDb();
   const gone = await db.delete(schema.cleanupJobs).where(and(
     eq(schema.cleanupJobs.id, cleanupId), eq(schema.cleanupJobs.userId, userId),
-    eq(schema.cleanupJobs.state, "draining"), eq(schema.cleanupJobs.attempts, 0)
+    or(
+      and(eq(schema.cleanupJobs.state, "draining"), eq(schema.cleanupJobs.attempts, 0)),
+      eq(schema.cleanupJobs.state, "failed")
+    )
   )).returning({ id: schema.cleanupJobs.id });
   if (!gone.length) throw new HttpError(409, "Cleanup has started and cannot be canceled safely.", "conflict");
 }
@@ -400,7 +408,14 @@ async function finalizeProject(userId: string, jobId: string, projectId: string)
     const item = await tx.select().from(schema.cleanupItems)
       .where(and(eq(schema.cleanupItems.cleanupJobId, jobId), eq(schema.cleanupItems.projectId, projectId))).get();
     if (!job || !item || item.state !== "done") throw new Error("Remote cleanup is not complete; project records were kept.");
+    const deployments = await tx
+      .select({ id: schema.deployments.id })
+      .from(schema.deployments)
+      .where(eq(schema.deployments.projectId, projectId));
     await tx.delete(schema.projects).where(and(eq(schema.projects.id, projectId), eq(schema.projects.userId, userId)));
+    // The cascade removes the deployments; their delivery history survives, so
+    // links that would now point at nothing are forgotten.
+    await forgetDeliveriesForDeployments(tx, deployments.map((d) => d.id));
     await tx.update(schema.cleanupJobs).set({ state: "done", step: "complete", finishedAt: new Date(), leaseOwner: null, leaseUntil: null, updatedAt: new Date() }).where(eq(schema.cleanupJobs.id, jobId));
   });
   await audit(userId, "project.delete", null, { projectId, remoteCleanup: "complete" });

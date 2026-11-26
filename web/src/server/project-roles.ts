@@ -91,7 +91,7 @@ export async function revokeProjectInvitation(userId: string, projectId: string,
 export async function acceptProjectInvitation(userId: string, token: string, now = new Date()) {
   if (typeof token !== "string" || token.length > 256 || !token) throw notFound("Invitation not found");
   const db = await getDb();
-  const projectId = await db.transaction(async (tx) => {
+  const { projectId, alreadyMember } = await db.transaction(async (tx) => {
     const user = await tx.select({ email: schema.users.email, emailVerified: schema.users.emailVerified }).from(schema.users).where(eq(schema.users.id, userId)).get();
     const invite = await tx.select().from(schema.projectInvitations).where(and(
       eq(schema.projectInvitations.tokenHash, sha256Hex(token)), isNull(schema.projectInvitations.acceptedAt), gt(schema.projectInvitations.expiresAt, now)
@@ -105,11 +105,12 @@ export async function acceptProjectInvitation(userId: string, token: string, now
     )).returning({ id: schema.projectInvitations.id });
     if (!claimed.length) throw notFound("Invitation not found");
     // Existing membership is never upgraded by accepting an older invitation.
-    await tx.insert(schema.projectMembers).values({ projectId: invite.projectId, userId, role: invite.role, createdAt: now }).onConflictDoNothing();
-    return invite.projectId;
+    const joined = await tx.insert(schema.projectMembers).values({ projectId: invite.projectId, userId, role: invite.role, createdAt: now })
+      .onConflictDoNothing().returning({ userId: schema.projectMembers.userId });
+    return { projectId: invite.projectId, alreadyMember: joined.length === 0 };
   });
   await audit(userId, "project.invitation.accept", projectId);
-  return { projectId };
+  return { projectId, alreadyMember };
 }
 
 export async function listProjectMembers(userId: string, projectId: string) {

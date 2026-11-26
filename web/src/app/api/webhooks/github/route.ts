@@ -2,7 +2,7 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { readBytesLimited, webhookBodyReads } from "@/server/body-limit";
 import { config, trustProxyEnabled } from "@/server/config";
-import { admitRequest } from "@/server/rate-limit-core";
+import { admitRequest, rateLimiter } from "@/server/rate-limit-core";
 import { claimDelivery, handleGithubEvent, matchesWebhookEventShape, releaseDelivery } from "@/server/github/webhook";
 import { HttpError } from "@/server/http";
 import { maintenanceState } from "@/server/maintenance";
@@ -26,6 +26,15 @@ const BODY_IDLE_TIMEOUT_MS = 15_000;
  */
 const BODY_DEADLINE_MS = 30_000;
 const SIGNATURE_FORMAT = /^sha256=[0-9a-f]{64}$/;
+/**
+ * A global ceiling on bodies read, even when no client address is known
+ * (TRUST_PROXY off). Repeated well-formed but wrong signatures can each hold a
+ * read slot for up to the body deadline; without this, nobody could be refused.
+ * Set above any real GitHub delivery rate so legitimate events are never lost.
+ */
+const GLOBAL_WEBHOOK_LIMIT = 120;
+const GLOBAL_WEBHOOK_WINDOW_MS = 60_000;
+const GLOBAL_WEBHOOK_KEY = "webhook-global";
 
 function maintenanceResponse() {
   return NextResponse.json({ error: { code: "maintenance", message: "GitHub events are paused during maintenance. Redeliver this event from GitHub after the window ends; Egg has not recorded it as handled." } }, { status: 503, headers: { "Retry-After": "60" } });
@@ -82,6 +91,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       { error: "too many webhook deliveries from this address; redeliver shortly" },
       { status: 429, headers: { "Retry-After": String(limited.retryAfterSeconds) } }
+    );
+  }
+
+  // With TRUST_PROXY off the per-address limiter above does nothing. Cap body
+  // reads globally too, so a flood of bad signatures cannot starve real ones.
+  const global = rateLimiter().check(GLOBAL_WEBHOOK_KEY, GLOBAL_WEBHOOK_LIMIT, GLOBAL_WEBHOOK_WINDOW_MS);
+  if (!global.allowed) {
+    return NextResponse.json(
+      { error: "too many webhook deliveries; redeliver shortly" },
+      { status: 429, headers: { "Retry-After": String(global.retryAfterSeconds) } }
     );
   }
 

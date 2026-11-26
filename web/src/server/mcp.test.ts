@@ -339,7 +339,10 @@ describe("tools/call", () => {
     const res = await call(writer, "deploy_branch", { projectId });
     expect(res.status).toBe(429);
     expect(res.headers.get("retry-after")).toBeTruthy();
-    expect((await send(rpc("tools/list"), writer)).status).toBe(200);
+    // Buckets are keyed by the user, not the token: the dozen reads above spent
+    // the user's read budget, so the second token lists at the same 429 even
+    // though its own writes have not touched a read bucket.
+    expect((await send(rpc("tools/list"), writer)).status).toBe(429);
   });
 });
 

@@ -371,15 +371,26 @@ async function cleanup(
       .where(and(eq(schema.deployments.projectId, project.id), inArray(schema.deployments.state, ["building", "deploying"])))
   ).map((d) => d.releaseId);
 
-  await session
+  const pruned = await session
     .script(remote.pruneReleases(home, project.slug, [...keep], building, unitDir, project.deploymentMode !== "native"), {
       timeoutMs: 120_000,
       onLine: (l) => log.info(l),
     })
-    .catch(() => {});
-
+    .then((result) => result.stdout ?? "")
+    .catch(() => "");
+  // Only releases the prune script confirmed removing are marked cleaned up, so
+  // a failed prune (a blip, a stopped script mid-way) keeps them as rollback
+  // targets that the server still has on disk.
+  const removedIds = new Set(
+    pruned
+      .split("\n")
+      .map((l) => /^Removed old release ([0-9a-f]{8})/.exec(l.trim())?.[1])
+      .filter((id): id is string => Boolean(id))
+  );
   for (const d of all.filter((x) => x.env === "production" && !keep.has(x.releaseId))) {
-    await db.update(schema.deployments).set({ cleanedUp: true }).where(eq(schema.deployments.id, d.id));
+    if (removedIds.has(d.releaseId.slice(0, 8))) {
+      await db.update(schema.deployments).set({ cleanedUp: true }).where(eq(schema.deployments.id, d.id));
+    }
   }
 }
 
@@ -401,6 +412,7 @@ export async function runDeployJob(
   let previewUnitWritten = false;
   let productionUnitWritten = false;
   let productionActivated = false;
+  let activationBegun = false;
   let productionUnitName: string | null = null;
   let previousUnitFile: string | null = null;
   let nextProductionUnitFile: string | null = null;
@@ -584,7 +596,7 @@ export async function runDeployJob(
     // Look at the container before anything is uploaded or created: one fix line, nothing changed.
     await checkContainerReady({ preflight, needs, home, slug: project.slug, log, signal });
     await run(session, log, "Preparing folders", remote.prepareDirs(home, project.slug), 120_000, signal);
-    await run(session, log, "Checking the service name", remote.guardUnitFree(deps.unitDir, unitInfo.unit), 120_000, signal);
+    await run(session, log, "Checking the service name", remote.guardUnitFree(deps.unitDir, unitInfo.unit, project.slug), 120_000, signal);
 
     // Install and build in the new release folder, under a cap, while the running app keeps serving.
     // Docker modes build the image (or prepare the Compose stack) in the same scope and watchdog.
@@ -624,12 +636,14 @@ export async function runDeployJob(
                 composeFile: `${releaseDir(home, project.slug, dep.releaseId)}/${project.composeFilePath}`,
                 canonical: composePaths.canonical,
                 json: composePaths.json,
+                project: composeProject,
               }),
               jsonPath: composePaths.json,
               steps: (json: unknown) => {
                 const parsed = validateResolvedCompose(json, {
                   service: project.composeService ?? "",
                   containerPort: project.containerPort ?? null,
+                  project: composeProject,
                 });
                 if (parsed.errors.length > 0) {
                   throw new ContainerBuildError(`The Compose file is not one Egg can deploy: ${parsed.errors.slice(0, 3).join(" ")}`);
@@ -693,6 +707,7 @@ export async function runDeployJob(
     const previous = dep.env === "production" ? await currentProduction(project.id, dep.id) : null;
     throwIfCanceled(signal);
     if (!(await beginActivation(deploymentId))) throw new DeployError("The deployment was canceled before activation.");
+    activationBegun = true;
 
     await measureStage("activation", async () => {
     if (dep.env === "production") {
@@ -818,6 +833,18 @@ export async function runDeployJob(
     log.error(message);
     await log.flush().catch(() => {});
     const canceled = (await stateOf(deploymentId)) === "canceled";
+    if (canceled && !activationBegun && session) {
+      // A cancel between the build and the switch never touched the running
+      // release, but the release folder it built — including its sealed env
+      // file — would stay behind on the server. Discard it the same way a
+      // cancel during the build does.
+      const canceledHome = (await getProbe(session, server).catch(() => null))?.home;
+      if (canceledHome) {
+        await session
+          .script(discardBuildScript({ home: canceledHome, slug: project.slug, releaseId: dep.releaseId }), { timeoutMs: 60_000 })
+          .catch(() => {});
+      }
+    }
     if (previewUnitWritten && session) {
       // A preview that did not come up must not stay behind as an enabled, restarting service.
       const home = (await getProbe(session, server).catch(() => null))?.home;
@@ -843,7 +870,7 @@ export async function runDeployJob(
           // preview that never came up does not restart-loop forever. Best effort.
           const unit = unitName(project.slug, { releaseId: dep.releaseId });
           const stopped = await session
-            .script(SH_MARKER_HELPERS + remote.removeOwnUnit(deps.unitDir, unit), { timeoutMs: 60_000 })
+            .script(SH_MARKER_HELPERS + remote.removeOwnUnit(deps.unitDir, unit, project.slug), { timeoutMs: 60_000 })
             .then((result) => result.code === 0)
             .catch(() => false);
           if (!stopped) log.warn(`Could not remove or stop the preview service ${unit}; it may keep restarting on the server.`);
@@ -865,7 +892,8 @@ export async function runDeployJob(
     }
     if (!(err instanceof DeployError) && !(err instanceof ContainerBuildError) && !(err instanceof BuildLockError) && !(err instanceof GithubBuildError) && !canceled) {
       // Unexpected failures are still reported to the user, but also logged.
-      console.error(`Deployment ${deploymentId} failed`, err);
+      // The raw error can carry sealed env values, so the log only sees the masked form.
+      console.error(`Deployment ${deploymentId} failed`, log.mask(err instanceof Error ? err.message : String(err)));
     }
   } finally {
     session?.close();
@@ -932,6 +960,7 @@ export async function runRollbackJob(
           aux = validateResolvedCompose(JSON.parse(readAux.stdout), {
             service: project.composeService ?? "",
             containerPort: project.containerPort ?? null,
+            project: remote.dockerComposeProjectName(project.slug),
           }).aux;
         } catch {
           throw new DeployError("The Compose form of that release could not be read. Deploy the branch again instead.");
@@ -1026,7 +1055,8 @@ export async function runRollbackJob(
     await log.flush().catch(() => {});
     const canceled = (await stateOf(deploymentId)) === "canceled";
     await setState(deploymentId, canceled ? "canceled" : "error", { error: log.mask(message).slice(0, 500), finishedAt: new Date() });
-    if (!(err instanceof DeployError)) console.error(`Rollback ${deploymentId} failed`, err);
+    // The raw error can carry sealed env values, so the log only sees the masked form.
+    if (!(err instanceof DeployError)) console.error(`Rollback ${deploymentId} failed`, log.mask(message));
   } finally {
     session?.close();
     await log.flush().catch(() => {});

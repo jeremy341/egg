@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `servers_nest_host_idx` ON `servers` (`host`,`nest_username`);

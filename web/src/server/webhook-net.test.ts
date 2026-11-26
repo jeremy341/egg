@@ -3,6 +3,7 @@ import {
   isBlockedAddress,
   parseWebhookUrl,
   resolveSafeAddress,
+  safePost,
   WebhookSendError,
 } from "@/server/webhook-net";
 
@@ -142,5 +143,45 @@ describe("resolveSafeAddress", () => {
     };
     expect((await resolveSafeAddress("8.8.8.8", spy).catch((e) => e)).code).toBe("blocked_address");
     expect(called).toBe(false);
+  });
+});
+
+describe("safePost", () => {
+  const url = new URL("https://hooks.example.com/in/abc");
+
+  it("times out a DNS lookup that never resolves instead of waiting on the OS resolver", async () => {
+    let transportCalled = false;
+    const err = await safePost(
+      url,
+      {},
+      "{}",
+      {
+        lookup: () => new Promise<never>(() => {}),
+        transport: async () => {
+          transportCalled = true;
+          return { status: 200 };
+        },
+        timeoutMs: 20,
+      }
+    ).catch((e) => e);
+    expect(err).toBeInstanceOf(WebhookSendError);
+    expect(err.code).toBe("timeout");
+    expect(err.retryable).toBe(true);
+    expect(transportCalled).toBe(false);
+  });
+
+  it("passes the budget left after resolution to the transport", async () => {
+    let budget: number | undefined;
+    const result = await safePost(url, {}, "{}", {
+      lookup: async () => [{ address: "93.184.216.34", family: 4 }],
+      transport: async (req) => {
+        budget = req.timeoutMs;
+        return { status: 204 };
+      },
+      timeoutMs: 1000,
+    });
+    expect(result).toEqual({ status: 204 });
+    expect(budget).toBeGreaterThan(0);
+    expect(budget).toBeLessThanOrEqual(1000);
   });
 });

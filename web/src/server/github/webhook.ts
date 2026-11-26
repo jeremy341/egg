@@ -4,6 +4,7 @@ import { isUniqueViolation } from "@/server/db/errors";
 import { assertGitRef, assertGitSha } from "@/server/deploy/build";
 import { attachPullRequest, closePullRequestPreviews } from "@/server/github/pulls";
 import { enqueueDeployment } from "@/server/projects";
+import { HttpError } from "@/server/http";
 import { maintenanceError, maintenanceState } from "@/server/maintenance";
 
 export type WebhookResult = {
@@ -206,6 +207,9 @@ export async function handleGithubEvent(
       });
       created.push(dep.id);
     } catch (err) {
+      // Maintenance starting mid-fan-out is a whole-event failure: let the route
+      // release the replay digest and answer 503 so GitHub redelivers.
+      if (err instanceof HttpError && err.code === "maintenance") throw err;
       // The unique index caught a racing duplicate of the same commit. Anything
       // else is one project's failure; log it and keep the rest deploying.
       if (isUniqueViolation(err)) continue;
@@ -289,6 +293,9 @@ async function handlePullRequest(payload: unknown): Promise<WebhookResult> {
       });
       created.push(dep.id);
     } catch (err) {
+      // Maintenance starting mid-fan-out must fail the whole event, not just this
+      // project, so the route releases the digest and GitHub can redeliver.
+      if (err instanceof HttpError && err.code === "maintenance") throw err;
       // The unique index caught a racing duplicate of the same commit. Anything
       // else is one project's failure; log it and keep the rest deploying.
       if (isUniqueViolation(err)) continue;
@@ -320,6 +327,9 @@ async function handleRepository(payload: unknown): Promise<WebhookResult> {
 
   const db = await getDb();
   const projects = await db.select().from(schema.projects).where(sameRepo(oldName));
+  // The dispatcher checked maintenance before this event; check again before
+  // rewriting rows in case a window opened in the meantime.
+  if ((await maintenanceState()).active) throw maintenanceError();
   let renamed = 0;
   for (const project of projects) {
     if (!(await installationTrusted(db, project, p.installation?.id))) continue;
@@ -345,6 +355,9 @@ async function handleInstallation(payload: unknown): Promise<WebhookResult> {
   const p = payload as { action?: string; installation?: { id?: number } };
   if (p.action === "deleted" && p.installation?.id) {
     const db = await getDb();
+    // The dispatcher checked maintenance before this event; check again before
+    // deleting rows in case a window opened in the meantime.
+    if ((await maintenanceState()).active) throw maintenanceError();
     await db
       .delete(schema.githubInstallations)
       .where(eq(schema.githubInstallations.id, p.installation.id));

@@ -151,6 +151,11 @@ export const RATE_LIMITS = {
   terminalInput: { limit: 300, windowMs: 60_000, what: "terminal input" },
   fileWrite: { limit: 60, windowMs: 60_000, what: "file changes" },
   orphanRemoval: { limit: 10, windowMs: 60_000, what: "leftover removals" },
+  // Dashboard routes that open an SSH connection to the user's container, per signed-in user, per minute: a
+  // small shared bucket for the slow container reads (file reads, journal logs, usage, opening a terminal),
+  // and a tighter one for restarting the production service.
+  sshCall: { limit: 10, windowMs: 60_000, what: "slow calls to your container" },
+  serviceRestart: { limit: 6, windowMs: 60_000, what: "service restarts" },
   signIn: { limit: 20, windowMs: 60_000, what: "sign-in attempts" },
   badToken: { limit: 60, windowMs: 60_000, what: "unrecognised access tokens" },
   // GitHub builds: per project, per hour. Keyed by project id (the project the build credential belongs to).
@@ -186,7 +191,15 @@ export const INGRESS_BAN = {
 
 const KEY = Symbol.for("egg.rate-limiter");
 
-/** One limiter per process, shared by separately bundled route modules and the proxy. */
+/**
+ * One limiter PER PROCESS, shared by separately bundled route modules and the proxy.
+ *
+ * INVARIANT: there is no shared store, and Egg's supported self-hosted topology runs exactly ONE app container.
+ * Every limit here is therefore counted once per process. N replicas multiply every limit by N and thin out the
+ * bans by the same factor (refusals are spread over N independent tables), so a multi-replica deployment is not a
+ * supported way to run this app. Do not "fix" that by adding a shared store: the in-process design is deliberate,
+ * the same as the terminal sessions, and a network store would change every limit's behaviour on restart and outage.
+ */
 export function rateLimiter(): SlidingWindowLimiter {
   const g = globalThis as unknown as Record<symbol, SlidingWindowLimiter | undefined>;
   return (g[KEY] ??= new SlidingWindowLimiter());
@@ -217,26 +230,56 @@ export type Admission =
   | { refused: true; banned: boolean; retryAfterSeconds: number };
 
 /**
+ * A stable identity for a request whose address is unknown: the session cookie token. The cookie name must stay in
+ * step with SESSION_COOKIE in src/server/auth/session.ts; this import-free module (loaded by the proxy without the
+ * auth or database code) cannot import it. Only a token-shaped value counts, so an unrelated cookie cannot claim a
+ * bucket. A cookie is a claim, not proof of a valid session - validation needs the database - but it is enough to
+ * keep a signed-in browser out of the shared anonymous bucket.
+ */
+function sessionCookieKey(headers: Headers): string | null {
+  const cookie = headers.get("cookie");
+  if (!cookie) return null;
+  for (const part of cookie.split(";")) {
+    const eq = part.indexOf("=");
+    if (eq < 0 || part.slice(0, eq).trim() !== "egg_session") continue;
+    const token = part.slice(eq + 1).trim();
+    if (token && /^[A-Za-z0-9_-]+$/.test(token)) return `session:${token}`;
+  }
+  return null;
+}
+
+/**
  * Decide whether a request may run. Called by the proxy for every request it sees, and by the handlers the proxy
  * does not see (see the matcher in src/proxy.ts).
  *
- * - No address (TRUST_PROXY off, or none sent): all such requests share one key, so only the high `ingressGlobal`
- *   ceiling applies. Nothing is banned for it. The webhook is not limited at all in that case, so no one can
- *   block GitHub's deliveries by filling the shared key.
- * - Address known: a ban is checked first. Then `ingress` (and `ingressJson` for the JSON routes). Every refusal
- *   counts toward the ban. The webhook gets only `ingressWebhook` and is never banned, so a GitHub address
- *   cannot be locked out.
+ * - Address known (TRUST_PROXY on, or a socket address): a ban is checked first. Then `ingress` (and `ingressJson`
+ *   for the JSON routes). Every refusal counts toward the ban. The webhook gets only `ingressWebhook` and is never
+ *   banned, so a GitHub address cannot be locked out.
+ * - No address, `options.userId` given (a route that has validated the session): the same per-route and ingress
+ *   gates, keyed by that user id. All of a user's sessions and routes then share one bucket, and an anonymous
+ *   flood on the shared key cannot hold them at 429.
+ * - No address, session cookie present: the middleware cannot validate a cookie or resolve a user id without the
+ *   database, so the cookie token is used as a stable per-session key. It still gets its own per-route and ingress
+ *   gates instead of the shared anonymous bucket; a forged token only earns its own bucket, not anyone else's 429.
+ * - No address and no identity: all such requests share the `ingress-global` ceiling only, and nothing is banned
+ *   for it. The webhook is not limited at all in that case, so no one can block GitHub's deliveries by filling
+ *   the shared key.
  */
 export function admitRequest(
   headers: Headers,
-  options: { trustProxy: boolean; bucket: IngressBucket }
+  options: { trustProxy: boolean; bucket: IngressBucket; userId?: string | null }
 ): Admission {
   const limiter = rateLimiter();
   limiter.sweepIfDue();
   const address = pickClientIp(headers, options.trustProxy, null);
 
-  if (!address) {
-    if (options.bucket === "webhook") return { refused: false };
+  // A webhook has no session, so a filled shared key must never block GitHub's deliveries.
+  if (!address && options.bucket === "webhook") return { refused: false };
+
+  // An address wins when one is known (TRUST_PROXY on). With none, prefer a validated user id, then the session
+  // cookie. Only requests with none of the three fall back to the shared anonymous key.
+  const identity = address ?? (options.userId ? `user:${options.userId}` : sessionCookieKey(headers));
+  if (!identity) {
     const g = RATE_LIMITS.ingressGlobal;
     const r = limiter.check("ingress-global", g.limit, g.windowMs);
     return r.allowed ? { refused: false } : { refused: true, banned: false, retryAfterSeconds: r.retryAfterSeconds };
@@ -244,20 +287,20 @@ export function admitRequest(
 
   if (options.bucket === "webhook") {
     const w = RATE_LIMITS.ingressWebhook;
-    const r = limiter.check(`ingress-webhook:${address}`, w.limit, w.windowMs);
+    const r = limiter.check(`ingress-webhook:${identity}`, w.limit, w.windowMs);
     return r.allowed ? { refused: false } : { refused: true, banned: false, retryAfterSeconds: r.retryAfterSeconds };
   }
 
-  const ban = limiter.banRemainingMs(`ban:${address}`);
+  const ban = limiter.banRemainingMs(`ban:${identity}`);
   if (ban > 0) return { refused: true, banned: true, retryAfterSeconds: Math.ceil(ban / 1000) };
 
   const rules: [string, { limit: number; windowMs: number }][] = [["all", RATE_LIMITS.ingress]];
   if (options.bucket === "json") rules.push(["json", RATE_LIMITS.ingressJson]);
   for (const [name, rule] of rules) {
-    const r = limiter.check(`ingress-${name}:${address}`, rule.limit, rule.windowMs);
+    const r = limiter.check(`ingress-${name}:${identity}`, rule.limit, rule.windowMs);
     if (r.allowed) continue;
-    const refusals = limiter.countEvent(`refused:${address}`, INGRESS_BAN.windowMs, INGRESS_BAN.refusals);
-    if (refusals >= INGRESS_BAN.refusals) limiter.ban(`ban:${address}`, INGRESS_BAN.banMs);
+    const refusals = limiter.countEvent(`refused:${identity}`, INGRESS_BAN.windowMs, INGRESS_BAN.refusals);
+    if (refusals >= INGRESS_BAN.refusals) limiter.ban(`ban:${identity}`, INGRESS_BAN.banMs);
     return { refused: true, banned: false, retryAfterSeconds: r.retryAfterSeconds };
   }
   return { refused: false };

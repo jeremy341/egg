@@ -1,8 +1,8 @@
-import { and, desc, eq, isNull, lt, or } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lt, or } from "drizzle-orm";
 import { z } from "zod";
 import { audit } from "@/server/audit";
 import { newId, open, seal } from "@/server/crypto";
-import { getDb, schema } from "@/server/db";
+import { getDb, schema, type Db } from "@/server/db";
 import { HttpError, notFound } from "@/server/http";
 import {
   parseWebhookUrl,
@@ -260,11 +260,14 @@ export async function rotateWebhookSecret(
   const db = await getDb();
   const secret = newWebhookSecret();
   const now = new Date();
-  await db
-    .update(schema.webhooks)
-    .set({ secretEnc: seal(secret, context(webhookId)), secretRotatedAt: now, updatedAt: now })
-    .where(and(eq(schema.webhooks.id, webhookId), eq(schema.webhooks.userId, userId)));
-  await audit(userId, "webhook.rotate", webhookId);
+  // The rotation and its audit line land together or not at all.
+  await db.transaction(async (tx) => {
+    await tx
+      .update(schema.webhooks)
+      .set({ secretEnc: seal(secret, context(webhookId)), secretRotatedAt: now, updatedAt: now })
+      .where(and(eq(schema.webhooks.id, webhookId), eq(schema.webhooks.userId, userId)));
+    await tx.insert(schema.auditLog).values({ userId, action: "webhook.rotate", target: webhookId, at: new Date() });
+  });
   return { webhook: await getWebhook(userId, webhookId), secret };
 }
 
@@ -444,6 +447,19 @@ export const EVENT_FOR_STATE: Record<string, WebhookEventName | undefined> = {
 };
 
 let lastPrune = 0;
+
+/**
+ * Deployments are being deleted: the deliveries stay until retention removes
+ * them, but the link must not outlive them. Takes the caller's transaction so
+ * the deployments and their delivery rows change together.
+ */
+export async function forgetDeliveriesForDeployments(db: Pick<Db, "update">, deploymentIds: string[]): Promise<void> {
+  if (deploymentIds.length === 0) return;
+  await db
+    .update(schema.webhookDeliveries)
+    .set({ deploymentId: null })
+    .where(inArray(schema.webhookDeliveries.deploymentId, deploymentIds));
+}
 
 /** Delete deliveries older than 30 days and close ones that were cut off. */
 export async function pruneDeliveries(now = new Date()): Promise<void> {

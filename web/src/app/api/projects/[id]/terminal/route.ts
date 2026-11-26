@@ -2,6 +2,7 @@ import { readJsonLimited } from "@/server/body-limit";
 import { z } from "zod";
 import { authed, handle, ok } from "@/server/http";
 import { requireProjectFeature } from "@/server/permission-guards";
+import { enforceRateLimit } from "@/server/rate-limit";
 import { terminals, TERMINAL_LIMITS } from "@/server/terminal";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -23,6 +24,8 @@ export const POST = handle<Ctx>(async (req, { params }) => {
   const user = await authed();
   const { id } = await params;
   await requireProjectFeature(user.id, id, "terminal");
+  // Opening connects to the user's container, so it shares the small slow-call budget with the other SSH reads.
+  enforceRateLimit("sshCall", user.id);
   const raw = await readJsonLimited(req, { fallback: undefined });
   const size = sizeInput.parse(raw);
   const session = await terminals().open(user.id, id, size);

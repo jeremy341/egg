@@ -220,9 +220,38 @@ describe("disconnecting a server", () => {
     }
   });
 
+  it("refuses to delete the projects while a deployment is queued or running on the server", async () => {
+    const owner = await newUser();
+    const { server, project, deployment } = await serverWithProject(owner, "active-delete", 3321);
+    await ctx.db.update(schema.deployments).set({ state: "queued" }).where(eq(schema.deployments.id, deployment.id));
+
+    await expect(deleteServer(owner, server.id, { deleteProjects: true })).rejects.toMatchObject({
+      status: 409,
+      code: "deployment_active",
+    });
+    expect(await ctx.db.select().from(schema.servers).where(eq(schema.servers.id, server.id)).get()).toBeTruthy();
+    expect(await ctx.db.select().from(schema.projects).where(eq(schema.projects.id, project.id)).get()).toBeTruthy();
+  });
+
+  it("refuses to delete the projects while a job still runs on the server", async () => {
+    const owner = await newUser();
+    const { server, project, deployment } = await serverWithProject(owner, "job-delete", 3322);
+    await ctx.db.update(schema.deployments).set({ state: "error" }).where(eq(schema.deployments.id, deployment.id));
+    await ctx.db.update(schema.jobs)
+      .set({ state: "running", lockedBy: "crashed-worker", lockedAt: new Date() })
+      .where(eq(schema.jobs.deploymentId, deployment.id));
+
+    await expect(deleteServer(owner, server.id, { deleteProjects: true })).rejects.toMatchObject({
+      status: 409,
+      code: "job_active",
+    });
+    expect(await ctx.db.select().from(schema.projects).where(eq(schema.projects.id, project.id)).get()).toBeTruthy();
+  });
+
   it("removes the projects, their deployments and their logs when asked", async () => {
     const owner = await newUser();
     const { server, project, deployment } = await serverWithProject(owner, "drop-me", 3303);
+    await ctx.db.update(schema.deployments).set({ state: "ready" }).where(eq(schema.deployments.id, deployment.id));
 
     await deleteServer(owner, server.id, { deleteProjects: true });
 
@@ -237,6 +266,7 @@ describe("disconnecting a server", () => {
     const owner = await newUser();
     const a = await serverWithProject(owner, "iso-a", 3304);
     const b = await serverWithProject(owner, "iso-b", 3305);
+    await ctx.db.update(schema.deployments).set({ state: "ready" }).where(eq(schema.deployments.id, a.deployment.id));
 
     await deleteServer(owner, a.server.id, { deleteProjects: true });
 

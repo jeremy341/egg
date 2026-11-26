@@ -83,7 +83,10 @@ export const POST = handle(async (req: NextRequest) => {
     return signInError(c, "local_password_conflict");
   }
   const user = owner ?? await upsertUser({ id: LOCAL_OWNER_ID, name: "Owner", email: null, slackId: null });
-  const session = await createSession(user.id, req.headers.get("user-agent"), req.cookies.get(SESSION_COOKIE)?.value);
+  // The session this browser already has ends only once the sign-in is certain,
+  // so a raced sign-in that fails never loses it.
+  const oldToken = req.cookies.get(SESSION_COOKIE)?.value;
+  const session = await createSession(user.id, req.headers.get("user-agent"));
   if (verifiedHash) {
     const latest = await localCredential();
     if (latest?.passwordHash !== verifiedHash) {
@@ -91,6 +94,7 @@ export const POST = handle(async (req: NextRequest) => {
       return signInError(c, "local_password");
     }
   }
+  await deleteSession(oldToken);
   const res = NextResponse.redirect(new URL("/projects", c.APP_URL), 303);
   res.cookies.set(SESSION_COOKIE, session.token, sessionCookieOptions(session.expiresAt));
   return res;

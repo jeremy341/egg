@@ -19,7 +19,7 @@ function back(error: string, to = "/login") {
   const url = new URL(to, config().APP_URL);
   url.searchParams.set(to === "/login" ? "error" : "reauth", error);
   const res = NextResponse.redirect(url, 303);
-  res.cookies.delete({ name: OAUTH_COOKIE, path: "/api/auth" });
+  res.cookies.delete({ name: OAUTH_COOKIE, path: "/" });
   return res;
 }
 
@@ -32,7 +32,13 @@ export async function GET(req: NextRequest) {
 
   const code = params.get("code");
   const state = params.get("state");
-  const raw = req.cookies.get(OAUTH_COOKIE)?.value;
+  const cookies = req.cookies.getAll(OAUTH_COOKIE);
+  const header = req.headers.get("cookie") ?? "";
+  const repeated = header.split(";").filter((part) => part.trimStart().startsWith(`${OAUTH_COOKIE}=`)).length > 1;
+  // Two cookies with this name mean one was planted. RequestCookies keeps only
+  // the last, so also count them in the raw header before it can decide for us.
+  if (cookies.length > 1 || repeated) return back("state_mismatch");
+  const raw = cookies[0]?.value;
   if (!code || !state || !raw) return back("invalid_request");
 
   const saved = parseOauthCookie(raw);
@@ -51,7 +57,7 @@ export async function GET(req: NextRequest) {
       await audit(user.id, "auth.reauth");
       const next = safeNextPath(saved.n);
       const res = NextResponse.redirect(new URL(next, config().APP_URL), 303);
-      res.cookies.delete({ name: OAUTH_COOKIE, path: "/api/auth" });
+      res.cookies.delete({ name: OAUTH_COOKIE, path: "/" });
       return res;
     }
     const user = await upsertUser(profile);
@@ -63,7 +69,7 @@ export async function GET(req: NextRequest) {
     );
     const res = NextResponse.redirect(new URL("/projects", config().APP_URL), 303);
     res.cookies.set(SESSION_COOKIE, session.token, sessionCookieOptions(session.expiresAt));
-    res.cookies.delete({ name: OAUTH_COOKIE, path: "/api/auth" });
+    res.cookies.delete({ name: OAUTH_COOKIE, path: "/" });
     return res;
   } catch (err) {
     console.error("Hack Club login failed", err);

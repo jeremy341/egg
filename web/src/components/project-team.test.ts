@@ -1,9 +1,11 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
-import { AcceptInvite } from "@/components/accept-invite";
-import { ProjectTeam, type TeamInvitation, type TeamMember } from "@/components/project-team";
+import { describe, expect, it, vi } from "vitest";
+import { acceptOutcome, AcceptInvite } from "@/components/accept-invite";
+import { applyRole, onRoleChangeFailed, ProjectTeam, type TeamInvitation, type TeamMember } from "@/components/project-team";
 import { MAX_OPEN_INVITES } from "@/lib/team";
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {} }) }));
 
 const DAY = 86_400_000;
 const iso = (offsetDays: number) => new Date(Date.now() + offsetDays * DAY).toISOString();
@@ -114,5 +116,38 @@ describe("the accept page", () => {
     expect(html).toContain("Accept the invitation");
     expect(html).not.toContain("did not work");
     expect(html).not.toContain("token");
+  });
+
+  it("tells a new member from one who was already on the project", () => {
+    expect(acceptOutcome({ alreadyMember: false })).toEqual({ kind: "done", alreadyMember: false });
+    expect(acceptOutcome({ alreadyMember: true })).toEqual({ kind: "done", alreadyMember: true });
+  });
+
+  it("maps every server refusal to its own notice", () => {
+    const signIn = Object.assign(new Error("Sign in required"), { code: "unauthorized" });
+    expect(acceptOutcome(null, signIn)).toEqual({ kind: "signin" });
+    const refused = Object.assign(new Error("Invitation not found"), { code: "not_found" });
+    expect(acceptOutcome(null, refused)).toEqual({ kind: "refused" });
+  });
+
+  it("keeps a failure retryable: its text reaches the page", () => {
+    const failed = acceptOutcome(null, new Error("Request failed (500)"));
+    expect(failed).toEqual({ kind: "failed", text: "Request failed (500)" });
+  });
+});
+
+describe("the Team page's optimistic role change", () => {
+  it("applies the optimistic role immediately, without touching other rows", () => {
+    const rows = [member(), member({ userId: "u2", role: "viewer" })];
+    const optimistic = applyRole(rows, "u2", "developer");
+    expect(optimistic).toEqual([rows[0], { ...rows[1], role: "developer" }]);
+    expect(rows[1].role).toBe("viewer");
+  });
+
+  it("falls back to server truth on every failed change, including interleaved ones", () => {
+    const refresh = vi.fn();
+    onRoleChangeFailed(refresh);
+    onRoleChangeFailed(refresh);
+    expect(refresh).toHaveBeenCalledTimes(2);
   });
 });

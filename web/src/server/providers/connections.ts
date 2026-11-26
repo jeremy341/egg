@@ -61,7 +61,8 @@ export function publicProviderClient(provider: Kind, repoUrl: string, deps: Depe
 }
 
 export function repositoryNameFromUrl(repoUrl: string): string {
-  const url = new URL(repoUrl);
+  let url: URL;
+  try { url = new URL(repoUrl); } catch { throw new HttpError(400, "Invalid repository URL.", "validation"); }
   return url.pathname.replace(/^\//, "").replace(/\/$/, "").replace(/\.git$/, "");
 }
 

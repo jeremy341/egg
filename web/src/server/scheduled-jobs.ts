@@ -11,6 +11,7 @@ import {
   JOB_TIMEOUT_SECONDS,
   NOT_INSTALLED_EXIT,
   NO_RELEASE_EXIT,
+  dockerJobCommand,
   installJob,
   jobLogs,
   jobServiceFile,
@@ -197,7 +198,7 @@ async function install(
           // job runs in the release folder as before.
           command: project.deploymentMode === "native"
             ? row.command
-            : `docker exec -e PORT=${project.containerPort ?? 3000} ${`egg-${project.slug}`} sh -lc ${JSON.stringify(row.command)}`,
+            : dockerJobCommand({ slug: project.slug, containerPort: project.containerPort ?? 3000, command: row.command }),
           pathPrefix: project.deploymentMode === "native" && project.runtime === "python" ? `${currentLink(home, project.slug)}/.venv/bin` : undefined,
         }),
         timerFile: jobTimerFile({ slug: project.slug, jobId: row.id, name: row.name, schedule }),
