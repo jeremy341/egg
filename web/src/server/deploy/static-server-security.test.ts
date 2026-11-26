@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { NestSession, shellQuote } from "@/server/ssh/connection";
 import { generateServerKey } from "@/server/ssh/keys";
 import { freePort } from "@/server/test/fake-nest";
-import { startMockSsh, wslEnabled, type MockSsh } from "@/server/test/mock-ssh";
+import { linuxTestHostAvailable, startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
 import { STATIC_NODE_SCRIPT, STATIC_PYTHON_SCRIPT } from "./runtime";
 
 let mock: MockSsh | undefined;
@@ -24,7 +24,7 @@ const suites = [
 ];
 
 describe.each(suites)("$name static server", ({ script, command }) => {
-  it.skipIf(process.platform === "win32" && !wslEnabled())("serves public files and refuses secrets, escapes, malformed paths, and listings", async () => {
+  it.skipIf(!linuxTestHostAvailable())("serves public files and refuses secrets, escapes, malformed paths, and listings", async () => {
     const key = generateServerKey("static-security-test");
     mock = await startMockSsh({ authorizedKeys: [key.publicKey] });
     session = await NestSession.connect({ host: "127.0.0.1", port: mock.port, username: "test", privateKey: key.privateKey });
@@ -77,6 +77,10 @@ echo "$server_pid"`);
     expect(await request("/%2e%2e/%2e%2e/etc/passwd")).toMatchObject({ status: "404" });
     expect(await request("/%2e%65nv")).toMatchObject({ status: "404" });
     expect(await request("/assets/..%2f.env")).toMatchObject({ status: "404" });
+    // An encoded trailing slash is the folder too: its index is served, never a redirect loop.
+    expect(await request("/%2f")).toEqual({ body: "home page", status: "200" });
+    expect(await request("/assets%2f")).toMatchObject({ status: "404" });
+    expect(await request("/%252f")).toMatchObject({ status: "404" });
     // A malformed escape is a 400, and the server is still there for the next request.
     expect(await request("/%E0%A4%A")).toMatchObject({ status: "400" });
     expect(await request("/%")).toMatchObject({ status: "400" });

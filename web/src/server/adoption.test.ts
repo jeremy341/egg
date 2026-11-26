@@ -1,7 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { eq } from "drizzle-orm";
+import type { ZodError } from "zod";
 import type { SessionUser } from "@/server/auth/session";
+import { zodToHttp } from "@/server/http";
 import { upsertUser } from "@/server/auth/session";
 import { blockingConflicts, checkProjectConflicts, detectConflicts, repoNameOf } from "@/server/adoption";
 import { schema } from "@/server/db";
@@ -9,6 +11,7 @@ import { resetConfigForTests } from "@/server/config";
 import { rateLimiter } from "@/server/rate-limit";
 import { createProject } from "@/server/projects";
 import { createServer, getServerForUser, type ServerRow } from "@/server/servers";
+import { serverDiscriminator, unitName } from "@/server/deploy/layout";
 import { NestSession } from "@/server/ssh/connection";
 import { open } from "@/server/crypto";
 import {
@@ -18,7 +21,7 @@ import {
 } from "@/server/ssh/adoption-probe";
 import { installFakeSystemd } from "@/server/test/fake-nest";
 import { useFreshDb } from "@/server/test/db";
-import { startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
+import { linuxTestHostAvailable, startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
 
 let signedIn: SessionUser | null = null;
 vi.mock("@/server/auth/current", () => ({ getCurrentUser: async () => signedIn }));
@@ -89,6 +92,38 @@ describe("detectConflicts", () => {
       ctx0
     );
     expect(own.some((c) => c.kind === "port")).toBe(false);
+  });
+
+  it("does not block our own port holder when ss names only an unrelated port", () => {
+    // The holder on our port has no pid (ss could not attribute it), but a listener on
+    // another port does. haveNames must be scoped to this port's holders, or the ownUp
+    // fallback is disabled and our own Egg holder is misread as a foreign conflict.
+    const found = detectConflicts(
+      empty({
+        unitFile: { managed: true, active: "active" },
+        own: { pid: 51, controlGroup: "/system.slice/egg-blog.service", loaded: true },
+        ports: [
+          { port: 3000, address: "0.0.0.0", process: "node", pid: null, cgroups: [] },
+          { port: 4000, address: "0.0.0.0", process: "node", pid: 999, cgroups: ["/user.slice"] },
+        ],
+      }),
+      ctx0
+    );
+    expect(found.some((c) => c.kind === "port")).toBe(false);
+  });
+
+  it("still blocks an unattributed port holder when our own service is not running", () => {
+    const found = detectConflicts(
+      empty({
+        unitFile: { managed: true, active: "inactive" },
+        ports: [
+          { port: 3000, address: "0.0.0.0", process: "node", pid: null, cgroups: [] },
+          { port: 4000, address: "0.0.0.0", process: "node", pid: 999, cgroups: ["/user.slice"] },
+        ],
+      }),
+      ctx0
+    );
+    expect(found.some((c) => c.kind === "port" && c.blocking)).toBe(true);
   });
 
   it("says so, without blocking, when ports cannot be read", () => {
@@ -177,7 +212,7 @@ describe("the adoption probe script", () => {
   });
 });
 
-describe("on a container", () => {
+describe.skipIf(!linuxTestHostAvailable())("on a container", () => {
   let db: Awaited<ReturnType<typeof useFreshDb>>;
   let userId: string;
   let otherId: string;
@@ -216,7 +251,8 @@ describe("on a container", () => {
   });
 
   it("reports an unmanaged unit and folder, a checkout and a running copy, and changes nothing", async () => {
-    mock.writeFile(`${home}/units/egg-blog.service`, "[Service]\nExecStart=/usr/bin/true\n");
+    const scoped = unitName("blog", undefined, serverDiscriminator(row.id));
+    mock.writeFile(`${home}/units/${scoped}`, "[Service]\nExecStart=/usr/bin/true\n");
     mock.writeFile(`${home}/.egg/blog/.git/config`, "[core]\n");
     mock.writeFile(`${home}/app/.git/config`, '[remote "origin"]\n\turl = https://x-access-token:SECRET@github.com/sam/blog.git\n');
     mock.writeFile(`${home}/units/mine.service`, `[Service]\nWorkingDirectory=${home}/app\nExecStart=/bin/bash -lc "exec sleep 300"\n`);
@@ -226,7 +262,7 @@ describe("on a container", () => {
     const found = await checkProjectConflicts(userId, row.id, { slug: "blog", port: 3000, repoFullName: "sam/blog" });
     await sh("systemctl stop mine.service");
 
-    expect(found.find((c) => c.name === "egg-blog.service")).toMatchObject({ kind: "unit", blocking: true, managedByEgg: false });
+    expect(found.find((c) => c.name === scoped)).toMatchObject({ kind: "unit", blocking: true, managedByEgg: false });
     expect(found.find((c) => c.name === "~/.egg/blog")).toMatchObject({ kind: "checkout", blocking: true });
     expect(found.find((c) => c.name === "mine.service")).toMatchObject({ kind: "unit", blocking: true });
     expect(found.find((c) => c.name === "~/app")).toMatchObject({ kind: "checkout", blocking: false });
@@ -250,7 +286,16 @@ describe("on a container", () => {
 
   it("rejects a bad slug before any SSH, and a server that is not yours with 404", async () => {
     const before = mock.commands.length;
-    await expect(checkProjectConflicts(userId, row.id, { slug: "Bad Slug", port: 3000 })).rejects.toBeTruthy();
+    // The parse failure is a ZodError; the route maps it with zodToHttp to a 400 "validation".
+    const refusal = await checkProjectConflicts(userId, row.id, { slug: "Bad Slug", port: 3000 }).then(
+      () => null,
+      (err: unknown) => zodToHttp(err as ZodError)
+    );
+    expect(refusal).toMatchObject({
+      status: 400,
+      code: "validation",
+      message: "slug: Use lowercase letters, digits and hyphens",
+    });
     await expect(checkProjectConflicts(otherId, row.id, { slug: "ok", port: 3000 })).rejects.toMatchObject({ status: 404 });
     expect(mock.commands.length).toBe(before);
   });

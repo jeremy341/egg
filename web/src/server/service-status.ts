@@ -1,7 +1,7 @@
-import { unitName } from "@/server/deploy/layout";
+import { serverDiscriminator, unitName } from "@/server/deploy/layout";
 import { serviceStatus } from "@/server/deploy/remote";
 import { HttpError } from "@/server/http";
-import { getProjectForUser } from "@/server/projects";
+import { getReadableProject } from "@/server/projects";
 import { getServerForUser, withServerSession } from "@/server/servers";
 import { SshError } from "@/server/ssh/connection";
 
@@ -19,8 +19,16 @@ export type ServiceStatus = {
   cpuNs: number | null;
   /** How many times systemd has restarted it since it was last started by hand. */
   restarts: number | null;
+  /** systemd's result for the last exit or run, such as "success" or "oom-kill". Null when unknown. */
+  result: string | null;
   /** One request to the health path. Code 0 means nothing answered. */
   http: { code: number; ms: number | null } | null;
+  /**
+   * How the last main process ended, when it was not a clean exit: its exit
+   * status and systemd's reason (exit-code, signal, oom-kill, ...). Null when
+   * the last exit was clean or systemd has none.
+   */
+  lastExit?: { code: number | null; reason: string } | null;
   checkedAt: string;
 };
 
@@ -70,7 +78,11 @@ export function parseServiceStatus(stdout: string, at = new Date()): ServiceStat
   }
 
   const pid = num(kv.get("MainPID"));
+  const exitReason = kv.get("Result") ?? "";
+  const lastExit =
+    exitReason && exitReason !== "success" ? { code: num(kv.get("ExecMainStatus")), reason: exitReason } : null;
   return {
+    lastExit,
     state,
     detail,
     pid: pid && pid > 0 ? pid : null,
@@ -81,6 +93,7 @@ export function parseServiceStatus(stdout: string, at = new Date()): ServiceStat
       return v && /^[0-9]+$/.test(v) && v !== UNSET ? Number(v) : null;
     })(),
     restarts: num(kv.get("NRestarts")),
+    result: kv.get("RESULT") || null,
     http,
     checkedAt: at.toISOString(),
   };
@@ -88,13 +101,13 @@ export function parseServiceStatus(stdout: string, at = new Date()): ServiceStat
 
 /** Ask the container how the project's production service is doing right now. */
 export async function fetchServiceStatus(userId: string, projectId: string): Promise<ServiceStatus> {
-  const project = await getProjectForUser(userId, projectId);
-  const server = await getServerForUser(userId, project.serverId);
+  const project = await getReadableProject(userId, projectId);
+  const server = await getServerForUser(project.userId, project.serverId);
   let res;
   try {
     res = await withServerSession(server, (s) =>
       s.script(
-        serviceStatus({ unit: unitName(project.slug), port: project.port, path: project.healthPath }),
+        serviceStatus({ unit: unitName(project.slug, undefined, serverDiscriminator(server.id)), port: project.workloadKind === "worker" ? null : project.port, path: project.healthPath }),
         { timeoutMs: 20_000 }
       )
     );
@@ -147,7 +160,7 @@ export async function lastKnownServiceStatus(
   opts: { fresh?: boolean; now?: () => number } = {}
 ): Promise<{ status: ServiceStatus; cached: boolean }> {
   const now = opts.now ?? Date.now;
-  const project = await getProjectForUser(userId, projectId);
+  const project = await getReadableProject(userId, projectId);
   const hit = recentReadings.get(project.id);
   if (!opts.fresh && hit && isFresh(hit.at, now())) return { status: hit.status, cached: true };
 

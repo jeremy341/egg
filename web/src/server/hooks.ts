@@ -26,15 +26,18 @@ export async function createDeployHook(userId: string, projectId: string) {
   const project = await getProjectForUser(userId, projectId);
   const token = TOKEN_PREFIX + randomToken(24);
   const db = await getDb();
-  await db
-    .update(schema.projects)
-    .set({ hookHash: sha256Hex(token), hookCreatedAt: new Date(), updatedAt: new Date() })
-    .where(eq(schema.projects.id, project.id));
-  await db.insert(schema.auditLog).values({
-    userId,
-    action: "hook.create",
-    target: project.id,
-    at: new Date(),
+  // The rotation and its audit line land together or not at all.
+  await db.transaction(async (tx) => {
+    await tx
+      .update(schema.projects)
+      .set({ hookHash: sha256Hex(token), hookCreatedAt: new Date(), updatedAt: new Date() })
+      .where(eq(schema.projects.id, project.id));
+    await tx.insert(schema.auditLog).values({
+      userId,
+      action: "hook.create",
+      target: project.id,
+      at: new Date(),
+    });
   });
   return { token, url: hookUrl(token) };
 }
@@ -42,15 +45,18 @@ export async function createDeployHook(userId: string, projectId: string) {
 export async function revokeDeployHook(userId: string, projectId: string) {
   const project = await getProjectForUser(userId, projectId);
   const db = await getDb();
-  await db
-    .update(schema.projects)
-    .set({ hookHash: null, hookCreatedAt: null, updatedAt: new Date() })
-    .where(eq(schema.projects.id, project.id));
-  await db.insert(schema.auditLog).values({
-    userId,
-    action: "hook.revoke",
-    target: project.id,
-    at: new Date(),
+  // The revocation and its audit line land together or not at all.
+  await db.transaction(async (tx) => {
+    await tx
+      .update(schema.projects)
+      .set({ hookHash: null, hookCreatedAt: null, updatedAt: new Date() })
+      .where(eq(schema.projects.id, project.id));
+    await tx.insert(schema.auditLog).values({
+      userId,
+      action: "hook.revoke",
+      target: project.id,
+      at: new Date(),
+    });
   });
 }
 

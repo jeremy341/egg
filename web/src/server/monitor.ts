@@ -2,7 +2,7 @@ import { and, desc, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 import { audit } from "@/server/audit";
 import { prunePageviews } from "@/server/analytics";
 import { getDb, schema } from "@/server/db";
-import { unitName } from "@/server/deploy/layout";
+import { serverDiscriminator, unitName } from "@/server/deploy/layout";
 import { serviceStatus } from "@/server/deploy/remote";
 import { openAlert, pruneAlertEvents, resolveAlert } from "@/server/notify";
 import { withServerSession } from "@/server/servers";
@@ -10,6 +10,9 @@ import { parseServiceStatus, type ServiceStatus } from "@/server/service-status"
 import { probeSession } from "@/server/ssh/probe";
 import { invalidateStatusPage } from "@/server/status-tags";
 import { withMaintenanceLease } from "@/server/maintenance-leases";
+import { purgeExpiredTrash } from "@/server/project-trash";
+import { runPostDeployChecks } from "@/server/deploy-regression-job";
+import { evaluateRules } from "@/server/alert-rules";
 
 /**
  * Uptime checks and usage history, run by the worker on a timer.
@@ -186,8 +189,23 @@ export function nextMonitorState(
   return { state: prev.state, failures, change: null };
 }
 
-function describe(s: ServiceStatus, slowMs: number | null = null): string {
-  if (s.state !== "running") return `The service is ${s.state.replace("_", " ")}.`;
+/**
+ * One sentence about why a check failed. Web apps answer on a health path; a
+ * worker is down when its process does not stay up, so the words match what
+ * the workload actually does.
+ */
+function describe(s: ServiceStatus, slowMs: number | null = null, worker = false): string {
+  if (s.state !== "running") {
+    if (worker) {
+      if (s.state === "failed") return "The process keeps failing to start, so systemd has paused it.";
+      if (s.state === "starting") return "The process keeps restarting, which usually means it crashes right after it starts.";
+      if (s.state === "stopped") return "The process is stopped.";
+      if (s.state === "not_deployed") return "The worker's service is not on the container any more.";
+      return "The process is not running.";
+    }
+    return `The service is ${s.state.replace("_", " ")}.`;
+  }
+  if (worker) return "The process did not pass its check.";
   if (s.http && s.http.code > 0 && s.http.code < 500 && isSlow(s, slowMs)) {
     return `The health path took ${s.http.ms} ms to answer, over your limit of ${slowMs} ms.`;
   }
@@ -222,7 +240,7 @@ async function checkServer(server: typeof schema.servers.$inferSelect, now: Date
     for (let i = 0; i < projects.length; i += 8) batches.push(projects.slice(i, i + 8));
     await monitorServers(batches, async (batch) => {
       const script = batch.map((p, i) => `printf '\\nEGG_STATUS_${i}\\n'\n` +
-        serviceStatus({ unit: unitName(p.slug), port: p.port, path: p.healthPath })).join("\n");
+        serviceStatus({ unit: unitName(p.slug, undefined, serverDiscriminator(server.id)), port: p.workloadKind === "worker" ? null : p.port, path: p.healthPath })).join("\n");
       const r = await s.script(script, { timeoutMs: 20_000 * batch.length, maxOutputBytes: 64 * 1024 * batch.length });
       if (r.code !== 0) return;
       const parts = r.stdout.split(/\nEGG_STATUS_(\d+)\n/);
@@ -257,23 +275,40 @@ async function checkServer(server: typeof schema.servers.$inferSelect, now: Date
   for (const p of projects) {
     await checkResources(p, usage, now);
     const status = results.get(p.id);
-    if (!status) continue; // could not read it; that says nothing about the app
-    if (status.state === "running") {
-      const prev = await db
-        .select({ at: schema.projectSamples.at, cpuNs: schema.projectSamples.cpuNs })
-        .from(schema.projectSamples)
-        .where(eq(schema.projectSamples.projectId, p.id))
-        .orderBy(desc(schema.projectSamples.at))
-        .limit(1)
-        .get();
-      await db.insert(schema.projectSamples).values({
-        projectId: p.id,
-        at: now,
-        memMb: status.memoryMb,
-        cpuNs: status.cpuNs,
-        cpuPercent: cpuPercentBetween(prev, { at: now, cpuNs: status.cpuNs }),
-        restarts: status.restarts,
-      });
+    if (!status) {
+      // Could not read it: that says nothing about the app, so its rules see no value.
+      await evaluateRules(p.id, { cpuPercent: null, memMb: null, healthMs: null }, now);
+      continue;
+    }
+    // Every check is kept, failed ones too, so the error rate and restart count see crashes.
+    // A service that is not running still gets a row when its last exit was a crash, so the crash is kept.
+    const prev = await db
+      .select({ at: schema.projectSamples.at, cpuNs: schema.projectSamples.cpuNs })
+      .from(schema.projectSamples)
+      .where(eq(schema.projectSamples.projectId, p.id))
+      .orderBy(desc(schema.projectSamples.at))
+      .limit(1)
+      .get();
+    const reading = {
+      cpuPercent: cpuPercentBetween(prev, { at: now, cpuNs: status.cpuNs }),
+      memMb: status.state === "running" ? status.memoryMb : null,
+      healthMs: status.http?.ms ?? null,
+    };
+    await db.insert(schema.projectSamples).values({
+      projectId: p.id,
+      at: now,
+      memMb: reading.memMb,
+      cpuNs: status.cpuNs,
+      cpuPercent: reading.cpuPercent,
+      restarts: status.restarts,
+      exitCode: status.lastExit?.code ?? null,
+      exitReason: status.lastExit?.reason ?? null,
+      healthMs: reading.healthMs,
+      healthOk: isHealthy(status, null),
+    });
+    await evaluateRules(p.id, reading, now);
+    if (status.result !== p.lastExitResult) {
+      await db.update(schema.projects).set({ lastExitResult: status.result }).where(eq(schema.projects.id, p.id));
     }
     const next = nextMonitorState(
       { state: p.monitorState, failures: p.monitorFailures },
@@ -291,8 +326,9 @@ async function checkServer(server: typeof schema.servers.$inferSelect, now: Date
     // The public status page keeps its data for 60 seconds; a change of state should not wait.
     if (next.change || next.state !== p.monitorState) await invalidateStatusPage(p.statusKey);
     if (next.change) {
+      const worker = p.workloadKind === "worker";
       const detail =
-        next.change === "down" ? describe(status, p.alertSlowMs) : "It is answering again.";
+        next.change === "down" ? describe(status, p.alertSlowMs, worker) : worker ? "The worker is running again." : "It is answering again.";
       await audit(p.userId, next.change === "down" ? "monitor.down" : "monitor.up", p.id, { detail });
       if (next.change === "down") await openAlert(p, "down", detail, now);
       else await resolveAlert(p, "down", detail, now);
@@ -344,6 +380,9 @@ async function runOwnedMonitorPass(onError?: (err: unknown) => void, now?: Date)
   await db.delete(schema.projectSamples).where(lt(schema.projectSamples.at, cutoff));
   await prunePageviews(passFinishedAt);
   await pruneAlertEvents(passFinishedAt);
+  // The cleanup job: trashed apps past their 30 days are removed for good.
+  await runPostDeployChecks(passFinishedAt);
+  await purgeExpiredTrash(passFinishedAt);
   const { reconcileClosedPreviews } = await import("@/server/github/pulls");
   await reconcileClosedPreviews();
 }

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, lt, sql } from "drizzle-orm";
+import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
 import { getDb, schema } from "@/server/db";
 import { isUniqueViolation } from "@/server/db/errors";
 import { runMonitorPass } from "@/server/monitor";
@@ -91,7 +91,15 @@ export async function recoverStaleJobs(now = new Date()): Promise<number> {
   const stale = await db
     .select()
     .from(schema.jobs)
-    .where(and(eq(schema.jobs.state, "running"), lt(schema.jobs.lockedAt, cutoff)));
+    // A running row with no lock time (legacy pre-lease data) is stale too;
+    // `NULL < cutoff` is never true, which used to hide it from this count while
+    // its project stayed blocked forever by the running-job uniqueness index.
+    .where(
+      and(
+        eq(schema.jobs.state, "running"),
+        or(isNull(schema.jobs.lockedAt), lt(schema.jobs.lockedAt, cutoff))
+      )
+    );
 
   return stale.length;
 }
@@ -106,12 +114,25 @@ export async function countOrphanedJobs(workerId: string): Promise<number> {
   return orphans.length;
 }
 
-/** Run one claimed job to completion, honouring cancellation. */
-export async function processJob(job: Job, deps: PipelineDeps = defaultDeps()) {
+/**
+ * Run one claimed job to completion, honouring cancellation.
+ * An external signal (used by a worker's shutdown deadline) aborts both the
+ * pipeline and the lease watcher, so a process that must exit cannot keep a
+ * database lease alive after its SSH work has been interrupted.
+ */
+export async function processJob(job: Job, deps: PipelineDeps = defaultDeps(), externalSignal?: AbortSignal) {
   const db = await getDb();
   const abort = new AbortController();
+  const onExternalAbort = () => abort.abort();
+  if (externalSignal) {
+    if (externalSignal.aborted) abort.abort();
+    else externalSignal.addEventListener("abort", onExternalAbort, { once: true });
+  }
   const lockOwner = job.lockedBy;
-  if (lockOwner === null) return;
+  if (lockOwner === null) {
+    externalSignal?.removeEventListener("abort", onExternalAbort);
+    return;
+  }
 
   // Keep cancellation responsive while renewing ownership less often. Stale
   // rows are intentionally left blocking until an operator confirms no remote
@@ -119,6 +140,12 @@ export async function processJob(job: Job, deps: PipelineDeps = defaultDeps()) {
   let checking = false;
   let renewedAt = Date.now();
   const watcher = setInterval(async () => {
+    // Once shutdown aborts a job, stop renewing its lease immediately even if
+    // the remote call ignores the abort signal and is still hanging.
+    if (abort.signal.aborted) {
+      clearInterval(watcher);
+      return;
+    }
     if (checking) return;
     checking = true;
     try {
@@ -166,15 +193,34 @@ export async function processJob(job: Job, deps: PipelineDeps = defaultDeps()) {
         .update(schema.jobs)
         .set({ state: "failed", error: String((err as Error)?.message ?? err).slice(0, 500) })
         .where(and(eq(schema.jobs.id, job.id), eq(schema.jobs.state, "running"), eq(schema.jobs.lockedBy, lockOwner)));
-    } catch (writeErr) {
-      console.error(`Could not mark job ${job.id} as failed; it stays running until an operator checks it.`, writeErr);
+    } catch (dbErr) {
+      // The failure could not be recorded. Rethrow so the worker logs it and
+      // the stale-lease flow takes over, instead of losing the job silently.
+      throw new Error(
+        `Could not record the failure of job ${job.id}: ${String((dbErr as Error)?.message ?? dbErr)} (job failed with: ${String((err as Error)?.message ?? err)})`
+      );
     }
   } finally {
     clearInterval(watcher);
+    externalSignal?.removeEventListener("abort", onExternalAbort);
   }
 }
 
-export type WorkerHandle = { stop: () => Promise<void>; workerId: string };
+export type WorkerHandle = {
+  stop: () => Promise<void>;
+  workerId: string;
+  /** Ids of jobs that are claimed and still being processed. */
+  unfinishedJobIds: () => string[];
+  /** Abort every in-flight job so their pipelines and lease watchers stop. */
+  abort: () => void;
+};
+
+/** Interval env vars: an empty or non-numeric value would otherwise silently disable the interval. */
+function envIntervalMs(raw: string | undefined, fallback: number): number {
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
 
 /** Poll for jobs until stopped. Used by `pnpm worker` and the embedded worker. */
 export function startWorker(options: {
@@ -199,6 +245,8 @@ export function startWorker(options: {
   let running = 0;
   let stopped = false;
   const inFlight = new Set<Promise<void>>();
+  const inFlightIds = new Set<string>();
+  const shutdownAbort = new AbortController();
   let activeTick: Promise<void> | null = null;
   let staleReported = false;
 
@@ -224,7 +272,8 @@ export function startWorker(options: {
           // A claim made before stop owns a running queue row, so start and track it
           // even if stop was requested while the database claim was in progress.
           running++;
-          const p = (options.workerOps?.processJob ?? processJob)(job, options.deps)
+          inFlightIds.add(job.id);
+          const p = (options.workerOps?.processJob ?? processJob)(job, options.deps, shutdownAbort.signal)
             .catch((err: unknown) => {
               // processJob should not reject, but if it does (for example a failed status write
               // before its own catch), it must not become an unhandled rejection that crashes the web process.
@@ -241,6 +290,7 @@ export function startWorker(options: {
             .finally(() => {
               running--;
               inFlight.delete(p);
+              inFlightIds.delete(job.id);
             });
           inFlight.add(p);
         }
@@ -267,7 +317,7 @@ export function startWorker(options: {
   void tick();
   const staleTimer = setInterval(() => void reportStale().catch(options.onError), 5 * 60_000);
 
-  const monitorMs = options.monitorMs ?? Number(process.env.MONITOR_INTERVAL_MS ?? 5 * 60_000);
+  const monitorMs = options.monitorMs ?? envIntervalMs(process.env.MONITOR_INTERVAL_MS, 5 * 60_000);
   let monitoring = false;
   const monitorTimer =
     monitorMs > 0
@@ -282,7 +332,7 @@ export function startWorker(options: {
         }, monitorMs)
       : null;
 
-  const statusMs = options.statusMs ?? Number(process.env.STATUS_PROBE_INTERVAL_MS ?? 60_000);
+  const statusMs = options.statusMs ?? envIntervalMs(process.env.STATUS_PROBE_INTERVAL_MS, 60_000);
   let probing = false;
   const statusTimer =
     statusMs > 0
@@ -299,6 +349,8 @@ export function startWorker(options: {
 
   return {
     workerId,
+    unfinishedJobIds: () => [...inFlightIds],
+    abort: () => shutdownAbort.abort(),
     stop: async () => {
       stopped = true;
       clearInterval(interval);

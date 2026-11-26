@@ -56,6 +56,115 @@ describe("operator recovery", () => {
     await expect(withBuildLock(server.id, "next", { verifyStale: verify }, async () => {})).rejects.toThrow(/recovery/i);
     expect(verify).not.toHaveBeenCalled();
   });
+  it("a retry after a failed recovery adopts the stale recovery fence and clears it", async () => {
+    const { server, dep, job, stale } = await setup("recover-five");
+    // First attempt fails remote verification: the guard remains in place.
+    await expect(recoverBuild(admin, server.id, { confirm: true, holder: dep.id, lockAt: stale.toISOString(), workerStoppedConfirmed: true, workerId: job.lockedBy! }, async () => ({ script: async () => ({ code: 1, stdout: "", stderr: "" }), close() {} }) as never)).rejects.toThrow();
+    const fenced = (await ctx.db.select().from(schema.servers).where(eq(schema.servers.id, server.id)).get())!.buildLockHolder!;
+    expect(fenced.startsWith("recovery:")).toBe(true);
+    // Time passes; the operator retries, passing the fence inspect now shows.
+    const later = new Date(Date.now() - 120_000);
+    await ctx.db.update(schema.servers).set({ buildLockAt: later }).where(eq(schema.servers.id, server.id));
+    await ctx.db.update(schema.jobs).set({ lockedAt: later }).where(eq(schema.jobs.id, job.id));
+    await recoverBuild(admin, server.id, { confirm: true, holder: fenced, lockAt: later.toISOString(), workerStoppedConfirmed: true, workerId: job.lockedBy! }, async () => ({ script: async () => ({ code: 0, stdout: "", stderr: "" }), close() {} }) as never);
+    expect((await ctx.db.select().from(schema.jobs).where(eq(schema.jobs.id, job.id)).get())!.state).toBe("failed");
+    expect((await ctx.db.select().from(schema.servers).where(eq(schema.servers.id, server.id)).get())!.buildLockHolder).toBeNull();
+  });
+  it("recovers a crash mid-activation: lock released, deployment deploying, then marked errored", async () => {
+    const { server, dep, job, stale } = await setup("recover-six");
+    await ctx.db.update(schema.deployments).set({ state: "deploying", activationStartedAt: new Date() }).where(eq(schema.deployments.id, dep.id));
+    await ctx.db.update(schema.servers).set({ buildLockHolder: null, buildLockAt: null }).where(eq(schema.servers.id, server.id));
+    await recoverBuild(admin, server.id, { confirm: true, holder: dep.id, lockAt: stale.toISOString(), workerStoppedConfirmed: true, workerId: job.lockedBy! }, async () => ({ script: async () => ({ code: 0, stdout: "", stderr: "" }), close() {} }) as never);
+    const freed = await ctx.db.select().from(schema.jobs).where(eq(schema.jobs.id, job.id)).get();
+    expect(freed!.state).toBe("failed");
+    const deployment = await ctx.db.select().from(schema.deployments).where(eq(schema.deployments.id, dep.id)).get();
+    expect(deployment!.state).toBe("error");
+    const serverRow = await ctx.db.select().from(schema.servers).where(eq(schema.servers.id, server.id)).get();
+    expect(serverRow!.buildLockHolder).toBeNull();
+    await release(server.id);
+  });
+  it("recovers after the user canceled the crashed deployment without flipping the canceled state", async () => {
+    const { server, dep, job, stale } = await setup("recover-seven");
+    await ctx.db.update(schema.deployments).set({ state: "canceled" }).where(eq(schema.deployments.id, dep.id));
+    await recoverBuild(admin, server.id, { confirm: true, holder: dep.id, lockAt: stale.toISOString(), workerStoppedConfirmed: true, workerId: job.lockedBy! }, async () => ({ script: async () => ({ code: 0, stdout: "", stderr: "" }), close() {} }) as never);
+    expect((await ctx.db.select().from(schema.jobs).where(eq(schema.jobs.id, job.id)).get())!.state).toBe("failed");
+    expect((await ctx.db.select().from(schema.deployments).where(eq(schema.deployments.id, dep.id)).get())!.state).toBe("canceled");
+    expect((await ctx.db.select().from(schema.servers).where(eq(schema.servers.id, server.id)).get())!.buildLockHolder).toBeNull();
+    await release(server.id);
+  });
+  it("recovers a crash between the claim and the first state write", async () => {
+    const { server, dep, job, stale } = await setup("recover-eight");
+    await ctx.db.update(schema.deployments).set({ state: "queued" }).where(eq(schema.deployments.id, dep.id));
+    await ctx.db.update(schema.servers).set({ buildLockHolder: null, buildLockAt: null }).where(eq(schema.servers.id, server.id));
+    await recoverBuild(admin, server.id, { confirm: true, holder: dep.id, lockAt: stale.toISOString(), workerStoppedConfirmed: true, workerId: job.lockedBy! }, async () => ({ script: async () => ({ code: 0, stdout: "", stderr: "" }), close() {} }) as never);
+    expect((await ctx.db.select().from(schema.jobs).where(eq(schema.jobs.id, job.id)).get())!.state).toBe("failed");
+    expect((await ctx.db.select().from(schema.deployments).where(eq(schema.deployments.id, dep.id)).get())!.state).toBe("error");
+    // The queue guard is free again: a fresh deploy of the same project can be claimed.
+    const project = await ctx.db.select().from(schema.projects).where(eq(schema.projects.serverId, server.id)).get();
+    await deployBranch(admin, project!.id);
+    expect(await claimNextJob("fresh-worker")).toBeTruthy();
+    await release(server.id);
+  });
+  it("fences the free lock during activation recovery and sweeps the deployment's own containers", async () => {
+    const { server, dep, job, stale } = await setup("recover-nine");
+    await ctx.db.update(schema.deployments).set({ state: "deploying", activationStartedAt: new Date() }).where(eq(schema.deployments.id, dep.id));
+    await ctx.db.update(schema.servers).set({ buildLockHolder: null, buildLockAt: null }).where(eq(schema.servers.id, server.id));
+    let holderDuringSweep: string | null | undefined;
+    let sweepScript = "";
+    await recoverBuild(admin, server.id, { confirm: true, holder: dep.id, lockAt: stale.toISOString(), workerStoppedConfirmed: true, workerId: job.lockedBy! }, async () => ({
+      script: async (text: string) => {
+        sweepScript = text;
+        holderDuringSweep = (await ctx.db.select().from(schema.servers).where(eq(schema.servers.id, server.id)).get())!.buildLockHolder;
+        return { code: 0, stdout: "", stderr: "" };
+      },
+      close() {},
+    } as never));
+    // The freed build lock is fenced for the sweep, so a concurrent build is
+    // refused instead of having its scope killed.
+    expect(holderDuringSweep ?? "").toMatch(/^recovery:/);
+    // And the sweep stops the deployment's own activation artifacts too.
+    expect(sweepScript).toContain("systemctl stop");
+    expect(sweepScript).toContain("docker rm -f");
+    expect(sweepScript).toContain("docker compose -p");
+    expect((await ctx.db.select().from(schema.servers).where(eq(schema.servers.id, server.id)).get())!.buildLockHolder).toBeNull();
+    await release(server.id);
+  });
+  it("a crash before activation began never tears down the live previous release", async () => {
+    const { server, dep, job, stale } = await setup("recover-ten");
+    // The crash happened mid-build: activation never started, so the unit,
+    // containers and Compose stack still serve the previous release.
+    let sweepScript = "";
+    await recoverBuild(admin, server.id, { confirm: true, holder: dep.id, lockAt: stale.toISOString(), workerStoppedConfirmed: true, workerId: job.lockedBy! }, async () => ({
+      script: async (text: string) => { sweepScript = text; return { code: 0, stdout: "", stderr: "" }; },
+      close() {},
+    } as never));
+    expect(sweepScript).toContain("egg-build-");
+    expect(sweepScript).not.toContain("systemctl stop 'egg-");
+    expect(sweepScript).not.toContain("docker rm -f");
+    expect(sweepScript).not.toContain("docker compose -p");
+    expect((await ctx.db.select().from(schema.deployments).where(eq(schema.deployments.id, dep.id)).get())!.state).toBe("error");
+    await release(server.id);
+  });
+  it("a preview crash mid-activation stops its own unit and containers but never the shared Compose stack", async () => {
+    const { server, dep, job, stale } = await setup("recover-eleven");
+    await ctx.db.update(schema.deployments).set({ state: "deploying", activationStartedAt: new Date(), env: "preview" }).where(eq(schema.deployments.id, dep.id));
+    await ctx.db.update(schema.servers).set({ buildLockHolder: null, buildLockAt: null }).where(eq(schema.servers.id, server.id));
+    let sweepScript = "";
+    await recoverBuild(admin, server.id, { confirm: true, holder: dep.id, lockAt: stale.toISOString(), workerStoppedConfirmed: true, workerId: job.lockedBy! }, async () => ({
+      script: async (text: string) => { sweepScript = text; return { code: 0, stdout: "", stderr: "" }; },
+      close() {},
+    } as never));
+    expect(sweepScript).toContain("systemctl stop");
+    expect(sweepScript).toContain("docker rm -f");
+    expect(sweepScript).not.toContain("docker compose -p");
+    await release(server.id);
+  });
+  // Sets free the per-user server cap so later setups can create one.
+  async function release(serverId: string) {
+    await ctx.db.delete(schema.projects).where(eq(schema.projects.serverId, serverId));
+    await ctx.db.delete(schema.servers).where(eq(schema.servers.id, serverId));
+  }
+
   it("requires an administrator and an explicit matching worker attestation", async () => {
     const { server, dep, job, stale } = await setup("recover-four");
     const connect = vi.fn();

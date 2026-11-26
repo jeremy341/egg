@@ -99,9 +99,13 @@ type Message = { title: string; detail: string; link: string };
 
 function payload(kind: Kind, m: Message) {
   const text = `${m.title}\n${m.detail}\n${m.link}`;
-  return kind === "discord"
-    ? { username: "Egg", content: text, allowed_mentions: { parse: [] } }
-    : { text };
+  if (kind === "discord") {
+    return { username: "Egg", content: text, allowed_mentions: { parse: [] } };
+  }
+  // Slack parses markup in `text`; commit messages, branches, project names and
+  // error strings are attacker-influenced and could otherwise ping a whole channel
+  // with <!channel> or forge links. Discord already disables mentions above.
+  return { text: text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") };
 }
 
 async function post(url: string, kind: Kind, m: Message, fetcher: Fetcher) {
@@ -190,6 +194,37 @@ export async function notifyDeploymentFinished(deploymentId: string, fetcher: Fe
     await post(url, kind, message, fetcher);
   } catch (err) {
     console.warn("notification failed", err instanceof Error ? err.message : err);
+  }
+}
+
+/**
+ * Tell the project's channel that a deploy made the app slower or less reliable.
+ * The history row is written either way, like the other alerts. Never throws.
+ */
+export async function notifyDeployRegressed(deploymentId: string, reasons: string[], fetcher: Fetcher = fetch) {
+  try {
+    const db = await getDb();
+    const dep = await db.select().from(schema.deployments).where(eq(schema.deployments.id, deploymentId)).get();
+    if (!dep) return;
+    const project = await db.select().from(schema.projects).where(eq(schema.projects.id, dep.projectId)).get();
+    if (!project) return;
+    const now = new Date();
+    const muted = isMuted(project, now);
+    const title = `${project.name} is slower or less reliable since a deploy`;
+    const detail = reasons.join(" ").slice(0, 300);
+    await db.insert(schema.alertEvents).values({
+      id: newId(),
+      projectId: project.id,
+      type: "deploy",
+      message: `${title}. ${detail}`.slice(0, 400),
+      firedAt: now,
+      muted,
+    });
+    if (muted || !project.alertOnDeploy || !project.notifyUrlEnc) return;
+    const { url, kind } = parseNotifyUrl(open(project.notifyUrlEnc, context(project.id)));
+    await post(url, kind, { title, detail, link: appLink(`/projects/${project.slug}/deployments/${dep.id}`) }, fetcher);
+  } catch (err) {
+    console.warn("regression notification failed", err instanceof Error ? err.message : err);
   }
 }
 
@@ -461,6 +496,7 @@ type AlertProject = Pick<
   | "id"
   | "slug"
   | "name"
+  | "workloadKind"
   | "notifyUrlEnc"
   | "alertOnDown"
   | "alertOnRecovery"
@@ -481,7 +517,9 @@ function titleFor(
   phase: "fire" | "resolve"
 ): string {
   if (type === "down") {
-    return phase === "fire" ? `${project.name} is not answering` : `${project.name} is back up`;
+    // A worker does not answer requests; it runs, or it has stopped.
+    const down = project.workloadKind === "worker" ? `${project.name} has stopped` : `${project.name} is not answering`;
+    return phase === "fire" ? down : `${project.name} is back up`;
   }
   return `${project.name}: ${RESOURCE_TITLE[type][phase === "fire" ? 0 : 1]}`;
 }

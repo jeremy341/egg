@@ -8,7 +8,7 @@ vi.mock("next/link", () => ({ default: ({ children, ...rest }: { children: unkno
 import { GithubBuildCard } from "@/components/github-build-card";
 
 const project = (buildLocation: "container" | "github") =>
-  ({ id: "p1", slug: "recipe-api", repo: "sam/recipe-api", branch: "main", buildLocation, autoDeploy: true, state: null }) as unknown as ProjectView;
+  ({ id: "p1", slug: "recipe-api", repo: "sam/recipe-api", repoUrl: "https://github.com/sam/recipe-api", branch: "main", buildLocation, autoDeploy: true, state: null }) as unknown as ProjectView;
 const html = (loc: "container" | "github") => renderToStaticMarkup(createElement(GithubBuildCard, { project: project(loc) })).replace(/<!-- -->/g, "");
 
 /** The value of every checked radio, whatever order the attributes come in. */
@@ -83,7 +83,7 @@ describe("the Where Builds Run card", () => {
     expect(out).toContain("Selected branches and tags");
     expect(out).toContain("must not be repository secrets");
     expect(out).toMatch(/trusted operators of this project/);
-    expect(out).toContain("Project roles in Egg do not isolate Nest accounts");
+    expect(out).toContain("Each project has a single owner");
     expect(out).toContain("cannot see your GitHub secrets or environment settings");
   });
 

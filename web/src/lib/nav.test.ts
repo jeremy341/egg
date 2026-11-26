@@ -11,6 +11,7 @@ const PATHS = [
   "/container",
   "/developer",
   "/connect",
+  "/keys",
   "/docs",
   "/docs/quickstart",
   "/account",
@@ -45,6 +46,20 @@ describe("page titles", () => {
     expect(navFor("/connect").title).toBe("Connect a server");
     expect(navFor("/projects/demo/deployments").title).toBe("Project deployments");
   });
+
+  it("titles the keys page Keys and lists it in the Find palette", () => {
+    expect(navFor("/keys").title).toBe("Keys");
+    expect(findTargets([]).some((t) => t.href === "/keys" && t.label === "Keys")).toBe(true);
+  });
+});
+
+describe("team nav", () => {
+  it("lists Keys after Connect and marks it current on the keys page", () => {
+    const labels = navFor("/projects").items.map((i) => i.label);
+    expect(labels.slice(-2)).toEqual(["Connect", "Keys"]);
+    const current = navFor("/keys").items.filter((i) => i.active("/keys"));
+    expect(current.map((i) => i.href)).toEqual(["/keys"]);
+  });
 });
 
 describe("create button", () => {
@@ -52,5 +67,25 @@ describe("create button", () => {
     expect(hasOwnCreateButton("/projects")).toBe(true);
     expect(hasOwnCreateButton("/deployments")).toBe(false);
     expect(hasOwnCreateButton("/projects/demo")).toBe(false);
+  });
+});
+
+describe("project nav", () => {
+  it("lists every project page", () => {
+    expect(navFor("/projects/demo").items.map((i) => i.label)).toEqual([
+      "Overview",
+      "Deployments",
+      "Analytics",
+      "Files",
+      "Terminal",
+      "Settings",
+    ]);
+  });
+
+  it("titles and marks the project pages", () => {
+    const ctx = navFor("/projects/demo/settings");
+    expect(ctx.title).toBe("Project settings");
+    expect(ctx.items.some((i) => i.href === "/projects/demo/settings" && i.active("/projects/demo/settings"))).toBe(true);
+    expect(navFor("/projects/demo/analytics").backHref).toBe("/projects/demo");
   });
 });

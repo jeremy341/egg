@@ -2,11 +2,13 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { CaretRightIcon, PencilSimpleIcon, TrashIcon } from "@phosphor-icons/react";
 import { api } from "@/components/api";
 import { Swap } from "@/components/motion/swap";
 import { GithubBuildCard } from "@/components/github-build-card";
 import { HomepageFeedCard } from "@/components/homepage-feed-card";
+import { StatisticsCard } from "@/components/statistics-card";
 import { AlertsCard, DeployHookCard, NotificationsCard, StatusPageCard } from "@/components/project-automation";
 import { ScheduledJobsCard } from "@/components/scheduled-jobs-card";
 import { PageHeader } from "@/components/page-header";
@@ -24,6 +26,14 @@ import { PixelAvatar } from "@/components/ui/pixel-avatar";
 import type { ProjectView } from "@/server/queries";
 import { cn } from "@/lib/utils";
 import { CleanupCard } from "@/components/cleanup-card";
+import { AccessProtectionCard } from "@/components/access-protection-card";
+import { DbBackupCard } from "@/components/db-backup-card";
+import { ScorePreviewCard } from "@/components/score-preview-card";
+import { SecurityChecksCard } from "@/components/security-checks-card";
+import { AlertRulesCard } from "@/components/alert-rules-card";
+import { ProjectMembersCard } from "@/components/project-members-card";
+import { HostingOptions, StartCommandHelp, runtimeHint, type TargetCapabilities } from "@/components/hosting-options";
+import { ContainerDeploymentFields, containerConfigurationError, containerDeploymentBody, defaultContainerForm } from "@/components/container-deployment-fields";
 
 type EnvVar = { id: string; key: string; target: "all" | "production" | "preview" };
 
@@ -82,7 +92,8 @@ export function ProjectSettings({
 
   // ---- build and run settings
   const [form, setForm] = useState({
-    port: String(project.port),
+    port: project.listenPort === null ? "" : String(project.listenPort),
+    deploymentMode: project.deploymentMode,
     startCommand: project.startCommand ?? "",
     productionBranch: project.branch,
     healthPath: project.healthPath,
@@ -92,6 +103,22 @@ export function ProjectSettings({
   const [build, setBuild] = useState<BuildForm | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [capabilities, setCapabilities] = useState<TargetCapabilities | null>(null);
+  const [container, setContainer] = useState({
+    dockerfilePath: project.dockerfilePath ?? defaultContainerForm.dockerfilePath,
+    composeFilePath: project.composeFilePath ?? defaultContainerForm.composeFilePath,
+    composeService: project.composeService ?? defaultContainerForm.composeService,
+    containerPort: project.containerPort === null ? "" : String(project.containerPort ?? defaultContainerForm.containerPort),
+  });
+  const containerError = containerConfigurationError(form.deploymentMode, project.workloadKind, container);
+  const [capabilityError, setCapabilityError] = useState<string | null>(null);
+  const [capabilityAttempt, setCapabilityAttempt] = useState(0);
+  const githubPush = project.repoUrl.startsWith("https://github.com/") && project.repo !== null;
+  useEffect(() => {
+    let live = true;
+    api<TargetCapabilities>(`/api/servers/${project.serverId}/capabilities`).then((value) => { if (live) { setCapabilities(value); setCapabilityError(null); } }).catch((error) => { if (live) setCapabilityError(error instanceof Error ? error.message : "Could not load target capabilities."); });
+    return () => { live = false; };
+  }, [project.serverId, capabilityAttempt]);
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -101,11 +128,13 @@ export function ProjectSettings({
       await api(`/api/projects/${project.id}`, {
         method: "PATCH",
         body: {
-          port: Number(form.port),
+          listenPort: project.workloadKind === "worker" ? (form.port.trim() === "" ? null : Number(form.port)) : Number(form.port),
+          deploymentMode: form.deploymentMode,
+          ...containerDeploymentBody(form.deploymentMode, project.workloadKind, container),
           startCommand: form.startCommand.trim() || null,
           productionBranch: form.productionBranch.trim(),
-          healthPath: form.healthPath.trim() || "/",
-          autoDeploy: form.autoDeploy,
+          ...(project.workloadKind === "web" ? { healthPath: form.healthPath.trim() || "/" } : {}),
+          autoDeploy: githubPush && form.autoDeploy,
           ...(build ? buildBody(build) : {}),
         },
       });
@@ -177,6 +206,19 @@ export function ProjectSettings({
   const [removeRemote, setRemoteRemoval] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [protectedNow, setProtectedNow] = useState(project.deletionProtected);
+  const [protectionError, setProtectionError] = useState<string | null>(null);
+
+  async function setProtection(on: boolean) {
+    setProtectionError(null);
+    try {
+      await api(`/api/projects/${project.id}`, { method: "PATCH", body: { deletionProtected: on } });
+      setProtectedNow(on);
+      router.refresh();
+    } catch (err) {
+      setProtectionError(err instanceof Error ? err.message : "Could not change deletion protection");
+    }
+  }
 
   async function destroy() {
     setDeleting(true);
@@ -237,13 +279,17 @@ export function ProjectSettings({
                     {saveMsg?.text ?? "Changes apply to the next deployment."}
                   </Swap>
                 </p>
-                <Button type="submit" form="run-form" loading={saving}>
+                <Button type="submit" form="run-form" loading={saving} disabled={!build || Boolean(containerError)}>
                   {saving ? "Saving…" : "Save"}
                 </Button>
               </>
             }
           >
             <form id="run-form" onSubmit={save} className="grid gap-4 sm:grid-cols-2">
+              <HostingOptions prefix="ps" workloadKind={project.workloadKind} workloadLocked deploymentMode={form.deploymentMode} capabilities={capabilities} onWorkloadChange={() => {}} onModeChange={(value) => setForm({ ...form, deploymentMode: value })} />
+              {capabilityError && <Alert role="alert" tone="error" className="sm:col-span-2" action={<Button type="button" variant="outline" size="sm" onClick={() => { setCapabilityError(null); setCapabilityAttempt((attempt) => attempt + 1); }}>Try again</Button>}>Could not load target capabilities: {capabilityError} Container modes remain unavailable until the check succeeds.</Alert>}
+              <ContainerDeploymentFields prefix="ps" mode={form.deploymentMode} workloadKind={project.workloadKind} value={container} onChange={setContainer} />
+              {containerError && <p role="alert" className="text-label text-destructive sm:col-span-2">{containerError}</p>}
               <div>
                 <Label htmlFor="ps-branch">Production branch</Label>
                 <Input
@@ -254,7 +300,7 @@ export function ProjectSettings({
                 />
               </div>
               <div>
-                <Label htmlFor="ps-port">Port</Label>
+                <Label htmlFor="ps-port">{project.workloadKind === "worker" ? "Listen port (optional)" : "Port"}</Label>
                 <Input
                   id="ps-port"
                   inputMode="numeric"
@@ -262,48 +308,54 @@ export function ProjectSettings({
                   onChange={(e) => setForm({ ...form, port: e.target.value })}
                   className="font-mono"
                 />
+                {project.workloadKind === "worker" && <p className="text-label text-muted-foreground">Fill this only if the bot must receive webhooks over HTTP. A domain can point at it once it is set. Leave it empty to keep the worker closed.</p>}
               </div>
               <div className="sm:col-span-2">
                 <Label htmlFor="ps-start">Start command</Label>
                 <Input
                   id="ps-start"
                   value={form.startCommand}
-                  placeholder={project.runtime === "node" ? "npm start" : "python3 app.py"}
+                  placeholder={runtimeHint(build?.runtime ?? project.runtime)}
                   onChange={(e) => setForm({ ...form, startCommand: e.target.value })}
                   className="font-mono"
+                  aria-describedby="ps-start-help"
                 />
+                <StartCommandHelp runtime={build?.runtime ?? project.runtime} id="ps-start-help" />
               </div>
-              <label className="touch-target inline-flex min-h-10 items-center gap-2 sm:col-span-2 sm:min-h-9">
+              <ProjectBuildFields
+                projectId={project.id}
+                workloadKind={project.workloadKind}
+                build={build}
+                onLoad={setBuild}
+                onChange={setBuild}
+                onCopy={(s) => {
+                  if (project.workloadKind === "worker" && s.runtime === "static") {
+                    setSaveMsg({ ok: false, text: "Static sites require a separate web project. These settings were not copied." });
+                    return;
+                  }
+                  setBuild(toBuildForm(s));
+                  setForm((f) => ({ ...f, startCommand: s.startCommand ?? "", healthPath: s.healthPath }));
+                }}
+              />
+              {project.workloadKind === "web" && <div>
+                <Label htmlFor="ps-health">Health check path</Label>
+                <Input
+                  id="ps-health"
+                  value={form.healthPath}
+                  onChange={(e) => setForm({ ...form, healthPath: e.target.value })}
+                  className="font-mono"
+                />
+              </div>}
+              <label className="touch-target inline-flex min-h-10 items-center gap-2 self-end sm:min-h-9">
                 <input
                   type="checkbox"
                   checked={form.autoDeploy}
+                  disabled={!githubPush}
                   onChange={(e) => setForm({ ...form, autoDeploy: e.target.checked })}
                 />
                 Deploy automatically on push
               </label>
-              <Advanced className="sm:col-span-2">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <ProjectBuildFields
-                    projectId={project.id}
-                    build={build}
-                    onLoad={setBuild}
-                    onChange={setBuild}
-                    onCopy={(s) => {
-                      setBuild(toBuildForm(s));
-                      setForm((f) => ({ ...f, startCommand: s.startCommand ?? "", healthPath: s.healthPath }));
-                    }}
-                  />
-                  <div>
-                    <Label htmlFor="ps-health">Health check path</Label>
-                    <Input
-                      id="ps-health"
-                      value={form.healthPath}
-                      onChange={(e) => setForm({ ...form, healthPath: e.target.value })}
-                      className="font-mono"
-                    />
-                  </div>
-                </div>
-              </Advanced>
+              {!githubPush && <p className="text-label text-muted-foreground sm:col-span-2">Use manual deployments or the Deploy Hook below. Automatic push deployment needs a verified provider webhook.</p>}
             </form>
           </Card>
 
@@ -426,17 +478,52 @@ export function ProjectSettings({
 
             <NotificationsCard project={project} />
 
+            <StatisticsCard projectId={project.id} />
+
             <Advanced open={autoOpen} onOpenChange={setAutoOpen}>
               <div className="space-y-6">
                 <AlertsCard project={project} />
+                <AlertRulesCard project={project} />
                 <StatusPageCard project={project} />
                 <HomepageFeedCard project={project} />
               </div>
             </Advanced>
           </Section>
 
+          <Section id="section-access" title="Access and reliability">
+            <AccessProtectionCard projectId={project.id} />
+            <SecurityChecksCard projectId={project.id} />
+            <ScorePreviewCard projectId={project.id} />
+            <DbBackupCard projectId={project.id} />
+          </Section>
+
+          <Section id="members-heading" title="Members">
+            <ProjectMembersCard projectId={project.id} />
+          </Section>
+
           <Section id="section-danger" title="Danger zone">
           <CleanupCard name={project.slug} projectId={project.id} />
+
+          <Card
+            id="protection-heading"
+            title="Deletion protection"
+            description="While this is on, the app cannot be deleted. Turn it off here first."
+          >
+            <label className="touch-target inline-flex min-h-10 items-center gap-2 sm:min-h-8">
+              <input
+                type="checkbox"
+                checked={protectedNow}
+                onChange={(e) => void setProtection(e.target.checked)}
+              />
+              Protect this app from deletion
+            </label>
+            {protectionError ? (
+              <p role="alert" className="mt-2 text-label text-foreground">{protectionError}</p>
+            ) : null}
+            <p className="mt-3 text-label text-muted-foreground">
+              Deleted apps are kept for 30 days. <Link href="/projects/trash" className="link">See Recently deleted</Link>.
+            </p>
+          </Card>
 
           <Card
             id="danger-heading"
@@ -474,7 +561,7 @@ export function ProjectSettings({
               <div>
                 <p className="font-medium">Deleted</p>
                 <ul className="mt-1 list-disc space-y-0.5 pl-4 text-muted-foreground">
-                  <li>The project in Egg, with its deployment history, logs and environment variables</li>
+                  <li>The project in Egg moves to Recently deleted and is removed for good after 30 days. Deployment history and environment variables can be restored; logs and analytics cannot</li>
                   {removeRemote ? (
                     <li>On your container: the service, its scheduled jobs, previews and all releases</li>
                   ) : null}

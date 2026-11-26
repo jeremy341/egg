@@ -1,42 +1,27 @@
 # Egg and Hack Club Orchard
 
-Written 2026-11-13. Orchard is Hack Club's own app platform. This note records what could be confirmed about it, how it differs from Egg, and what is worth borrowing.
+Updated 2026-11-24. Orchard is Hack Club’s app platform; Egg deploys apps to a user’s existing Nest server. The [feature comparison](../feature-comparison.md) and [217-tool parity checklist](../../web/src/server/parity/orchard-parity.json) use the current 75-endpoint registry in [`api-v1.ts`](../../web/src/server/api-v1.ts#L471).
 
-## What could be confirmed
+## Product boundary
 
-- **It is live.** The dashboard is at `orchard.infra.hackclub.com` (page title "Orchard Dashboard"). The page loads three add-ons it calls grafts: Greenhouse (cloud dev sandboxes), Announcements, and The Grove.
-- **It has a GitHub App.** "Hack Club Orchard" (`github.com/apps/hack-club-orchard`), created 2026-05-13, with read access to contents, write access to checks and deployments, and a subscription to push events. That is the shape of push-to-deploy.
-- **Hack Club projects are moving to it.** [hackclub/lapse#316](https://github.com/hackclub/lapse/pull/316) moves Lapse from Coolify to Orchard. It shows two things about how Orchard builds: apps are built from a Dockerfile, and runtime environment variables are not available during the image build, so database migrations and `NEXT_PUBLIC_*` values had to be handled differently.
+Orchard provides a cluster-managed platform for projects and teams. Egg provides a deployment and operations API for one owner’s projects on their own Nest server. Features built around cluster resources—managed PostgreSQL and its replicas, pods, node pools, sandboxes, templates, Terraform, and Tailscale—are outside Egg’s target. These are marked not applicable where represented in the Orchard tool manifest, with a reason on each row.
 
-## What could not be confirmed
+## Current API parity
 
-- **The official source repository.** Nothing named Orchard is public under `github.com/hackclub` or under the GitHub App's owner. If Orchard is open source, the link is needed to compare code.
-- **A lookalike exists.** `github.com/evanxdsouza/wackcluborchard` ("Wack Club Orchard") describes a self-hosted Kubernetes platform with the same feature names as the live dashboard (Greenhouse, The Grove). It is probably a renamed copy of Orchard's source, but it is not from Hack Club and that link is a guess. The feature list below is from that README, so treat it as likely, not certain.
+| Status | Tools | Count |
+| --- | --- | ---: |
+| Present | Projects, deployments, environment variables, GitHub repository/status, current user, DNS validation, diagnostics/logs/rollout, redeploy/rollback, scheduled jobs, webhook notifications | 42 |
+| Partial | Branch deploy, domains/ingress, service restart, resource history/quota, hook rotation, activity, deployment cancellation | 11 |
+| Not applicable | Cluster-only database, pod/container, node-pool, sandbox and template features | 80 |
+| Missing | No matching or nearby endpoint in the current registry | 84 |
 
-## How they differ
+The 42 present and 11 partial tools are counted from statuses, with exact baselines enforced by [`orchard-parity.test.ts`](../../web/src/server/parity/orchard-parity.test.ts). The [feature comparison](../feature-comparison.md) lists the mapping groups and definitions.
 
-| | Egg | Orchard (per the lookalike README) |
-| --- | --- | --- |
-| Where apps run | The person's own Nest container, over SSH | A Kubernetes cluster run by the platform |
-| How an app runs | A systemd service, releases in `~/.egg/<project>` | A container built from a Dockerfile or an image |
-| Build | On the container, or in GitHub Actions | On the cluster with BuildKit |
-| Who it is for | Any Nest user, for their own container | Organisations and projects with members and roles |
-| Database | None managed; the app brings its own | Managed PostgreSQL with backups and a query console |
-| Scheduled work | systemd timers per project (5 jobs, cron form) | Cron schedules and multi-step pipelines |
-| Access | One owner per project, API tokens, MCP | Owner/admin/member/viewer, passkeys, SSO |
-| Written in | TypeScript, Next.js, SQLite | Go standard library, a hand-rolled TypeScript dashboard |
+## What may be worth borrowing
 
-They do not compete. Orchard hosts apps on Hack Club's infrastructure for teams that have access to it. Egg gives a Nest user a deploy flow on the machine they already have, without a cluster, and nothing leaves their container.
+- **A simulated runtime for demos.** A mock Nest driver could make container-dependent flows usable without an account.
+- **Crash reports.** Keep the last service output with the deployment that failed.
+- **Plain-language warnings.** Explain common systemd and Node failures in terms users can act on.
+- **Build-time and run-time variable clarity.** Label when environment values become available.
 
-## Worth borrowing
-
-1. **A simulated runtime for demos.** Orchard's server fakes pods, builds and logs when there is no cluster, and seeds a demo project. Egg's demo data is a seed script with a fake server key, so anything that touches the container fails in a demo. A fake container driver (the test suite already has a mock SSH server) would make the whole dashboard usable without a Nest account.
-2. **Crash reports.** Orchard captures what a container printed before it died. Egg shows the journal, but a crashed service's last lines are not kept with the deployment that crashed.
-3. **Warnings in plain words.** Orchard rewrites Kubernetes warnings for people. Egg could do the same for the common systemd and Node failures (port in use, out of memory, missing module).
-4. **Templates.** One-click starters for common apps. Egg lists this in its roadmap already.
-5. **Build-time and run-time variables kept apart.** The Lapse pull request shows the confusion this causes. Egg should say on the environment variables card which values exist at build time and which only at run time.
-
-## Not worth copying
-
-- Kubernetes, BuildKit and managed PostgreSQL. They need a cluster, which is the thing Egg exists to avoid.
-- Organisations, SSO and SCIM. Nest containers are personal. Project sharing with a few roles is the most Egg needs.
+These ideas fit Egg’s single-server model. Cluster provisioning, managed PostgreSQL, organization-wide infrastructure controls, Terraform, and Tailscale integration do not.

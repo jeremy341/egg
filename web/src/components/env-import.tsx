@@ -6,6 +6,8 @@ import { api } from "@/components/api";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { runtimeLabel } from "@/components/hosting-options";
+import type { SourceProvider } from "@/components/repository-source";
 import type { PackageManager, RepoDetection } from "@/server/repo-detect";
 import type { RepoRead } from "@/server/repo-read";
 
@@ -22,6 +24,8 @@ export type DetectParams = {
   branch: string;
   installationId: number | null;
   rootDir: string;
+  sourceProvider?: SourceProvider;
+  providerConnectionId?: string | null;
 };
 
 type Loaded = { key: string; read: RepoRead | null };
@@ -29,7 +33,7 @@ type Loaded = { key: string; read: RepoRead | null };
 /** The repo, branch and root a detection is for. Null disables the lookup. */
 export function useRepoDetection(params: DetectParams | null) {
   const key = params
-    ? `${params.repo}|${params.branch}|${params.installationId ?? ""}|${params.rootDir}`
+    ? `${params.repo}|${params.branch}|${params.installationId ?? ""}|${params.rootDir}|${params.sourceProvider ?? "github"}|${params.providerConnectionId ?? ""}`
     : null;
   const [loaded, setLoaded] = useState<Loaded | null>(null);
 
@@ -43,6 +47,8 @@ export function useRepoDetection(params: DetectParams | null) {
         root: params.rootDir.trim() || ".",
       });
       if (params.installationId) q.set("installation", String(params.installationId));
+      if (params.sourceProvider) q.set("sourceProvider", params.sourceProvider);
+      if (params.providerConnectionId) q.set("providerConnectionId", params.providerConnectionId);
       fetch(`/api/repos/detect?${q}`, { signal: ctl.signal })
         .then((r) => (r.ok ? (r.json() as Promise<RepoRead>) : null))
         .then((read) => setLoaded({ key, read }))
@@ -73,13 +79,6 @@ export const PM_NAMES: Record<PackageManager, string> = {
   yarn: "Yarn",
   bun: "Bun",
 };
-
-const RUNTIME_NAMES = {
-  node: "Node.js",
-  python: "Python",
-  static: "Static site",
-  command: "Custom command",
-} as const;
 
 const FRAMEWORK_NAMES = { next: "Next.js", vite: "Vite", nuxt: "Nuxt", astro: "Astro" } as const;
 
@@ -130,7 +129,7 @@ export function DetectedSummary({
             </Row>
           ) : null}
           <Row label="Runtime">
-            {d.runtime ? RUNTIME_NAMES[d.runtime] : "Not supported yet"}
+            {d.runtime ? runtimeLabel(d.runtime) : "Not supported yet"}
             {d.framework ? ` (${FRAMEWORK_NAMES[d.framework]})` : null}
           </Row>
           {d.commands.install ? (
@@ -226,8 +225,8 @@ export function EnvValueFields({
     <fieldset className="mt-5 min-w-0">
       <legend className="text-label font-medium">Environment variables</legend>
       <p id="env-values-note" className="mt-1 text-label text-muted-foreground">
-        These names came from the example env file in your repository. Values are entered once and
-        never shown again. Leave a field empty to skip that name.
+        These names came from the example env file in your repository, or from what your bot framework is known to
+        read. Values are entered once and never shown again. Leave a field empty to skip that name.
       </p>
       <div className="mt-3 grid gap-3">
         {env.map((e) => {
@@ -236,7 +235,7 @@ export function EnvValueFields({
             <div key={e.name}>
               <label htmlFor={id} className="mb-1.5 block text-label text-muted-foreground">
                 <span className="font-mono break-all text-foreground">{e.name}</span>
-                <span> from {e.source}</span>
+                <span>{e.suggested ? ` · suggested for ${e.source}` : ` from ${e.source}`}</span>
               </label>
               <Input
                 id={id}
@@ -265,10 +264,10 @@ type EnvVar = { id: string; key: string; target: "all" | "production" | "preview
  */
 export function EnvImportButton({
   projectId,
-  existing,
   onImported,
 }: {
   projectId: string;
+  /** Kept for callers; the import re-reads the authoritative list itself. */
   existing: string[];
   onImported: (env: EnvVar[]) => void;
 }) {
@@ -295,7 +294,12 @@ export function EnvImportButton({
         });
         return;
       }
-      const have = new Set(existing);
+      // Re-read immediately before importing: the prop from the settings page is a
+      // snapshot. Another tab or a token may have created a variable since then,
+      // and POST /env is an upsert — importing a stale "missing" name would
+      // overwrite its saved value with an empty string.
+      const fresh = await api<{ env: EnvVar[] }>(`/api/projects/${projectId}/env`);
+      const have = new Set(fresh.env.map((e) => e.key));
       const missing = read.detection.env.map((e) => e.name).filter((n) => !have.has(n));
       if (missing.length === 0) {
         setResult({ tone: "info", text: "Every name in the repository is already here.", warnings });

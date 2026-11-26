@@ -1,28 +1,21 @@
 import { readJsonLimited } from "@/server/body-limit";
 import { authed, handle, ok } from "@/server/http";
 import { deleteProject } from "@/server/project-delete";
-import { getProjectForUser, getReadableProject, updateProject } from "@/server/projects";
-import { getProjectRole } from "@/server/project-roles";
+import { getProjectAtLevel, updateProject, projectResponse } from "@/server/projects";
 
 type Ctx = { params: Promise<{ id: string }> };
 
 export const GET = handle<Ctx>(async (_req, { params }) => {
   const user = await authed();
   const { id } = await params;
-  if ((await getProjectRole(user.id, id)) === "owner") return ok({ project: await getProjectForUser(user.id, id) });
-  const p = await getReadableProject(user.id, id);
-  return ok({ project: { id: p.id, name: p.name, slug: p.slug, repoUrl: p.repoUrl, repoFullName: p.repoFullName,
-    productionBranch: p.productionBranch, rootDir: p.rootDir, runtime: p.runtime, installCommand: p.installCommand,
-    buildCommand: p.buildCommand, startCommand: p.startCommand, outputDir: p.outputDir, buildLocation: p.buildLocation,
-    port: p.port, healthPath: p.healthPath, autoDeploy: p.autoDeploy, monitorState: p.monitorState,
-    createdAt: p.createdAt, updatedAt: p.updatedAt } });
+  return ok({ project: projectResponse(await getProjectAtLevel(user.id, id, "view")) });
 });
 
 export const PATCH = handle<Ctx>(async (req, { params }) => {
   const user = await authed();
   const { id } = await params;
   const body = await readJsonLimited(req, { fallback: {} });
-  return ok({ project: await updateProject(user.id, id, body) });
+  return ok({ project: projectResponse(await updateProject(user.id, id, body)) });
 });
 
 /**

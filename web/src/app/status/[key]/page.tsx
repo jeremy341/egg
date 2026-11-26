@@ -27,6 +27,12 @@ const HEADLINE = {
   unknown: { text: "No data yet", detail: "Checks have not run for this app yet.", glyph: "bg-[var(--ds-gray-600)]" },
 } as const;
 
+const WORKER_HEADLINE = {
+  up: { text: "Running", detail: "The worker process is running.", glyph: "bg-ready" },
+  down: { text: "Not running", detail: "The worker process has stopped.", glyph: "bg-[var(--status-error)]" },
+  unknown: { text: "No data yet", detail: "Checks have not run for this worker yet.", glyph: "bg-[var(--ds-gray-600)]" },
+} as const;
+
 function lasted(i: Incident): string {
   if (!i.to) return "ongoing";
   const m = Math.max(1, Math.round((i.to.getTime() - i.from.getTime()) / 60_000));
@@ -45,11 +51,13 @@ async function Content({ params }: Props) {
   // A key that cannot exist never reaches the cache, so junk addresses do not fill it.
   const status = VALID_KEY.test(key) ? await getCachedPublicStatus(key) : null;
   if (!status) notFound();
-  const head = HEADLINE[status.state];
+  const worker = status.workloadKind === "worker";
+  const head = (worker ? WORKER_HEADLINE : HEADLINE)[status.state];
 
   return (
     <div className={cn(column, "motion-enter")}>
       <h1 className="text-title-1">{status.name}</h1>
+      <p className="text-label text-muted-foreground">Run by {status.owner}</p>
 
       <section aria-labelledby="now" className="mt-8 rounded-lg bg-card p-6 shadow-border-small">
         <h2 id="now" className="sr-only">
@@ -68,16 +76,16 @@ async function Content({ params }: Props) {
             <span className="text-stat tabular text-foreground">
               {status.uptime >= 99.995 ? "100" : status.uptime.toFixed(2)}%
             </span>
-            <span>answering over the last {status.windowDays} days, from checks every few minutes.</span>
+            <span>{worker ? "running" : "answering"} over the last {status.windowDays} days, from checks every few minutes.</span>
           </p>
         ) : null}
         {status.uptime !== null && status.days.length > 0 ? (
           <div className="mt-4">
-            <div role="img" aria-label={stripSummary(status.days, status.windowDays)} className="flex h-6 gap-[3px]">
+            <div role="img" aria-label={stripSummary(status.days, status.windowDays, status.workloadKind)} className="flex h-6 gap-[3px]">
               {status.days.map((d) => (
                 <span
                   key={d.day}
-                  title={`${dayLabel(d.day)}: ${dayDetail(d)}`}
+                  title={`${dayLabel(d.day)}: ${dayDetail(d, status.workloadKind)}`}
                   className={cn("min-w-0 flex-1", STRIP_TONE[d.state])}
                 />
               ))}
@@ -90,7 +98,7 @@ async function Content({ params }: Props) {
               {STRIP_LEGEND.map((l) => (
                 <li key={l.state} className="inline-flex items-center gap-2">
                   <span aria-hidden="true" className={cn("size-2.5 shrink-0 ring-1 ring-inset ring-border", STRIP_TONE[l.state])} />
-                  {l.label}
+                  {worker ? ({ up: "Ran all day", partial: "Stopped for part of a day", down: "Stopped for most of a day", none: "No checks yet" }[l.state]) : l.label}
                 </li>
               ))}
             </ul>
@@ -119,7 +127,7 @@ async function Content({ params }: Props) {
                         <th scope="row" className="px-3 py-1.5 text-left font-normal whitespace-nowrap">
                           <time dateTime={d.day}>{dayLabel(d.day)}</time>
                         </th>
-                        <td className="px-3 py-1.5">{dayDetail(d)}</td>
+                        <td className="px-3 py-1.5">{dayDetail(d, status.workloadKind)}</td>
                       </tr>
                     ))}
                   </tbody>

@@ -3,7 +3,8 @@ import { eq, sql } from "drizzle-orm";
 import { upsertUser } from "@/server/auth/session";
 import { schema } from "@/server/db";
 import { isUniqueViolation } from "@/server/db/errors";
-import { createProject, deleteProjectRecords, enqueueDeployment } from "@/server/projects";
+import { createProject, enqueueDeployment } from "@/server/projects";
+import { trashProject } from "@/server/project-trash";
 import { createServer } from "@/server/servers";
 import { useFreshDb } from "@/server/test/db";
 
@@ -57,12 +58,13 @@ describe("unique indexes that close the deploy dedupe races", () => {
     }
   });
 
+  // Four competing writes can each wait through SQLite's busy timeout before retrying.
   it("reserves different ports for concurrent preview deployments", async () => {
     const results = await Promise.all(Array.from({ length: 4 }, (_, i) =>
       enqueueDeployment(project, { env: "preview", source: "manual", branch: `preview-${i}` })
     ));
     expect(new Set(results.map((row) => row.port)).size).toBe(results.length);
-  });
+  }, 60_000);
   it("refuses project deletion while a canceled deployment's worker is still running", async () => {
     const user = await upsertUser({ id: "cancel-delete", name: "A", email: null, slackId: null });
     const server = await createServer(user.id, "cancel-delete");
@@ -70,9 +72,9 @@ describe("unique indexes that close the deploy dedupe races", () => {
     const dep = await enqueueDeployment(p, { env: "production", source: "manual", branch: "main" });
     await ctx.db.update(schema.jobs).set({ state: "running" }).where(eq(schema.jobs.deploymentId, dep.id));
     await ctx.db.update(schema.deployments).set({ state: "canceled" }).where(eq(schema.deployments.id, dep.id));
-    await expect(deleteProjectRecords(user.id, p.id)).rejects.toMatchObject({ status: 409 });
+    await expect(trashProject(user.id, p.id)).rejects.toMatchObject({ status: 409 });
     await ctx.db.update(schema.jobs).set({ state: "done" }).where(eq(schema.jobs.deploymentId, dep.id));
-    await expect(deleteProjectRecords(user.id, p.id)).resolves.toBeUndefined();
+    await expect(trashProject(user.id, p.id)).resolves.toBeUndefined();
   });
   it("lets one webhook deployment per commit be active and refuses a racing second one", async () => {
     await webhook("a".repeat(40));

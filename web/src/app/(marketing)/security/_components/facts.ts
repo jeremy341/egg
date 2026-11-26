@@ -20,7 +20,7 @@ export const SECURITY_FACTS = {
   /** Terminals one account can have open at once (TERMINAL_LIMITS.maxSessionsPerUser). */
   terminalsPerAccount: 5,
   /** Most requests made with an access token, in KB (DEFAULT_MAX_BODY_BYTES). */
-  apiBodyKb: 16,
+  apiBodyKb: 100,
   /** JSON requests from a signed-in browser, in KB (JSON_BODY_LIMIT). */
   dashboardBodyKb: 256,
   /** Public analytics collector request bodies, in bytes. */
@@ -28,7 +28,7 @@ export const SECURITY_FACTS = {
   /** A deploy hook request body, in KB. */
   deployHookBodyKb: 4,
   /** An MCP request body, in KB. */
-  mcpBodyKb: 64,
+  mcpBodyKb: 100,
   /** A GitHub delivery body, in MB. */
   githubBodyMb: 5,
   /** A file upload, in MB (UPLOAD_LIMIT). */

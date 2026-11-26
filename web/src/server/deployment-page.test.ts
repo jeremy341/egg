@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
 import { upsertUser } from "@/server/auth/session";
 import { schema } from "@/server/db";
 import {
@@ -9,7 +10,7 @@ import {
   selectDeploymentPage,
 } from "@/server/deployment-page";
 import { createProject } from "@/server/projects";
-import { deploymentPage, deploymentViews } from "@/server/queries";
+import { deploymentPage, deploymentView, deploymentViews } from "@/server/queries";
 import { createServer } from "@/server/servers";
 import { freePort } from "@/server/test/fake-nest";
 import { useFreshDb } from "@/server/test/db";
@@ -276,5 +277,15 @@ describe("deployment pages", () => {
     expect(ids(some)).toEqual(["t-c", "t-b", "t-a"]);
     const all = await deploymentViews(userId, { projectId });
     expect(all).toHaveLength(63);
+  });
+
+  it("deploymentView is owner-only and uses the real slug", async () => {
+    const real = (await ctx.db.select().from(schema.projects).where(eq(schema.projects.id, projectId)).get())!;
+
+    const ownerView = await deploymentView(userId, "t-a");
+    expect(ownerView.project.slug).toBe(real.slug);
+    expect(ownerView.deployment.projectSlug).toBe(real.slug);
+
+    await expect(deploymentView(otherUserId, "t-a")).rejects.toMatchObject({ status: 404 });
   });
 });

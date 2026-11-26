@@ -7,9 +7,11 @@ import { useFreshDb } from "@/server/test/db";
 import type { Lookup, SendRequest, Transport } from "@/server/webhook-net";
 import { signWebhook, verifyWebhookSignature } from "@/server/webhook-sign";
 import {
+  createPruneScheduler,
   createWebhook,
   deleteWebhook,
   dispatchDeploymentEvent,
+  forgetDeliveriesForDeployments,
   getWebhook,
   listDeliveries,
   listWebhooks,
@@ -111,7 +113,7 @@ describe("creating and reading webhooks", () => {
     const { webhook, secret } = await createWebhook(sam, { url: URL_OK });
     expect(secret).toMatch(/^whsec_/);
     expect(webhook).toMatchObject({ url: URL_OK, host: "hooks.example.com", active: true, projectId: null });
-    expect(webhook.events).toEqual(["deployment.started", "deployment.succeeded", "deployment.failed"]);
+    expect(webhook.events).toEqual(["deployment.started", "deployment.succeeded", "deployment.failed", "deploy.regressed"]);
 
     const stored = await ctx.db.select().from(schema.webhooks).where(eq(schema.webhooks.id, webhook.id)).get();
     expect(stored?.secretEnc).not.toContain(secret);
@@ -213,7 +215,10 @@ describe("dispatching deployment events", () => {
     // The request goes to the checked address, over https, to the stored path.
     expect(req.address).toBe("93.184.216.34");
     expect(req.url.toString()).toBe(URL_OK);
-    expect(req.timeoutMs).toBe(5000);
+    // The DNS lookup and the send share one 5 s budget, so whatever the transport
+    // sees is what remained at send time.
+    expect(req.timeoutMs).toBeGreaterThan(0);
+    expect(req.timeoutMs).toBeLessThanOrEqual(5000);
     expect(req.maxBytes).toBe(4096);
     // The signature header is t=<unix>,v1=<hex> over "<t>.<body>" with this webhook's secret.
     const sig = req.headers["X-Egg-Signature"];
@@ -383,6 +388,15 @@ describe("rotating the secret", () => {
     expect(verifyWebhookSignature(rotated.secret, sig, seen[0].body, t)).toBe(true);
     expect(verifyWebhookSignature(created.secret, sig, seen[0].body, t)).toBe(false);
   });
+
+  it("records the rotation in the audit log", async () => {
+    const created = await createWebhook(sam, { url: URL_OK });
+    const rotated = await rotateWebhookSecret(sam, created.webhook.id);
+    const rows = await ctx.db.select().from(schema.auditLog).where(eq(schema.auditLog.target, created.webhook.id));
+    expect(rows.map((r) => r.action)).toEqual(["webhook.create", "webhook.rotate"]);
+    // Nothing about the rotation carries the secret.
+    expect(JSON.stringify(rows)).not.toContain(rotated.secret);
+  });
 });
 
 describe("delivery history", () => {
@@ -417,5 +431,91 @@ describe("delivery history", () => {
     expect(await ctx.db.select().from(schema.webhookDeliveries)).toHaveLength(1);
     await deleteWebhook(sam, webhook.id);
     expect(await ctx.db.select().from(schema.webhookDeliveries)).toHaveLength(0);
+  });
+
+  it("forgets the deployment link when the deployments are deleted, and leaves others alone", async () => {
+    const { webhook } = await createWebhook(sam, { url: URL_OK });
+    const gone = await deployment("ready");
+    const kept = await deployment("ready");
+    const row = (id: string, deploymentId: string | null) => ({
+      id,
+      webhookId: webhook.id,
+      event: "deployment.succeeded",
+      deploymentId,
+      status: "success" as const,
+      attempts: 1,
+      createdAt: NOW,
+    });
+    await ctx.db.insert(schema.webhookDeliveries).values([
+      row("dv-gone", gone),
+      row("dv-kept", kept),
+      row("dv-none", null),
+    ]);
+    await forgetDeliveriesForDeployments(ctx.db, [gone]);
+    const left = Object.fromEntries((await ctx.db.select().from(schema.webhookDeliveries)).map((d) => [d.id, d]));
+    expect(left["dv-gone"].deploymentId).toBeNull();
+    expect(left["dv-kept"].deploymentId).toBe(kept);
+    expect(left["dv-none"].deploymentId).toBeNull();
+    // An empty list changes nothing.
+    await forgetDeliveriesForDeployments(ctx.db, []);
+    expect(await ctx.db.select().from(schema.webhookDeliveries)).toHaveLength(3);
+  });
+});
+
+describe("delivery response timestamps", () => {
+  it("returns the exact timestamps that were stored, even as the clock advances", async () => {
+    const { webhook } = await createWebhook(sam, { url: URL_OK });
+    const t0 = new Date("2026-04-01T00:00:00.000Z");
+    const times = [t0, new Date(t0.getTime() + 1000), new Date(t0.getTime() + 2000), new Date(t0.getTime() + 3000)];
+    let i = 0;
+    const now = () => times[Math.min(i++, times.length - 1)];
+
+    const result = await sendTestWebhook(sam, webhook.id, { lookup: PUBLIC, transport: recorder().transport, sleep, now });
+    const stored = await ctx.db
+      .select()
+      .from(schema.webhookDeliveries)
+      .where(eq(schema.webhookDeliveries.id, result.id))
+      .get();
+
+    expect(result.createdAt).toBe(stored!.createdAt.toISOString());
+    expect(result.finishedAt).toBe(stored!.finishedAt!.toISOString());
+    expect(result.createdAt).not.toBe(result.finishedAt);
+  });
+});
+
+describe("prune scheduling", () => {
+  const at = new Date("2030-01-01T00:00:00.000Z");
+
+  it("does not advance the timestamp after a failed prune", async () => {
+    const prune = vi.fn(async () => {
+      throw new Error("db down");
+    });
+    const run = createPruneScheduler(prune);
+    await expect(run(at)).rejects.toThrow("db down");
+    await expect(run(at)).rejects.toThrow("db down");
+    expect(prune).toHaveBeenCalledTimes(2);
+  });
+
+  it("coalesces concurrent prunes and skips the rest of the hour", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const prune = vi.fn(async () => {
+      await gate;
+    });
+    const run = createPruneScheduler(prune);
+
+    const first = run(at);
+    const second = run(new Date(at.getTime() + 1000));
+    expect(prune).toHaveBeenCalledTimes(1);
+    expect(second).toBe(first);
+    release();
+    await Promise.all([first, second]);
+
+    await run(new Date(at.getTime() + 60_000));
+    expect(prune).toHaveBeenCalledTimes(1);
+    await run(new Date(at.getTime() + 3_600_001));
+    expect(prune).toHaveBeenCalledTimes(2);
   });
 });

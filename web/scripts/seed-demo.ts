@@ -158,6 +158,15 @@ const BUILD_LOG = (p: ProjectSeed, commit: string, failed: boolean) => {
 };
 
 async function seed() {
+  // This seeds a known "dev" identity and demo data. Refuse to run against a
+  // production database or an unexpected remote database.
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("seed:demo refuses to run with NODE_ENV=production.");
+  }
+  const dbUrl = process.env.DATABASE_URL ?? "";
+  if (!dbUrl.startsWith("file:") || dbUrl.startsWith("file::memory:")) {
+    throw new Error("seed:demo requires a local file: DATABASE_URL under the web directory.");
+  }
   const db = await getDb();
   const user = await upsertUser({ id: "dev:dev", name: "dev", email: null, slackId: null });
   await reset();
@@ -353,7 +362,7 @@ async function seed() {
       port: 3000,
       status: "valid",
       lastCheckedAt: new Date(now - 2 * 60 * MIN),
-      createdAt: new Date(now - 12 * DAY),
+      createdAt: new Date(now - 12 * DAY), updatedAt: new Date(now - 12 * DAY)
     },
     {
       id: "demo-domain-2",
@@ -364,7 +373,7 @@ async function seed() {
       port: 3001,
       status: "valid",
       lastCheckedAt: new Date(now - 30 * MIN),
-      createdAt: new Date(now - 9 * DAY),
+      createdAt: new Date(now - 9 * DAY), updatedAt: new Date(now - 9 * DAY)
     },
     {
       id: "demo-domain-3",
@@ -375,7 +384,7 @@ async function seed() {
       port: 5173,
       status: "invalid",
       lastCheckedAt: new Date(now - 5 * MIN),
-      createdAt: new Date(now - 1 * DAY),
+      createdAt: new Date(now - 1 * DAY), updatedAt: new Date(now - 1 * DAY)
     },
   ]);
 

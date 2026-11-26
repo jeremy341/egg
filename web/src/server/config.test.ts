@@ -42,6 +42,14 @@ describe("local mode defaults", () => {
     expect(localModeEnabled()).toBe(true);
   });
 
+  it("normalizes case and whitespace the same way as the rate-limit path", () => {
+    env({ LOCAL_MODE: " TRUE ", APP_URL: "http://localhost:3000" });
+    expect(config().LOCAL_MODE).toBe(true);
+    expect(localModeEnabled()).toBe(true);
+    env({ LOCAL_MODE: " 0 " });
+    expect(config().LOCAL_MODE).toBe(false);
+  });
+
   it("requires a separate local sign-in secret before enabling local mode", () => {
     env({ LOCAL_MODE: "1", APP_URL: "http://localhost:3000", LOCAL_MODE_SECRET: undefined });
     expect(() => config()).toThrow(/LOCAL_MODE_SECRET/);
@@ -85,10 +93,16 @@ describe("isLoopbackHost", () => {
   it.each(["localhost", "LOCALHOST", "127.0.0.1", "[::1]", "::1"])("is true for %s", (h) => {
     expect(isLoopbackHost(h)).toBe(true);
   });
-  it.each(["example.com", "10.0.0.1", "0.0.0.0", "localhost.evil.com", "127.0.0.1.evil.com", ""])(
-    "is false for %s",
-    (h) => {
-      expect(isLoopbackHost(h)).toBe(false);
-    }
-  );
+  it.each([
+    "example.com",
+    "10.0.0.1",
+    "0.0.0.0",
+    "localhost.evil.com",
+    "127.0.0.1.evil.com",
+    "127.999.999.999",
+    "127.0.0.01",
+    "",
+  ])("is false for %s", (h) => {
+    expect(isLoopbackHost(h)).toBe(false);
+  });
 });

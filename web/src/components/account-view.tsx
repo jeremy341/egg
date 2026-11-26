@@ -14,11 +14,13 @@ const SESSIONS_SHOWN = 5;
 
 export type SessionItem = { id: string; label: string; started: string; current: boolean };
 
-/** The signed-in browsers card: sign one out, or all the others. */
-export function AccountSessions({ sessions }: { sessions: SessionItem[] }) {
+/** Browser sessions and account deletion. The profile itself comes from Hack Club and is read-only. */
+export function AccountView({ name, sessions }: { name: string; sessions: SessionItem[] }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState("");
   const [showAll, setShowAll] = useState(false);
   const others = sessions.filter((s) => !s.current);
   const visible = showAll ? sessions : sessions.slice(0, SESSIONS_SHOWN);
@@ -49,77 +51,8 @@ export function AccountSessions({ sessions }: { sessions: SessionItem[] }) {
     }
   }
 
-  return (
-    <Card
-      id="sessions-heading"
-      title="Signed-in browsers"
-      description="Sign out any browser you do not recognise."
-    >
-      <ul className="hairline-y overflow-hidden rounded-md shadow-border-base">
-        {visible.map((s) => (
-          <li key={s.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
-            <div className="min-w-0">
-              <p className="flex min-w-0 items-center gap-2 font-medium">
-                <span className="truncate">{s.label}</span>
-                {s.current ? <Badge variant="outline">This browser</Badge> : null}
-              </p>
-              <p className="text-label text-muted-foreground">Signed in {s.started}</p>
-            </div>
-            {s.current ? null : (
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={busy !== null}
-                loading={busy === s.id}
-                onClick={() => void revoke(s.id)}
-              >
-                {busy === s.id ? "Signing out…" : "Sign out"}
-              </Button>
-            )}
-          </li>
-        ))}
-      </ul>
-      {sessions.length > SESSIONS_SHOWN ? (
-        <Button
-          variant="ghost"
-          size="sm"
-          className="mt-2"
-          aria-expanded={showAll}
-          onClick={() => setShowAll((v) => !v)}
-        >
-          {showAll ? "Show fewer" : `Show all ${sessions.length}`}
-        </Button>
-      ) : null}
-      {others.length > 0 ? (
-        <div className="mt-4">
-          <Button
-            variant="outline"
-            disabled={busy !== null}
-            loading={busy === "all"}
-            onClick={() => void revokeAll()}
-          >
-            {busy === "all" ? "Signing out…" : "Sign out everywhere else"}
-          </Button>
-        </div>
-      ) : null}
-      {error ? (
-        <Alert tone="error" role="alert" className="mt-3">
-          {error}
-        </Alert>
-      ) : null}
-    </Card>
-  );
-}
-
-/** The delete-account card. The profile itself comes from Hack Club and is read-only. */
-export function AccountDelete({ name }: { name: string }) {
-  const router = useRouter();
-  const [busy, setBusy] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [confirm, setConfirm] = useState("");
-
   async function destroy() {
-    setBusy(true);
+    setBusy("delete");
     setDeleteError(null);
     try {
       await api("/api/account", { method: "DELETE", body: { confirm } });
@@ -127,46 +60,107 @@ export function AccountDelete({ name }: { name: string }) {
       router.refresh();
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : "Could not delete the account");
-      setBusy(false);
+      setBusy(null);
     }
   }
 
   const canDelete = confirm.trim() === name;
 
   return (
-    <Card
-      id="delete-account-heading"
-      title="Delete account"
-      description="Removes your projects, servers, domains, keys and history from Egg. Apps on your Nest container keep running, unmanaged. Delete the SSH key in your Nest dashboard too."
-      tone="danger"
-      footer={
-        <>
-          {deleteError ? (
-            <p role="alert" className="min-w-0 text-label text-foreground">
-              {deleteError}
-            </p>
-          ) : null}
+    <div className="space-y-6">
+      <Card
+        id="sessions-heading"
+        title="Signed-in browsers"
+        description="Anywhere you are signed in to Egg. Sign out any you do not recognise."
+      >
+        <ul className="hairline-y overflow-hidden rounded-md shadow-border-base">
+          {visible.map((s) => (
+            <li key={s.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
+              <div className="min-w-0">
+                <p className="flex min-w-0 items-center gap-2 font-medium">
+                  <span className="truncate">{s.label}</span>
+                  {s.current ? <Badge variant="outline">This browser</Badge> : null}
+                </p>
+                <p className="text-label text-muted-foreground">Signed in {s.started}</p>
+              </div>
+              {s.current ? null : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={busy !== null}
+                  loading={busy === s.id}
+                  onClick={() => void revoke(s.id)}
+                >
+                  {busy === s.id ? "Signing out…" : "Sign out"}
+                </Button>
+              )}
+            </li>
+          ))}
+        </ul>
+        {sessions.length > SESSIONS_SHOWN ? (
           <Button
-            variant={canDelete ? "destructive-solid" : "destructive"}
-            disabled={!canDelete || busy}
-            loading={busy}
-            onClick={() => void destroy()}
-            className="ml-auto"
+            variant="ghost"
+            size="sm"
+            className="mt-2"
+            aria-expanded={showAll}
+            onClick={() => setShowAll((v) => !v)}
           >
-            {busy ? "Deleting…" : "Delete account"}
+            {showAll ? "Show fewer" : `Show all ${sessions.length}`}
           </Button>
-        </>
-      }
-    >
-      <Label htmlFor="del-account">
-        Type <span className="font-mono text-foreground">{name}</span> to confirm
-      </Label>
-      <Input
-        id="del-account"
-        value={confirm}
-        onChange={(e) => setConfirm(e.target.value)}
-        autoComplete="off"
-      />
-    </Card>
+        ) : null}
+        {others.length > 0 ? (
+          <div className="mt-4">
+            <Button
+              variant="outline"
+              disabled={busy !== null}
+              loading={busy === "all"}
+              onClick={() => void revokeAll()}
+            >
+              {busy === "all" ? "Signing out…" : "Sign out everywhere else"}
+            </Button>
+          </div>
+        ) : null}
+        {error ? (
+          <Alert tone="error" role="alert" className="mt-3">
+            {error}
+          </Alert>
+        ) : null}
+      </Card>
+
+      <Card
+        id="delete-account-heading"
+        title="Delete account"
+        description="Removes your projects, servers, domains, keys and history from Egg. Apps on your container keep running, but nothing manages them. Delete the SSH key in your Nest dashboard too."
+        tone="danger"
+        footer={
+          <>
+            {deleteError ? (
+              <p role="alert" className="min-w-0 text-label text-foreground">
+                {deleteError}
+              </p>
+            ) : null}
+            <Button
+              variant={canDelete ? "destructive-solid" : "destructive"}
+              disabled={!canDelete || busy !== null}
+              loading={busy === "delete"}
+              onClick={() => void destroy()}
+              className="ml-auto"
+            >
+              {busy === "delete" ? "Deleting…" : "Delete account"}
+            </Button>
+          </>
+        }
+      >
+        <Label htmlFor="del-account">
+          Type <span className="font-mono text-foreground">{name}</span> to confirm
+        </Label>
+        <Input
+          id="del-account"
+          value={confirm}
+          onChange={(e) => setConfirm(e.target.value)}
+          autoComplete="off"
+        />
+      </Card>
+    </div>
   );
 }

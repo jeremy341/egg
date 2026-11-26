@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
 import { npmCachePlan, npmCacheScript } from "./download-cache";
 import { spawnSync } from "node:child_process";
-import { startMockSsh, wslEnabled } from "@/server/test/mock-ssh";
+import { linuxTestHostAvailable, startMockSsh } from "@/server/test/mock-ssh";
 import { NestSession } from "@/server/ssh/connection";
 import { generateServerKey } from "@/server/ssh/keys";
 const base = { enabled: true, env: "production" as const, lockHash: "a".repeat(64), buildInstall: "npm ci", remoteInstall: "npm ci --omit=dev" };
@@ -16,7 +16,7 @@ it("rejects unsafe lock keys", () => {
   expect(npmCachePlan({ ...base, lockHash: "../../outside" })).toBeNull();
 });
 
-it.skipIf(process.platform === "win32" && !wslEnabled())("reuses scoped npm content and repairs corruption on Linux", async () => {
+it.skipIf(!linuxTestHostAvailable())("reuses scoped npm content and repairs corruption on Linux", async () => {
   const key = generateServerKey("cache-test");
   const mock = await startMockSsh({ authorizedKeys: [key.publicKey] });
   const session = await NestSession.connect({ host: "127.0.0.1", port: mock.port, username: "test", privateKey: key.privateKey });
@@ -72,7 +72,7 @@ it("checks the cache disk limit and prunes only managed cache keys", async () =>
   expect(result.status).toBe(0);
 });
 
-it.skipIf(process.platform === "win32" && !wslEnabled())("falls back to a clean npm install when the cache is over budget", async () => {
+it.skipIf(!linuxTestHostAvailable())("falls back to a clean npm install when the cache is over budget", async () => {
   const key = generateServerKey("cache-budget-test");
   const mock = await startMockSsh({ authorizedKeys: [key.publicKey] });
   const session = await NestSession.connect({ host: "127.0.0.1", port: mock.port, username: "test", privateKey: key.privateKey });
@@ -94,7 +94,7 @@ egg_npm ci
   } finally { session.close(); await mock.stop(); }
 }, 60000);
 
-it.skipIf(process.platform === "win32" && !wslEnabled())("stops an over-budget cache build and removes only owned keys", async () => {
+it.skipIf(!linuxTestHostAvailable())("stops an over-budget cache build and removes only owned keys", async () => {
   const { cappedBuildScript } = await import("./container-build");
   const key = generateServerKey("cache-watch-test");
   const mock = await startMockSsh({ authorizedKeys: [key.publicKey] });

@@ -1,8 +1,8 @@
-import { and, desc, eq, isNull, lt, or } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lt, or } from "drizzle-orm";
 import { z } from "zod";
 import { audit } from "@/server/audit";
 import { newId, open, seal } from "@/server/crypto";
-import { getDb, schema } from "@/server/db";
+import { getDb, schema, type Db } from "@/server/db";
 import { HttpError, notFound } from "@/server/http";
 import {
   parseWebhookUrl,
@@ -200,27 +200,30 @@ export async function createWebhook(
       .get();
     if (!project) throw notFound("Project not found");
   }
-  const existing = await db
-    .select({ id: schema.webhooks.id })
-    .from(schema.webhooks)
-    .where(eq(schema.webhooks.userId, userId));
-  if (existing.length >= MAX_WEBHOOKS_PER_USER) {
-    throw new HttpError(409, `You can have up to ${MAX_WEBHOOKS_PER_USER} webhooks. Delete one first.`, "limit");
-  }
-
   const id = newId();
   const secret = newWebhookSecret();
   const now = new Date();
-  await db.insert(schema.webhooks).values({
-    id,
-    userId,
-    projectId: input.projectId ?? null,
-    url: input.url,
-    secretEnc: seal(secret, context(id)),
-    events: JSON.stringify(input.events ?? EVENTS),
-    active: true,
-    createdAt: now,
-    updatedAt: now,
+  // Count and insert in one write transaction (BEGIN IMMEDIATE on libsql): two
+  // concurrent creates cannot both read a below-cap count and both insert.
+  await db.transaction(async (tx) => {
+    const existing = await tx
+      .select({ id: schema.webhooks.id })
+      .from(schema.webhooks)
+      .where(eq(schema.webhooks.userId, userId));
+    if (existing.length >= MAX_WEBHOOKS_PER_USER) {
+      throw new HttpError(409, `You can have up to ${MAX_WEBHOOKS_PER_USER} webhooks. Delete one first.`, "limit");
+    }
+    await tx.insert(schema.webhooks).values({
+      id,
+      userId,
+      projectId: input.projectId ?? null,
+      url: input.url,
+      secretEnc: seal(secret, context(id)),
+      events: JSON.stringify(input.events ?? EVENTS),
+      active: true,
+      createdAt: now,
+      updatedAt: now,
+    });
   });
   await audit(userId, "webhook.create", id, { host: hostOf(input.url) });
   return { webhook: await getWebhook(userId, id), secret };
@@ -260,11 +263,14 @@ export async function rotateWebhookSecret(
   const db = await getDb();
   const secret = newWebhookSecret();
   const now = new Date();
-  await db
-    .update(schema.webhooks)
-    .set({ secretEnc: seal(secret, context(webhookId)), secretRotatedAt: now, updatedAt: now })
-    .where(and(eq(schema.webhooks.id, webhookId), eq(schema.webhooks.userId, userId)));
-  await audit(userId, "webhook.rotate", webhookId);
+  // The rotation and its audit line land together or not at all.
+  await db.transaction(async (tx) => {
+    await tx
+      .update(schema.webhooks)
+      .set({ secretEnc: seal(secret, context(webhookId)), secretRotatedAt: now, updatedAt: now })
+      .where(and(eq(schema.webhooks.id, webhookId), eq(schema.webhooks.userId, userId)));
+    await tx.insert(schema.auditLog).values({ userId, action: "webhook.rotate", target: webhookId, at: new Date() });
+  });
   return { webhook: await getWebhook(userId, webhookId), secret };
 }
 
@@ -343,6 +349,10 @@ async function deliver(
   const now = deps.now ?? (() => new Date());
   const sleep = deps.sleep ?? realSleep;
   const deliveryId = newId();
+  // Capture the timestamps once: the row we store and the view we return must
+  // agree. Calling now() again when building the response could hand the caller
+  // timestamps that differ from what was actually recorded.
+  const createdAt = now();
   await db.insert(schema.webhookDeliveries).values({
     id: deliveryId,
     webhookId: row.id,
@@ -350,7 +360,7 @@ async function deliver(
     deploymentId,
     status: "pending",
     attempts: 0,
-    createdAt: now(),
+    createdAt,
   });
 
   const body = JSON.stringify(payload);
@@ -396,9 +406,10 @@ async function deliver(
     lastError = err instanceof HttpError ? "invalid_url" : "secret_unreadable";
   }
 
+  const finishedAt = now();
   await db
     .update(schema.webhookDeliveries)
-    .set({ status, attempts, lastErrorCode: lastError, finishedAt: now() })
+    .set({ status, attempts, lastErrorCode: lastError, finishedAt })
     .where(eq(schema.webhookDeliveries.id, deliveryId));
   return {
     id: deliveryId,
@@ -408,8 +419,8 @@ async function deliver(
     status,
     attempts,
     lastErrorCode: lastError,
-    createdAt: now().toISOString(),
-    finishedAt: now().toISOString(),
+    createdAt: createdAt.toISOString(),
+    finishedAt: finishedAt.toISOString(),
   };
 }
 
@@ -443,7 +454,44 @@ export const EVENT_FOR_STATE: Record<string, WebhookEventName | undefined> = {
   error: "deployment.failed",
 };
 
-let lastPrune = 0;
+/**
+ * Retention runs at most once an hour, and never twice at the same time. The
+ * timestamp advances only after a successful prune, so a failure does not
+ * suppress pruning for the next hour. Taking the operation as an argument keeps
+ * the scheduling testable without a live database.
+ */
+export function createPruneScheduler(prune: (at: Date) => Promise<void>) {
+  let lastPrune = 0;
+  let inFlight: Promise<void> | null = null;
+  return (at: Date): Promise<void> => {
+    const nowMs = at.getTime();
+    if (nowMs - lastPrune <= 3_600_000) return Promise.resolve();
+    if (inFlight) return inFlight;
+    inFlight = (async () => {
+      try {
+        await prune(at);
+        lastPrune = nowMs;
+      } finally {
+        inFlight = null;
+      }
+    })();
+    return inFlight;
+  };
+}
+const maybePrune = createPruneScheduler(pruneDeliveries);
+
+/**
+ * Deployments are being deleted: the deliveries stay until retention removes
+ * them, but the link must not outlive them. Takes the caller's transaction so
+ * the deployments and their delivery rows change together.
+ */
+export async function forgetDeliveriesForDeployments(db: Pick<Db, "update">, deploymentIds: string[]): Promise<void> {
+  if (deploymentIds.length === 0) return;
+  await db
+    .update(schema.webhookDeliveries)
+    .set({ deploymentId: null })
+    .where(inArray(schema.webhookDeliveries.deploymentId, deploymentIds));
+}
 
 /** Delete deliveries older than 30 days and close ones that were cut off. */
 export async function pruneDeliveries(now = new Date()): Promise<void> {
@@ -470,14 +518,14 @@ export async function pruneDeliveries(now = new Date()): Promise<void> {
  */
 export async function dispatchDeploymentEvent(
   deploymentId: string,
-  deps: SendDeps & { state?: string } = {}
+  deps: SendDeps & { state?: string; event?: WebhookEventName } = {}
 ): Promise<void> {
   try {
     const db = await getDb();
     const dep = await db.select().from(schema.deployments).where(eq(schema.deployments.id, deploymentId)).get();
     if (!dep) return;
     const state = deps.state ?? dep.state;
-    const event = EVENT_FOR_STATE[state];
+    const event = deps.event ?? EVENT_FOR_STATE[state];
     if (!event) return;
     const project = await db.select().from(schema.projects).where(eq(schema.projects.id, dep.projectId)).get();
     if (!project) return;
@@ -499,11 +547,7 @@ export async function dispatchDeploymentEvent(
     const payload = buildPayload(event, project, { ...dep, state }, at);
     await Promise.allSettled(targets.map((r) => deliver(r, payload, dep.id, deps, MAX_ATTEMPTS)));
 
-    const nowMs = at.getTime();
-    if (nowMs - lastPrune > 3_600_000) {
-      lastPrune = nowMs;
-      await pruneDeliveries(at);
-    }
+    await maybePrune(at);
   } catch (err) {
     console.warn("webhook dispatch failed", err instanceof Error ? err.message : err);
   }

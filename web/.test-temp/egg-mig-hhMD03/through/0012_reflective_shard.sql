@@ -1,0 +1,1 @@
+ALTER TABLE `servers` ADD `build_memory_mb` integer DEFAULT 2048 NOT NULL;

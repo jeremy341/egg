@@ -12,6 +12,7 @@ import {
   envFileOf,
   projectDir,
   releaseDir,
+  scopedSlug,
   sharedDir,
 } from "@/server/deploy/layout";
 
@@ -24,6 +25,11 @@ import {
 const HEAD = "set -euo pipefail\n";
 
 const UUID_RE = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+
+/** The ownership line of every unit Egg writes. The scope is the server discriminator. */
+export function ownershipMarker(slug: string, scope?: string) {
+  return `${UNIT_MARKER} project=${slug}${scope ? ` scope=${scope}` : ""}\n`;
+}
 
 /**
  * Shell helpers for the runtime variables files (see layout.ts: envFileOf). Releases made before
@@ -50,14 +56,14 @@ export const SH_ENV_HELPERS =
   `    [[ "$id" =~ ^${UUID_RE}$ ]] || continue\n` +
   `    [ -f "$d/.env" ] && [ ! -L "$d/.env" ] || continue\n` +
   `    egg_env_copy "$d/.env" "$p/env/$id.env" || continue\n` +
-  `    for f in "$unitdir/egg-$slug-pv-"*.service; do egg_own_unit "$f" "$slug" && egg_fix_env "$f" "EnvironmentFile=$d/.env" "EnvironmentFile=$p/env/$id.env"; done\n` +
+  `    for f in "$unitdir/egg-$slug-"*.service; do egg_own_unit "$f" "$slug" && egg_fix_env "$f" "EnvironmentFile=$d/.env" "EnvironmentFile=$p/env/$id.env"; done\n` +
   `  done\n` +
   `  cur=$(readlink "$p/current" 2>/dev/null || true); id=\${cur##*/}\n` +
   `  if [[ "$id" =~ ^${UUID_RE}$ ]] && [ -f "$p/env/$id.env" ] && [ "$(readlink "$p/current.env" 2>/dev/null || true)" != "$p/env/$id.env" ]; then\n` +
   `    ln -sfn -- "$p/env/$id.env" "$p/current.env.new" && mv -Tf -- "$p/current.env.new" "$p/current.env"\n` +
   `  fi\n` +
   `  if [ -L "$p/current.env" ]; then\n` +
-  `    for f in "$unitdir/egg-$slug.service" "$unitdir/egg-$slug-job-"*.service; do\n` +
+  `    for f in "$unitdir/egg-$slug"*.service; do\n` +
   `      egg_own_unit "$f" "$slug" || continue\n` +
   `      egg_fix_env "$f" "EnvironmentFile=$p/current/.env" "EnvironmentFile=$p/current.env"\n` +
   `      egg_fix_env "$f" "EnvironmentFile=-$p/current/.env" "EnvironmentFile=-$p/current.env"\n` +
@@ -88,35 +94,48 @@ export const NOT_OURS_EXIT = 30;
  * user's own git checkout. An empty folder is fine. Once created, the folder
  * gets a marker so later runs and the cleanup know it is ours.
  */
-export function prepareDirs(home: string, slug: string) {
+export function prepareDirs(home: string, slug: string, scope?: string) {
   const p = projectDir(home, slug);
+  const ours = scope ? `egg_dir_managed ${shellQuote(p)} ${shellQuote(scope)}` : `egg_dir_managed ${shellQuote(p)}`;
   return (
     HEAD +
     SH_MARKER_HELPERS +
     `p=${shellQuote(p)}\n` +
     `if [ -L "$p" ]; then echo "$p is a link, so Egg will not write into it." >&2; exit ${NOT_OURS_EXIT}; fi\n` +
     `if [ -e "$p" ] && [ ! -d "$p" ]; then echo "$p exists and is not a folder." >&2; exit ${NOT_OURS_EXIT}; fi\n` +
-    `if [ -d "$p" ] && ! egg_dir_managed "$p" && [ -n "$(ls -A "$p")" ]; then echo "$p already exists and was not created by Egg, so it was left alone." >&2; exit ${NOT_OURS_EXIT}; fi\n` +
+    `if [ -d "$p" ] && ! ${ours} && [ -n "$(ls -A "$p")" ]; then echo "$p already exists and was not created by Egg, so it was left alone." >&2; exit ${NOT_OURS_EXIT}; fi\n` +
     `e=${shellQuote(envDir(home, slug))}\n` +
     `if [ -L "$e" ] || { [ -e "$e" ] && [ ! -d "$e" ]; }; then echo "$e is not a folder, so Egg will not write variables into it." >&2; exit ${NOT_OURS_EXIT}; fi\n` +
     `mkdir -p ${shellQuote(`${p}/incoming`)} ${shellQuote(`${p}/releases`)} ${shellQuote(sharedDir(home, slug))}\n` +
     // Runtime variables live here, outside every release folder (a release folder can be served over HTTP).
     `mkdir -p "$e" && chmod 700 "$e"\n` +
-    `: > ${shellQuote(`${p}/${FOLDER_MARKER}`)}\n`
+    `printf '%s\\n' ${shellQuote(scope ?? "")} > ${shellQuote(`${p}/${FOLDER_MARKER}`)}\n`
   );
 }
 
 /**
  * Exit 30 when a service file with this name already exists and Egg
- * did not write it. Run before the unit is written, so a deploy never replaces
- * a service the user made.
+ * did not write it, or its marker names another Egg project. Run before the
+ * unit is written, so a deploy never replaces a service the user made and never
+ * takes a unit another Egg project already owns (a slug such as a-pv-12345678
+ * spells the preview unit name of the project a). Without `project` only the
+ * marker is checked, the shape callers outside one project use.
  */
-export function guardUnitFree(unitDir: string, unit: string) {
+export function guardUnitFree(unitDir: string, unit: string, project?: string, scope?: string) {
+  const ours = project === undefined
+    ? `egg_unit_marked "$f"`
+    : scope === undefined
+      ? `egg_unit_ours "$f" ${shellQuote(project)}`
+      : `egg_unit_ours "$f" ${shellQuote(project)} ${shellQuote(scope)}`;
+  const own = project === undefined
+    ? ""
+    : `if egg_unit_marked "$f" && ! ${ours}; then echo "${unit} was created by Egg for another project, so it was left alone." >&2; exit ${NOT_OURS_EXIT}; fi\n`;
   return (
     HEAD +
     SH_MARKER_HELPERS +
     `f=${shellQuote(`${unitDir}/${unit}`)}\n` +
-    `if { [ -e "$f" ] || [ -L "$f" ]; } && ! egg_unit_marked "$f"; then echo "${unit} already exists and was not created by Egg, so it was left alone." >&2; exit ${NOT_OURS_EXIT}; fi\n`
+    `if { [ -e "$f" ] || [ -L "$f" ]; } && ! egg_unit_marked "$f"; then echo "${unit} already exists and was not created by Egg, so it was left alone." >&2; exit ${NOT_OURS_EXIT}; fi\n` +
+    own
   );
 }
 
@@ -130,20 +149,22 @@ export function unitFile(args: {
   description: string;
   workDir: string;
   envFile: string;
-  port: number;
+  port: number | null;
   startCommand: string;
   /** Extra PATH entries, such as the Python venv. */
   pathPrefix?: string;
+  /** Short hash of the server id; isolates same-slug projects from other accounts. */
+  scope?: string;
 }) {
   const path = args.pathPrefix
     ? `Environment=PATH=${args.pathPrefix}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n`
     : "";
   return (
-    `${UNIT_MARKER} project=${args.slug}\n` +
+    ownershipMarker(args.slug, args.scope) +
     `[Unit]\nDescription=${args.description.replace(/[\r\n]/g, " ")}\nAfter=network.target\n\n` +
     `[Service]\nType=simple\nWorkingDirectory=${args.workDir}\n` +
     `EnvironmentFile=${args.envFile}\n` +
-    `Environment=PORT=${args.port}\nEnvironment=HOST=0.0.0.0\nEnvironment=NODE_ENV=production\n` +
+    (args.port === null ? "" : `Environment=PORT=${args.port}\nEnvironment=HOST=0.0.0.0\n`) + `Environment=NODE_ENV=production\n` +
     path +
     // login shell so tools installed with nvm and friends are on PATH
     `ExecStart=/bin/bash -lc ${JSON.stringify(systemdEscape(`exec ${args.startCommand}`))}\n` +
@@ -265,6 +286,17 @@ export function healthCheck(args: {
   );
 }
 
+/** A worker has no HTTP endpoint. Require it to remain active without restarting. */
+export function workerHealthCheck(unit: string) {
+  return `unit=${shellQuote(unit)}\n` +
+    `initial=$(systemctl show "$unit" -p NRestarts --value 2>/dev/null) || exit 1\n` +
+    `for i in 1 2 3 4 5; do\n` +
+    `  [ "$(systemctl is-active "$unit" 2>/dev/null)" = active ] || exit 1\n` +
+    `  [ "$(systemctl show "$unit" -p NRestarts --value 2>/dev/null)" = "$initial" ] || exit 1\n` +
+    `  sleep 1\n` +
+    `done\necho 'Worker is active'\n`;
+}
+
 /**
  * `since` is a journalctl time such as "1 hour ago"; it is always shell-quoted.
  * `until` is whole seconds since the epoch: only entries up to then are read.
@@ -292,12 +324,17 @@ export function pruneReleases(
   keep: string[],
   building: string[] = [],
   /** When given, releases made before the variables files moved are brought to the new layout first. */
-  unitDir?: string
+  unitDir?: string,
+  /** When true, each pruned release also loses its Docker image. Preview images use the pv- tag form. */
+  dockerImages = false,
+  /** Short hash of the server id, used to build the scoped image name. */
+  scope?: string
 ) {
   const dir = `${projectDir(home, slug)}/releases`;
   const safeKeep = keep.filter((k) => RELEASE_ID.test(k));
   const safeBuilding = building.filter((k) => RELEASE_ID.test(k));
   const e = shellQuote(envDir(home, slug));
+  const imageRepo = dockerImageTag(slug, "00000000", false, scope).split(":")[0];
   // The variables file of a release that is gone (or never went live) goes with it. The one the
   // current.env link names stays, whatever the lists say.
   const pruneEnvFiles =
@@ -320,15 +357,28 @@ export function pruneReleases(
     `  n=\${f##*/}; id=\${n%.buildenv}\n` +
     `  if [[ "$id" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] && [[ "$building" != *" $id "* ]]; then rm -f -- "$f"; echo "Removed a leftover build variables file"; fi\n` +
     `done\n` +
+    // The resolved Compose forms of a pruned release go with it.
+    `for f in ${shellQuote(`${projectDir(home, slug)}/incoming`)}/*.compose.yaml ${shellQuote(`${projectDir(home, slug)}/incoming`)}/*.compose.json; do\n` +
+    `  [ -e "$f" ] || [ -L "$f" ] || continue\n` +
+    `  n=\${f##*/}; id=\${n%.compose.*}\n` +
+    `  if [[ "$id" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] && [[ "$building" != *" $id "* ]]; then rm -f -- "$f"; fi\n` +
+    `done\n` +
     (unitDir ? migrateEnvCall(home, slug, unitDir) : "") +
     pruneEnvFiles +
     `cd ${shellQuote(dir)} 2>/dev/null || exit 0\n` +
     `keep=" ${safeKeep.join(" ")} "\n` +
+    // The release the current link names stays, whatever the lists say: after a
+    // rollback the live release is not the newest, and a preview deploy's prune
+    // passes no production currentReleaseId at all.
+    `live=$(readlink -- ${shellQuote(currentLink(home, slug))} 2>/dev/null || true)\n` +
     `for d in */; do\n` +
     `  d=\${d%/}\n` +
     `  [ -d "$d" ] || continue\n` +
-    `  if [[ "$d" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] && [[ "$keep" != *" $d "* ]]; then\n` +
+    `  if [[ "$d" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] && [[ "$keep" != *" $d "* ]] && [[ "\${live##*/}" != "$d" ]]; then\n` +
     `    rm -rf -- "$d"; echo "Removed old release \${d:0:8}"\n` +
+    (dockerImages
+      ? `    if command -v docker >/dev/null 2>&1; then docker rmi -- ${shellQuote(imageRepo)}:"\${d:0:8}" ${shellQuote(imageRepo)}:"pv-\${d:0:8}" >/dev/null 2>&1 || true; fi\n`
+      : ``) +
     `  fi\n` +
     `done\n` +
     // Also matches "<archive>.partial", the name an upload uses until it finishes, so an interrupted upload is removed.
@@ -343,12 +393,24 @@ export function removePreview(args: {
   releaseId: string;
   unit: string;
   unitDir: string;
+  /** Container projects: the preview's container and image go with the service and folder. */
+  docker?: boolean;
+  /** Short hash of the server id; isolates same-slug projects from other accounts. */
+  scope?: string;
 }) {
+  const container = dockerContainerName(args.slug, { releaseId: args.releaseId }, args.scope);
   return (
-    SH_MARKER_HELPERS +
-    removeOwnUnit(args.unitDir, args.unit) +
+    SH_MARKER_HELPERS + removeOwnUnit(args.unitDir, args.unit, args.slug, args.scope) +
+    // The preview's container and image go with its folder; volumes are never touched here.
+    // Docker is only touched when the project itself deploys through it.
+    (args.docker
+      ? `if command -v docker >/dev/null 2>&1; then\n` +
+        `  docker rm -f -- ${shellQuote(container)} >/dev/null 2>&1 || true\n` +
+        `  docker rmi -- ${shellQuote(dockerImageTag(args.slug, args.releaseId, true, args.scope))} >/dev/null 2>&1 || true\n` +
+        `fi\n`
+      : ``) +
     `p=${shellQuote(projectDir(args.home, args.slug))}\n` +
-    `if egg_dir_managed "$p"; then\n` +
+    `if ${args.scope ? `egg_dir_managed "$p" ${shellQuote(args.scope)}` : `egg_dir_managed "$p"`}; then\n` +
     `  if [[ ${shellQuote(args.releaseId)} =~ ^[0-9a-f-]{36}$ ]]; then rm -rf ${shellQuote(releaseDir(args.home, args.slug, args.releaseId))}; rm -f ${shellQuote(envFileOf(args.home, args.slug, args.releaseId))}; fi\n` +
     `elif [ -e "$p" ] || [ -L "$p" ]; then echo ${shellQuote(`Project folder ${projectDir(args.home, args.slug)} was not created by Egg, so it was left alone.`)} >&2; exit ${NOT_OURS_EXIT}; fi\n`
   );
@@ -356,20 +418,34 @@ export function removePreview(args: {
 
 /**
  * Stop, disable and delete a service file, but only when it carries our
- * marker. A service with the same name that someone else wrote is left alone.
+ * marker. A service with the same name that someone else wrote is left alone,
+ * and a marked unit whose project= marker names another project is left alone
+ * too: unit names overlap (a-pv-12345678 is both a slug and a preview unit's
+ * suffix), so a colliding name must never let one project stop another's
+ * service. A unit Egg marked before the project= existed stays ours, as before.
  * Needs SH_MARKER_HELPERS earlier in the script.
  */
-export function removeOwnUnit(unitDir: string, unit: string) {
+export function removeOwnUnit(unitDir: string, unit: string, project?: string, scope?: string) {
   const file = shellQuote(`${unitDir}/${unit}`);
   const failure = 45;
+  const matcher = project === undefined
+    ? `egg_unit_marked ${file}`
+    : scope === undefined
+      ? `egg_unit_ours ${file} ${shellQuote(project)}`
+      : `egg_unit_ours ${file} ${shellQuote(project)} ${shellQuote(scope)}`;
+  const ours = `if ${matcher}; then\n`;
+  const foreign = project === undefined
+    ? `elif [ -e ${file} ] || [ -L ${file} ]; then echo ${shellQuote(`${unit} was not created by Egg, so it was left alone.`)} >&2; exit ${NOT_OURS_EXIT}; fi\n`
+    : `elif egg_unit_marked ${file}; then echo ${shellQuote(`${unit} was created by Egg for another project, so it was left alone.`)} >&2; exit ${NOT_OURS_EXIT}\n` +
+      `elif [ -e ${file} ] || [ -L ${file} ]; then echo ${shellQuote(`${unit} was not created by Egg, so it was left alone.`)} >&2; exit ${NOT_OURS_EXIT}; fi\n`;
   return (
-    `if egg_unit_marked ${file}; then\n` +
+    ours +
     `  systemctl stop ${shellQuote(unit)} >/dev/null 2>&1 || { echo ${shellQuote(`Could not stop ${unit}; it was left in place.`)} >&2; exit ${failure}; }\n` +
     `  if systemctl is-active --quiet ${shellQuote(unit)}; then echo ${shellQuote(`Could not stop ${unit}; it is still active and was left in place.`)} >&2; exit ${failure}; fi\n` +
     `  systemctl disable ${shellQuote(unit)} >/dev/null 2>&1 || { echo ${shellQuote(`Could not disable ${unit}; it was left in place.`)} >&2; exit ${failure}; }\n` +
     `  rm -f -- ${file} || { echo ${shellQuote(`Could not remove ${unit}; its file was left in place.`)} >&2; exit ${failure}; }\n` +
     `  systemctl daemon-reload >/dev/null 2>&1 || { echo ${shellQuote(`Could not reload systemd after removing ${unit}.`)} >&2; exit ${failure}; }\n` +
-    `elif [ -e ${file} ] || [ -L ${file} ]; then echo ${shellQuote(`${unit} was not created by Egg, so it was left alone.`)} >&2; exit ${NOT_OURS_EXIT}; fi\n`
+    foreign
   );
 }
 
@@ -380,6 +456,10 @@ export function removeProject(args: {
   unit: string;
   unitDir: string;
   deleteData: boolean;
+  /** Container projects: their containers, images and networks go with the rest. */
+  docker?: boolean;
+  /** Short hash of the server id; isolates same-slug projects from other accounts. */
+  scope?: string;
 }) {
   const p = projectDir(args.home, args.slug);
   // The folder is only touched when Egg made it: a user's own checkout
@@ -389,26 +469,37 @@ export function removeProject(args: {
     : `rm -rf ${shellQuote(`${p}/releases`)} ${shellQuote(`${p}/incoming`)} ${shellQuote(`${p}/current`)} ${shellQuote(envDir(args.home, args.slug))} ${shellQuote(currentEnvLink(args.home, args.slug))} || exit 45\n${removeManagedDownloadCache(p)}`;
   return (
     SH_MARKER_HELPERS +
-    removeOwnUnit(args.unitDir, args.unit) +
-    `if egg_dir_managed ${shellQuote(p)}; then\n${remove}\nelif [ -e ${shellQuote(p)} ] || [ -L ${shellQuote(p)} ]; then echo ${shellQuote(`${p} was not created by Egg, so it was left alone.`)} >&2; exit ${NOT_OURS_EXIT}; fi\n`
+    removeOwnUnit(args.unitDir, args.unit, args.slug, args.scope) +
+    // Containers, images and networks this project's names own. Volumes stay.
+    (args.docker ? dockerTeardownLines(args.slug, args.scope) : ``) +
+    `if ${args.scope ? `egg_dir_managed ${shellQuote(p)} ${shellQuote(args.scope)}` : `egg_dir_managed ${shellQuote(p)}`}; then\n${remove}\nelif [ -e ${shellQuote(p)} ] || [ -L ${shellQuote(p)} ]; then echo ${shellQuote(`${p} was not created by Egg, so it was left alone.`)} >&2; exit ${NOT_OURS_EXIT}; fi\n`
   );
 }
 
 /** Destructive cleanup requires explicit ownership markers and a confirmed stop. */
-export function cleanupOwnedProject(args: { home: string; slug: string; units: string[]; unitDir: string }) {
+export function cleanupOwnedProject(args: { home: string; slug: string; units: string[]; unitDir: string; docker?: boolean; scope?: string }) {
   const folder = projectDir(args.home, args.slug);
+  // The folder marker carries the scope; a same-slug project from another account fails this check.
+  const folderScope = args.scope
+    ? `[ "$(cat ${shellQuote(`${folder}/${FOLDER_MARKER}`)} 2>/dev/null || true)" = ${shellQuote(args.scope)} ]`
+    : `[ -f "$d/${FOLDER_MARKER}" ]`;
   return HEAD + SH_MARKER_HELPERS +
     `d=${shellQuote(folder)}\n` +
-    `if [ -e "$d" ] || [ -L "$d" ]; then [ -d "$d" ] && [ ! -L "$d" ] && [ -f "$d/.egg-managed" ] && [ ! -L "$d/.egg-managed" ] || { echo 'Project folder ownership cannot be verified; nothing was deleted.' >&2; exit 44; }; fi\n` +
+    `if [ -e "$d" ] || [ -L "$d" ]; then [ -d "$d" ] && [ ! -L "$d" ] && [ -f "$d/.egg-managed" ] && [ ! -L "$d/.egg-managed" ] && ${folderScope} || { echo 'Project folder ownership cannot be verified; nothing was deleted.' >&2; exit 44; }; fi\n` +
     args.units.map((unit) => {
       const file = shellQuote(`${args.unitDir}/${unit}`);
-      return `if [ -e ${file} ] || [ -L ${file} ]; then egg_unit_marked ${file} || { echo 'Service ownership cannot be verified; nothing was deleted.' >&2; exit 44; }; fi\n`;
+      const ours = args.scope === undefined
+        ? `egg_unit_ours ${file} ${shellQuote(args.slug)}`
+        : `egg_unit_ours ${file} ${shellQuote(args.slug)} ${shellQuote(args.scope)}`;
+      return `if [ -e ${file} ] || [ -L ${file} ]; then ${ours} || { echo 'Service ownership cannot be verified; nothing was deleted.' >&2; exit 44; }; fi\n`;
     }).join("") +
     args.units.map((unit) => {
       const file = shellQuote(`${args.unitDir}/${unit}`);
       return `if [ -e ${file} ]; then systemctl stop ${shellQuote(unit)} || exit 45; if systemctl is-active --quiet ${shellQuote(unit)}; then echo 'Service is still active; cleanup stopped.' >&2; exit 45; fi; systemctl disable ${shellQuote(unit)} || exit 45; rm -f -- ${file} || exit 45; fi\n`;
     }).join("") +
     `systemctl daemon-reload || exit 45\n` +
+    // Containers, images and networks this project's names own. Volumes stay, with the warning below.
+    (args.docker ? dockerTeardownLines(args.slug) : ``) +
     `if [ -d "$d" ]; then rm -rf -- "$d/releases" "$d/incoming" "$d/env"; rm -f -- "$d/current" "$d/current.new" "$d/current.env" "$d/current.env.new";\n${removeManagedDownloadCache(folder)}fi\n` +
     `echo 'EGG_CLEANUP_WARNING: Shared application data was preserved. Remove it manually only after making a backup.'\n`;
 }
@@ -423,17 +514,202 @@ export function runtimeLogs(unit: string, lines: number, since?: string, until?:
  * Nothing here changes anything, and every step tolerates failure so a stopped
  * or missing service still produces a readable answer.
  */
-export function serviceStatus(args: { unit: string; port: number; path: string }) {
+export function serviceStatus(args: { unit: string; port: number | null; path: string }) {
   const path = args.path.startsWith("/") ? args.path : `/${args.path}`;
   return (
     `unit=${shellQuote(args.unit)}\nport=${Number(args.port)}\npath=${shellQuote(path)}\n` +
     `echo "EGG_ACTIVE=$(systemctl is-active "$unit" 2>/dev/null || true)"\n` +
     `systemctl show "$unit" -p LoadState -p ActiveState -p SubState -p MainPID -p NRestarts ` +
-    `-p MemoryCurrent -p CPUUsageNSec -p ActiveEnterTimestampMonotonic 2>/dev/null | sed 's/^/EGG_/' || true\n` +
+    `-p MemoryCurrent -p CPUUsageNSec -p ActiveEnterTimestampMonotonic -p ExecMainStatus -p Result 2>/dev/null | sed 's/^/EGG_/' || true\n` +
+    `echo "EGG_RESULT=$(systemctl show "$unit" -p Result --value 2>/dev/null || true)"\n` +
     `echo "EGG_UPTIME=$(cut -d' ' -f1 /proc/uptime 2>/dev/null || true)"\n` +
-    `if command -v curl >/dev/null 2>&1; then\n` +
+    (args.port === null ? "" : `if command -v curl >/dev/null 2>&1; then\n` +
     `  echo "EGG_HTTP=$(curl -s -o /dev/null -w '%{http_code} %{time_total}' --max-time 3 "http://127.0.0.1:$port$path" || true)"\n` +
-    `fi\n` +
+    `fi\n`) +
     `true\n`
+  );
+}
+
+// ---------------------------------------------------------------- Docker modes
+//
+// Docker workloads keep systemd as their service manager: the unit runs
+// `docker start -a <container>`, so Restart, the journal logs, the active
+// check and the restart counter all keep working through the same machinery.
+// The container itself is created before activation and only then swapped in
+// under the name the unit expects.
+
+/** A container name is lowercase and accepts letters, digits, dots, underscores and hyphens. */
+const DOCKER_NAME = /^[a-z0-9][a-z0-9_.-]*$/;
+
+/** The container the unit of a project (or one of its previews) starts. */
+export function dockerContainerName(slug: string, preview?: { releaseId: string }, scope?: string) {
+  const base = scopedSlug(slug, scope);
+  const name = preview ? `egg-${base}-pv-${preview.releaseId.slice(0, 8)}` : `egg-${base}`;
+  if (!DOCKER_NAME.test(name)) throw new Error("The container name is not valid.");
+  return name;
+}
+
+/** Every release builds its own image, so a rollback re-runs the old one and pruning removes the rest. */
+export function dockerImageTag(slug: string, releaseId: string, preview = false, scope?: string) {
+  const tag = `${preview ? "pv-" : ""}${releaseId.slice(0, 8)}`;
+  const name = `egg-${scopedSlug(slug, scope)}`;
+  if (!DOCKER_NAME.test(name) || !/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(tag)) throw new Error("The image name is not valid.");
+  return `${name}:${tag}`;
+}
+
+/** The Compose project name: aux services, networks and named volumes are prefixed with it. */
+export function dockerComposeProjectName(slug: string, scope?: string) {
+  const name = `egg-${scopedSlug(slug, scope)}`;
+  if (!DOCKER_NAME.test(name)) throw new Error("The Compose project name is not valid.");
+  return name;
+}
+
+/** The unit file of a Docker workload: systemd runs the container and keeps it running. */
+export function dockerUnitFile(args: { slug: string; description: string; container: string; scope?: string }) {
+  if (!DOCKER_NAME.test(args.container)) throw new Error("The container name is not valid.");
+  return (
+    ownershipMarker(args.slug, args.scope) +
+    `[Unit]\nDescription=${args.description.replace(/[\r\n]/g, " ")}\nAfter=docker.service\nWants=docker.service\n\n` +
+    `[Service]\nType=simple\n` +
+    // `docker start -a` streams the container's output into the unit's journal.
+    `ExecStart=/bin/bash -lc ${JSON.stringify(systemdEscape(`exec docker start -a ${args.container}`))}\n` +
+    `Restart=always\nRestartSec=3\n` +
+    // The kernel takes a build (which runs at +500) before this app.
+    `OOMScoreAdjust=${APP_OOM_SCORE_ADJUST}\n\n` +
+    `[Install]\nWantedBy=multi-user.target\n`
+  );
+}
+
+/** A fully quoted `docker create` command for one release. The image is built from this release's source. */
+export function dockerCreateCommand(a: {
+  container: string;
+  image: string;
+  envFile: string;
+  hostPort: number | null;
+  containerPort: number | null;
+  /** Aux services from the Compose file are reached on this network. */
+  network?: string | null;
+  /** Named volumes of the main Compose service, under their Compose project prefix. */
+  volumes?: string[];
+  /** Runtime memory ceiling for the app container, in MB. */
+  memoryMb?: number;
+  /** Runtime CPU ceiling for the app container, in cores. */
+  cpus?: number;
+  /** Maximum number of processes the app container may create. */
+  pidsLimit?: number;
+}) {
+  if (!DOCKER_NAME.test(a.container)) throw new Error("The container name is not valid.");
+  const port = a.hostPort != null && a.containerPort != null;
+  const limits = [
+    ...(Number.isFinite(a.memoryMb) && Number(a.memoryMb) > 0 ? [`--memory=${Math.floor(Number(a.memoryMb))}m`] : []),
+    ...(Number.isFinite(a.cpus) && Number(a.cpus) > 0 ? [`--cpus=${Math.max(0.1, Number(Number(a.cpus).toFixed(2)))}`] : []),
+    ...(Number.isFinite(a.pidsLimit) && Number(a.pidsLimit) > 0 ? [`--pids-limit=${Math.floor(Number(a.pidsLimit))}`] : []),
+    "--security-opt=no-new-privileges",
+  ];
+  const args = [
+    "docker", "create",
+    // systemd owns the restarts; docker's own policy stays out of the way.
+    "--restart=no",
+    ...limits,
+    ...(port ? ["-p", `127.0.0.1:${a.hostPort}:${a.containerPort}`] : []),
+    ...(a.containerPort != null ? ["-e", `PORT=${a.containerPort}`, "-e", "HOST=0.0.0.0"] : []),
+    "--env-file", a.envFile,
+    ...(a.volumes ?? []).flatMap((v) => ["-v", v]),
+    ...(a.network ? ["--network", a.network] : []),
+    "--name", a.container,
+    a.image,
+  ];
+  return args.map(shellQuote).join(" ");
+}
+
+/**
+ * Swap the project's container to this release and restart the unit. The new
+ * container is created first under a temporary name, so a failed create
+ * changes nothing; the old container is removed only after the new one exists,
+ * and a failure leaves an honest error and stops before the restart.
+ */
+export function dockerActivationScript(a: { unit: string; container: string; candidate: string; create: string }) {
+  if (!DOCKER_NAME.test(a.container) || !DOCKER_NAME.test(a.candidate)) throw new Error("The container name is not valid.");
+  // dockerCreateCommand() shell-quotes every argument, so the flag is emitted as '--name', not --name.
+  // Matching the unquoted form silently no-ops and stages the live container's name instead of the
+  // candidate, which makes every activation fail. Match the quoted pair and fail closed if absent.
+  const nameArg = `${shellQuote("--name")} ${shellQuote(a.container)}`;
+  const candidateArg = `${shellQuote("--name")} ${shellQuote(a.candidate)}`;
+  if (!a.create.includes(nameArg)) throw new Error("The create command does not stage a container name.");
+  const createCandidate = a.create.replace(nameArg, candidateArg);
+  return (
+    HEAD +
+    `command -v docker >/dev/null 2>&1 || { echo "Docker is not available on this container." >&2; exit 1; }\n` +
+    `if ! ${createCandidate} >/dev/null 2>&1; then\n` +
+    `  echo "The image of this release could not create its container." >&2; exit 1;\n` +
+    `fi\n` +
+    `docker rm -f -- ${shellQuote(a.container)} >/dev/null 2>&1 || true\n` +
+    `if ! docker rename ${shellQuote(a.candidate)} ${shellQuote(a.container)} >/dev/null 2>&1; then\n` +
+    `  docker rm -f -- ${shellQuote(a.candidate)} >/dev/null 2>&1 || true\n` +
+    `  echo "The new container could not be swapped in, so the old one was kept." >&2; exit 1;\n` +
+    `fi\n` +
+    `systemctl restart ${shellQuote(a.unit)} || { echo "The service did not restart." >&2; exit 1; }\n` +
+    `echo "Switched to the new container and restarted"\n`
+  );
+}
+
+/** Start the Compose file's aux services detached. The main service runs as the project's own container. */
+export function dockerComposeUpScript(a: { composeFile: string; project: string; services: string[] }) {
+  if (a.services.length === 0) return "true\n";
+  return (
+    HEAD +
+    `command -v docker >/dev/null 2>&1 || { echo "Docker is not available on this container." >&2; exit 1; }\n` +
+    `if ! docker compose -f ${shellQuote(a.composeFile)} -p ${shellQuote(a.project)} up -d --remove-orphans ${a.services.map(shellQuote).join(" ")}; then\n` +
+    `  echo "The Compose services could not be started." >&2; exit 1;\n` +
+    `fi\n`
+  );
+}
+
+/**
+ * Read the user's Compose file through Docker's own parser and keep only the
+ * canonical output: both the resolved YAML later commands run and the JSON form
+ * Egg validates. The original file is never executed, so interpolation and
+ * include files cannot differ between validation and the deploy itself.
+ */
+export function dockerComposeConfigScript(a: { composeFile: string; canonical: string; json: string; project: string }) {
+  if (!DOCKER_NAME.test(a.project)) throw new Error("The Compose project name is not valid.");
+  return (
+    `set -euo pipefail\n` +
+    `command -v docker >/dev/null 2>&1 || { echo "Docker is not available on this container." >&2; exit 1; }\n` +
+    // The explicit project name makes the resolved volume names Egg's own
+    // `egg-<slug>_<key>` ones; anything else in the resolved output is a
+    // hand-written name and must be refused by validation.
+    `docker compose -p ${shellQuote(a.project)} -f ${shellQuote(a.composeFile)} config > ${shellQuote(a.canonical)} 2>/dev/null\n` +
+    `docker compose -p ${shellQuote(a.project)} -f ${shellQuote(a.composeFile)} config --format json > ${shellQuote(a.json)} 2>/dev/null\n` +
+    `chmod 600 ${shellQuote(a.canonical)} ${shellQuote(a.json)}\n` +
+    // The canonical YAML is what later commands run. Refuse parser-level escape
+    // hatches there even though the JSON is the form Egg validates.
+    `if grep -qE '(^|:[[:space:]]+|-[[:space:]]+)!{1,2}[a-zA-Z]|(^|:[[:space:]]+|-[[:space:]]+)[&*][a-zA-Z0-9_-]+|^[[:space:]]*<<[[:space:]]*:' ${shellQuote(a.canonical)}; then echo 'The Compose file uses YAML tags, anchors or merge keys, which Egg does not allow.' >&2; exit 1; fi\n`
+  );
+}
+
+/** Remove a release's leftover candidate container and image after a failed build or activation. */
+export function dockerDiscardRelease(a: { container: string; candidate: string; candidateImage?: string }) {
+  if (!DOCKER_NAME.test(a.container)) throw new Error("The container name is not valid.");
+  const images = a.candidateImage ? [a.candidateImage] : [];
+  return (
+    `command -v docker >/dev/null 2>&1 || exit 0\n` +
+    `docker rm -f -- ${shellQuote(a.candidate)} ${shellQuote(a.container)} >/dev/null 2>&1 || true\n` +
+    images.map((i) => `docker rmi -- ${shellQuote(i)} >/dev/null 2>&1 || true\n`).join("")
+  );
+}
+
+/** Stop and remove a preview's container and image. */
+export function dockerTeardownLines(slug: string, scope?: string) {
+  const name = `egg-${scopedSlug(slug, scope)}`;
+  if (!DOCKER_NAME.test(name)) throw new Error("The container name is not valid.");
+  return (
+    `if command -v docker >/dev/null 2>&1; then\n` +
+    `  for c in $(docker ps -aq --filter label=com.docker.compose.project=${name} 2>/dev/null); do docker rm -f -- "$c" >/dev/null 2>&1 || true; done\n` +
+    `  for c in $(docker ps -aq --format '{{.Names}}' 2>/dev/null | grep -E '^${name}(-pv-[0-9a-f]{8})?$' || true); do docker rm -f -- "$c" >/dev/null 2>&1 || true; done\n` +
+    `  for i in $(docker images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null | grep -E '^${name}:' || true); do docker rmi -- "$i" >/dev/null 2>&1 || true; done\n` +
+    `  docker network rm -- ${name}_default >/dev/null 2>&1 || true\n` +
+    `  echo "EGG_CLEANUP_WARNING: Docker volumes of this project were preserved. Remove them manually only after making a backup."\n` +
+    `fi\n`
   );
 }

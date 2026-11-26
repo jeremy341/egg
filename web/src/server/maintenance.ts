@@ -36,7 +36,7 @@ export async function maintenanceState(now = new Date(), db?: Pick<Db, "select">
 }
 
 export async function maintenanceBlocksUser(userId: string | null | undefined, db?: Pick<Db, "select">): Promise<boolean> {
-  if (await isInstanceAdmin(userId)) return false;
+  if (await isInstanceAdmin(userId, db)) return false;
   return (await maintenanceState(new Date(), db)).active;
 }
 

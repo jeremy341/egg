@@ -1,7 +1,9 @@
 import { connection, NextResponse, type NextRequest } from "next/server";
 import { createAuthRequest } from "@/server/auth/hackclub";
-import { OAUTH_COOKIE, SESSION_COOKIE, markFreshAuth, userForSessionToken } from "@/server/auth/session";
+import { SESSION_COOKIE, markFreshAuth, userForSessionToken } from "@/server/auth/session";
+import { oauthCookieOptions, oauthStateCookieName } from "@/server/auth/oauth-cookie";
 import { safeNextPath } from "@/server/auth/redirect";
+import { sha256Hex } from "@/server/crypto";
 import { throttleSignIn } from "@/server/auth/throttle";
 import { config, hackClubConfigured, localModeEnabled } from "@/server/config";
 
@@ -16,7 +18,7 @@ export async function GET(req: NextRequest) {
   if (throttled) return throttled;
   const home = config().APP_URL;
   const token = req.cookies.get(SESSION_COOKIE)?.value;
-  if (!(await userForSessionToken(token))) {
+  if (!token || !(await userForSessionToken(token))) {
     return NextResponse.redirect(new URL("/login", home), 303);
   }
   // Only same-site relative paths, so this cannot send people elsewhere.
@@ -26,7 +28,7 @@ export async function GET(req: NextRequest) {
     // The development sign-in and local mode already skip Hack Club, so the confirmation
     // is skipped the same way. Only local mode does this in a production build.
     if (localModeEnabled() || (config().DEV_LOGIN && process.env.NODE_ENV !== "production")) {
-      await markFreshAuth(token!);
+      await markFreshAuth(token);
       return NextResponse.redirect(new URL(next, home), 303);
     }
     return NextResponse.redirect(new URL("/account?reauth=not_configured", home), 303);
@@ -35,15 +37,11 @@ export async function GET(req: NextRequest) {
   const auth = createAuthRequest();
   const res = NextResponse.redirect(auth.url, 303);
   res.cookies.set(
-    OAUTH_COOKIE,
-    JSON.stringify({ s: auth.state, v: auth.codeVerifier, p: "reauth", n: next }),
-    {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-      path: "/api/auth",
-      maxAge: 600,
-    }
+    oauthStateCookieName(),
+    // `r` binds the callback to the session that started the confirmation, so a
+    // replayed callback cannot mark a different session as freshly confirmed.
+    JSON.stringify({ s: auth.state, v: auth.codeVerifier, p: "reauth", n: next, r: sha256Hex(token) }),
+    oauthCookieOptions()
   );
   return res;
 }

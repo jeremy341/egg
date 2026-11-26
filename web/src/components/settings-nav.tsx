@@ -7,6 +7,7 @@ const SECTIONS = [
   { id: "run-heading", label: "Build and Run" },
   { id: "builds-heading", label: "Where Builds Run" },
   { id: "env-heading", label: "Environment Variables" },
+  { id: "members-heading", label: "Members" },
   { id: "hook-heading", label: "Deploy Hook" },
   { id: "jobs-heading", label: "Scheduled Jobs" },
   { id: "notify-heading", label: "Notifications" },

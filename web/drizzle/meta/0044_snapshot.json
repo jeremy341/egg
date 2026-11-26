@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "ff2e6858-85f9-4718-b80c-b6a402754244",
+  "id": "c079f21e-b39e-4283-8795-1e21c16df6bf",
   "prevId": "84422b25-dd06-4104-8067-0ab834a47b9f",
   "tables": {
     "adoption_plans": {
@@ -1534,6 +1534,13 @@
           "notNull": true,
           "autoincrement": false
         },
+        "listen_port": {
+          "name": "listen_port",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "release_id": {
           "name": "release_id",
           "type": "text",
@@ -1933,64 +1940,6 @@
       },
       "indexes": {},
       "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "instance_admins": {
-      "name": "instance_admins",
-      "columns": {
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "granted_by": {
-          "name": "granted_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "granted_at": {
-          "name": "granted_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "instance_admins_user_id_users_id_fk": {
-          "name": "instance_admins_user_id_users_id_fk",
-          "tableFrom": "instance_admins",
-          "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "instance_admins_granted_by_users_id_fk": {
-          "name": "instance_admins_granted_by_users_id_fk",
-          "tableFrom": "instance_admins",
-          "tableTo": "users",
-          "columnsFrom": [
-            "granted_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        }
-      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
@@ -2760,6 +2709,22 @@
           "notNull": true,
           "autoincrement": false
         },
+        "workload_kind": {
+          "name": "workload_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'web'"
+        },
+        "deployment_mode": {
+          "name": "deployment_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'native'"
+        },
         "install_command": {
           "name": "install_command",
           "type": "text",
@@ -2801,6 +2766,13 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false
+        },
+        "listen_port": {
+          "name": "listen_port",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
         "health_path": {
@@ -3002,6 +2974,15 @@
             "slug"
           ],
           "isUnique": true
+        },
+        "projects_server_listen_port_idx": {
+          "name": "projects_server_listen_port_idx",
+          "columns": [
+            "server_id",
+            "listen_port"
+          ],
+          "isUnique": true,
+          "where": "\"projects\".\"listen_port\" is not null"
         },
         "projects_hook_idx": {
           "name": "projects_hook_idx",

@@ -369,11 +369,11 @@ Each brief ends with acceptance criteria (AC). The reviewer checks every AC.
 
 **Mode: Read.** The page should feel like a well-set manual: quiet, generous, fast to scan, impossible to get lost in. Identity lives in the Pixelify headings, the lit-square nav marker and the square bullets; everything else gets out of the way of the words.
 
-**Information architecture.** One page, one route (`/docs`), all existing sections in the existing order and groups. Do not split into sub-routes (the proxy only allows `/docs` publicly, and anchors are linked from elsewhere).
-- Groups and sections (titles unchanged): Start (How it works `#overview`, Quick start `#quickstart`); Use it (Servers, Projects and runtimes, Deployments, Environment variables, Logs, Domains); Automate (GitHub and previews, Deploy hooks, Notifications); Watch (Monitoring and uptime, Status page, Analytics, Activity and account); Reference (Security, Running your own, Limits, Troubleshooting).
+**Information architecture (revised 2026-11-22).** The original spec called for one long page at `/docs`. That was changed: `/docs` is now an index (Start here + "All pages" with a "Search docs" filter), and every section is its own page at `/docs/<section-id>` under `app/(app)/docs/[slug]/`. Old hashes are handled by `legacyHref` in `_data/nav.ts`. The single-page wording below is historical; do not use it to judge the current tree.
+- Groups and sections (current `DOCS_NAV`, titles as shipped): Start (How it works, Getting started, Quick start, Run Egg yourself, Run Egg locally); Use it (Servers, Projects and runtimes, Build with GitHub Actions, Build on Nest, Deployments, Environment variables, Logs, Domains, Container, terminal and files); Bots (Deploy a Discord bot (discord.js), Deploy a Discord bot (discord.py), Deploy a Slack app (Bolt), Deploy a Telegram bot, Keep a bot alive); Automate (GitHub and previews, Deploy hooks, Scheduled jobs, Notifications, Access tokens and the API); Watch (Monitoring and uptime, Status page, Analytics, Activity, Account); Reference (Security, Running your own, Limits, Troubleshooting).
 - New `h3` ids (fixed; add them to the existing `H3`s, same text):
   `overview-push` (What happens on a push), `servers-connection` (How the connection works), `servers-manage` (Testing, rotating and removing), `projects-settings` (Settings), `projects-runtimes` (Runtimes), `projects-guarantees` (What every app can rely on), `deployments-states` (States), `deployments-actions` (Actions), `deployments-releases` (Releases and previews on disk), `deployments-previews` (Branch previews), `github-push` (Deploying on push), `github-pr-previews` (Pull request previews), `monitoring-service-card` (The Service card), `monitoring-resources` (Resource use), `monitoring-uptime` (Uptime checks and alerts), `analytics-setup-steps` (Setting it up), `analytics-data` (What you see), `analytics-privacy` (Privacy), `troubleshooting-connection` (Test connection fails), `troubleshooting-build` (The build fails), `troubleshooting-no-answer` (It built, but the app never answered), `troubleshooting-domain` (A domain stays on "Needs attention"), `troubleshooting-hook-409` (A deploy hook answers 409), `troubleshooting-pr-comment` (No comment appears on a pull request), `troubleshooting-alerts` (Alerts or notifications do not arrive).
-- Single source of truth: `app/(marketing)/docs/_data/nav.ts` exports `DOCS_NAV: { group: string; sections: { id: string; title: string; subsections: { id: string; title: string }[] }[] }[]`. `Section` and `H3` take only an `id` and read their title from it, so nav and headings cannot drift.
+- Single source of truth: **`app/(app)/docs/_data/nav.ts`** (the old `(marketing)` path is historical) exports `DOCS_NAV` with the same `{ group, sections: [{ id, title, subsections }] }` shape, plus `DOCS_SECTIONS`, `sectionTitle()`, `subsectionTitle()`, `headingId()`, `docsHref()`, `neighbors()` and `legacyHref()`. Section content lives in `app/(app)/docs/_content/` (`index.ts` exports `CONTENT`; `sections.tsx` and `guide-a.tsx` to `guide-e.tsx` hold the pages). `Section` and `H3` take only an `id` and read their title from `DOCS_NAV`, so nav and headings cannot drift.
 
 **Layout.**
 - Container `mx-auto w-full max-w-[1200px] px-4 sm:px-6`.
@@ -411,9 +411,11 @@ Each brief ends with acceptance criteria (AC). The reviewer checks every AC.
 **Heading anchors.** `_components/heading-anchor.tsx` (client). Each `h2` and `h3` is wrapped `group relative`; after the text an `a href="#id"` with `LinkSimpleIcon` 16px, `aria-label="Link to <title>"`, `size-6 inline-flex items-center justify-center rounded-md text-subtle-foreground hover:text-foreground`. On `lg+` it is positioned `absolute -left-8 top-1/2 -translate-y-1/2`; below `lg` inline `ml-2 align-middle`. `opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity duration-(--dur-fast)`. Hidden below 640px (`max-sm:hidden`), where the mobile nav covers jumping. Click: normal hash navigation plus `navigator.clipboard.writeText(location.href)` and `toast.success("Link copied")`; if the clipboard throws, only navigate.
 
 **Code blocks.** `_components/code-block.tsx` (client for copy). Props `label: "Terminal" | "HTML"`, `code: string`.
-- Square frame `mt-6 border bg-[var(--code-bg)]`. Header bar `flex h-10 items-center justify-between border-b px-3`: label `font-mono text-[12px] text-muted-foreground`; copy button `inline-flex h-7 max-sm:h-10 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-muted-foreground hover:bg-[var(--ds-gray-alpha-100)] hover:text-foreground pressable`, `CopySimpleIcon` 14px and "Copy", swapping to `CheckIcon` and "Copied" for 1.6s with `Swap`, `sr-only aria-live` "Copied".
+- Square frame `mt-6 border bg-[var(--code-bg)]`. Header bar `flex h-10 items-center justify-between border-b px-3`: label `font-mono text-[12px] text-muted-foreground`; copy button `inline-flex h-7 max-sm:h-10 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-muted-foreground hover:bg-[var(--ds-gray-alpha-100)] hover:text-foreground pressable`, a row of four 20px inline agent marks (`components/agent-marks.tsx`: Claude in `#d97757`, Codex, Cursor, OpenCode — Orchard-style drawings, 3px apart, decorative and `aria-hidden`; the same four Orchard's live button renders, with VS Code and GitHub available in the palette but unused) followed by "Copy", as in Orchard's `CopyPromptButton`; no separate copy/check icon. The label swaps to "Copied" for 1.6s with `Swap`, `sr-only aria-live` "Copied". The same `AgentMarks` row leads the shared `CopyButton` in `components/developer-docs.tsx`.
 - Body `pre` `overflow-x-auto p-4 text-code font-mono`, `tabIndex={0}` and `aria-label="<label> code"` so it can be scrolled by keyboard. Shell comments (text from `#` to end of line, outside quotes) render in `text-subtle-foreground`; nothing else is highlighted.
 - Existing blocks: hooks curl → `Terminal`; analytics script tag → `HTML`; self-host commands → `Terminal`.
+
+**Docs home "Copy docs prompt".** `_components/copy-prompt.tsx` (client), placed right after the page header and right-aligned. Orchard's `CopyPromptButton` shape: the same four 20px `AgentMarks` and a label, no copy/check icon, followed by a joined chevron `details` that previews the text. The prompt is built from `window.location.origin` with `useSyncExternalStore`, so it works behind a proxy and the control is disabled before hydration. Copy announces "Prompt copied" with a toast and swaps the label for 2s.
 
 **Callouts.** `Callout({ tone: "note" | "tip" | "warning", title, children })`. Square frame `mt-6 max-w-[68ch] flex gap-3 p-4 bg-[var(--tone-X-bg)] shadow-[inset_0_0_0_1px_var(--tone-X-ring)]` (tip uses the success tokens), icon 16px `mt-1` (`InfoIcon`, `CheckCircleIcon`, `WarningIcon`), title `text-[14px] leading-6 font-semibold text-foreground`, body `text-docs-small text-foreground/85`. No left border bar. Tones for the existing notes: "What it does not do" note; "Your app has to listen on the right port" warning; "Taking access back" note; "Failed deploys are safe" tip; "Secrets in logs" warning; "Permissions for the comment" note; "Treat it like a password" warning. The closing "Still stuck?" paragraph becomes a note callout titled "Still stuck?" with the same sentence and links.
 
@@ -424,13 +426,13 @@ Each brief ends with acceptance criteria (AC). The reviewer checks every AC.
 
 **Back to top.** At the end of the article: a `.link` "Back to top" with `ArrowUpIcon` 14px linking to `#top`, `mt-16 text-label`.
 
-**Prev/next.** Not built. The page is one continuous document with a persistent section nav (desktop rail, mobile sticky bar); prev/next links would duplicate it and add noise after every section.
+**Prev/next.** Built after this spec was written (`app/(app)/docs/_components/prev-next.tsx`, `neighbors()` in `_data/nav.ts`). Each `/docs/<slug>` page links to the sections either side of it in reading order, across groups. The old "Not built" line belongs to the single-page design.
 
-**Search.** The nav filter is the quick-jump. No full-text search.
+**Search.** Still no full-text search. Two navigational filters exist: the section filter in the desktop nav and mobile panel, and a "Search docs" filter on the `/docs` index that narrows by page title, summary or group (`_components/docs-index.tsx`, `_data/index-filter.ts`, `_data/summaries.ts`).
 
 **Motion on docs.** Only: nav marker glide (M17), anchor fade, copy `Swap`, mobile panel open, `card-interactive` and `lit-corner` on tiles, smooth scroll on nav clicks. No reveal, no stagger, no route enter.
 
-**AC (docs).**
+**AC (docs).** Written for the original single-page layout. With the split into one route per section, the ids still come from `DOCS_NAV`, but "one continuous document", `curl /docs` containing every section's text, and the fixed counts below are historical; check each `/docs/<slug>` page instead.
 1. All 19 section ids and their `-h` ids exist and land with the heading fully visible below the sticky header (and the mobile bar). The 25 new `h3` ids exist exactly as listed.
 2. Nav titles and heading titles come from `DOCS_NAV`; no section or `h3` title is typed twice.
 3. Scrolling updates the current section in the nav within one frame of a heading crossing 96px from the top; the marker glides; subsections of the current section show. `aria-current="location"` is on exactly one link.
@@ -660,25 +662,17 @@ Every file that may change belongs to exactly one workstream. Files not listed a
 10. Verify existing pages still render (curl every route, section 8.4), run the checks, and list every export with its signature in the hand-off so other workstreams can rely on it.
 
 ### 7.2 Docs
-**May edit:** `app/(marketing)/docs/page.tsx`
-**May create:**
-- `app/(marketing)/docs/_data/nav.ts`
-- `app/(marketing)/docs/_components/prose.tsx` (C, P, H2/Section, H3, List, Table, Callout)
-- `app/(marketing)/docs/_components/code-block.tsx`
-- `app/(marketing)/docs/_components/heading-anchor.tsx`
-- `app/(marketing)/docs/_components/docs-nav.tsx`
-- `app/(marketing)/docs/_components/docs-mobile-nav.tsx`
-- `app/(marketing)/docs/_components/start-tiles.tsx`
 
-**Tasks, in order:**
-1. `_data/nav.ts` with groups, sections and the 25 `h3` ids. Make `Section` and `H3` read titles from it.
-2. Prose primitives (`prose.tsx`): typography, lists with square bullets, inline code, tables, callouts with the assigned tones.
-3. `code-block.tsx` with copy and labels; convert the three `Pre` blocks.
-4. `heading-anchor.tsx`; add anchors to every `h2` and `h3`.
-5. Page layout: hero, Start here tiles, opaque reading band, two-column grid, back to top, "Still stuck?" callout.
-6. `docs-nav.tsx`: filter, groups, scroll-spy, subsections, lit marker, smooth scroll and focus.
-7. `docs-mobile-nav.tsx`: sticky bar and panel.
-8. Self-review against 6.1 AC at 375, 768, 1024, 1440px widths by reading the rendered HTML and the classes; run checks.
+The paths and task list below are historical (revised 2026-11-22). The docs were later moved into the app route group and split into one page per section.
+
+**May edit:** `app/(app)/docs/page.tsx` (docs index) and `app/(app)/docs/[slug]/page.tsx` (one section page each).
+
+**Files that now exist in `app/(app)/docs/`:**
+- `_data/nav.ts` (the single source of truth), `_data/index-filter.ts`, `_data/summaries.ts`
+- `_content/index.ts`, `_content/sections.tsx`, `_content/guide-a.tsx` to `guide-e.tsx`, plus `docs-facts.test.ts` and the guide tests
+- `_components/prose.tsx`, `code-block.tsx`, `heading-anchor.tsx`, `docs-nav.tsx`, `docs-sidebar.tsx`, `docs-section-nav.tsx`, `on-this-page.tsx`, `prev-next.tsx`, `start-here.tsx`, `docs-index.tsx`, `worked-example.tsx`, `use-page-headings.ts`, `legacy-hash.tsx`
+
+**Original tasks, in order (all built, with later additions):** `_data/nav.ts` with groups, sections and the `h3` ids; prose primitives; code blocks with copy; heading anchors; the page layout and Start here tiles; the desktop nav with filter, scroll-spy and lit marker; the mobile nav. Added later: the `/docs` index with "Search docs", one route per section, prev/next links and legacy-hash redirection. The AC in 6.1 describe the original single-page layout and should be read as historical where they assume one route.
 
 ### 7.3 Dashboard A (shell and project pages)
 **May edit:**

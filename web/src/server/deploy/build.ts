@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { createWriteStream, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statfsSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { lstat, readdir, statfs } from "node:fs/promises";
+import { devNull } from "node:os";
 import { Transform } from "node:stream";
 import { pipeline as pipelineStream } from "node:stream/promises";
 import { StringDecoder } from "node:string_decoder";
@@ -10,11 +11,13 @@ import * as tar from "tar";
 import { config } from "@/server/config";
 import {
   resolveRuntime,
+  selectLockfile,
   type ProjectFiles,
   type RuntimeInput,
   type RuntimeSpec,
 } from "@/server/deploy/runtime";
 import { maskSecrets, secretNeedles } from "@/server/deploy/redact";
+import { genericGitEnvironment, validateGitVersion } from "@/server/providers/generic";
 
 export type LogFn = (level: "info" | "warn" | "error", message: string) => void;
 
@@ -26,6 +29,7 @@ export type BuildRequest = {
     cloneUrl: string;
     /** GitHub installation token for private repos. */
     token?: string | null;
+    provider?: "github" | "generic";
     branch: string;
     sha?: string | null;
   };
@@ -63,10 +67,26 @@ export const CLONE_WATCH_MS = 2000;
 
 export class BuildError extends Error {}
 
+/**
+ * A single captured output line is bounded. Git can be asked to print a commit
+ * subject or author of arbitrary size; without a ceiling, accumulating one
+ * line with no newline (100-500 MB is easy to commit) OOM-kills the shared
+ * worker. Well below that while still leaving room for legitimate long output.
+ */
+export const MAX_LOG_LINE_CHARS = 1024 * 1024;
+const LOG_TRUNCATION_MARKER = "… [truncated]";
+
 const ALLOWED_GIT_HOSTS = ["github.com"];
 
 /** Only clone https URLs from hosts we expect. Blocks file://, ssh and internal hosts. */
 export function assertCloneUrl(url: string) {
+  // git/curl and the WHATWG parser disagree about authority characters: a backslash
+  // can be a path separator to URL but part of the host to git, and an @ can turn
+  // what URL reads as a path into userinfo that changes where git connects. Refuse
+  // the raw text before parsing so the two can never disagree about the host.
+  if (url.includes("\\") || url.includes("@")) {
+    throw new BuildError("Only plain https repository URLs without @ or \\ are supported.");
+  }
   let u: URL;
   try {
     u = new URL(url);
@@ -132,9 +152,26 @@ export function assertGitSha(sha: string): string {
   return sha.toLowerCase();
 }
 
-/** Configure Git authentication through its environment, keeping the token out of argv. */
+/** What a spawned git may inherit from the server: the executable path, the locale and the temp folder, and nothing else. */
+const GIT_ENV_KEEP = /^(?:PATH|PATHEXT|LANG|LC_[A-Z_]+|HOME|USERPROFILE|TMPDIR|TEMP|TMP|SYSTEMROOT|SYSTEMDRIVE|COMSPEC)$/i;
+/** No inherited Git, proxy or curl setting, the same protection the generic clone path applies. */
+const GIT_ENV_DROP = /^(?:git_|.*proxy$|curl_)/i;
+
+/**
+ * Configure Git authentication through its environment, keeping the token out
+ * of argv. The clone itself is of a repository somebody else chose, so git gets
+ * a minimal environment with the server's own configuration, credentials and
+ * secrets left out, just as `genericGitEnvironment` does for the generic path.
+ */
 export function gitEnvironment(token?: string | null): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_ASKPASS: "echo" };
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  for (const key of Object.keys(env)) {
+    if (!GIT_ENV_KEEP.test(key) || GIT_ENV_DROP.test(key)) delete env[key];
+  }
+  env.GIT_CONFIG_NOSYSTEM = "1";
+  env.GIT_CONFIG_GLOBAL = devNull;
+  env.GIT_TERMINAL_PROMPT = "0";
+  env.GIT_ASKPASS = "echo";
   if (token) {
     const basic = Buffer.from(`x-access-token:${token}`).toString("base64");
     env.GIT_CONFIG_COUNT = "1";
@@ -159,6 +196,13 @@ export function runProcess(
   opts: RunOptions = {}
 ): Promise<number> {
   return new Promise((resolve, reject) => {
+    // An already-aborted signal will never fire an "abort" listener, so check it
+    // before spawning: otherwise the child runs to completion uncancelled and
+    // keeps a listener attached to a signal that can no longer fire.
+    if (opts.signal?.aborted) {
+      reject(new BuildError("The build was canceled."));
+      return;
+    }
     const child = spawn(command, args, {
       cwd: opts.cwd,
       env: opts.env ?? process.env,
@@ -176,20 +220,38 @@ export function runProcess(
       child.kill("SIGKILL");
     };
     opts.signal?.addEventListener("abort", abort, { once: true });
+    const removeAbort = () => opts.signal?.removeEventListener("abort", abort);
 
     const pump = (stream: NodeJS.ReadableStream) => {
       let buf = "";
+      let truncated = false;
       // Decode as a stream: a multi-byte character can straddle two chunks.
       const decoder = new StringDecoder("utf8");
+      const emit = (line: string) => {
+        if (!line.length && !truncated) return;
+        let text = line;
+        if (text.length > MAX_LOG_LINE_CHARS) {
+          text = text.slice(0, MAX_LOG_LINE_CHARS);
+          truncated = true;
+        }
+        opts.onLine?.(truncated ? text + LOG_TRUNCATION_MARKER : text);
+        truncated = false;
+      };
       stream.on("data", (d: Buffer) => {
         buf += decoder.write(d);
         const parts = buf.split(/\r?\n/);
         buf = parts.pop() ?? "";
-        for (const l of parts) if (l.length) opts.onLine?.(l);
+        for (const l of parts) emit(l);
+        // Cap the partial line: if no newline ever arrives, this is the only
+        // thing keeping the buffer from growing to the size of the input.
+        if (buf.length > MAX_LOG_LINE_CHARS) {
+          buf = buf.slice(0, MAX_LOG_LINE_CHARS);
+          truncated = true;
+        }
       });
       stream.on("end", () => {
         buf += decoder.end();
-        if (buf.length) opts.onLine?.(buf);
+        if (buf.length) emit(buf);
       });
     };
     pump(child.stdout);
@@ -197,11 +259,12 @@ export function runProcess(
 
     child.on("error", (e) => {
       if (timer) clearTimeout(timer);
+      removeAbort();
       reject(new BuildError(`Could not start ${command}: ${e.message}`));
     });
     child.on("close", (code) => {
       if (timer) clearTimeout(timer);
-      opts.signal?.removeEventListener("abort", abort);
+      removeAbort();
       if (timedOut) reject(new BuildError("The build timed out."));
       else if (opts.signal?.aborted) reject(new BuildError("The build was canceled."));
       else resolve(code ?? 1);
@@ -213,6 +276,7 @@ export function detectFiles(dir: string): ProjectFiles {
   const has = (f: string) => existsSync(path.join(dir, f));
   let hasBuildScript = false;
   let nodeEngine: string | null = null;
+  let packageManager: unknown;
   const hasPackageJson = has("package.json");
   if (hasPackageJson) {
     try {
@@ -221,6 +285,7 @@ export function detectFiles(dir: string): ProjectFiles {
       const stat = lstatSync(manifest);
       if (!stat.isFile() || stat.size > 1_000_000) throw new Error("package.json is not a small regular file");
       const pkg = JSON.parse(readFileSync(manifest, "utf8"));
+      packageManager = pkg?.packageManager;
       hasBuildScript = typeof pkg?.scripts?.build === "string";
       if (typeof pkg?.engines?.node === "string") nodeEngine = pkg.engines.node.trim().slice(0, 200) || null;
     } catch {
@@ -228,16 +293,16 @@ export function detectFiles(dir: string): ProjectFiles {
     }
   }
   return {
-    lockfile: has("pnpm-lock.yaml")
-      ? "pnpm"
-      : has("yarn.lock")
-        ? "yarn"
-        : has("package-lock.json")
-          ? "npm"
-          : null,
+    lockfile: selectLockfile(has, packageManager),
     hasPackageJson,
     hasBuildScript,
     hasRequirements: has("requirements.txt"),
+    hasPyproject: has("pyproject.toml"),
+    hasGemfile: has("Gemfile"),
+    hasComposer: has("composer.json"),
+    hasCargoLock: has("Cargo.lock"),
+    hasMaven: has("pom.xml"),
+    hasGradle: has("build.gradle") || has("build.gradle.kts"),
     nodeEngine,
   };
 }
@@ -412,7 +477,8 @@ export async function cloneSource(
   line: (l: string) => void,
   limits: Partial<CloneLimits> = {}
 ): Promise<BuildResult["commit"]> {
-  assertCloneUrl(req.source.cloneUrl);
+  if (req.source.provider !== "generic") assertCloneUrl(req.source.cloneUrl);
+  if (req.source.provider === "generic" && req.source.token) throw new BuildError("Generic Git supports public repositories only.");
   assertGitRef(req.source.branch);
   if (req.source.sha) assertGitSha(req.source.sha);
   const resolved: CloneLimits = {
@@ -425,7 +491,7 @@ export async function cloneSource(
   if (lowDisk) throw lowDisk;
 
   log("info", `Cloning ${req.source.cloneUrl} (branch ${req.source.branch})`);
-  const gitEnv = gitEnvironment(req.source.token);
+  const gitEnv = req.source.provider === "generic" ? await genericGitEnvironment(req.source.cloneUrl) : gitEnvironment(req.source.token);
   const watched: { error: BuildError | null } = { error: null };
   const controller = new AbortController();
   const signal = AbortSignal.any(
@@ -436,6 +502,17 @@ export async function cloneSource(
     controller.abort();
   });
   try {
+    if (req.source.provider === "generic") {
+      const version: string[] = [];
+      if (await runProcess("git", ["--version"], { env: gitEnv, onLine: (s) => version.push(s), timeoutMs: 10_000, signal }) !== 0) throw new BuildError("Could not check Git version.");
+      validateGitVersion(version[0] ?? "");
+      const refs: string[] = [];
+      const branchRef = `refs/heads/${req.source.branch}`;
+      if (await runProcess("git", ["ls-remote", "--exit-code", "--heads", "--", req.source.cloneUrl, branchRef], { env: gitEnv, onLine: (s) => refs.push(s), timeoutMs: 30_000, signal }) !== 0) throw new BuildError("Could not read the public repository branch.");
+      const match = refs.map((line) => line.split(/\s+/)).find((parts) => parts[1] === branchRef);
+      if (!match) throw new BuildError("Could not verify the public repository branch.");
+      req = { ...req, source: { ...req.source, sha: req.source.sha ?? assertGitSha(match[0]) } };
+    }
     let cloneCode: number;
     try {
       cloneCode = await runProcess(
@@ -474,7 +551,9 @@ export async function cloneSource(
               env: gitEnv,
               onLine: (l) => output.push(l.trim()),
               timeoutMs: 30_000,
-              signal: req.signal,
+              // Use the combined signal so the disk/size watchdog can kill a stuck
+              // rev-parse too, not just a cancellation from the caller.
+              signal,
             });
             if (code !== 0 || !output[0]) throw new BuildError("Could not verify the requested commit. The branch tip was not used.");
             return output[0];
@@ -511,11 +590,17 @@ export async function cloneSource(
   }
 
   const info: string[] = [];
-  await runProcess("git", ["log", "-1", "--format=%H%n%an%n%s"], {
+  const commitCode = await runProcess("git", ["log", "-1", "--format=%H%n%an%n%s"], {
     cwd: srcDir,
     env: gitEnv,
     onLine: (l) => info.push(l),
+    timeoutMs: 30_000,
   });
+  // An empty repository has no commits to anchor the deployment to: fail cleanly
+  // instead of recording an empty commit.
+  if (commitCode !== 0 || !info[0]) {
+    throw new BuildError(`No commits found on branch ${req.source.branch}.`);
+  }
   const commit = {
     sha: info[0] ?? "",
     author: info[1] ?? "",

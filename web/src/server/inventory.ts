@@ -2,7 +2,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { audit } from "@/server/audit";
 import { config } from "@/server/config";
 import { getDb, schema } from "@/server/db";
-import { UNIT_PREFIX, isValidSlug } from "@/server/deploy/layout";
+import { UNIT_PREFIX, isValidSlug, serverDiscriminator, unitName } from "@/server/deploy/layout";
 import { HttpError } from "@/server/http";
 import { getServerForUser, withServerSession } from "@/server/servers";
 import { SshError } from "@/server/ssh/connection";
@@ -165,22 +165,26 @@ type UnitClass =
 function classifyUnit(
   name: string,
   projects: ProjectInfo[],
-  previews: PreviewInfo[]
+  previews: PreviewInfo[],
+  scope: string
 ): UnitClass {
-  const production = projects.find((p) => `egg-${p.slug}.service` === name);
+  // Accept the legacy unscoped name as well, so units written by an older Egg
+  // are still recognised as belonging to this project instead of becoming orphans.
+  const production = projects.find((p) => unitName(p.slug, undefined, scope) === name || unitName(p.slug) === name);
   if (production) return { type: "project", project: production };
 
   const m = PREVIEW_UNIT.exec(name);
   if (m) {
-    const project = projects.find((p) => p.slug === m[1]);
+    const slug = m[1].endsWith(`-${scope}`) ? m[1].slice(0, -(scope.length + 1)) : m[1];
+    const project = projects.find((p) => p.slug === slug || p.slug === m[1]);
     if (project) {
       const preview = previews.find(
         (pv) => pv.projectId === project.id && pv.releaseId.slice(0, 8) === m[2]
       );
       if (preview) return { type: "preview", project, preview };
-      return { type: "orphan", preview: true, slug: m[1] };
+      return { type: "orphan", preview: true, slug };
     }
-    return { type: "orphan", preview: true, slug: m[1] };
+    return { type: "orphan", preview: true, slug };
   }
   return { type: "orphan", preview: false, slug: name.slice(UNIT_PREFIX.length, -".service".length) };
 }
@@ -192,7 +196,8 @@ export function classifyInventory(
   server: { id: string; name: string },
   now = new Date()
 ): Inventory {
-  const classes = new Map(raw.units.map((u) => [u.name, classifyUnit(u.name, projects, previews)]));
+  const scope = serverDiscriminator(server.id);
+  const classes = new Map(raw.units.map((u) => [u.name, classifyUnit(u.name, projects, previews, scope)]));
   const unitByName = new Map(raw.units.map((u) => [u.name, u]));
 
   // Ports: who holds each one.
@@ -213,7 +218,7 @@ export function classifyInventory(
     if (wanted) {
       // Without a process name we cannot tell whose it is. If the project's own
       // service is up, assume it is that service rather than cry wolf.
-      const own = unitByName.get(`egg-${wanted.slug}.service`);
+      const own = unitByName.get(unitName(wanted.slug, undefined, scope)) ?? unitByName.get(unitName(wanted.slug));
       const up = own && (own.state === "running" || own.state === "starting");
       if (up && p.pid === null) {
         return { ...base, owner: { type: "project", projectId: wanted.id, slug: wanted.slug } };
@@ -226,7 +231,7 @@ export function classifyInventory(
 
   const folderBySlug = new Map(raw.folders.map((f) => [f.name, f]));
   const projectEntries: ProjectEntry[] = projects.map((p) => {
-    const unit = unitByName.get(`egg-${p.slug}.service`) ?? null;
+    const unit = unitByName.get(unitName(p.slug, undefined, scope)) ?? unitByName.get(unitName(p.slug)) ?? null;
     const listening = ports.find((x) => x.port === p.port);
     const portStatus: ProjectEntry["portStatus"] = !listening
       ? "free"
@@ -499,6 +504,23 @@ export async function removeOrphans(
               message: orphan.notOurs
                 ? "Egg did not create this, so it was left alone."
                 : "This is a link, so it was left alone.",
+            });
+            continue;
+          }
+
+          // The inventory was read over SSH; a deployment may have claimed
+          // this name for a live project meanwhile. Re-check a fresh read of
+          // the projects before removing anything.
+          const fresh = await loadContext(userId, serverId);
+          const claimedNow =
+            t.kind === "unit"
+              ? classifyUnit(t.unit, fresh.projects, fresh.previews, serverDiscriminator(serverId)).type !== "orphan"
+              : fresh.projects.some((p) => p.slug === t.name);
+          if (claimedNow) {
+            results.set(id, {
+              id,
+              status: "refused",
+              message: "This belongs to one of your projects, so it was left alone.",
             });
             continue;
           }

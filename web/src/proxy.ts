@@ -61,7 +61,7 @@ const API_CORS = {
  * Dashboard routes. Signed-out visitors are sent to sign-in only for these, so a
  * mistyped public address reaches the not-found page instead of the login page.
  */
-const DASHBOARD = new RegExp("^/(account|activity|admin|connect|container|deployments|developer|docs|domains|logs|projects|resources|new)(/|$)");
+const DASHBOARD = new RegExp("^/(account|activity|admin|connect|container|deployments|developer|domains|invite|logs|organizations|projects|resources|new)(/|$)");
 
 /** The 429 for a refused request: a short plain body and Retry-After, never a redirect. */
 function refused(admission: Extract<Admission, { refused: true }>, pathname: string) {
@@ -91,6 +91,9 @@ export function proxy(req: NextRequest) {
     for (const [k, v] of Object.entries(API_CORS)) res.headers.set(k, v);
     return res;
   }
+  // A docs page as Markdown (/docs/<slug>.md) is served by the route at /docs-md/<slug>. Public, like the page itself.
+  const markdown = /^\/docs\/([^/]+)\.md$/.exec(pathname);
+  if (markdown) return NextResponse.rewrite(new URL(`/docs-md/${markdown[1]}`, req.url));
   if (PUBLIC.some((p) => p.test(pathname))) return NextResponse.next();
   if (req.cookies.has("egg_session")) return NextResponse.next();
   if (!DASHBOARD.test(pathname) && !pathname.startsWith("/api/")) return NextResponse.next();
@@ -116,7 +119,10 @@ export const config = {
   //   - api/security-reports : up to about 4.3 MB, public here anyway (the exact path only).
   //   - api/projects/<id>/files/write : a file of up to 50 MB; the handler checks the session first.
   // Each is also capped in deploy/Caddyfile. Do not add a route that takes a large body without skipping it here.
+  // The static-asset exemption is for asset URLs only: an API path that merely ends
+  // in an image extension (a tracker pixel, a junk id) still passes the proxy, so
+  // the ingress limits and bans apply to it.
   matcher: [
-    "/((?!_next/static|_next/image|favicon\\.ico|api/builds/upload$|api/webhooks/github$|api/security-reports$|api/projects/[^/]+/files/write$|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    "/((?!_next/static|_next/image|favicon\\.ico|api/builds/upload$|api/webhooks/github$|api/security-reports$|api/projects/[^/]+/files/write$|(?!api/).*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };

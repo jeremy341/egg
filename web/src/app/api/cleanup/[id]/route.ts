@@ -11,8 +11,11 @@ export const PATCH = handle<Ctx>(async (req, { params }) => {
   const body = await readJson(req, z.object({ confirmIdle: z.boolean().default(false) }));
   return ok({ cleanup: await retryCleanup(user.id, (await params).id, body.confirmIdle === true) });
 });
-export const DELETE = handle<Ctx>(async (_req, { params }) => {
+export const DELETE = handle<Ctx>(async (req, { params }) => {
   const user = await authed();
-  await cancelCleanup(user.id, (await params).id);
+  // Canceling a failed cleanup discards the record of possibly-unremoved remote
+  // projects, so the second call in the pair carries the explicit acknowledgment.
+  const acknowledge = new URL(req.url).searchParams.get("acknowledgeOrphans") === "true";
+  await cancelCleanup(user.id, (await params).id, { acknowledgeOrphans: acknowledge });
   return ok({ ok: true });
 });

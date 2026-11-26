@@ -176,6 +176,8 @@ export function ScheduledJobsCard({ projectId }: { projectId: string }) {
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [open, setOpen] = useState<{ id: string; lines: string[] | null; error?: string } | null>(null);
   const inFlight = useRef(false);
+  /** A reload asked for while a poll is running. One follow-up is kept, never more. */
+  const reloadQueued = useRef(false);
 
   const [name, setName] = useState("");
   const [schedule, setSchedule] = useState("0 3 * * *");
@@ -201,25 +203,35 @@ export function ScheduledJobsCard({ projectId }: { projectId: string }) {
     }
   }, [editingId, busy]);
 
-  const load = useCallback(async () => {
-    if (inFlight.current) return;
+  const load = useCallback(async (): Promise<void> => {
+    if (inFlight.current) {
+      // Not dropped: a reload asked for during a poll runs once that poll ends.
+      reloadQueued.current = true;
+      return;
+    }
     inFlight.current = true;
     try {
-      const res = await api<{ jobs: JobView[] }>(`/api/projects/${projectId}/jobs`);
-      setJobs(res.jobs);
-      if (res.jobs.length > 0) {
+      // One more pass runs if a reload was asked for while the last pass was in flight.
+      do {
+        reloadQueued.current = false;
         try {
-          const live = await api<{ jobs: JobView[]; status: JobStatus[] }>(`/api/projects/${projectId}/jobs?status=1`);
-          setStatus(Object.fromEntries(live.status.map((s) => [s.id, s])));
-          setStatusError(null);
+          const res = await api<{ jobs: JobView[] }>(`/api/projects/${projectId}/jobs`);
+          setJobs(res.jobs);
+          if (res.jobs.length > 0) {
+            try {
+              const live = await api<{ jobs: JobView[]; status: JobStatus[] }>(`/api/projects/${projectId}/jobs?status=1`);
+              setStatus(Object.fromEntries(live.status.map((s) => [s.id, s])));
+              setStatusError(null);
+            } catch (err) {
+              setStatusError(err instanceof Error ? err.message.replace(/\.$/, "") : "Could not read the jobs");
+            }
+          }
+          setNow(Date.now());
         } catch (err) {
-          setStatusError(err instanceof Error ? err.message.replace(/\.$/, "") : "Could not read the jobs");
+          setMessage({ ok: false, text: err instanceof Error ? err.message : "Could not load the jobs" });
+          setJobs((j) => j ?? []);
         }
-      }
-      setNow(Date.now());
-    } catch (err) {
-      setMessage({ ok: false, text: err instanceof Error ? err.message : "Could not load the jobs" });
-      setJobs((j) => j ?? []);
+      } while (reloadQueued.current);
     } finally {
       inFlight.current = false;
     }
@@ -307,7 +319,7 @@ export function ScheduledJobsCard({ projectId }: { projectId: string }) {
       title="Scheduled Jobs"
       docsHref="/docs/jobs"
       docsTopic="scheduled jobs"
-      description="Run a command on a schedule inside your latest release, such as a nightly clean-up or a weekly report. It has the same environment variables as your app. Times are UTC."
+      description="Run a command on a schedule inside your latest release, such as a nightly clean-up or a weekly report. Times are UTC."
     >
       {jobs === null ? (
         <p role="status" className="text-muted-foreground">

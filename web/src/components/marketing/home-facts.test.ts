@@ -72,7 +72,7 @@ describe("homepage facts match the code", () => {
 
   it("states the uptime check interval and the failed checks before an alert", () => {
     expect(src("src/server/jobs.ts")).toContain(
-      `process.env.MONITOR_INTERVAL_MS ?? ${HOME_FACTS.checkIntervalMinutes} * 60_000`
+      `process.env.MONITOR_INTERVAL_MS, ${HOME_FACTS.checkIntervalMinutes} * 60_000`
     );
     expect(HOME_FACTS.failedChecksBeforeAlert).toBe(FAILURES_BEFORE_DOWN);
     expect(src("src/server/db/schema.ts")).toContain(

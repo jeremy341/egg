@@ -4,6 +4,8 @@
  * plus deleting the egg-*.service units.
  */
 
+import { createHash } from "node:crypto";
+
 export const DEFAULT_UNIT_DIR = "/etc/systemd/system";
 export const KEEP_RELEASES = 5;
 export const KEEP_PREVIEWS = 2;
@@ -54,11 +56,32 @@ export function sharedDir(home: string, slug: string) {
 /** Every unit Egg writes starts with this. */
 export const UNIT_PREFIX = "egg-";
 
-/** systemd unit name. Production is egg-<slug>, previews add a short suffix. */
-export function unitName(slug: string, preview?: { releaseId: string }) {
+/**
+ * A short, stable discriminator derived from the server's id. systemd units,
+ * Docker containers, images, Compose projects and their volumes are all
+ * host-global: two Nest accounts whose servers point at the same host may pick
+ * the same project slug. Folding the server id into every host-global name and
+ * ownership marker keeps one account from taking over the other's resources.
+ *
+ * Eight hex characters (32 bits) keep names readable and well inside the
+ * systemd (255 bytes) and Docker (255 chars) limits, even for a 39-char slug.
+ */
+export function serverDiscriminator(serverId: string): string {
+  if (typeof serverId !== "string" || serverId.length === 0) throw new Error("A server id is required for a scoped name.");
+  return createHash("sha256").update(serverId).digest("hex").slice(0, 8);
+}
+
+/** The slug as it appears in host-global names and markers: <slug>-<server scope>. */
+export function scopedSlug(slug: string, scope?: string) {
+  return scope ? `${slug}-${scope}` : slug;
+}
+
+/** systemd unit name. Production is egg-<slug>[-<scope>], previews add a short suffix. */
+export function unitName(slug: string, preview?: { releaseId: string }, scope?: string) {
+  const base = scopedSlug(slug, scope);
   return preview
-    ? `${UNIT_PREFIX}${slug}-pv-${preview.releaseId.slice(0, 8)}.service`
-    : `${UNIT_PREFIX}${slug}.service`;
+    ? `${UNIT_PREFIX}${base}-pv-${preview.releaseId.slice(0, 8)}.service`
+    : `${UNIT_PREFIX}${base}.service`;
 }
 
 const SLUG = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;
@@ -94,6 +117,21 @@ export const FOLDER_MARKER = ".egg-managed";
 /** Shell helpers, ready to paste into a script. They only read. */
 export const SH_MARKER_HELPERS =
   `egg_unit_marked() { [ -f "$1" ] && [ ! -L "$1" ] && grep -q '^${UNIT_MARKER}' "$1" 2>/dev/null; }\n` +
-  `egg_dir_managed() { local d e n; d="$1"; [ -d "$d" ] && [ ! -L "$d" ] || return 1; [ -f "$d/${FOLDER_MARKER}" ] && return 0; [ -e "$d/.git" ] && return 1; ` +
+  // Ownership, not just authorship: a unit belongs to the project and the *server*
+  // its marker names. A unit from another account on the same host can share the
+  // slug, so the scope (short hash of server.id) must match too. Units written
+  // before the marker grew a project=/scope= carry neither and stay ours, as before.
+  // Slugs and scopes are [a-z0-9-], so they are literal in this ERE.
+  `egg_unit_ours() { local f="$1" slug="$2" scope="\${3-}" line marked_scope; egg_unit_marked "$f" || return 1; ` +
+  `line=$(grep -m1 '^${UNIT_MARKER} project=' -- "$f" 2>/dev/null) || return 0; ` +
+  `printf '%s\\n' "$line" | grep -qE "^${UNIT_MARKER} project="$slug"( |\\$)" || return 1; ` +
+  `marked_scope=$(printf '%s\\n' "$line" | sed -nE 's/.* scope=([^ ]+).*/\\1/p'); ` +
+  `[ -z "$marked_scope" ] || [ "$marked_scope" = "$scope" ]; }\n` +
+  // The folder marker holds the same scope. Legacy empty markers still pass when
+  // no scope is supplied, so folders written by older Egg versions stay ours.
+  `egg_dir_managed() { local d="$1" scope="\${2-}" e n marked; [ -d "$d" ] && [ ! -L "$d" ] || return 1; ` +
+  `if [ -f "$d/${FOLDER_MARKER}" ] && [ ! -L "$d/${FOLDER_MARKER}" ]; then ` +
+  `if [ -n "$scope" ]; then read -r marked < "$d/${FOLDER_MARKER}" || marked=""; [ "$marked" = "$scope" ] || return 1; fi; return 0; fi; ` +
+  `[ -e "$d/.git" ] && return 1; ` +
   `n=0; for e in "$d"/* "$d"/.[!.]*; do [ -e "$e" ] || [ -L "$e" ] || continue; ` +
   `case "$(basename "$e")" in releases|incoming|shared|env|current|current.new|current.env|current.env.new) n=$((n+1));; *) return 1;; esac; done; [ "$n" -gt 0 ]; }\n`;

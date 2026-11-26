@@ -8,7 +8,7 @@ Words used in this guide:
 
 - **Egg machine.** The computer that runs Egg: your laptop, or a server you own.
 - **Deploy target.** The Linux machine your apps run on. Egg reaches it over SSH. For Hack Club members this is a Nest container. A deploy target can also be a server you own (see "What a deploy target needs").
-- **Worker.** The part of Egg that clones your repository, packs the source, uploads it, and runs the build on the deploy target. It runs inside the Egg process unless you start it on its own.
+- **Worker.** The part of Egg that clones your repository, packs the source and uploads it. Installs and builds run on the deploy target under a memory cap with `systemd-run`, or in GitHub Actions when the project is set up to build there. There is no build sandbox on the Egg machine. The worker runs inside the Egg process unless you start it on its own.
 - **Release.** One deployed version of an app, kept in its own folder on the deploy target.
 - **Preview.** A release built from a branch other than the production branch, or from a pull request.
 
@@ -204,12 +204,12 @@ How Egg gets the fresh sign-in depends on the settings:
 | Settings | What happens when you turn on Terminal or File changes |
 | --- | --- |
 | Hack Club set up | Egg sends you to Hack Club to sign in again. It must be the same Hack Club account. |
-| Hack Club not set up, `LOCAL_MODE=1` | Egg counts you as freshly signed in and goes straight back. No prompt. |
+| Hack Club not set up, `LOCAL_MODE=1` | Local mode has no re-prompt at all: there is no second password entry to confirm with. Egg marks the session freshly signed in and returns straight to the switch. |
 | Hack Club not set up, `DEV_LOGIN=1` outside production | The same: no prompt. |
 | Hack Club not set up, nothing else | Egg returns to Account with `?reauth=not_configured` in the address. The page shows no message, and the switch stays off. |
 | **Both** Hack Club and local mode set up | The local owner is sent to Hack Club, and Hack Club cannot confirm the local owner. Egg returns to Account with `?reauth=mismatch`. The page shows no message, and the switch stays off. |
 
-The last row matters. If you run local mode, do not also set the Hack Club values. A person who signs in with Hack Club is a different account from the local owner, with no projects or servers of its own, and the local owner loses the ability to turn on Terminal and File changes. The older advice to use both side by side is not safe.
+The last row matters. If you run local mode, do not also set the Hack Club values. With both set, anyone with a Hack Club account who can open your site gets their own account, so the instance has open sign-up; they are a different account from the local owner, with no projects or servers of its own, and the local owner loses the ability to turn on Terminal and File changes. The older advice to use both side by side is not safe. A public `APP_URL` has the same effect on the sign-in form: anyone who can open the address can reach it. A password protects the account, not the form. Keep `APP_URL` local or put the site behind your own access control if sign-in must stay private.
 
 ### Password sign-in needs Hack Club
 
@@ -295,6 +295,10 @@ Egg talks to the target with plain SSH commands (`bash -s`, and `cat` for upload
 | `curl` and `sha256sum` | Health checks and upload checks | Warnings only. Without `curl`, the health check falls back to a plain TCP check. |
 | A free port for each app | Each app listens on `0.0.0.0` on the port you choose | A port from 1024 to 65535, and not 20000 to 29999 (kept for previews) |
 
+Native runtime profiles use systemd services. Node projects can use npm, pnpm, Yarn, or Bun lockfiles; the required package manager must be on the build target and the server when production dependencies are installed. Python projects with `requirements.txt` or `pyproject.toml` get a release-local virtual environment. Go defaults to `go build -o .egg-app .` and `./.egg-app`. Rust builds with Cargo; Ruby installs a Gemfile into the release; PHP installs Composer dependencies; Java can build Maven or Gradle projects. Set a start command for Rust, Ruby, PHP, and Java, and override the build command where the project needs a different entry point or build process. The target needs the tools used by its build and start commands; GitHub builds can reduce target toolchain requirements, but compiled artifacts must match the target OS and architecture. Lockfiles and tool versions should be committed or pinned where the project supports them. These profiles have not yet been verified end to end on a real Nest container.
+
+PM2 is optional for Node applications: install it as a production dependency and set the start command to `./node_modules/.bin/pm2-runtime ecosystem.config.js` (or another foreground `pm2-runtime` command). Egg still runs and restarts the service with systemd; do not use a detached PM2 daemon for this purpose.
+
 Egg puts everything under `~/.egg` on the target and names its service files `egg-*.service` and its timers `egg-*`. Anything without Egg's marker is never overwritten, stopped or removed.
 
 The health check runs on the target against `127.0.0.1`, over SSH. The Egg machine does not need to reach your app's port.
@@ -310,7 +314,7 @@ Nest is a free hosting service for Hack Club members. Egg was built for how Nest
 | Public addresses: Nest maps a domain to a port in its own dashboard, and gives each member `<name>.hackclub.app` | Yes. The **Domains** page and the tour tell you to use the Nest dashboard, and its DNS check looks for a CNAME to `<username>.hackclub.app` or a TXT record `domain-verification=<username>`. On your own server, the check will not pass. |
 | The "Open the Nest dashboard" link and the "paste your key into the SSH Keys page" text on the Connect page | Yes |
 | Reserved names and the `hackclub.app` suffix rules for domains | Yes |
-| The public Nest status page at `/nest-status` | Yes. It reports on Nest (whether Egg can reach it, and Hack Club's own status page) and says nothing about your own server. |
+| The public Nest status page at `/nest-status` | Yes. It reports on Nest (whether Egg can reach it, and [Hack Club's official status page at status.hackclub.app](https://status.hackclub.app)) and says nothing about your own server. |
 | SSH key login, `bash`, `tar`, systemd units, release folders, health checks, the build under a memory cap | No. These should work on any Linux server that meets the table above. Not tested on other hosts. |
 
 An app deployed to your own server listens on a plain `http` port. Egg does not install a web server, a certificate or a firewall rule. Put your own reverse proxy (for example Caddy or nginx) in front, and block the app port from the internet. See `docs/design/self-host-gaps.md` for the full list.
@@ -339,7 +343,7 @@ Restart Egg, then add the server. Set the three values first: each server keeps 
 
 ### Where builds run
 
-Builds run on the deploy target of each project. The Egg machine only clones the repository, packs the source and uploads it over SSH. It does not install or build anything, and it needs no Docker.
+Builds run on the deploy target of each project, under a memory cap with `systemd-run`. A project set up to build on GitHub Actions sends Egg a finished release instead. In both cases the Egg machine only clones the repository, packs the source and uploads or receives it; it does not install or build anything, and it needs no Docker. There is no Docker build sandbox on the Egg machine.
 
 Before it uploads anything, Egg looks at the container. It needs:
 
@@ -398,9 +402,9 @@ Then generate a private key and put the values in `.env.local`:
 | `GITHUB_APP_PRIVATE_KEY` | The PEM text of the key. Put it on one line and write each line break as `\n`. |
 | `GITHUB_WEBHOOK_SECRET` | The webhook secret above |
 
-Egg treats GitHub as set up only when the App ID, private key, client id, client secret and webhook secret are all non-empty. Set all six, then restart Egg. The **Install the GitHub App** button on the New project page then appears.
+Egg treats GitHub as set up only when the App ID, private key, client id, client secret and webhook secret are all non-empty. Set those five, then restart Egg. `GITHUB_APP_SLUG` is optional: it only supplies the install link. The **Install the GitHub App** button on the New project page then appears.
 
-The repository also holds `web/scripts/create-github-app.mjs`, which creates the App through GitHub's manifest form and writes the values into `.env.local`. It is not mentioned anywhere else and it was not tested for this guide. Two things to know before you use it: it assumes `APP_URL` is `http://localhost:3100` unless you set `APP_URL` in the environment when you run it, and it leaves the webhook secret empty, so Egg will not count GitHub as set up until you add `GITHUB_WEBHOOK_SECRET` yourself.
+The repository also holds `web/scripts/create-github-app.mjs`, which creates the App through GitHub's manifest form and writes the values into `.env.local`. It reads `APP_URL` from `web/.env.local` (setup writes `http://localhost:3000`), falling back to `http://localhost:3100` only when no `APP_URL` is set anywhere; you can also set `APP_URL` in the environment when you run it. GitHub will not hand a webhook secret to an app that points at localhost, so the script generates a random one and saves it as `GITHUB_WEBHOOK_SECRET`. With that value written, Egg counts GitHub as set up; you still need to check the App's permissions and point its webhook at an address GitHub can reach. The script listens on `127.0.0.1:4123` and supports `--self-check`.
 
 ### Webhooks need an address GitHub can reach
 
@@ -414,7 +418,7 @@ GitHub does not resend a failed delivery by itself. After Egg is back, use the A
 
 ## Settings, one by one
 
-Every name in the first group is read in `web/src/server/config.ts`. Put them in `web/.env.local` (setup A) or in `.env` next to `compose.yaml` (setup B). A value for an on or off setting must be exactly `0`, `1`, `true` or `false`, in lower case. An empty value is rejected.
+Most names in the tables below are read in `web/src/server/config.ts`, which validates them when Egg starts. Three are exceptions: `SECURITY_REPORT_ADMIN_ID` is read straight from the environment by the administrator and report-inbox code (for example `web/src/server/admin-identity.ts`), and `APP_HOST` and `EGG_DATA_DIR` are read by Compose and Caddy, not by Egg. Put them in `web/.env.local` (setup A) or in `.env` next to `compose.yaml` (setup B). A value for an on or off setting must be exactly `0`, `1`, `true` or `false`, in lower case. An empty value is rejected.
 
 ### Core
 
@@ -434,12 +438,13 @@ Every name in the first group is read in `web/src/server/config.ts`. Put them in
 | `HACKCLUB_CLIENT_ID`, `HACKCLUB_CLIENT_SECRET` | empty | Hack Club Auth app credentials. Both must be set for the Hack Club button to work. | You want Hack Club sign-in, or more than one account. |
 | `DEV_LOGIN` | `0` | `1` shows a fake sign-in with a name field. Works only with `pnpm dev`; ignored in a production build. | Developing Egg only. |
 | `SECURITY_REPORT_ADMIN_ID` | empty | The exact database id of the instance administrator. Turns on `/admin` and the private report inbox for that account. | You want an administrator account. |
+| `EMAIL_WEBHOOK_URL` | none | An https endpoint that receives sign-in and security events. Egg sends a signed POST; a failed delivery is dropped, so do not rely on it for alerts. | You want an external event sink. |
 
 ### Behind a proxy
 
 | Variable | Default | What it does | Needed when |
 | --- | --- | --- | --- |
-| `TRUST_PROXY` | `0` | `1` or `true` makes Egg believe the `X-Forwarded-For` and `X-Real-IP` headers for each visitor's address. Set it to `1` only when every request reaches Egg through a reverse proxy you run, which sets those headers itself. Without it every visitor counts as one address: analytics cannot tell visitors apart by address, and the limits on sign-in attempts and invalid access tokens do not apply. On your own computer, leave it off. | Egg is behind Caddy or another proxy. The Compose example sets it. |
+| `TRUST_PROXY` | `0` | `1` or `true` makes Egg believe the `X-Forwarded-For` and `X-Real-IP` headers for each visitor's address. With it on, Egg uses the right-most `X-Forwarded-For` entry, the one your own proxy appended, then `X-Real-IP`; set it to `1` only when every request reaches Egg through a reverse proxy you run. With it off, route handlers have no address: analytics cannot tell visitors apart by address, and the address-based limits fall back to one shared bucket. The report inbox falls back to a dedicated anonymous cookie instead. On your own computer, leave it off. | Egg is behind Caddy or another proxy. The Compose example sets it. |
 | `APP_HOST` | none | The host name part of `APP_URL`, without `https://`. Caddy gets the certificate for it. Read by Compose and Caddy, not by Egg. | Setup B. |
 | `EGG_DATA_DIR` | none | The folder on the server that holds the database and the cloned source. Read by Compose, not by Egg. | Setup B. |
 
@@ -466,6 +471,7 @@ Every name in the first group is read in `web/src/server/config.ts`. Put them in
 | `WORKER_CONCURRENCY` | `2` | How many deployments run at once. One project never deploys twice at the same time, and one build runs at a time on a container. | `web/src/instrumentation.ts`, `web/worker/index.ts` |
 | `MONITOR_INTERVAL_MS` | `300000` | How often the uptime monitor checks, in milliseconds. `0` turns it off. | `web/src/server/jobs.ts` |
 | `MONITOR_CONCURRENCY` | `4` | How many servers the monitor checks at once. A whole number from 1 to 16; anything else falls back to 4. | `web/src/server/monitor.ts` |
+| `STATUS_PROBE_INTERVAL_MS` | `60000` | How often Egg probes Nest and its own status for the public `/nest-status` page, in milliseconds. `0` turns those probes off. An empty or invalid value falls back to 60000. | `web/src/server/jobs.ts` |
 | `DEPLOY_LOG_RETENTION_DAYS` | `90` | How long deployment logs are kept. A whole number from 1 to 3650. `0` keeps them for ever. Anything else falls back to 90. | `web/src/server/retention.ts` |
 | `EGG_BACKEND_METRICS` | off | `1` turns on counters that the administrator can read at `/api/admin/diagnostics`. | `web/src/server/backend-metrics.ts` |
 | `PORT` | `3000` | The port `pnpm start` listens on. Set `APP_URL` to match. | Next.js |
@@ -484,7 +490,7 @@ All run from the `web/` folder.
 | `pnpm test`, `pnpm typecheck`, `pnpm lint` | The tests, the TypeScript check and the linter. |
 | `pnpm audit:prod` | Checks the production dependencies for known high-severity problems. |
 
-To use Egg from a terminal or a script, make an access token on the Developer page and see the [command line guide](../developers/cli.md). It runs as `node scripts/egg-cli.mjs` and needs Node 22.18 or newer; the guide says what to do on an older Node.
+To use Egg from a terminal or a script, make an access token on the Developer page and see the [command line guide](../developers/cli.md). It runs as `node scripts/egg-cli.mjs` and needs Node 22.18 or newer; the guide says what to do on an older Node. The CLI reads `EGG_TOKEN` and `EGG_URL`; the Developer page snippets and the bundled examples use the older `NEST_TOKEN` and `NEST_URL` names, so rename those values before running the CLI.
 
 ## Changing the build memory and the Nest username
 
@@ -500,7 +506,9 @@ Everything Egg stores is in one SQLite file, by default `web/data/egg.db`. That 
 2. Copy `web/data/egg.db` to somewhere safe. If files named `egg.db-wal` or `egg.db-shm` sit next to it, copy those too.
 3. Copy `web/.env.local` separately. The SSH keys in the database can only be opened with the `APP_SECRET` inside it, so the two belong together. Do not store them in the same place if the backup leaves your machine.
 
-To restore, stop Egg, put the file back at the same path and start Egg again.
+To restore, stop Egg, put the file back at the same path and start Egg again. There is no restore script: check that the `.env`/`.env.local` you start with is the one that belongs to the copy, because its `APP_SECRET` and other keys are not in the database.
+
+These backups cover the Egg database only. They do not copy `web/.env.local` (setup A) or `.env` (setup B), so back up `APP_SECRET`, `LOCAL_MODE_SECRET` and the GitHub App private key separately; a database copy on its own cannot be restored into a working instance. They also do not copy deployed releases or the `shared/` folders on your deploy targets, so persistent data your apps write there is outside this backup and restore flow; arrange that with your own backups.
 
 If you changed `DATABASE_URL`, back up that path instead. On a server, `sh deploy/backup.sh` makes the copy while Egg runs (see below).
 
@@ -514,7 +522,7 @@ pnpm build
 pnpm start
 ```
 
-Database changes are applied automatically the first time the new version opens the database. Going backwards, from a newer database to older code, is not supported, so keep the backup from before the update. On a server, use `sh deploy/upgrade.sh` (see below).
+Database changes are applied automatically the first time the new version opens the database. Going backwards, from a newer database to older code, is not supported, so keep the backup from before the update. On a server, use `sh deploy/upgrade.sh` (see below). One migration renames old duplicates in place rather than failing: if two accounts held the same project slug on one server, or the same Nest username on one host, the older row gets a `-r-…` suffix so the newer row keeps the name — no data is deleted, and a renamed project provisions its unit under the new slug on its next deploy.
 
 ## Setup B: on your own server
 
@@ -611,7 +619,7 @@ A project can build on GitHub and send Egg the finished release. Egg makes the w
 | `EGG_UPLOAD_PRODUCTION_TOKEN` and `EGG_ENV_PRODUCTION_TOKEN` | Secrets of a GitHub Environment named `egg-production`, limited to the production branch. Optional: Required reviewers. |
 | `EGG_UPLOAD_PREVIEW_TOKEN` and `EGG_ENV_PREVIEW_TOKEN` | Repository secrets |
 
-Do not save the production values as repository secrets: a workflow edited on any branch could read them. **Test connection** in Egg cannot see GitHub secrets or environment settings, so check these by hand. Anyone who can edit workflows can run code with the preview credentials and whatever else the repository allows, so treat workflow editors as trusted operators. Roles in Egg do not isolate Nest accounts from them. The Egg address must be reachable from GitHub's runners, which means a public `APP_URL`.
+Do not save the production values as repository secrets: a workflow edited on any branch could read them. **Test connection** in Egg cannot see GitHub secrets or environment settings, so check these by hand. Anyone who can edit workflows can run code with the preview credentials and whatever else the repository allows, so treat workflow editors as trusted operators. Roles in Egg do not isolate Nest accounts from them. The Egg address must be reachable from GitHub's runners, which means a public `APP_URL`. A public `APP_URL` also puts the sign-in form on the open internet, so it is not compatible with keeping sign-in private; if you need both, keep other traffic out with your own access control (GitHub's runners must still reach the site), or leave push builds off.
 
 ## Drain and clean up Egg-managed deployments
 
@@ -635,7 +643,7 @@ Before account deletion finishes, save the manual-removal links shown in its con
 
 - **Use HTTPS.** Sessions use a cookie that is `HttpOnly`, `SameSite=Lax`, and `Secure` in a production build.
 - **Do not publish the app port.** Only Caddy (or your own proxy) should be reachable. The Compose file publishes 80 and 443 only.
-- **Set `TRUST_PROXY=1` only behind a proxy you run.** Wrong either way breaks address limits: off, every visitor shares one address; on without a proxy, anyone can choose their own.
+- **Set `TRUST_PROXY=1` only behind a proxy you run.** Wrong either way breaks address limits: off, route handlers have no address and visitors share a bucket; on without a proxy, anyone can supply the headers and choose their own address.
 - **Anyone with a Hack Club account can sign in** once Hack Club is set up. There is no allow list. A signed-in person can connect their own servers, and your Egg machine then clones and packs their repositories. Put the site behind your own access control if that is not what you want.
 - **`LOCAL_MODE_ALLOW_REMOTE=1` puts the sign-in form on the network.** The recovery key and a password of at least 12 characters protect it. Add a VPN or access proxy.
 - **A tunnel exposes your whole site**, not only the webhook.
@@ -647,9 +655,9 @@ Before account deletion finishes, save the manual-removal links shown in its con
 
 Set `SECURITY_REPORT_ADMIN_ID` to the exact Egg database user id of the administrator, then restart the app. The id is returned by `/api/me` while signed in and is also available in the local `users` table. Names and email addresses do not grant access. With this setting empty, the public form refuses submissions and the inbox denies access. The administrator opens `/security/reports`; public visitors submit from `/security#report`.
 
-Reports may be anonymous or include a name and reply address. Egg does not attach the signed-in account or store an IP address with the report. The in-memory limiter uses a hashed trusted client address when available, otherwise a shared client bucket; reverse proxies and hosting logs may independently record request metadata. Anonymous reports have no reply channel. Submitted text and image metadata can still identify a reporter.
+Reports may be anonymous or include a name and reply address. Egg does not attach the signed-in account or store an IP address with the report. Admission is counted from the inbox itself (report dates and keyed source digests in the audit log), so the caps survive restarts and apply across processes: 12 new reports a rolling hour and 60 a rolling day overall, tightened to 2 an hour once the inbox is 80% full, plus at most 10% of the remaining slots from one network source per day. Source digests are pruned after a day. When Egg has no trusted address, no per-source check applies. In front of that, a per-process limiter allows 3 attempts an hour per reporter, keyed by the trusted address when `TRUST_PROXY=1` or by a dedicated 24-hour anonymous cookie otherwise, with a shared ceiling of 600 an hour. Reverse proxies and hosting logs may independently record request metadata. Anonymous reports have no reply channel. Submitted text and image metadata can still identify a reporter.
 
-Report text, supplied identity, and evidence are sealed with `APP_SECRET` in the database. The inbox accepts up to three PNG/JPEG images of 1 MB and 16 million pixels each; other proof belongs in a Markdown code block. HTML and remote images are not rendered. The inbox holds at most 200 reports and 100 MB of encrypted payloads, and stops accepting reports when full. Submissions have process-local client/global rate limits; operators should also apply request limits at their trusted proxy. The admin may mark reports new, reviewing, or resolved, and permanently delete reports and evidence. Reports stay until deleted; backups have their own retention. Do not open untrusted evidence or execute proof code on a sensitive machine.
+Report text, supplied identity, and evidence are sealed with `APP_SECRET` in the database. The inbox accepts up to three PNG/JPEG images of 1 MB and 16 million pixels each; other proof belongs in a Markdown code block. HTML and remote images are not rendered. The inbox holds at most 200 reports and 100 MB of encrypted payloads, and stops accepting reports when full. Operators should also apply request limits at their trusted proxy. The admin may mark reports new, reviewing, or resolved, and permanently delete reports and evidence. Reports stay until deleted; backups have their own retention. Do not open untrusted evidence or execute proof code on a sensitive machine.
 
 ### Instance administration and maintenance
 
@@ -660,6 +668,8 @@ Maintenance can start immediately or use optional start/end times. It is saved i
 Maintenance is an operational read-only boundary, not a process freeze: requests and deployments already underway may finish, scheduled cleanup and monitoring continue, incoming analytics/report collection remains available, and applications already deployed on the deploy target keep running. It cannot stop SSH access outside Egg or protect the host during infrastructure changes. Wait for existing jobs and take a verified backup before upgrading. If the settings database cannot be read, mutation requests fail rather than bypassing the maintenance check.
 
 GitHub App webhook events are refused with `503 maintenance` before replay state is recorded, for all repositories including the administrator's. This pauses pushes, pull-request preview creation/removal, repository renames and installation updates. [GitHub does not automatically redeliver failed deliveries](https://docs.github.com/en/webhooks/using-webhooks/handling-failed-webhook-deliveries). After the window, use the App's recent webhook deliveries to redeliver failures; a missed push can alternatively be deployed from Egg. Preview cleanup and integration metadata may remain stale until their events are redelivered. Egg does not persist or automatically replay paused payloads.
+
+Replay protection for accepted deliveries is database-backed, not a per-process cache: Egg stores a keyed digest of the event type and signed body in `github_webhook_events`, so the same signed body is refused after a restart or on another instance. Digests are retained indefinitely; the only digest removed is one released after a delivery fails, so GitHub can redeliver it. Outbound webhooks configured in a project's settings keep their delivery log (status, attempts and a short error code, never a response body) for 30 days. The app's scheduled maintenance runs every 15 minutes and removes deliveries older than 30 days at most once an hour; a dispatch also prunes them. Neither record is held only in memory, so a restart clears the rate-limit buckets but not these.
 
 ### Request size limits
 
@@ -687,7 +697,7 @@ The built-in static server (used for static sites, with Python 3 or Node.js) ans
 
 - **Request size.** A signed-in JSON request may be up to 256 KB. A larger one is refused with 413.
 - **GitHub webhook intake.** The webhook is public, so it is the one route anyone can send bytes to. Egg refuses a delivery without a `Content-Length` (411), one over 5 MB (413), or one whose `X-Hub-Signature-256` is missing or malformed (401), all before reading the body. At most four deliveries are read at once; more get `503` with `Retry-After`, and GitHub's redelivery can retry them. Caddy's stock build has no rate limiting or connection caps. If you want them, set a request rate limit on `/api/webhooks/github` at your firewall or cloud load balancer. Egg does not need it for memory safety.
-- **Rate limits.** One address may make 20 sign-in attempts a minute, and 60 requests a minute with access tokens that are not recognised. These limits count by address, so they only work when `TRUST_PROXY=1` behind a proxy. The example file sets it. They are kept in memory, so a restart clears them. The local sign-in and the email password sign-in use one shared bucket of 20 a minute when no address is known.
+- **Rate limits.** One address may make 20 sign-in attempts a minute, and 60 requests a minute with access tokens that are not recognised. These limits count by address, so they only work per address when `TRUST_PROXY=1` behind a proxy; the example file sets it. They are kept in memory, so a restart clears them. The local sign-in and the email password sign-in use one shared bucket of 20 a minute when no address is known. The private report inbox is different: its overall caps are counted from the database and survive restarts, as described in "Private vulnerability inbox".
 - **Content policy.** The `script-src` rule still allows inline scripts, so a script injected into a page would not be blocked by it. A per-request nonce would close this, but it is not in place yet. The fix is open. The rules against framing, plug-ins and form hijacking are not affected.
 
 ## If something is wrong
@@ -698,7 +708,7 @@ The built-in static server (used for static sites, with Python 3 or Node.js) ans
 | --- | --- | --- |
 | "Invalid environment configuration:" followed by `APP_SECRET: Invalid input: expected string, received undefined` | `APP_SECRET` is not set. | Run `pnpm run setup`, or set a secret of 32 or more characters. |
 | `APP_SECRET: APP_SECRET must be at least 32 characters` | The secret is empty or too short. | Use a longer one. |
-| `LOCAL_MODE: Invalid option: expected one of "0"\|"1"\|"true"\|"false"` | The value is empty, upper case (`TRUE`), or a word like `yes`. This applies to every on or off setting. | Use `0`, `1`, `true` or `false`. |
+| `LOCAL_MODE: Expected 0, 1, true or false` | The value is a word like `yes` or a number like `2`. Case and surrounding whitespace are ignored, so `TRUE` and ` 1 ` are accepted. This applies to every on or off setting. | Use `0`, `1`, `true` or `false`. |
 | `LOCAL_MODE_SECRET: LOCAL_MODE requires a private LOCAL_MODE_SECRET.` | `LOCAL_MODE=1` with no recovery key. | Add a random `LOCAL_MODE_SECRET` of at least 32 characters. `pnpm run setup` will not touch an existing file. |
 | `LOCAL_MODE_SECRET: LOCAL_MODE_SECRET must be at least 32 characters` | The key is too short. | Use a longer one. |
 | `LOCAL_MODE: LOCAL_MODE signs anyone in as the owner, so APP_URL must be localhost or 127.0.0.1.` | `LOCAL_MODE=1` but `APP_URL` is not a local address. | Set `APP_URL=http://localhost:3000`, or read the override above. |
@@ -746,13 +756,15 @@ The built-in static server (used for static sites, with Python 3 or Node.js) ans
 | "SSH did not log in as root. Nest normally does; without root, installing the service files may fail." | A non-root user. | Use root, or make sure that user can write to `UNIT_DIR` and run `systemctl`. Not tested. |
 | "Repositories on HOST are not supported yet. Supported: github.com." | Only GitHub is supported. | Use a `github.com` repository. |
 | "Only plain https repository URLs are supported." | The address has a username, a password or is not https. | Use `https://github.com/owner/name`. |
-| "The GitHub App is not configured." | One of the five required GitHub values is empty. | Set all six and restart. |
+| "The GitHub App is not configured." | One of the five required GitHub values (App ID, private key, client id, client secret, webhook secret) is empty. | Set all five and restart. |
 | The webhook answers 503 `webhook not configured` | `GITHUB_WEBHOOK_SECRET` is empty. | Set it. |
 | The webhook answers 401 `bad signature` | The secret in GitHub and in Egg differ. | Make them the same. |
 
 ### Recovering a stale deployment
 
 An expired lease is not proof that commands on the deploy target stopped. Egg therefore does not automatically free a stale running job. It remains the project's queue guard until an operator has confirmed the worker and its remote work have stopped.
+
+With the worker stopped and remote work confirmed, the administrator recovery API does this for you: `POST /api/admin/recovery/<serverId>` (inspect first with `GET /api/admin/recovery`) fences the stale holder, stops the recorded remote build scopes, fails the job, and marks a still-queued, building or deploying deployment as errored — a canceled one stays canceled. It works whatever crash window the worker died in, including during activation. The manual database updates below are the fallback for when the API itself cannot run.
 
 Stop every Egg worker first. For Compose, stop the app as well because it may run the worker when `RUN_WORKER=1`:
 
@@ -799,3 +811,14 @@ Restart Egg after the transaction. If the deployment had already been canceled, 
 ## What does not work yet without Hack Club or Nest
 
 The list of gaps, ranked, with the file and line for each, is in [docs/design/self-host-gaps.md](../design/self-host-gaps.md).
+
+## Protecting deployed project addresses
+
+Project owners can configure access protection in the project's **Access protection** settings. The setting applies to requests for that project's valid custom domains:
+
+- **Off** allows requests without credentials.
+- **Shared password** accepts the password through `X-Egg-Access-Password` or a Bearer authorization value.
+- **Username and password** uses standard HTTP Basic authentication.
+- **Egg sign-in** accepts the project's signed `egg_access` session cookie.
+
+Excluded paths skip the credential check. An exact path such as `/health` matches only that path; a suffix such as `/api/public/**` matches that path and its descendants. The hostname must resolve to a valid custom domain assigned to a project. The owner-only `GET /api/projects/{id}/ingress-protection` endpoint reports `enabled` and `mode`; it never returns the password or its hash.

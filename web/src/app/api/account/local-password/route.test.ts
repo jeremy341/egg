@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { NextRequest } from "next/server";
 import { resetConfigForTests } from "@/server/config";
 import { SESSION_COOKIE, createSession, upsertUser, userForSessionToken } from "@/server/auth/session";
+import { localCredential } from "@/server/auth/local-credential";
 import { hashLocalPassword, verifyLocalPassword } from "@/server/auth/local-password";
 import { useFreshDb } from "@/server/test/db";
 import { schema } from "@/server/db";
@@ -17,6 +18,10 @@ vi.mock("next/headers", async (orig) => ({
   ...(await orig<typeof import("next/headers")>()),
   cookies: async () => ({ get: (name: string) => name === "egg_session" && currentCookie ? { value: currentCookie } : undefined }),
 }));
+vi.mock("@/server/auth/local-credential", async (orig) => {
+  const actual = await orig<typeof import("@/server/auth/local-credential")>();
+  return { ...actual, localCredential: vi.fn(actual.localCredential) };
+});
 
 let ctx: Awaited<ReturnType<typeof useFreshDb>>;
 beforeAll(async () => {
@@ -82,6 +87,29 @@ describe("local owner password change", () => {
     expect(row?.passwordHash).not.toBe(passwordHash);
     expect(await verifyLocalPassword(OLD_PASSWORD, row!.passwordHash)).toBe(false);
     expect(await verifyLocalPassword(NEW_PASSWORD, row!.passwordHash)).toBe(true);
+  });
+
+  it("keeps the browser's session when a competing change wins the race", async () => {
+    const { user, session } = await readyOwner();
+    currentCookie = session.token;
+    const real = (await localCredential())!;
+    vi.mocked(localCredential)
+      .mockResolvedValueOnce(real)
+      .mockResolvedValueOnce({ ...real, passwordHash: "changed-by-another-request" });
+    const req = new NextRequest("http://localhost:3000/api/account/local-password", {
+      method: "POST",
+      headers: { cookie: `${SESSION_COOKIE}=${session.token}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        currentPassword: OLD_PASSWORD,
+        newPassword: NEW_PASSWORD,
+        confirmPassword: NEW_PASSWORD,
+      }),
+    });
+    const res = await POST(req, undefined);
+    expect(res.status).toBe(409);
+    expect((await res.json()).error.message).toBe("The password changed again. Sign in with the new password.");
+    // No session was revoked on the way out, so this browser is still signed in.
+    expect((await userForSessionToken(session.token))?.id).toBe(user.id);
   });
 
   it("does not change the password with a wrong current password", async () => {

@@ -1,11 +1,21 @@
+import { isIP } from "node:net";
 import { z } from "zod";
 
 /**
  * Environment configuration. Read lazily so `next build` works without
  * secrets; the first request (or the worker start) validates everything.
+ * Normalize case and whitespace here so every boolean uses one parser: the
+ * rate-limit path reads TRUST_PROXY straight from the environment with the
+ * same trimming, and a value like "TRUE" must not be accepted there and
+ * rejected here (which used to 500 every request on startup).
  */
 const bool = z
-  .enum(["0", "1", "true", "false"])
+  .string()
+  .trim()
+  .toLowerCase()
+  .refine((v) => v === "0" || v === "1" || v === "true" || v === "false", {
+    message: "Expected 0, 1, true or false",
+  })
   .default("0")
   .transform((v) => v === "1" || v === "true");
 
@@ -20,10 +30,15 @@ export function trustProxyEnabled(env: Record<string, string | undefined> = proc
   return v === "1" || v === "true";
 }
 
-/** True for localhost, any 127.x.x.x address and ::1. Anything else is a remote address. */
+/** True for localhost, any real 127.x.x.x address and ::1. Anything else is a remote address. */
 export function isLoopbackHost(host: string): boolean {
   const h = host.trim().toLowerCase().replace(/^\[|\]$/g, "");
-  return h === "localhost" || h === "::1" || /^127(\.\d{1,3}){3}$/.test(h);
+  if (h === "localhost" || h === "::1") return true;
+  if (isIP(h) !== 4 || !h.startsWith("127.")) return false;
+  return h.split(".").every((part) => {
+    const n = Number(part);
+    return part.length > 0 && n >= 0 && n <= 255 && String(n) === part;
+  });
 }
 
 const schema = z
@@ -32,6 +47,12 @@ const schema = z
     /** Master secret for encrypting SSH keys and env vars. 32+ characters. */
     APP_SECRET: z.string().min(32, "APP_SECRET must be at least 32 characters"),
     DATABASE_URL: z.string().default("file:./data/egg.db"),
+
+    /**
+     * Optional email delivery: Egg POSTs {to, subject, text} as JSON here. Unset
+     * means no email; invitations then show a one-time link instead.
+     */
+    EMAIL_WEBHOOK_URL: z.string().url().optional(),
 
     HACKCLUB_CLIENT_ID: z.string().optional(),
     HACKCLUB_CLIENT_SECRET: z.string().optional(),
@@ -75,8 +96,30 @@ const schema = z
           "LOCAL_MODE requires a private LOCAL_MODE_SECRET. Existing installs must add a random secret of at least 32 characters to .env.local; the setup command will not overwrite that file.",
       });
     }
+    // LOCAL_MODE signs people in without an external account. If Hack Club credentials
+    // are also present, the OAuth login and reauth routes become reachable again, so a
+    // self-hosted install could silently drift into Hack Club sign-in. Refuse the mix.
+    // Empty strings are how an install disables an OAuth app; treat those as absent.
+    if (c.LOCAL_MODE && (c.HACKCLUB_CLIENT_ID || c.HACKCLUB_CLIENT_SECRET)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["LOCAL_MODE"],
+        message:
+          "LOCAL_MODE cannot be combined with Hack Club credentials. " +
+          "Unset HACKCLUB_CLIENT_ID and HACKCLUB_CLIENT_SECRET, or turn LOCAL_MODE off, " +
+          "so local sign-in cannot drift into OAuth.",
+      });
+    }
     if (!c.LOCAL_MODE || c.LOCAL_MODE_ALLOW_REMOTE) return;
-    if (isLoopbackHost(new URL(c.APP_URL).hostname)) return;
+    let hostname: string;
+    try {
+      hostname = new URL(c.APP_URL).hostname;
+    } catch {
+      // The .url() check on APP_URL already reports the invalid value; don't
+      // throw a raw TypeError out of the refinement and hide that message.
+      return;
+    }
+    if (isLoopbackHost(hostname)) return;
     ctx.addIssue({
       code: "custom",
       path: ["LOCAL_MODE"],

@@ -12,6 +12,8 @@ import { CommitLink } from "@/components/commit-link";
 import { DeployButton } from "@/components/deploy-button";
 import { RollbackButton } from "@/components/rollback-button";
 import { ProjectResources } from "@/components/project-resources";
+import { ActivityHeatmap } from "@/components/activity-heatmap";
+import { RightSizeCard } from "@/components/right-size-card";
 import { PageHeader } from "@/components/page-header";
 import { ServiceCard } from "@/components/service-status";
 import { ProjectOverviewSkeleton } from "@/components/skeletons/project-overview";
@@ -21,9 +23,12 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PixelAvatar } from "@/components/ui/pixel-avatar";
+import { buildHeatmap } from "@/lib/heatmap";
 import type { UiState } from "@/lib/status";
 import { requireUser } from "@/server/auth/current";
-import { deploymentViews, projectMetrics, projectViews, serverViews } from "@/server/queries";
+import { currentProblems } from "@/server/current-problems";
+import { projectDailyActivity } from "@/server/heatmap";
+import { deploymentViews, projectMetrics, projectRightSize, projectViews, serverViews } from "@/server/queries";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -73,10 +78,13 @@ async function ProjectContent({ params }: Props) {
   const project = (await projectViews(user.id)).find((p) => p.slug === slug);
   if (!project) notFound();
 
-  const [history, servers, metrics] = await Promise.all([
+  const [history, servers, metrics, activity, rightSize, problems] = await Promise.all([
     deploymentViews(user.id, { projectId: project.id }),
     serverViews(user.id),
     projectMetrics(user.id, project.id),
+    projectDailyActivity(project.id),
+    projectRightSize(user.id, project.id),
+    currentProblems(user.id, project.id),
   ]);
   const server = servers.find((s) => s.id === project.serverId);
 
@@ -94,6 +102,7 @@ async function ProjectContent({ params }: Props) {
     (d, i) => history.findIndex((x) => x.branch === d.branch) === i
   );
   const address = project.domains[0];
+  const worker = project.workloadKind === "worker";
 
   return (
     <div className="motion-enter space-y-6">
@@ -102,14 +111,14 @@ async function ProjectContent({ params }: Props) {
         title={project.name}
         description={
           <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            {address ? (
+            {worker ? <span>Background worker · no public port</span> : address ? (
               <a href={`https://${address}`} target="_blank" rel="noreferrer" className="link">
                 {address}
                 <span className="sr-only"> (opens in a new tab)</span>
               </a>
             ) : (
               <span>
-                Port <span className="font-mono">{project.port}</span>
+                Port <span className="font-mono">{project.listenPort ?? "not configured"}</span>
               </span>
             )}
             {/* The deployment can be Ready while the app itself is not answering, so the monitor is named here. */}
@@ -117,10 +126,10 @@ async function ProjectContent({ params }: Props) {
               href={`/projects/${slug}/settings#alerts-heading`}
               className="touch-target -my-2 inline-flex min-h-10 items-center rounded-sm underline-offset-4 hover:underline sm:min-h-6"
             >
-              <span className="sr-only">Uptime monitor: </span>
+              <span className="sr-only">{worker ? "Process monitor: " : "Uptime monitor: "}</span>
               <StatusIndicator
                 tone={MONITOR_VIEW[project.monitor].tone}
-                label={`${MONITOR_VIEW[project.monitor].label}${
+                label={`${worker ? ({ up: "Running", down: "Not running", unknown: "Not checked yet" }[project.monitor]) : MONITOR_VIEW[project.monitor].label}${
                   project.monitor === "down" && project.monitorSince ? ` since ${project.monitorSince}` : ""
                 }`}
                 className="text-label"
@@ -134,10 +143,10 @@ async function ProjectContent({ params }: Props) {
             <Button
               variant="outline"
               size="icon"
-              aria-label="Open repository on GitHub"
+              aria-label="Open repository"
               render={<a href={project.repoUrl} target="_blank" rel="noreferrer" />}
             >
-              <GithubLogoIcon aria-hidden="true" />
+              {project.repoUrl.startsWith("https://github.com/") ? <GithubLogoIcon aria-hidden="true" /> : <GitBranchIcon aria-hidden="true" />}
             </Button>
             <RollbackButton targetId={rollbackTarget?.id ?? null} projectSlug={slug} />
             <DeployButton
@@ -146,7 +155,7 @@ async function ProjectContent({ params }: Props) {
               label={live ? "Redeploy" : "Deploy"}
               variant={address ? "outline" : "default"}
             />
-            {address ? (
+            {!worker && address ? (
               <Button
                 className="px-3"
                 render={<a href={`https://${address}`} target="_blank" rel="noreferrer" />}
@@ -159,11 +168,31 @@ async function ProjectContent({ params }: Props) {
           </>
         }
       />
+      {problems.length > 0 ? (
+        <section
+          aria-labelledby="problems-heading"
+          className="overflow-hidden rounded-lg bg-card shadow-border-small"
+        >
+          <div className="border-b px-4 py-3">
+            <h2 id="problems-heading" className="text-title-3">
+              Current problems
+            </h2>
+          </div>
+          <ul className="divide-y">
+            {problems.map((p) => (
+              <li key={p.kind} className="px-4 py-3 text-[13px]">
+                <p className="font-medium">{p.title}</p>
+                <p className="text-muted-foreground">{p.detail}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {latest?.state === "error" ? (
         <Alert tone="error" role="status">
           The latest deployment failed
-          {live ? ", and the previous release is still serving traffic" : ""}.{" "}
+          {live ? worker ? ", and the previous worker release is still running" : ", and the previous release is still serving traffic" : ""}.{" "}
           <Link href={`/projects/${slug}/deployments/${latest.id}`} className="link font-medium">
             See the log
           </Link>
@@ -226,10 +255,10 @@ async function ProjectContent({ params }: Props) {
                   {live.id.slice(0, 8)}
                 </Link>
               </Field>
-              {address ? null : (
+              {worker || address ? null : (
                 <Field label="Address">
                   <span className="font-normal text-muted-foreground">
-                    Port <span className="font-mono">{project.port}</span>.{" "}
+                    Port <span className="font-mono">{project.listenPort ?? "not configured"}</span>.{" "}
                     <Link href="/domains" className="link">
                       Add a domain
                     </Link>
@@ -261,8 +290,8 @@ async function ProjectContent({ params }: Props) {
                 {project.startCommand ?? "default"}
               </code>
             </Field>
-            <Field label="Port">
-              <span className="tabular font-mono text-[13px] font-normal">{project.port}</span>
+            <Field label={worker ? "Workload" : "Port"}>
+              <span className="tabular font-mono text-[13px] font-normal">{worker ? "Background worker" : project.listenPort ?? "not configured"}</span>
             </Field>
             <Field label="Branch">
               <span className="font-mono text-[13px] font-normal">{project.branch}</span>
@@ -292,18 +321,20 @@ async function ProjectContent({ params }: Props) {
         </div>
       </section>
 
-      {live ? <ServiceCard projectId={project.id} /> : null}
+      {live ? <ServiceCard projectId={project.id} workloadKind={project.workloadKind} /> : null}
       {live ? <ProjectResources points={metrics} /> : null}
+      {live ? <RightSizeCard suggestion={rightSize} /> : null}
+      {live ? <RightSizeCard suggestion={rightSize} /> : null}
 
       <div className="grid gap-4 md:grid-cols-2">
         <section aria-labelledby="domains-heading" className="h-full rounded-lg bg-card p-4 shadow-border-small">
           <h2 id="domains-heading" className="mb-3 text-title-3">
             Domains
           </h2>
-          {project.domains.length === 0 ? (
+          {worker ? <p className="text-muted-foreground">Background workers do not expose a public port or need a domain.</p> : project.domains.length === 0 ? (
             <p className="text-muted-foreground">
               None yet. Map a domain to port{" "}
-              <span className="font-mono text-[13px]">{project.port}</span> in the Nest
+              <span className="font-mono text-[13px]">{project.listenPort ?? "not configured"}</span> in the Nest
               dashboard, then{" "}
               <Link href="/domains" className="link">
                 record it here
@@ -358,6 +389,17 @@ async function ProjectContent({ params }: Props) {
             <p className="text-muted-foreground">Not checked yet.</p>
           )}
         </section>
+      </div>
+
+      <div className="rounded-lg bg-card p-4 shadow-border-small">
+        <ActivityHeatmap
+          id="project-activity"
+          title="Activity"
+          scope="project"
+          // eslint-disable-next-line react-hooks/purity
+          heatmap={buildHeatmap(activity, Date.now())}
+          caption="Deployments and opened pull requests per UTC day, over the last 365 days. Pull requests are counted from the day this feature started recording them."
+        />
       </div>
 
       <section aria-labelledby="branches-heading">

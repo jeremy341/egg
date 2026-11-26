@@ -4,13 +4,14 @@ import { describeSchedule, nextRun, parseSchedule, ScheduleError } from "@/lib/c
 import { audit } from "@/server/audit";
 import { config } from "@/server/config";
 import { newId } from "@/server/crypto";
-import { getDb, schema } from "@/server/db";
-import { DEFAULT_UNIT_DIR, currentLink } from "@/server/deploy/layout";
+import { getDb, schema, withLockRetry } from "@/server/db";
+import { DEFAULT_UNIT_DIR, currentLink, serverDiscriminator } from "@/server/deploy/layout";
 import {
   JOB_NAME,
   JOB_TIMEOUT_SECONDS,
   NOT_INSTALLED_EXIT,
   NO_RELEASE_EXIT,
+  dockerJobCommand,
   installJob,
   jobLogs,
   jobServiceFile,
@@ -120,18 +121,56 @@ function upstream(err: SshError): HttpError {
 async function onContainer<T>(
   userId: string,
   projectId: string,
-  fn: (ctx: { project: ProjectRow; session: NestSession; home: string }) => Promise<T>
+  fn: (ctx: { project: ProjectRow; session: NestSession; home: string; scope: string }) => Promise<T>
 ): Promise<T> {
   const project = await getProjectForUser(userId, projectId);
   const server = await getServerForUser(userId, project.serverId);
   try {
     return await withServerSession(server, async (session) => {
       const probe = await probeSession(session);
-      return fn({ project, session, home: probe.home });
+      return fn({ project, session, home: probe.home, scope: serverDiscriminator(server.id) });
     });
   } catch (err) {
     if (err instanceof SshError) throw upstream(err);
     throw err;
+  }
+}
+
+/**
+ * A job's units on the container and its row in the database must move together.
+ * Serialise all remote installs/removes for one job id so a slow install can never
+ * interleave with a delete of the same job (the DB lease used by deployments does
+ * not cover scheduled jobs). The lock is process-local; the CAS below is what
+ * protects against writers in other processes.
+ */
+const jobLocks = new Map<string, Promise<void>>();
+
+async function withJobLock<T>(jobId: string, run: () => Promise<T>): Promise<T> {
+  const previous = jobLocks.get(jobId) ?? Promise.resolve();
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const chained = previous.then(() => gate);
+  jobLocks.set(jobId, chained);
+  await previous;
+  try {
+    return await run();
+  } finally {
+    release();
+    if (jobLocks.get(jobId) === chained) jobLocks.delete(jobId);
+  }
+}
+
+/** Best-effort undo of a remote change whose database commit did not land. */
+async function removeRemote(userId: string, projectId: string, jobId: string) {
+  try {
+    await onContainer(userId, projectId, ({ project, session, scope }) =>
+      session.script(removeJob({ slug: project.slug, jobId, unitDir: unitDir(), scope }), { timeoutMs: 60_000 })
+    );
+  } catch {
+    // The row is authoritative. An unreachable container may keep a unit until
+    // the operator removes it, but it is never silently left with no row.
   }
 }
 
@@ -162,14 +201,14 @@ export async function jobViews(projectId: string, now = new Date()): Promise<Job
 }
 
 /** The units a project's jobs own on the container, for removing them with the project. */
-export async function jobUnitNames(projectId: string, slug: string): Promise<string[]> {
+export async function jobUnitNames(projectId: string, slug: string, scope?: string): Promise<string[]> {
   const db = await getDb();
   const rows = await db
     .select({ id: schema.scheduledJobs.id })
     .from(schema.scheduledJobs)
     .where(eq(schema.scheduledJobs.projectId, projectId));
   return rows.flatMap((r) => {
-    const u = jobUnits(slug, r.id);
+    const u = jobUnits(slug, r.id, scope);
     return [u.timer, u.service];
   });
 }
@@ -181,22 +220,28 @@ async function install(
   row: { id: string; name: string; schedule: string; command: string; enabled: boolean }
 ) {
   const schedule = scheduleOrThrow(row.schedule);
-  await onContainer(userId, projectId, async ({ project, session, home }) => {
+  await onContainer(userId, projectId, async ({ project, session, home, scope }) => {
     const res = await session.script(
       installJob({
         home,
         slug: project.slug,
         jobId: row.id,
         unitDir: unitDir(),
+        scope,
         serviceFile: jobServiceFile({
           slug: project.slug,
           jobId: row.id,
           name: row.name,
           home,
-          command: row.command,
-          pathPrefix: project.runtime === "python" ? `${currentLink(home, project.slug)}/.venv/bin` : undefined,
+          scope,
+          // A job of a container project runs inside its running container; a native project's
+          // job runs in the release folder as before.
+          command: project.deploymentMode === "native"
+            ? row.command
+            : dockerJobCommand({ slug: project.slug, containerPort: project.containerPort ?? 3000, command: row.command, scope }),
+          pathPrefix: project.deploymentMode === "native" && project.runtime === "python" ? `${currentLink(home, project.slug)}/.venv/bin` : undefined,
         }),
-        timerFile: jobTimerFile({ slug: project.slug, jobId: row.id, name: row.name, schedule }),
+        timerFile: jobTimerFile({ slug: project.slug, jobId: row.id, name: row.name, schedule, scope }),
         enabled: row.enabled,
       }),
       { timeoutMs: 60_000 }
@@ -239,11 +284,29 @@ export async function createJob(userId: string, projectId: string, raw: unknown)
   };
   await install(userId, project.id, row);
   try {
-    await db.insert(schema.scheduledJobs).values(row);
+    // The cap was checked before the slow remote install, so another create that ran
+    // in the meantime could have used the last slot. Recheck and insert in one write
+    // transaction, and only succeed if the insert actually changed a row. Busy errors
+    // from a competing create are retried so the caller gets the real cap error.
+    await withLockRetry(() =>
+      db.transaction(async (tx) => {
+        const rows = await tx
+          .select({ id: schema.scheduledJobs.id })
+          .from(schema.scheduledJobs)
+          .where(eq(schema.scheduledJobs.projectId, project.id));
+        if (rows.length >= MAX_JOBS_PER_PROJECT) {
+          throw new HttpError(409, `A project can have ${MAX_JOBS_PER_PROJECT} jobs. Remove one to add another.`, "limit");
+        }
+        const inserted = await tx.insert(schema.scheduledJobs).values(row).returning({ id: schema.scheduledJobs.id });
+        if (inserted.length === 0) {
+          throw new HttpError(409, `A project can have ${MAX_JOBS_PER_PROJECT} jobs. Remove one to add another.`, "limit");
+        }
+      })
+    );
   } catch (err) {
     // Do not leave a timer on the container that the dashboard does not know about.
-    await onContainer(userId, project.id, ({ project: p, session }) =>
-      session.script(removeJob({ slug: p.slug, jobId: row.id, unitDir: unitDir() }), { timeoutMs: 60_000 })
+    await onContainer(userId, project.id, ({ project: p, session, scope }) =>
+      session.script(removeJob({ slug: p.slug, jobId: row.id, unitDir: unitDir(), scope }), { timeoutMs: 60_000 })
     ).catch(() => {});
     throw err;
   }
@@ -254,48 +317,108 @@ export async function createJob(userId: string, projectId: string, raw: unknown)
 export async function updateJob(userId: string, projectId: string, jobId: string, raw: unknown): Promise<JobView> {
   const patch = jobPatch.parse(raw);
   const project = await getProjectForUser(userId, projectId);
-  const current = await getJob(project.id, jobId);
-  const next = {
-    ...current,
-    ...(patch.name !== undefined ? { name: patch.name } : {}),
-    ...(patch.schedule !== undefined ? { schedule: scheduleOrThrow(patch.schedule).expression } : {}),
-    ...(patch.command !== undefined ? { command: patch.command } : {}),
-    ...(patch.enabled !== undefined ? { enabled: patch.enabled } : {}),
-    updatedAt: new Date(),
-  };
-  await install(userId, project.id, next);
-  const db = await getDb();
-  await db
-    .update(schema.scheduledJobs)
-    .set({ name: next.name, schedule: next.schedule, command: next.command, enabled: next.enabled, updatedAt: next.updatedAt })
-    .where(eq(schema.scheduledJobs.id, current.id));
-  await audit(userId, "job.update", project.id, { job: current.id, enabled: next.enabled });
-  return jobView(next);
-}
-
-export async function deleteJob(userId: string, projectId: string, jobId: string) {
-  const project = await getProjectForUser(userId, projectId);
-  const current = await getJob(project.id, jobId);
-  await onContainer(userId, project.id, async ({ project: p, session }) => {
-    const res = await session.script(removeJob({ slug: p.slug, jobId: current.id, unitDir: unitDir() }), { timeoutMs: 60_000 });
-    if (res.code !== 0) throw new HttpError(502, "Could not remove the job from your container.", "upstream");
-  });
-  const db = await getDb();
-  await db.delete(schema.scheduledJobs).where(eq(schema.scheduledJobs.id, current.id));
-  await audit(userId, "job.delete", project.id, { job: current.id });
-}
-
-export async function runJob(userId: string, projectId: string, jobId: string) {
-  const project = await getProjectForUser(userId, projectId);
-  const current = await getJob(project.id, jobId);
-  await onContainer(userId, project.id, async ({ project: p, session }) => {
-    const res = await session.script(runJobNow({ slug: p.slug, jobId: current.id, unitDir: unitDir() }), { timeoutMs: 30_000 });
-    if (res.code === NOT_INSTALLED_EXIT) {
-      throw new HttpError(409, "That job is not on your container any more. Save it again to put it back.", "not_installed");
+  return withJobLock(jobId, async () => {
+    const current = await getJob(project.id, jobId);
+    const next = {
+      ...current,
+      ...(patch.name !== undefined ? { name: patch.name } : {}),
+      ...(patch.schedule !== undefined ? { schedule: scheduleOrThrow(patch.schedule).expression } : {}),
+      ...(patch.command !== undefined ? { command: patch.command } : {}),
+      ...(patch.enabled !== undefined ? { enabled: patch.enabled } : {}),
+      updatedAt: new Date(),
+    };
+    await install(userId, project.id, next);
+    const db = await getDb();
+    // The database transition is the commit point. Compare both the id and the
+    // version we read, and require a row back: an update that matches nothing means
+    // the job changed or disappeared while the slow install was running.
+    const changed = await db
+      .update(schema.scheduledJobs)
+      .set({ name: next.name, schedule: next.schedule, command: next.command, enabled: next.enabled, updatedAt: next.updatedAt })
+      .where(
+        and(
+          eq(schema.scheduledJobs.id, current.id),
+          eq(schema.scheduledJobs.updatedAt, current.updatedAt)
+        )
+      )
+      .returning({ id: schema.scheduledJobs.id });
+    if (changed.length === 0) {
+      await restoreRemoteToRow(userId, project.id, db, current.id);
+      throw new HttpError(409, "This job changed while it was being saved. Reload and try again.", "conflict");
     }
-    if (res.code !== 0) throw new HttpError(502, "Could not start the job.", "upstream");
+    await audit(userId, "job.update", project.id, { job: current.id, enabled: next.enabled });
+    return jobView(next);
   });
-  await audit(userId, "job.run", project.id, { job: current.id });
+}
+
+/**
+ * After a failed commit, put the container back in step with the database: reinstall
+ * the row's current state if it still exists, otherwise remove the units so no live
+ * timer is left without a row. Reading the row again avoids restoring a stale copy of
+ * a job that another writer has since changed or deleted.
+ */
+async function restoreRemoteToRow(
+  userId: string,
+  projectId: string,
+  db: Awaited<ReturnType<typeof getDb>>,
+  jobId: string
+) {
+  const authoritative = await db
+    .select()
+    .from(schema.scheduledJobs)
+    .where(eq(schema.scheduledJobs.id, jobId))
+    .get();
+  if (authoritative) await install(userId, projectId, authoritative).catch(() => {});
+  else await removeRemote(userId, projectId, jobId);
+}
+
+export async function deleteJob(userId: string, projectId: string, jobId: string, confirmName?: string) {
+  const project = await getProjectForUser(userId, projectId);
+  await withJobLock(jobId, async () => {
+    const current = await getJob(project.id, jobId);
+    if (confirmName !== undefined && confirmName !== current.name) throw new HttpError(400, "Type the exact job name to confirm.", "confirmation_failed");
+    await onContainer(userId, project.id, async ({ project: p, session, scope }) => {
+      const res = await session.script(removeJob({ slug: p.slug, jobId: current.id, unitDir: unitDir(), scope }), { timeoutMs: 60_000 });
+      if (res.code !== 0) throw new HttpError(502, "Could not remove the job from your container.", "upstream");
+    });
+    const db = await getDb();
+    // Only a row that is still the version we removed may be deleted. If another
+    // writer changed it during the remote call, undo the removal instead of losing
+    // the row while leaving its units off the container.
+    const removed = await db
+      .delete(schema.scheduledJobs)
+      .where(
+        and(
+          eq(schema.scheduledJobs.id, current.id),
+          eq(schema.scheduledJobs.updatedAt, current.updatedAt)
+        )
+      )
+      .returning({ id: schema.scheduledJobs.id });
+    if (removed.length === 0) {
+      await restoreRemoteToRow(userId, project.id, db, current.id);
+      throw new HttpError(409, "This job changed while it was being removed. Reload and try again.", "conflict");
+    }
+    await audit(userId, "job.delete", project.id, { job: current.id });
+  });
+}
+
+export async function runJob(userId: string, projectId: string, jobId: string, confirmName?: string) {
+  const project = await getProjectForUser(userId, projectId);
+  await withJobLock(jobId, async () => {
+    const current = await getJob(project.id, jobId);
+    if (confirmName !== undefined && confirmName !== current.name) {
+      throw new HttpError(400, "Type the exact job name to confirm.", "confirmation_failed");
+    }
+    await onContainer(userId, project.id, async ({ project: p, session, scope }) => {
+      const res = await session.script(runJobNow({ slug: p.slug, jobId: current.id, unitDir: unitDir(), scope }), { timeoutMs: 30_000 });
+      if (res.code === NOT_INSTALLED_EXIT) {
+        throw new HttpError(409, "That job is not on your container any more. Save it again to put it back.", "not_installed");
+      }
+      if (res.code !== 0) throw new HttpError(502, "Could not start the job.", "upstream");
+    });
+  });
+  await audit(userId, "job.run", project.id, { job: jobId });
+
 }
 
 export type JobState = "running" | "failed" | "ok" | "never" | "missing";
@@ -356,8 +479,8 @@ export async function fetchJobStatuses(userId: string, projectId: string): Promi
     .orderBy(asc(schema.scheduledJobs.createdAt));
   if (rows.length === 0) return [];
   const ids = rows.map((r) => r.id);
-  return onContainer(userId, project.id, async ({ project: p, session }) => {
-    const res = await session.script(jobStatus({ slug: p.slug, jobIds: ids }), { timeoutMs: 30_000 });
+  return onContainer(userId, project.id, async ({ project: p, session, scope }) => {
+    const res = await session.script(jobStatus({ slug: p.slug, jobIds: ids, scope }), { timeoutMs: 30_000 });
     if (res.code !== 0) throw new HttpError(502, "Could not read the jobs from your container.", "upstream");
     return parseJobStatuses(res.stdout, ids);
   });
@@ -367,8 +490,8 @@ export async function fetchJobStatuses(userId: string, projectId: string): Promi
 export async function fetchJobLogs(userId: string, projectId: string, jobId: string): Promise<string[]> {
   const project = await getProjectForUser(userId, projectId);
   const current = await getJob(project.id, jobId);
-  return onContainer(userId, project.id, async ({ project: p, session }) => {
-    const res = await session.script(jobLogs({ slug: p.slug, jobId: current.id, lines: 120 }), { timeoutMs: 30_000 });
+  return onContainer(userId, project.id, async ({ project: p, session, scope }) => {
+    const res = await session.script(jobLogs({ slug: p.slug, jobId: current.id, lines: 120, scope }), { timeoutMs: 30_000 });
     if (res.code !== 0) throw new HttpError(502, "Could not read the job's output.", "upstream");
     return res.stdout.split(/\r?\n/).filter((l) => l.length > 0);
   });

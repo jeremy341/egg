@@ -62,6 +62,15 @@ import { GET as listServersRoute } from "@/app/api/v1/servers/route";
 import { GET as inventoryRoute } from "@/app/api/v1/servers/[serverId]/inventory/route";
 import { GET as usageHistoryRoute } from "@/app/api/v1/servers/[serverId]/usage/history/route";
 import { GET as activityRoute } from "@/app/api/v1/activity/route";
+import { GET as searchLogsRoute } from "@/app/api/v1/projects/[projectId]/logs/search/route";
+import { GET as logContextRoute } from "@/app/api/v1/projects/[projectId]/logs/context/route";
+import { GET as projectErrorsRoute } from "@/app/api/v1/projects/[projectId]/errors/route";
+import { POST as triageErrorRoute } from "@/app/api/v1/projects/[projectId]/errors/[fingerprint]/route";
+import { fingerprintOf } from "@/server/error-fingerprint";
+import { GET as findRoute } from "@/app/api/v1/find/route";
+import { GET as githubStatusRoute } from "@/app/api/v1/github/status/route";
+import { GET as diagnoseDeploymentRoute } from "@/app/api/v1/deployments/[deploymentId]/diagnosis/route";
+import { GET as deploymentNextStepsRoute } from "@/app/api/v1/deployments/[deploymentId]/next-steps/route";
 
 let ctx: Awaited<ReturnType<typeof useFreshDb>>;
 let me: { id: string };
@@ -72,6 +81,7 @@ let projectId: string;
 let theirProjectId: string;
 let deploymentId: string;
 let theirDeploymentId: string;
+let errorFingerprint: string;
 let domainId: string;
 let theirDomainId: string;
 
@@ -164,11 +174,19 @@ beforeAll(async () => {
   theirProjectId = (await createProject(other.id, { ...base, serverId: theirServerId, name: "Theirs", slug: "theirs", port: 3001 })).id;
   deploymentId = (await deployBranch(me.id, projectId)).id;
   theirDeploymentId = (await deployBranch(other.id, theirProjectId)).id;
+  errorFingerprint = fingerprintOf("TypeError: Sample failure", "src/app.js");
+  await ctx.db.insert(schema.analyticsErrors).values({
+    projectId,
+    at: new Date(),
+    message: "TypeError: Sample failure",
+    file: "src/app.js",
+    line: 3,
+  });
   domainId = newId();
   theirDomainId = newId();
   await ctx.db.insert(schema.domains).values([
-    { id: domainId, userId: me.id, serverId: myServerId, projectId, domain: "app.example.com", port: 3000, status: "pending", createdAt: new Date() },
-    { id: theirDomainId, userId: other.id, serverId: theirServerId, projectId: theirProjectId, domain: "theirs.example.com", port: 3001, status: "pending", createdAt: new Date() },
+    { id: domainId, userId: me.id, serverId: myServerId, projectId, domain: "app.example.com", port: 3000, status: "pending", createdAt: new Date(), updatedAt: new Date() },
+    { id: theirDomainId, userId: other.id, serverId: theirServerId, projectId: theirProjectId, domain: "theirs.example.com", port: 3001, status: "pending", createdAt: new Date(), updatedAt: new Date() },
   ]);
   // Secrets that exist in the database and must stay there.
   await setEnvVar(me.id, projectId, { key: "API_KEY", value: ENV_SECRET, target: "production" });
@@ -242,6 +260,7 @@ type Spec = {
   path: (i: Ids) => string;
   params: (i: Ids) => Record<string, string>;
   body?: (i: Ids) => unknown;
+  query?: (i: Ids) => string;
   /** The call should be refused (404) when the ids belong to someone else. */
   owned?: boolean;
 };
@@ -253,6 +272,16 @@ const proj = (suffix: string) => (i: Ids) => `/projects/${i.projectId}${suffix}`
 const projParams = (i: Ids) => ({ projectId: i.projectId });
 
 const SPECS: Record<string, Spec> = {
+  find: { scope: "projects:read", handler: findRoute, method: "GET", path: () => "/find", params: () => ({}) },
+  get_github_status: { scope: "projects:read", handler: githubStatusRoute, method: "GET", path: () => "/github/status", params: () => ({}) },
+  diagnose_deployment: {
+    scope: "deployments:read", handler: diagnoseDeploymentRoute, method: "GET",
+    path: (i) => `/deployments/${i.deploymentId}/diagnosis`, params: (i) => ({ deploymentId: i.deploymentId }), owned: true,
+  },
+  get_deployment_next_steps: {
+    scope: "projects:read", handler: deploymentNextStepsRoute, method: "GET",
+    path: (i) => `/deployments/${i.deploymentId}/next-steps`, params: (i) => ({ deploymentId: i.deploymentId }), owned: true,
+  },
   create_project: {
     scope: "projects:write", handler: createProjectRoute, method: "POST", path: () => "/projects", params: () => ({}),
     body: (i) => ({ serverId: i.serverId, name: "Fresh", repoUrl: "https://github.com/sam/fresh.git", runtime: "node", port: 3900 }),
@@ -262,6 +291,10 @@ const SPECS: Record<string, Spec> = {
   delete_project: { scope: "projects:write", handler: deleteProjectRoute, method: "DELETE", path: proj(""), params: projParams, owned: true },
   get_deployment: { scope: "deployments:read", handler: getDeploymentRoute, method: "GET", path: (i) => `/deployments/${i.deploymentId}`, params: (i) => ({ deploymentId: i.deploymentId }), owned: true },
   get_deployment_logs: { scope: "deployments:read", handler: deploymentLogsRoute, method: "GET", path: (i) => `/deployments/${i.deploymentId}/logs`, params: (i) => ({ deploymentId: i.deploymentId }), owned: true },
+  search_logs: { scope: "logs:read", handler: searchLogsRoute, method: "GET", path: proj("/logs/search"), params: projParams, owned: true },
+  get_log_context: { scope: "logs:read", handler: logContextRoute, method: "GET", path: proj("/logs/context"), params: projParams, query: () => "?at=1795514400000", owned: true },
+  list_deployment_errors: { scope: "analytics:read", handler: projectErrorsRoute, method: "GET", path: proj("/errors"), params: projParams, owned: true },
+  triage_deployment_error: { scope: "projects:write", handler: triageErrorRoute, method: "POST", path: (i) => `/projects/${i.projectId}/errors/${errorFingerprint}`, params: (i) => ({ projectId: i.projectId, fingerprint: errorFingerprint }), body: () => ({ action: "assign", assigneeId: null }), owned: true },
   list_env_vars: { scope: "env:read", handler: listEnvRoute, method: "GET", path: proj("/env"), params: projParams, owned: true },
   set_env_var: { scope: "env:write", handler: setEnvRoute, method: "PUT", path: proj("/env/NEW_KEY"), params: (i) => ({ projectId: i.projectId, key: "NEW_KEY" }), body: () => ({ value: "x" }), owned: true },
   delete_env_var: { scope: "env:write", handler: deleteEnvRoute, method: "DELETE", path: proj("/env/API_KEY"), params: (i) => ({ projectId: i.projectId, key: "API_KEY" }), owned: true },
@@ -286,14 +319,18 @@ const SPECS: Record<string, Spec> = {
 };
 
 const callSpec = (spec: Spec, ids: Ids, secret: string | null) =>
-  run(spec.handler, req(spec.path(ids), { method: spec.method, secret, body: spec.body?.(ids) }), spec.params(ids));
+  run(spec.handler, req(`${spec.path(ids)}${spec.query?.(ids) ?? ""}`, { method: spec.method, secret, body: spec.body?.(ids) }), spec.params(ids));
 
 const FIRST = ["get_me", "list_projects", "get_project", "list_deployments", "deploy_branch", "redeploy", "cancel_deployment", "rollback_deployment", "get_logs", "list_domains", "get_server_usage"];
 
 describe("the endpoint list", () => {
-  it("covers every endpoint added after the first ten, apart from the terminal and files", () => {
-    const expected = ENDPOINTS.filter((e) => !FIRST.includes(e.id) && e.tag !== "Terminal" && e.tag !== "Files").map((e) => e.id);
-    expect(Object.keys(SPECS).sort()).toEqual(expected.sort());
+  it("names no endpoint that is not registered", () => {
+    // Later parity passes added many endpoints, each covered by its own test
+    // file, so this older table need not enumerate all of them. It must not
+    // name a stale id.
+    const ids = new Set(ENDPOINTS.map((e) => e.id));
+    expect(Object.keys(SPECS).filter((id) => !ids.has(id))).toEqual([]);
+    expect(FIRST.every((id) => ids.has(id))).toBe(true);
   });
 
   it("declares in the table the scope each endpoint really needs", () => {
@@ -304,7 +341,14 @@ describe("the endpoint list", () => {
 
   it("puts every SSH-using endpoint in the small bucket and every change in the write bucket", () => {
     const byId = new Map(ENDPOINTS.map((e) => [e.id, e]));
-    for (const id of ["get_container_inventory", "get_deployment_logs", "get_resource_history", "get_project_resources"]) {
+    for (const id of [
+      "get_logs",
+      "get_container_inventory",
+      "get_deployment_logs",
+      "get_resource_history",
+      "get_project_resources",
+      "get_server_usage",
+    ]) {
       expect(byId.get(id)!.bucket, id).toBe("ssh");
     }
     for (const ep of ENDPOINTS.filter((e) => !e.readOnly && e.tag !== "Terminal" && e.tag !== "Files")) {
@@ -326,8 +370,13 @@ describe("authentication and scopes", () => {
 
   it("answers 403 naming the scope when a token lacks it, before doing anything", async () => {
     const before = await counts();
+    const withoutByScope = new Map<Scope, string>();
     for (const [id, spec] of Object.entries(SPECS)) {
-      const without = await token(ALL.filter((s) => s !== spec.scope));
+      let without = withoutByScope.get(spec.scope);
+      if (!without) {
+        without = await token(ALL.filter((s) => s !== spec.scope));
+        withoutByScope.set(spec.scope, without);
+      }
       const res = await callSpec(spec, mine, without);
       const e = await errorOf(res);
       expect(res.status, id).toBe(403);
@@ -354,6 +403,7 @@ describe("ownership", () => {
     const before = await counts();
     for (const [id, spec] of Object.entries(SPECS)) {
       if (!spec.owned) continue;
+      rateLimiter().clear();
       const res = await callSpec(spec, theirs, secret);
       expect(await errorOf(res), id).toMatchObject({ status: 404, code: "not_found" });
     }
@@ -361,6 +411,7 @@ describe("ownership", () => {
     const ghost: Ids = { projectId: "no-such-id", deploymentId: "no-such-id", serverId: "no-such-id", domainId: "no-such-id" };
     for (const [id, spec] of Object.entries(SPECS)) {
       if (!spec.owned || id === "create_project" || id === "add_domain") continue;
+      rateLimiter().clear();
       const res = await callSpec(spec, ghost, secret);
       expect(await errorOf(res), `ghost ${id}`).toMatchObject({ status: 404, code: "not_found" });
     }
@@ -447,11 +498,17 @@ describe("create, change and delete a project", () => {
       expect((await run(updateProjectRoute, req(`/projects/${projectId}`, { secret: t.secret, method: "PATCH", body: { buildLocation } }), { projectId })).status, buildLocation).toBe(400);
     }
 
+    // A queued deployment pins the project's current port, so the seeded
+    // deployment must be finished before the port itself can move.
+    await ctx.db.update(schema.deployments).set({ state: "ready", finishedAt: new Date() }).where(eq(schema.deployments.id, deploymentId));
+
     // Null puts a command back to its default, and a port can move.
     const cleared = await run(updateProjectRoute, req(`/projects/${projectId}`, { secret: t.secret, method: "PATCH", body: { startCommand: null, port: 3050, autoDeploy: true } }), { projectId });
     expect((await cleared.json()).project).toMatchObject({ startCommand: null, port: 3050, autoDeploy: true });
 
-    await ctx.db.update(schema.projects).set({ autoDeploy: true, healthPath: "/", productionBranch: "main", rootDir: ".", port: 3000 }).where(eq(schema.projects.id, projectId));
+    await ctx.db.update(schema.projects).set({ autoDeploy: true, healthPath: "/", productionBranch: "main", rootDir: ".", port: 3000, listenPort: 3000 }).where(eq(schema.projects.id, projectId));
+    // The later detail tests still describe the fixture as a queued deployment.
+    await ctx.db.update(schema.deployments).set({ state: "queued", startedAt: null, finishedAt: null }).where(eq(schema.deployments.id, deploymentId));
   });
 
   it("does not take where builds run as a setting, and reports every project as built on the container", async () => {
@@ -551,6 +608,54 @@ describe("create, change and delete a project", () => {
   });
 });
 
+describe("runtime query endpoints", () => {
+  it("searches problem lines in one project service and returns an older-page cursor", async () => {
+    const secret = await token(["logs:read"]);
+    scriptReply = () => ({ code: 0, stdout: [
+      "2026-11-24T10:00:00+00:00 nest app[123]: INFO ready",
+      "2026-11-24T10:00:01+00:00 nest app[123]: ERROR boom first",
+      "2026-11-24T10:00:02+00:00 nest app[123]: ERROR boom second",
+    ].join("\n") });
+    const get = (query: string) => run(searchLogsRoute, req(`/projects/${projectId}/logs/search${query}`, { secret }), { projectId });
+    const page = await (await get("?q=boom&level=problems&limit=1")).json();
+    expect(page.lines).toEqual(["2026-11-24T10:00:02+00:00 nest app[123]: ERROR boom second"]);
+    expect(page.older).toMatch(/^\d+\.\d+$/);
+    const older = await (await get(`?q=boom&level=problems&limit=1&before=${page.older}`)).json();
+    expect(older.lines).toEqual(["2026-11-24T10:00:01+00:00 nest app[123]: ERROR boom first"]);
+    expect(Buffer.byteLength(JSON.stringify(page))).toBeLessThanOrEqual(40 * 1024);
+  });
+
+  it("reads log context inside the requested timestamp window", async () => {
+    const secret = await token(["logs:read"]);
+    const at = Date.parse("2026-11-24T10:00:00.000Z");
+    scriptReply = () => ({ code: 0, stdout: "before\nneedle\nafter\n" });
+    const res = await run(logContextRoute, req(`/projects/${projectId}/logs/context?at=${at}&beforeSeconds=30&afterSeconds=45`, { secret }), { projectId });
+    expect(res.status).toBe(200);
+    expect((await res.json()).lines).toEqual(["before", "needle", "after"]);
+    const command = session.script.mock.calls.at(-1)?.[0] as string;
+    expect(command).toContain("--since '2026-11-24T09:59:30.000Z'");
+    expect(command).toContain("--until '@1795514445'");
+  });
+
+  it("lists and triages project client-error groups with separate read and write scopes", async () => {
+    const reader = await token(["analytics:read"]);
+    const listed = await run(projectErrorsRoute, req(`/projects/${projectId}/errors?status=open&limit=5`, { secret: reader }), { projectId });
+    expect(listed.status).toBe(200);
+    expect(await listed.json()).toMatchObject({
+      source: "client-analytics",
+      groups: [{ fingerprint: errorFingerprint, message: "TypeError: Sample failure", status: "open" }],
+      truncated: false,
+    });
+
+    const writer = await token(["projects:write"]);
+    const triaged = await run(triageErrorRoute, req(`/projects/${projectId}/errors/${errorFingerprint}`, { secret: writer, method: "POST", body: { action: "resolve" } }), { projectId, fingerprint: errorFingerprint });
+    expect(triaged.status).toBe(200);
+    expect(await triaged.json()).toEqual({ status: "resolved", assigneeId: null });
+    const missingAssignee = await run(triageErrorRoute, req(`/projects/${projectId}/errors/${errorFingerprint}`, { secret: writer, method: "POST", body: { action: "assign" } }), { projectId, fingerprint: errorFingerprint });
+    expect((await errorOf(missingAssignee)).status).toBe(400);
+  });
+});
+
 // ------------------------------------------------------------ build output
 
 describe("deployment detail and build output", () => {
@@ -578,6 +683,20 @@ describe("deployment detail and build output", () => {
     expect(none).toMatchObject({ lines: [], more: false, nextAfter: all.nextAfter });
     for (const bad of ["?limit=0", "?limit=1001", "?after=-1", "?after=x"]) expect((await get(bad)).status, bad).toBe(400);
     expect(sshWasUsed()).toBe(false);
+  });
+
+  it("caps build log response bytes and marks the clipped message", async () => {
+    await ctx.db.update(schema.deploymentLogs)
+      .set({ message: "x".repeat(100_000) })
+      .where(and(eq(schema.deploymentLogs.deploymentId, deploymentId), eq(schema.deploymentLogs.message, "Build failed")));
+    const secret = await token(["deployments:read"]);
+    const res = await run(deploymentLogsRoute, req(`/deployments/${deploymentId}/logs?limit=500`, { secret }), { deploymentId });
+    const bodyText = await res.text();
+    const body = JSON.parse(bodyText);
+    expect(Buffer.byteLength(bodyText)).toBeLessThanOrEqual(40 * 1024);
+    expect(body.truncated).toBe(true);
+    expect(body.lines.at(-1).message.length).toBeLessThan(100_000);
+    expect(body.nextAfter).toBe(body.lines.at(-1).id);
   });
 });
 
@@ -779,7 +898,7 @@ describe("notifications, alerts and the status page", () => {
     const secret = await token(["notifications:read"]);
     const set = await (await run(notifyRoute, req(`/projects/${projectId}/notify`, { secret }), { projectId })).json();
     expect(set).toEqual({ notifications: { configured: true, kind: "discord", on: "failures" } });
-    await ctx.db.insert(schema.projects).values({ ...(await ctx.db.select().from(schema.projects).where(eq(schema.projects.id, projectId)).get())!, id: "plain-project", slug: "plain", name: "Plain", port: 3999, notifyUrlEnc: null });
+    await ctx.db.insert(schema.projects).values({ ...(await ctx.db.select().from(schema.projects).where(eq(schema.projects.id, projectId)).get())!, id: "plain-project", slug: "plain", name: "Plain", port: 3999, listenPort: 3999, notifyUrlEnc: null });
     const none = await (await run(notifyRoute, req("/projects/plain-project/notify", { secret }), { projectId: "plain-project" })).json();
     expect(none).toEqual({ notifications: { configured: false, kind: null, on: null } });
     await ctx.db.delete(schema.projects).where(eq(schema.projects.id, "plain-project"));

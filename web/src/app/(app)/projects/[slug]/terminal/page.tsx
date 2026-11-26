@@ -20,6 +20,7 @@ async function Content({ params }: Props) {
   const user = await requireUser();
   const project = (await projectViews(user.id)).find((p) => p.slug === slug);
   if (!project) notFound();
+
   // If the permissions cannot be read, the terminal counts as off (the default).
   const permissions = await permissionsOrDefault(() => getPermissions(user.id, project.serverId));
 

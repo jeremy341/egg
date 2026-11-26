@@ -15,7 +15,7 @@ Priority levels as the review used them: **P0** protect running apps and data, *
 | Security inbox could be filled | P0 (audit) | Database-backed limits, reserve from 80% full, administrator warning. Decision 33. |
 | Stalled build uploads | P0 (audit) | Idle and total time limits, concurrency caps. Decision 34. |
 | Destructive actions say what they affect | P0 | The Delete Project card lists what is deleted and what is kept, and updates with the checkbox. |
-| Misleading "Adopt an existing checkout" | P1 | Renamed and reworded; docs say Egg does not import a running service yet. Decision 37. |
+| Misleading "Adopt an existing checkout" | P1 | Renamed and reworded. Decision 37 said Egg does not import a running copy; that is now superseded by the import API (see below). |
 | Scheduled jobs | P3 in the review, built because it was already under way | Cron-style jobs as systemd timers, with add, edit, pause, run now, output and remove. Decisions 27 to 30. |
 | Planning documents out of date | P2 | Status lines corrected for themes, container builds, GitHub Actions builds and the status page. |
 
@@ -39,18 +39,23 @@ The review listed these as things to build or verify. They exist; whether each i
 - **Scoped API tokens, session list, audit log, alerts, uptime monitoring, status pages.**
 - **Recoverable cleanup.** Project and account cleanup drain work, show progress, and can be retried.
 
-## Not done, in suggested order
+## Status of the review's "not done" list
 
-1. **Import a running app (P1).** The largest missing feature: discover services and ports without changing anything, let the person match one to a repository, run the Egg release beside it on another port, and switch only after a health check and an explicit confirmation. Needs its own design document before any code. Risky cases to cover first: no Git repository, a dirty checkout, Docker or PM2 instead of systemd, a database or uploads folder inside the checkout, workers that must run once.
-2. **Deployment timeline and clearer failures (P1).** Show queued, preparing, building, starting, health checking, live, with the commit and one actionable sentence on failure.
-3. **Missed GitHub events (P1).** GitHub does not redeliver a failed webhook on its own. Compare the branch head with the last deployed commit and offer to deploy when they differ.
-4. **Environment variable clarity (P1).** Say which environment each value applies to, whether a redeploy is needed, and what a rollback restores.
-5. **GitHub Actions setup in the dashboard (P1).** A workflow generator and a "test connection" button. The server side exists.
-6. **Project sharing with roles (P1 before inviting others).** Today a project has one owner. Membership checks would have to be applied in the dashboard, the API, MCP, webhooks and background jobs alike, so this is a large change.
-7. **Less SSH authority (P1, depends on Nest).** The stored key is root on the container. A restricted deploy user or a Nest-supported API would reduce that; neither exists yet.
-8. **Operator screen for stuck work (P1).** A deployment whose worker died stays blocking until an operator confirms. There is no screen for that confirmation yet.
-9. **Diagnostics bundle, backup restore check, self-hosting readiness checks (P2).**
-10. **Templates, staging environments, deployment comparison (P3).**
+Checked against the code on 2026-11-22. The original items are kept below in order, but several are no longer open. "API" means the server logic and route exist; where no dashboard screen calls them, that is stated rather than assuming the whole feature is finished.
+
+| Review item (level) | Status now | Evidence and remaining limit |
+| --- | --- | --- |
+| 1. Import a running app (P1) | **API built 2026-11-15.** Guided UI not found. | `web/src/server/adoption-import.ts` plans a copy, runs the new release beside the original on another port, switches only after a health check and an explicit confirmation, and puts the original back if cutover fails. Routes: `POST /api/projects/[id]/adoption` and `POST /api/projects/[id]/adoption/[planId]/confirm`; tests in `adoption-import.test.ts`. No page or component in this checkout calls those routes, so the dashboard flow remains unverified. This supersedes decision 37. The review's risky cases are handled by explicit refusals rather than a design document: no Git repository, a dirty checkout, PM2, Docker, environment files, a non-systemd unit and workers are rejected with 409; only a clean systemd Git checkout with a matching commit and a ready preview on another port is accepted. The file copy itself uses `server/import-copy.ts`, which enforces a byte budget and rejects escaping symlinks. Workers and data-heavy checkouts are therefore still outside the import's scope. |
+| 2. Deployment timeline and clearer failures (P1) | **Built 2026-11-15.** | `web/src/components/deployment-timeline.tsx` and `web/src/lib/deploy-timeline.ts` show Queued, Preparing, Building, Starting, Health check, Live, with a one-sentence actionable failure line derived from the log. |
+| 3. Missed GitHub events (P1) | **Server and API built 2026-11-15. Dashboard button not found.** | `web/src/server/github/reconcile.ts` compares the branch head with the last deployed SHA; `GET /api/projects/[id]/reconcile` inspects drift and `POST` deploys it only with an explicit `confirm: true` and the expected SHA. The admin maintenance notice still tells operators to redeliver from GitHub or deploy by hand; no screen here calls the reconcile route. |
+| 4. Environment variable clarity (P1) | **Built 2026-11-15.** | `web/src/components/env-help.tsx` states what "Both", "Production" and "Preview" mean, that a per-environment value wins over "Both", that saving does not change the running app until a redeploy, and that a rollback restores that release's values. |
+| 5. GitHub Actions setup in the dashboard (P1) | **Built 2026-11-18.** | `web/src/components/github-setup-steps.tsx`, `github-build-card.tsx` and `web/src/server/builds/connection-check.ts` provide the workflow generator, the four secrets and a "Test connection" check with named results. |
+| 6. Project sharing with roles (P1) | **Removed 2026-11-22.** | Built 2026-11-16 with invitations and Viewer/Developer/Owner roles, then removed to keep the product focused. Projects are single-owner; `server/project-roles.ts` is now just the shared owner-only authorization predicate. A forward migration drops the `project_members` and `project_invitations` tables. |
+| 7. Less SSH authority (P1, depends on Nest) | **Still open.** | The stored key is still root on the container. No Nest-supported deploy API or restricted deploy user was found in this checkout. |
+| 8. Operator screen for stuck work (P1) | **API built 2026-11-15. Screen not found.** | `web/src/server/operator-recovery.ts` and `/api/admin/recovery` inspect guards left by dead workers; `cleanup-card.tsx` offers a confirmed retry-after-drain for cleanup jobs. No dashboard screen calls the recovery endpoint, so an operator still needs the API. |
+| 9. Diagnostics bundle, backup restore check, self-hosting readiness checks (P2) | **Partly built.** | `pnpm doctor` (`web/scripts/doctor.mjs`) and `pnpm backup` (`deploy/backup.sh`) exist. No restore verification was found in `backup.sh`, and the admin diagnostics view was not checked in this pass, so these stay open. |
+| 10. Templates, staging environments, deployment comparison (P3) | **Comparison built 2026-11-05. Templates and staging still open.** | `web/src/components/deployment-compare.tsx` gives the "Compare" action on exactly two selected deployments (Branch, Commit SHA, Commit message, Environment, State, Duration, Created, Live release). No template or staging-environment implementation was found. |
+| 11. Existing deployment lifecycle controls (P1) | **API built 2026-11-24.** | `POST /api/deployments/[id]/lifecycle` starts, stops, restarts, or changes live CPU/memory limits on the owner's current production deployment. `GET` lists its scoped Docker volumes without deleting them. The route requires the project owner; operations use the deployment's existing scoped systemd unit or Docker container. No dashboard controls were added in this task. |
 
 ## Known limits of what was done
 

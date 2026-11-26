@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApiToken } from "@/server/api-tokens";
-import { authenticate, readCappedText } from "@/server/api-v1-http";
+import { authenticate, readBodyFields, readCappedText } from "@/server/api-v1-http";
+import type { Endpoint } from "@/server/api-v1";
 import { upsertUser } from "@/server/auth/session";
 import { HttpError } from "@/server/http";
 import { RATE_LIMITS, rateLimiter } from "@/server/rate-limit";
@@ -86,5 +87,71 @@ describe("readCappedText", () => {
   it("returns a body inside the cap, multi-byte text included", async () => {
     expect(await readCappedText(post(body(["{\"a\":", "\"é\"}"])), 1000)).toBe('{"a":"é"}');
     expect((await failure(readCappedText(post("é".repeat(600)), 1000)))?.status).toBe(413);
+  });
+});
+
+describe("readBodyFields", () => {
+  const endpoint = (bodyFields: Record<string, unknown>) =>
+    ({ body: bodyFields, maxBodyBytes: 1024 } as unknown as Endpoint);
+  const withBody = (b?: string) =>
+    new Request("http://localhost/x", { method: "POST", ...(b === undefined ? {} : { body: b }) });
+
+  it("accepts a missing or empty body, on endpoints with and without body fields", async () => {
+    const bare = endpoint({});
+    expect(await readBodyFields(bare, withBody())).toEqual({});
+    expect(await readBodyFields(bare, withBody(""))).toEqual({});
+    const withBranch = endpoint({ branch: {} });
+    expect(await readBodyFields(withBranch, withBody())).toEqual({});
+    expect(await readBodyFields(withBranch, withBody("  "))).toEqual({});
+  });
+
+  it("accepts an empty JSON object and the declared fields, and names the allowed ones", async () => {
+    const withBranch = endpoint({ branch: {} });
+    expect(await readBodyFields(withBranch, withBody("{}"))).toEqual({});
+    expect(await readBodyFields(withBranch, withBody('{"branch":"dev"}'))).toEqual({ branch: "dev" });
+    const unknown = await failure(readBodyFields(withBranch, withBody('{"branch":"dev","sha":"x"}')));
+    expect(unknown?.status).toBe(400);
+    expect(unknown?.message).toBe('Unknown field "sha". Allowed: branch.');
+  });
+
+  it("refuses any field on an endpoint that takes no body fields, in the same style", async () => {
+    const bare = endpoint({});
+    const unknown = await failure(readBodyFields(bare, withBody('{"branch":"dev"}')));
+    expect(unknown?.status).toBe(400);
+    expect(unknown?.code).toBe("validation");
+    expect(unknown?.message).toBe('Unknown field "branch". This endpoint takes no body fields.');
+    expect(await readBodyFields(bare, withBody("{}"))).toEqual({});
+  });
+
+  it("answers bad_json for a body that is not a JSON object, on a body-less endpoint too", async () => {
+    const bare = endpoint({});
+    const notJson = await failure(readBodyFields(bare, withBody("hello")));
+    expect(notJson?.status).toBe(400);
+    expect(notJson?.message).toBe("Request body must be JSON");
+    const array = await failure(readBodyFields(bare, withBody("[1]")));
+    expect(array?.status).toBe(400);
+    expect(array?.message).toBe("Request body must be a JSON object");
+  });
+});
+
+describe("per-token rate limit", () => {
+  it("lets one token make 600 requests a minute, then answers 429 with Retry-After", async () => {
+    const owner = await upsertUser({ id: "http-1", name: "Sam", email: null, slackId: null });
+    const own = (await createApiToken(owner.id, { name: "burst", scopes: ["projects:read"] })).secret;
+    const other = (await createApiToken(owner.id, { name: "calm", scopes: ["projects:read"] })).secret;
+    expect(RATE_LIMITS.apiToken.limit).toBe(600);
+    for (let i = 0; i < RATE_LIMITS.apiToken.limit; i++) {
+      await authenticate(new Request("http://localhost:3000/api/v1/me", { headers: { authorization: `Bearer ${own}` } }));
+    }
+    const blocked = await failure(
+      authenticate(new Request("http://localhost:3000/api/v1/me", { headers: { authorization: `Bearer ${own}` } }))
+    );
+    expect(blocked?.status).toBe(429);
+    expect(blocked?.code).toBe("rate_limited");
+    expect(Number(blocked?.headers?.["Retry-After"])).toBeGreaterThanOrEqual(1);
+    // Another token of the same owner has its own 600.
+    await expect(
+      authenticate(new Request("http://localhost:3000/api/v1/me", { headers: { authorization: `Bearer ${other}` } }))
+    ).resolves.toMatchObject({ scopes: ["projects:read"] });
   });
 });

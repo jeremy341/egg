@@ -12,9 +12,9 @@ Without Hack Club, a production instance has exactly one account, the local owne
 
 - The only code that creates a user is `upsertUser` (`server/auth/session.ts:17`), called from the Hack Club callback (`app/api/auth/callback/route.ts:57`), the development sign-in (`app/api/auth/dev/route.ts:35`, disabled in production), and the local sign-in with the fixed id `local:owner` (`app/api/auth/local/route.ts:18`, `:72`, `:85`).
 - There is no other provider. `server/auth/hackclub.ts:4` hard-codes `https://auth.hackclub.com`.
-- Project members and invitations exist as API routes (`app/api/projects/[id]/members`, `app/api/project-invitations/accept`) but an invitee still needs an account, so on an instance without Hack Club they cannot sign in. No dashboard screen exists for them either.
+- Projects are single-owner. Project collaboration (members, invitations and roles) was removed on 2026-11-22, so there are no member/invitation routes any more.
 
-Effect: a family, class or team cannot share one instance unless every member has a Hack Club account. Workaround: one Egg per person, or Hack Club Auth.
+Effect: a family, class or team cannot share one instance unless every member has a Hack Club account, and Egg has no project-level sharing. Workaround: one Egg per person, or Hack Club Auth.
 
 ### 2. Email and password sign-in cannot be turned on without Hack Club (medium)
 
@@ -52,7 +52,7 @@ On Nest, a domain is mapped to a port in the Nest dashboard. Egg has no equivale
 
 - GitHub must open `<APP_URL>/api/webhooks/github` to deliver pushes (`app/api/webhooks/github/route.ts`). On `localhost` there are no push deploys, no pull request previews and no repository rename updates. A tunnel is the workaround; Egg has none built in, and a tunnel exposes the whole site.
 - GitHub is treated as set up only when all of the App ID, private key, client id, client secret and webhook secret are non-empty (`server/config.ts:129-138`). The webhook secret is useless on localhost but still required.
-- `scripts/create-github-app.mjs` makes the App from a manifest but is undocumented elsewhere, defaults `APP_URL` to `http://localhost:3100` (line 22), leaves the webhook secret empty (no `hook_attributes`, line 28 comment) and writes `GITHUB_WEBHOOK_SECRET=` blank (`:114`). Following it unchanged leaves GitHub "not configured".
+- `scripts/create-github-app.mjs` makes the App from a manifest but is undocumented elsewhere, reads `APP_URL` from `web/.env.local` (setup writes `http://localhost:3000`), falling back to `http://localhost:3100` only when neither is set, leaves the webhook secret empty (no `hook_attributes`, line 28 comment) and writes `GITHUB_WEBHOOK_SECRET=` blank (`:114`). Following it unchanged leaves GitHub "not configured".
 - Only `github.com` repositories can be cloned (`server/deploy/build.ts:66-83`). No GitLab, Gitea or other git hosts, and no git over SSH.
 - The callback and setup URLs are followed by the person's own browser, so they work on localhost. Only the webhook needs a public address.
 
@@ -85,6 +85,6 @@ Related to 3: with Hack Club absent and local mode off, Terminal and File change
 ## Suggested order
 
 1. Items 2 and 3 first: they are small and remove the only confusing dead ends for a local owner.
-2. Item 1, with a plain "create a user" path for an instance owner, which also makes the invitation API useful.
+2. Item 1, with a plain "create a user" path for an instance owner so more than one person can sign in.
 3. Item 6: a documented, tested path for the GitHub App, and a way to run without a webhook secret on localhost.
 4. Items 4 and 5 together, as a "plain Linux server" target: a host field, a key-install message that is not Nest's, and an address step that writes a proxy snippet.

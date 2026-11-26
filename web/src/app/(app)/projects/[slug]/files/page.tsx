@@ -23,6 +23,7 @@ async function Content({ params, searchParams }: Props) {
   const user = await requireUser();
   const project = (await projectViews(user.id)).find((p) => p.slug === slug);
   if (!project) notFound();
+
   // If the permissions cannot be read, file changes keep their default (on); the server still enforces.
   const permissions = await permissionsOrDefault(() => getPermissions(user.id, project.serverId));
   return (

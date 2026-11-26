@@ -1,11 +1,12 @@
 import { and, eq } from "drizzle-orm";
 import { audit } from "@/server/audit";
 import { getDb, schema } from "@/server/db";
-import { DEFAULT_UNIT_DIR, unitName } from "@/server/deploy/layout";
+import { DEFAULT_UNIT_DIR, serverDiscriminator, unitName } from "@/server/deploy/layout";
 import { config } from "@/server/config";
 import { removePreview, removeProject, runtimeLogs, startUnit } from "@/server/deploy/remote";
 import { journalSince, type LogLevel, type LogRange } from "@/lib/log-filter";
 import { decodeLogCursor, pageLogLines } from "@/lib/log-page";
+import { capExport, EXPORT_LINE_CAP } from "@/lib/log-export";
 import { HttpError } from "@/server/http";
 import { removeUnits } from "@/server/deploy/jobs-remote";
 import { jobUnitNames } from "@/server/scheduled-jobs";
@@ -77,7 +78,7 @@ export async function fetchRuntimeLogPage(
   let res;
   try {
     res = await withServerSession(server, (s) =>
-      s.script(runtimeLogs(unitName(project.slug), asked, since, cursor ? cursor.at + 1 : undefined), {
+      s.script(runtimeLogs(unitName(project.slug, undefined, serverDiscriminator(server.id)), asked, since, cursor ? cursor.at + 1 : undefined), {
         timeoutMs: 30_000,
       })
     );
@@ -96,13 +97,81 @@ export async function fetchRuntimeLogPage(
   );
 }
 
+/** Read service journal lines around a timestamp, in journal order. */
+export async function fetchRuntimeLogContext(
+  userId: string,
+  projectId: string,
+  at: number,
+  beforeSeconds = 60,
+  afterSeconds = 60,
+  lines = 200,
+): Promise<string[]> {
+  const project = await getReadableProject(userId, projectId);
+  const server = await getServerForUser(project.userId, project.serverId);
+  const since = new Date(at - beforeSeconds * 1000).toISOString();
+  const until = Math.floor((at + afterSeconds * 1000) / 1000);
+  const lineLimit = Math.max(1, Math.min(lines, 200));
+  let res;
+  try {
+    res = await withServerSession(server, (s) =>
+      s.script(
+        runtimeLogs(unitName(project.slug, undefined, serverDiscriminator(server.id)), lineLimit, since, until),
+        { timeoutMs: 30_000 },
+      ),
+    );
+  } catch (err) {
+    if (err instanceof SshError) throw logsUpstreamError(err);
+    throw err;
+  }
+  if (res.code !== 0) throw new HttpError(502, "Could not read the logs from your container.", "upstream");
+  return res.stdout.split(/\r?\n/).filter((line) => line.length > 0);
+}
+/** Pages read per export. At 1,000 lines a page this covers the 10,000-line cap even with some filtering. */
+const EXPORT_MAX_PAGES = 20;
+
+/**
+ * The newest lines for an export. Pages are read from newer to older and then
+ * put back in order. Stops when the cap is full, when the journal has no older
+ * lines, or at the page limit. `truncated` is true when lines were left out.
+ * Every page is a separate SSH read, so the route limits how often this runs.
+ */
+export async function exportRuntimeLogs(
+  userId: string,
+  projectId: string,
+  filter: { range?: LogRange; level?: LogLevel; search?: string; max?: number } = {}
+): Promise<{ lines: string[]; truncated: boolean }> {
+  const max = filter.max ?? EXPORT_LINE_CAP;
+  const pages: string[][] = [];
+  let count = 0;
+  let before: string | null = null;
+  let moreOlder = false;
+  for (let page = 0; page < EXPORT_MAX_PAGES; page++) {
+    const res = await fetchRuntimeLogPage(userId, projectId, 1000, filter.search ?? "", {
+      range: filter.range,
+      level: filter.level,
+      before,
+    });
+    pages.unshift(res.lines);
+    count += res.lines.length;
+    if (!res.older) break;
+    before = res.older;
+    if (count > max) {
+      moreOlder = true;
+      break;
+    }
+    if (page === EXPORT_MAX_PAGES - 1) moreOlder = true;
+  }
+  const capped = capExport(pages.flat(), max);
+  return { lines: capped.lines, truncated: capped.truncated || moreOlder };
+}
+
 /** Restart the production service without building anything. */
 export async function restartService(userId: string, projectId: string) {
-  await requireProjectRole(userId, projectId, "developer");
+  await requireProjectRole(userId, projectId, "owner");
   const project = await getReadableProject(userId, projectId);
   const server = await getServerForUser(project.userId, project.serverId);
   const res = await withServerSession(server, (s) =>
-    s.script(startUnit(unitName(project.slug)), { timeoutMs: 30_000 })
+    s.script(startUnit(unitName(project.slug, undefined, serverDiscriminator(server.id))), { timeoutMs: 30_000 })
   );
   if (res.code !== 0) {
     throw new HttpError(502, "Could not restart the service. It may not be deployed yet.", "upstream");
@@ -160,6 +229,7 @@ export async function removeProjectFromServer(
 ) {
   const project = await getProjectForUser(userId, projectId);
   const server = await getServerForUser(userId, project.serverId);
+  const scope = serverDiscriminator(server.id);
   // Same source as the deploy pipeline, so a removal looks where the unit was installed.
   const unitDir = options.unitDir ?? (config().UNIT_DIR || DEFAULT_UNIT_DIR);
   const db = await getDb();
@@ -183,8 +253,10 @@ export async function removeProjectFromServer(
           home: probe.home,
           slug: project.slug,
           releaseId: p.releaseId,
-          unit: unitName(project.slug, { releaseId: p.releaseId }),
+          unit: unitName(project.slug, { releaseId: p.releaseId }, scope),
           unitDir,
+          docker: project.deploymentMode !== "native",
+          scope,
         }),
         { timeoutMs: 60_000 }
       );
@@ -193,9 +265,9 @@ export async function removeProjectFromServer(
       }
     }
     // Timers first, so none of them starts a job in a release that is about to be deleted.
-    const jobUnits = await jobUnitNames(project.id, project.slug);
+    const jobUnits = await jobUnitNames(project.id, project.slug, scope);
     if (jobUnits.length > 0) {
-      const result = await s.script(removeUnits(unitDir, jobUnits), { timeoutMs: 60_000 });
+      const result = await s.script(removeUnits(unitDir, jobUnits, project.slug, scope), { timeoutMs: 60_000 });
       if (result.code !== 0) {
         throw new HttpError(502, "Could not remove scheduled jobs from your container.", "upstream");
       }
@@ -204,9 +276,11 @@ export async function removeProjectFromServer(
       removeProject({
         home: probe.home,
         slug: project.slug,
-        unit: unitName(project.slug),
+        unit: unitName(project.slug, undefined, scope),
         unitDir,
         deleteData: options.deleteData ?? false,
+        docker: project.deploymentMode !== "native",
+        scope,
       }),
       { timeoutMs: 60_000 }
     );

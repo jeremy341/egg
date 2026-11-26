@@ -4,6 +4,7 @@ import { audit } from "@/server/audit";
 import { newId, randomToken, sha256Hex } from "@/server/crypto";
 import { getDb, schema } from "@/server/db";
 import { HttpError, notFound } from "@/server/http";
+import { hasScope, type McpScope } from "@/server/oauth";
 import { terminals } from "@/server/terminal";
 
 /**
@@ -23,6 +24,8 @@ export const SCOPES = [
   "projects:write",
   "deployments:read",
   "deployments:write",
+  "jobs:read",
+  "jobs:write",
   "logs:read",
   "env:read",
   "env:write",
@@ -47,6 +50,8 @@ export const SCOPE_LABEL: Record<Scope, string> = {
   "projects:write": "Create, change and delete projects, including build and start commands",
   "deployments:read": "Read deployments and build output",
   "deployments:write": "Deploy, redeploy, cancel and roll back, and replace or revoke the deploy hook",
+  "jobs:read": "List scheduled command jobs and read their latest status and logs",
+  "jobs:write": "Create, change, run and delete scheduled command jobs",
   "logs:read": "Read runtime logs",
   "env:read": "List environment variable names (never their values)",
   "env:write": "Set and remove environment variables",
@@ -54,7 +59,7 @@ export const SCOPE_LABEL: Record<Scope, string> = {
   "domains:write": "Add, check and remove domains",
   "notifications:read": "Read notification settings and send a test message",
   "alerts:read": "Read alert settings and history",
-  "analytics:read": "Read visitor analytics",
+  "analytics:read": "Read visitor analytics and client error groups",
   "activity:read": "Read your activity log",
   "resources:read": "Read CPU, memory and disk, now and over time",
   "container:read": "List servers and see what is on the container (read only)",
@@ -147,36 +152,42 @@ export async function createApiToken(userId: string, raw: unknown, now = new Dat
   const input = createTokenInput.parse(raw);
   const db = await getDb();
 
-  const existing = await db
-    .select({ revokedAt: schema.apiTokens.revokedAt, expiresAt: schema.apiTokens.expiresAt })
-    .from(schema.apiTokens)
-    .where(eq(schema.apiTokens.userId, userId));
-  const active = existing.filter((t) => !t.revokedAt && t.expiresAt.getTime() > now.getTime());
-  if (active.length >= MAX_TOKENS_PER_USER) {
-    throw new HttpError(400, `You can have up to ${MAX_TOKENS_PER_USER} active tokens. Revoke one first.`, "limit");
-  }
-
-  const short = holdsShortLivedScope(input.scopes);
-  const days = input.expiresInDays ?? (short ? SHORT_LIVED_MAX_DAYS : 90);
-  if (short && days > SHORT_LIVED_MAX_DAYS) {
-    throw new HttpError(400, `${SHORT_LIVED_NOTE} Pick 7 days, or remove that permission.`, "short_lived");
-  }
-
   const secret = `${TOKEN_PREFIX}${randomToken(32)}`;
   const id = newId();
-  const row = {
-    id,
-    userId,
-    name: input.name,
-    prefix: secret.slice(0, TOKEN_PREFIX.length + 6),
-    hash: sha256Hex(secret),
-    scopes: JSON.stringify([...new Set(input.scopes)]),
-    createdAt: now,
-    lastUsedAt: null,
-    expiresAt: new Date(now.getTime() + days * DAY),
-    revokedAt: null,
-  };
-  await db.insert(schema.apiTokens).values(row);
+
+  // The count and the insert share one transaction: SQLite lets one writer in at a
+  // time, so two tokens created together cannot both slip past the cap.
+  const row = await db.transaction(async (tx) => {
+    const existing = await tx
+      .select({ revokedAt: schema.apiTokens.revokedAt, expiresAt: schema.apiTokens.expiresAt })
+      .from(schema.apiTokens)
+      .where(eq(schema.apiTokens.userId, userId));
+    const active = existing.filter((t) => !t.revokedAt && t.expiresAt.getTime() > now.getTime());
+    if (active.length >= MAX_TOKENS_PER_USER) {
+      throw new HttpError(400, `You can have up to ${MAX_TOKENS_PER_USER} active tokens. Revoke one first.`, "limit");
+    }
+
+    const short = holdsShortLivedScope(input.scopes);
+    const days = input.expiresInDays ?? (short ? SHORT_LIVED_MAX_DAYS : 90);
+    if (short && days > SHORT_LIVED_MAX_DAYS) {
+      throw new HttpError(400, `${SHORT_LIVED_NOTE} Pick 7 days, or remove that permission.`, "short_lived");
+    }
+
+    const row = {
+      id,
+      userId,
+      name: input.name,
+      prefix: secret.slice(0, TOKEN_PREFIX.length + 6),
+      hash: sha256Hex(secret),
+      scopes: JSON.stringify([...new Set(input.scopes)]),
+      createdAt: now,
+      lastUsedAt: null,
+      expiresAt: new Date(now.getTime() + days * DAY),
+      revokedAt: null,
+    };
+    await tx.insert(schema.apiTokens).values(row);
+    return row;
+  });
   await audit(userId, "token.create", id, { name: input.name, scopes: input.scopes.join(", ") });
   return { token: summarize(row, now.getTime()), secret };
 }
@@ -265,6 +276,32 @@ export async function updateApiToken(userId: string, tokenId: string, raw: unkno
 }
 
 export type Principal = { userId: string; tokenId: string; scopes: Scope[] };
+
+/**
+ * Map an OAuth token's hierarchical MCP scopes onto the API scopes the rest of
+ * this file checks. The levels are cumulative and never widen a token:
+ *
+ * - `mcp:read`    - every read-only scope, nothing that changes state;
+ * - `mcp:deploy`  - reads plus ordinary write scopes (projects, deployments,
+ *                   env, domains, webhooks), but no shell and no file changes;
+ * - `mcp:exec`    - everything, including `terminal:use` and `files:write`.
+ *
+ * The two container scopes are the ones the API already treats as dangerous
+ * (see `SHORT_LIVED_SCOPES`), so only the strongest OAuth level carries them.
+ */
+const READ_API_SCOPES: readonly Scope[] = SCOPES.filter((s) => s.endsWith(":read"));
+const DEPLOY_API_SCOPES: readonly Scope[] = SCOPES.filter(
+  (s) => s.endsWith(":write") && s !== "files:write"
+);
+const EXEC_API_SCOPES: readonly Scope[] = ["terminal:use", "files:write"];
+
+export function apiScopesForMcpScopes(held: readonly McpScope[]): Scope[] {
+  const out = new Set<Scope>();
+  if (hasScope(held, "mcp:read")) for (const s of READ_API_SCOPES) out.add(s);
+  if (hasScope(held, "mcp:deploy")) for (const s of DEPLOY_API_SCOPES) out.add(s);
+  if (hasScope(held, "mcp:exec")) for (const s of EXEC_API_SCOPES) out.add(s);
+  return [...out];
+}
 
 /** Read the bearer token from a request. Returns null when there is none. */
 export function bearerFrom(req: Request): string | null {

@@ -49,10 +49,10 @@ export default async function DomainsPage() {
       <DomainsView
         initial={domains}
         servers={servers.map((s) => ({ id: s.id, nestUsername: s.nestUsername }))}
-        projects={projects.map((p) => ({
+        projects={projects.filter((p) => p.workloadKind !== "worker" && p.listenPort !== null).map((p) => ({
           id: p.id,
           name: p.name,
-          port: p.port,
+          port: p.listenPort!,
           serverId: p.serverId,
         }))}
       />

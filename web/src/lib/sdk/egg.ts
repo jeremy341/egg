@@ -1,4 +1,4 @@
-/**
+﻿/**
  * A small client for the Egg API, in one file with no dependencies.
  * Copy this file into your own project, or import it from here.
  *
@@ -87,9 +87,12 @@ export type Project = {
   repo: string | null;
   branch: string;
   runtime: string;
-  port: number;
+  port: number | null;
+  listenPort: number | null;
+  workloadKind: "web" | "worker";
+  deploymentMode: "native" | "dockerfile" | "compose";
   startCommand: string | null;
-  healthPath: string;
+  healthPath: string | null;
   autoDeploy: boolean;
   /** Where builds run: container (your Nest container, under a memory and CPU cap) or github (your GitHub Actions workflow). */
   buildLocation: BuildLocation;
@@ -112,7 +115,7 @@ export type Deployment = DeploymentSummary & {
 export type DeploymentDetail = Deployment & {
   startedAt: string | null;
   finishedAt: string | null;
-  port: number;
+  port: number | null;
 };
 
 export type LogLine = { id: number; at: string; level: "info" | "warn" | "error"; message: string };
@@ -129,7 +132,7 @@ export type DeploymentLogPage = {
 export type Domain = {
   id: string;
   domain: string;
-  status: "pending" | "valid" | "invalid";
+  status: "pending" | "valid" | "invalid" | "unknown";
   port: number;
   projectId: string | null;
   projectName: string | null;
@@ -211,14 +214,16 @@ export type Usage = {
 
 export type BuildLocation = "container" | "github";
 
-export type Runtime = "node" | "python" | "static" | "command";
+export type Runtime = "node" | "python" | "static" | "command" | "go" | "rust" | "ruby" | "php" | "java";
 
 export type CreateProjectInput = {
   serverId: string;
   name: string;
   repoUrl: string;
   runtime: Runtime;
-  port: number;
+  port?: number;
+  workloadKind?: "web" | "worker";
+  deploymentMode?: "native" | "dockerfile" | "compose";
   slug?: string;
   productionBranch?: string;
   rootDir?: string | null;
@@ -282,11 +287,11 @@ export type Inventory = {
     projectId: string;
     slug: string;
     name: string;
-    port: number;
+    port: number | null;
     serviceState: ServiceState | null;
     folderKb: number | null;
-    portStatus: "own" | "free" | "clash";
-    previews: { branch: string; port: number; state: ServiceState }[];
+    portStatus: "own" | "free" | "clash" | null;
+    previews: { branch: string; port: number | null; state: ServiceState }[];
   }[];
   leftovers: {
     kind: "service" | "preview" | "folder";
@@ -524,6 +529,16 @@ export class Egg {
     return this.request("POST", `/deployments/${seg(deploymentId)}/rollback`);
   }
 
+  /** The state of one deployment. With `wait`, holds up to 60 seconds for it to finish. Needs `deployments:read`. */
+  rollout(deploymentId: string, options: { wait?: boolean } = {}): Promise<{ rollout: { deployment: Deployment; done: boolean; waitedMs: number } }> {
+    return this.request("GET", `/deployments/${seg(deploymentId)}/rollout`, options.wait ? { wait: "1" } : {});
+  }
+
+  /** Restart the production service of a project. Needs `deployments:write` and owner access. */
+  restartService(projectId: string): Promise<{ restarted: boolean; projectId: string }> {
+    return this.request("POST", `/projects/${seg(projectId)}/restart`);
+  }
+
   // --------------------------------------------------------------------- logs
 
   /** The newest runtime log lines, oldest first, 1 to 1000 (default 200). Needs `logs:read`. */
@@ -572,7 +587,7 @@ export class Egg {
   }
 
   /** Check the domain's DNS now. Needs `domains:write`. */
-  verifyDomain(domainId: string): Promise<{ status: "valid" | "invalid"; reason: string | null; app: DomainAppCheck }> {
+  verifyDomain(domainId: string): Promise<{ status: "valid" | "invalid" | "unknown"; reason: string | null; app: DomainAppCheck }> {
     return this.request("POST", `/domains/${seg(domainId)}/verify`);
   }
 
@@ -750,4 +765,177 @@ export class Egg {
   deleteFile(projectId: string, path: string, options: { recursive?: boolean } = {}): Promise<{ path: string }> {
     return this.request("DELETE", `/projects/${seg(projectId)}/files`, { path, recursive: options.recursive ? true : undefined });
   }
+
+  // -------------------------------------------------------------- agent API
+
+  find(q: string): Promise<unknown> {
+    return this.request("GET", "/find", { q });
+  }
+  searchLogs(projectId: string, q: string): Promise<unknown> {
+    return this.request("GET", `/projects/${seg(projectId)}/logs/search`, { q });
+  }
+  getLogContext(projectId: string, line: number): Promise<unknown> {
+    return this.request("GET", `/projects/${seg(projectId)}/logs/context`, { line });
+  }
+  listDeploymentErrors(projectId: string): Promise<unknown> {
+    return this.request("GET", `/projects/${seg(projectId)}/errors`);
+  }
+  triageDeploymentError(projectId: string, fingerprint: string, input: unknown): Promise<unknown> {
+    return this.request("POST", `/projects/${seg(projectId)}/errors/${seg(fingerprint)}`, {}, input);
+  }
+  diagnoseDeployment(deploymentId: string): Promise<unknown> {
+    return this.request("GET", `/deployments/${seg(deploymentId)}/diagnosis`);
+  }
+  getDeploymentNextSteps(deploymentId: string): Promise<unknown> {
+    return this.request("GET", `/deployments/${seg(deploymentId)}/next-steps`);
+  }
+  listGithubRepos(): Promise<unknown> {
+    return this.request("GET", "/github/repos");
+  }
+  getGithubStatus(projectId: string): Promise<unknown> {
+    return this.request("GET", "/github/status", { projectId });
+  }
+  listEnvVars(projectId: string): Promise<unknown> {
+    return this.request("GET", `/projects/${seg(projectId)}/env`);
+  }
+  addEnvVars(projectId: string, input: unknown): Promise<unknown> {
+    return this.request("POST", `/projects/${seg(projectId)}/env`, {}, input);
+  }
+  setEnvVars(projectId: string, input: unknown): Promise<unknown> {
+    return this.request("PUT", `/projects/${seg(projectId)}/env`, {}, input);
+  }
+  deleteEnvVars(projectId: string, input: unknown): Promise<unknown> {
+    return this.request("DELETE", `/projects/${seg(projectId)}/env`, {}, input);
+  }
+  listDeployWebhookTokens(projectId: string): Promise<unknown> {
+    return this.request("GET", `/projects/${seg(projectId)}/hook`);
+  }
+  listJobs(projectId: string): Promise<unknown> {
+    return this.request("GET", `/projects/${seg(projectId)}/jobs`);
+  }
+  getJob(projectId: string, jobId: string): Promise<unknown> {
+    return this.request("GET", `/projects/${seg(projectId)}/jobs/${seg(jobId)}`);
+  }
+  createJob(projectId: string, input: unknown): Promise<unknown> {
+    return this.request("POST", `/projects/${seg(projectId)}/jobs`, {}, input);
+  }
+  updateJob(projectId: string, jobId: string, input: unknown): Promise<unknown> {
+    return this.request("PATCH", `/projects/${seg(projectId)}/jobs/${seg(jobId)}`, {}, input);
+  }
+  runJob(projectId: string, jobId: string): Promise<unknown> {
+    return this.request("POST", `/projects/${seg(projectId)}/jobs/${seg(jobId)}/run`, {}, {});
+  }
+  listJobRuns(projectId: string, jobId: string): Promise<unknown> {
+    return this.request("GET", `/projects/${seg(projectId)}/jobs/${seg(jobId)}/runs`);
+  }
+  getJobRunLogs(projectId: string, jobId: string, runId: string): Promise<unknown> {
+    return this.request("GET", `/projects/${seg(projectId)}/jobs/${seg(jobId)}/runs/${seg(runId)}/logs`);
+  }
+  deleteJob(projectId: string, jobId: string): Promise<unknown> {
+    return this.request("DELETE", `/projects/${seg(projectId)}/jobs/${seg(jobId)}`, {}, {});
+  }
+  listNotificationChannels(): Promise<unknown> {
+    return this.request("GET", "/notification-channels");
+  }
+  createNotificationChannel(input: unknown): Promise<unknown> {
+    return this.request("POST", "/notification-channels", {}, input);
+  }
+  listNotificationRules(): Promise<unknown> {
+    return this.request("GET", "/notification-rules");
+  }
+  createNotificationRule(channelId: string, input: unknown): Promise<unknown> {
+    return this.request("POST", `/notification-channels/${seg(channelId)}/rules`, {}, input);
+  }
+  testNotificationChannel(channelId: string): Promise<unknown> {
+    return this.request("POST", `/notification-channels/${seg(channelId)}/test`, {}, {});
+  }
+
+  // ------------------------------------------------- second parity pass
+  getAuditLog(q: Query = {}): Promise<unknown> { return this.request("GET", "/audit-log", q); }
+  listRegistryCredentials(): Promise<unknown> { return this.request("GET", "/registry-credentials"); }
+  setRegistryCredential(input: unknown): Promise<unknown> { return this.request("PUT", "/registry-credentials", {}, input); }
+  deleteRegistryCredential(credentialId: string, input: unknown): Promise<unknown> {
+    return this.request("DELETE", `/registry-credentials/${seg(credentialId)}`, {}, input);
+  }
+  startDeployment(deploymentId: string): Promise<unknown> { return this.request("POST", `/deployments/${seg(deploymentId)}/start`, {}, {}); }
+  stopDeployment(deploymentId: string): Promise<unknown> { return this.request("POST", `/deployments/${seg(deploymentId)}/stop`, {}, {}); }
+  restartDeployment(deploymentId: string): Promise<unknown> { return this.request("POST", `/deployments/${seg(deploymentId)}/restart`, {}, {}); }
+  scaleDeployment(deploymentId: string, input: unknown): Promise<unknown> { return this.request("POST", `/deployments/${seg(deploymentId)}/scale`, {}, input); }
+  getVolumes(deploymentId: string): Promise<unknown> { return this.request("GET", `/deployments/${seg(deploymentId)}/volumes`); }
+  getJobRun(projectId: string, jobId: string, runId: string): Promise<unknown> {
+    return this.request("GET", `/projects/${seg(projectId)}/jobs/${seg(jobId)}/runs/${seg(runId)}`);
+  }
+  cancelJobRun(projectId: string, jobId: string, runId: string): Promise<unknown> {
+    return this.request("POST", `/projects/${seg(projectId)}/jobs/${seg(jobId)}/runs/${seg(runId)}/cancel`, {}, {});
+  }
+  replaceJobSteps(projectId: string, jobId: string, input: unknown): Promise<unknown> {
+    return this.request("PUT", `/projects/${seg(projectId)}/jobs/${seg(jobId)}/steps`, {}, input);
+  }
+  getBuildLogs(deploymentId: string, q: Query = {}): Promise<unknown> { return this.request("GET", `/deployments/${seg(deploymentId)}/build-logs`, q); }
+  getBuildHistory(projectId: string, q: Query = {}): Promise<unknown> { return this.request("GET", `/projects/${seg(projectId)}/builds`, q); }
+  getKilledContainerLogs(projectId: string, q: Query = {}): Promise<unknown> { return this.request("GET", `/projects/${seg(projectId)}/logs/killed`, q); }
+  getRepoBranches(): Promise<unknown> { return this.request("GET", "/github/branches"); }
+  getRepoContents(q: Query = {}): Promise<unknown> { return this.request("GET", "/github/contents", q); }
+  getRepoDockerfiles(): Promise<unknown> { return this.request("GET", "/github/dockerfiles"); }
+  detectRepoConfig(): Promise<unknown> { return this.request("GET", "/github/config"); }
+  listGithubDeployTargets(): Promise<unknown> { return this.request("GET", "/github/deploy-targets"); }
+  getNotificationChannel(channelId: string): Promise<unknown> { return this.request("GET", `/notification-channels/${seg(channelId)}`); }
+  updateNotificationChannel(channelId: string, input: unknown): Promise<unknown> {
+    return this.request("PATCH", `/notification-channels/${seg(channelId)}`, {}, input);
+  }
+  deleteNotificationChannel(channelId: string): Promise<unknown> { return this.request("DELETE", `/notification-channels/${seg(channelId)}`); }
+  updateNotificationRule(channelId: string, ruleId: string, input: unknown): Promise<unknown> {
+    return this.request("PATCH", `/notification-channels/${seg(channelId)}/rules/${seg(ruleId)}`, {}, input);
+  }
+  deleteNotificationRule(channelId: string, ruleId: string): Promise<unknown> {
+    return this.request("DELETE", `/notification-channels/${seg(channelId)}/rules/${seg(ruleId)}`);
+  }
+  listNotificationDeliveries(channelId: string): Promise<unknown> {
+    return this.request("GET", `/notification-channels/${seg(channelId)}/deliveries`);
+  }
+  replayNotificationChannel(channelId: string, deliveryId: string): Promise<unknown> {
+    return this.request("POST", `/notification-channels/${seg(channelId)}/deliveries/${seg(deliveryId)}/replay`, {}, {});
+  }
+  getAutoDeployStatus(projectId: string): Promise<unknown> { return this.request("GET", `/projects/${seg(projectId)}/auto-deploy`); }
+  enableAutoDeploy(projectId: string): Promise<unknown> { return this.request("PUT", `/projects/${seg(projectId)}/auto-deploy`, {}, {}); }
+  disableAutoDeploy(projectId: string): Promise<unknown> { return this.request("DELETE", `/projects/${seg(projectId)}/auto-deploy`); }
+  getIngress(domainId: string): Promise<unknown> { return this.request("GET", `/domains/${seg(domainId)}`); }
+  updateIngress(domainId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/domains/${seg(domainId)}`, {}, input); }
+  getIngressProtection(domainId: string): Promise<unknown> { return this.request("GET", `/domains/${seg(domainId)}/protection`); }
+  setIngressProtection(domainId: string, input: unknown): Promise<unknown> {
+    return this.request("PUT", `/domains/${seg(domainId)}/protection`, {}, input);
+  }
+
+  // ------------------------------------------------- third parity pass
+  createDeployment(input: unknown): Promise<unknown> { return this.request("POST", "/deployments", {}, input); }
+  deleteDeployment(deploymentId: string): Promise<unknown> { return this.request("DELETE", `/deployments/${seg(deploymentId)}`); }
+  renameDeployment(deploymentId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/deployments/${seg(deploymentId)}/name`, {}, input); }
+  retryDeploymentApply(deploymentId: string): Promise<unknown> { return this.request("POST", `/deployments/${seg(deploymentId)}/retry-apply`, {}, {}); }
+  updateDeploymentBuildConfig(deploymentId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/deployments/${seg(deploymentId)}/build-config`, {}, input); }
+  updateDeploymentHealthCheck(deploymentId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/deployments/${seg(deploymentId)}/health-check`, {}, input); }
+  updateDeploymentImage(deploymentId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/deployments/${seg(deploymentId)}/image`, {}, input); }
+  updateDeploymentPullPolicy(deploymentId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/deployments/${seg(deploymentId)}/pull-policy`, {}, input); }
+  updateDeploymentResources(deploymentId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/deployments/${seg(deploymentId)}/resources`, {}, input); }
+  updateDeploymentStrategy(deploymentId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/deployments/${seg(deploymentId)}/strategy`, {}, input); }
+  updateDeploymentVolumes(deploymentId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/deployments/${seg(deploymentId)}/volumes`, {}, input); }
+  listServices(): Promise<unknown> { return this.request("GET", "/services"); }
+  createService(input: unknown): Promise<unknown> { return this.request("POST", "/services", {}, input); }
+  deleteService(serviceId: string): Promise<unknown> { return this.request("DELETE", `/services/${seg(serviceId)}`); }
+  setServiceExposure(serviceId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/services/${seg(serviceId)}/exposure`, {}, input); }
+  setServicePortPublic(serviceId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/services/${seg(serviceId)}/port`, {}, input); }
+  getComposeStack(projectId: string): Promise<unknown> { return this.request("GET", `/compose-stacks/${seg(projectId)}`); }
+  listComposeStacks(): Promise<unknown> { return this.request("GET", "/compose-stacks"); }
+  listComposeReleases(projectId: string): Promise<unknown> { return this.request("GET", `/compose-stacks/${seg(projectId)}/releases`); }
+  redeployComposeStack(projectId: string): Promise<unknown> { return this.request("POST", `/compose-stacks/${seg(projectId)}/redeploy`, {}, {}); }
+  listOrganizations(): Promise<unknown> { return this.request("GET", "/organizations"); }
+  getOrganization(orgId: string): Promise<unknown> { return this.request("GET", `/organizations/${seg(orgId)}`); }
+  getImageHistory(projectId: string): Promise<unknown> { return this.request("GET", `/projects/${seg(projectId)}/image-history`); }
+  listBuildRuns(projectId: string): Promise<unknown> { return this.request("GET", `/projects/${seg(projectId)}/build-runs`); }
+  getDeployVerdict(deploymentId: string): Promise<unknown> { return this.request("GET", `/deployments/${seg(deploymentId)}/verdict`); }
+  getDeploymentHttpMetrics(deploymentId: string): Promise<unknown> { return this.request("GET", `/deployments/${seg(deploymentId)}/http-metrics`); }
+  getRequestStats(projectId: string): Promise<unknown> { return this.request("GET", `/projects/${seg(projectId)}/request-stats`); }
+  getAnomalies(projectId: string): Promise<unknown> { return this.request("GET", `/projects/${seg(projectId)}/anomalies`); }
+  getAttackSignals(projectId: string): Promise<unknown> { return this.request("GET", `/projects/${seg(projectId)}/attack-signals`); }
+  getResourceRecommendation(projectId: string): Promise<unknown> { return this.request("GET", `/projects/${seg(projectId)}/resource-recommendation`); }
+  getObservabilityLink(projectId: string): Promise<unknown> { return this.request("GET", `/projects/${seg(projectId)}/observability-link`); }
 }

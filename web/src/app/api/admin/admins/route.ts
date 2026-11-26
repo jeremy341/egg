@@ -21,7 +21,7 @@ export const POST = handle(async (req: NextRequest) => {
   const user = await authed();
   enforceRateLimit("adminGrant", user.id);
   const body = await readJson(req, anything);
-  const fresh = await isFreshAuth(req.cookies.get(SESSION_COOKIE)?.value);
+  const fresh = await isFreshAuth(req.cookies.get(SESSION_COOKIE)?.value, Date.now(), user.id);
   return ok(await grantInstanceAdmin(user.id, body, fresh), 201);
 });
 
@@ -29,6 +29,6 @@ export const DELETE = handle(async (req: NextRequest) => {
   const user = await authed();
   enforceRateLimit("adminGrant", user.id);
   const body = await readJson(req, anything);
-  const fresh = await isFreshAuth(req.cookies.get(SESSION_COOKIE)?.value);
+  const fresh = await isFreshAuth(req.cookies.get(SESSION_COOKIE)?.value, Date.now(), user.id);
   return ok(await revokeInstanceAdmin(user.id, body, fresh));
 });

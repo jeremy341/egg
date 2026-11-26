@@ -7,10 +7,11 @@ import { runDeployJob, type PipelineDeps } from "@/server/deploy/pipeline";
 import { createProject, deployBranch, type ProjectRow } from "@/server/projects";
 import { fetchServiceStatus, forgetServiceStatus, isFresh, lastKnownServiceStatus, parseServiceStatus } from "@/server/service-status";
 import { connectToServer, createServer, getServerForUser, type ServerRow } from "@/server/servers";
+import { serverDiscriminator, unitName } from "@/server/deploy/layout";
 import { NestSession } from "@/server/ssh/connection";
 import { fakeBuilder, freePort, containerReadyFacts, installFakeContainerBuild, installFakeSystemd, nodeApp } from "@/server/test/fake-nest";
 import { useFreshDb } from "@/server/test/db";
-import { startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
+import { linuxTestHostAvailable, startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
 
 describe("parseServiceStatus", () => {
   const running = [
@@ -20,6 +21,7 @@ describe("parseServiceStatus", () => {
     "EGG_SubState=running",
     "EGG_MainPID=4242",
     "EGG_NRestarts=2",
+    "EGG_RESULT=success",
     "EGG_MemoryCurrent=88080384",
     "EGG_CPUUsageNSec=2500000000",
     "EGG_ActiveEnterTimestampMonotonic=1000000000",
@@ -37,9 +39,21 @@ describe("parseServiceStatus", () => {
       memoryMb: 84,
       cpuNs: 2_500_000_000,
       restarts: 2,
+      result: "success",
       http: { code: 200, ms: 12 },
+      lastExit: null,
       checkedAt: at.toISOString(),
     });
+  });
+
+  it("keeps the last exit when it was not clean", () => {
+    const s = parseServiceStatus("EGG_ActiveState=activating\nEGG_SubState=auto-restart\nEGG_Result=oom-kill\nEGG_ExecMainStatus=137");
+    expect(s.lastExit).toEqual({ code: 137, reason: "oom-kill" });
+  });
+
+  it("leaves the last exit null after a clean exit", () => {
+    const s = parseServiceStatus("EGG_ActiveState=active\nEGG_Result=success\nEGG_ExecMainStatus=0");
+    expect(s.lastExit).toBeNull();
   });
 
   it("calls a service that failed, failed", () => {
@@ -67,7 +81,7 @@ describe("parseServiceStatus", () => {
   });
 });
 
-describe("fetchServiceStatus on a mock Nest", () => {
+describe.skipIf(!linuxTestHostAvailable())("fetchServiceStatus on a mock Nest", () => {
   let ctx: Awaited<ReturnType<typeof useFreshDb>>;
   let mock: MockSsh;
   let userId: string;
@@ -144,7 +158,7 @@ describe("fetchServiceStatus on a mock Nest", () => {
   });
 
   it("notices when the service has stopped", async () => {
-    await sh("systemctl stop egg-status-app.service");
+    await sh(`systemctl stop ${unitName("status-app", undefined, serverDiscriminator(server.id))}`);
     const s = await fetchServiceStatus(userId, project.id);
     expect(["failed", "stopped"]).toContain(s.state);
     expect(s.http?.code).toBe(0);
@@ -164,7 +178,7 @@ describe("fetchServiceStatus on a mock Nest", () => {
     expect(first.cached).toBe(false);
     expect(["failed", "stopped"]).toContain(first.status.state);
 
-    await sh("systemctl start egg-status-app.service");
+    await sh(`systemctl start ${unitName("status-app", undefined, serverDiscriminator(server.id))}`);
     clock += 10_000;
     const second = await lastKnownServiceStatus(userId, project.id, { now });
     expect(second.cached).toBe(true);

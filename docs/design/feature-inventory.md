@@ -2,6 +2,8 @@
 
 A working document for writers. Every statement was checked against the code in `web/src` and `web/drizzle`. Paths are relative to `web/src` unless they start with `web/`. A reference such as `server/projects.ts:241` means that file, that line, as of this writing.
 
+**Revision note (checked 2026-11-22).** The line numbers are historical and have drifted; use the file and symbol names, not the number. Claims that were contradicted by later code have been corrected in place and marked with the date. The docs pages moved from `app/(marketing)/docs/` to `app/(app)/docs/`; references to the old path in this file are historical.
+
 Conventions used below:
 
 - "Label" is the text copied from the source: a button, a heading, or a field label.
@@ -11,7 +13,7 @@ Conventions used below:
 - Every browser write route checks that the `Origin` header matches the site (`server/http.ts:79-89`). A request with no `Origin` header passes. The hook, collector, API and MCP routes skip this check on purpose.
 - The three container permission switches are Terminal, File changes and Removing leftovers. All three are off for a new server (`server/db/schema.ts:85-87`).
 
-Shared rate limits (per signed-in user, per minute, in memory, reset on restart): terminal input 300, file changes 60, leftover removals 10 (`server/rate-limit.ts:65-69`). Per token: 120 reads, 30 changes, 10 for anything that opens an SSH session, 300 for terminal input (`server/api-v1-kit.ts:24-29`).
+Shared rate limits (per signed-in user, per minute, in memory, reset on restart): terminal input 300, file changes 60, leftover removals 10 (`server/rate-limit.ts:65-69`). Per account, shared by every token of that account (one token's heavy use counts against them all): 120 reads, 30 changes, 10 for anything that opens an SSH session (the deployment log and server usage reads included), 300 for terminal input (`server/api-v1-kit.ts`). Dashboard routes that open an SSH connection share a 6-a-minute service-restart bucket and a 10-a-minute slow-call bucket (file reads, lists and downloads, runtime logs, server usage, terminal opens), and one person holds at most 3 deployment streams at once (`server/rate-limit-core.ts`, `server/deployment-streams.ts`).
 
 ---
 
@@ -230,7 +232,7 @@ Common errors: "Could not save. Try again." (client fallback); 403 "Confirm with
 
 ### Start with automatic deploys off and container conflict check
 
-- **Label:** checkbox "Start with automatic deploys off" with "For a repository you already run here by hand. Egg does not take over or stop that copy." Once ticked, the note says the first deploy is manual, automatic deploys start only after you confirm it works, and you stop your old process yourself if it holds the port. The option sets the internal `adopted` field. It does not import, take over or stop a running service. Section "What is already on this container" with a status line and badges "Blocks the deploy", "Made by Egg", "Good to know" (`new-project-flow.tsx:402-427`, `components/project-conflicts.tsx`).
+- **Label:** checkbox "Start with automatic deploys off" with "For a repository you already run here by hand. Egg does not take over or stop that copy." Once ticked, the note says the first deploy is manual, automatic deploys start only after you confirm it works, and you stop your old process yourself if it holds the port. The option sets the internal `adopted` field and forces automatic deploys off (`server/projects.ts`, `autoDeploy: false` when `adopted`). The checkbox itself does not import, take over or stop a running service; importing is the separate API in `server/adoption-import.ts` (see decision 37). Section "What is already on this container" with a status line and badges "Blocks the deploy", "Made by Egg", "Good to know" (`new-project-flow.tsx:402-427`, `components/project-conflicts.tsx`).
 - **What it does:** as soon as name, server and port are valid (600 ms pause), the form asks the container, read-only, whether the new project would collide with anything (`app/api/projects/conflicts/route.ts`, `server/adoption.ts`). The same check runs again at the start of every deploy, before anything is written (`server/deploy/pipeline.ts:360-381`).
 - **Limits:** 20 checks per minute per user (`conflicts/route.ts:11`), 429 "Too many checks. Wait <n> second(s) and try again." The probe has a 60 second timeout (`adoption.ts:256`). The probe never returns command lines, environment or file contents.
 - **What blocks a deploy (`server/adoption.ts:52-223`):**
@@ -258,13 +260,13 @@ Common errors: "Could not save. Try again." (client fallback); 403 "Confirm with
 
 ### Runtimes
 
-- **Names:** "Node.js", "Python", "Static site", "Custom command" (stored as `node`, `python`, `static`, `command`; `server/db/schema.ts:111`).
+- **Names (10, checked 2026-11-22):** "Node.js", "Bun", "Python", "Go", "Rust", "Ruby", "PHP", "Java", "Static site", "Custom command", stored as `node`, `bun`, `python`, `go`, `rust`, `ruby`, `php`, `java`, `static`, `command`. The list is `RUNTIME_OPTIONS` in `components/hosting-options.tsx:7-18`; the old four-runtime list is historical. Workload is Web or worker (`workloadForRuntime` in the same file).
 - **Node.js:** build install is the project's install command, else `npm ci` (npm lockfile), `corepack enable && pnpm install --frozen-lockfile`, `corepack enable && yarn install --frozen-lockfile`, or `npm install` with no lockfile (`server/deploy/runtime.ts:33-71`). Lockfile order: pnpm, yarn, npm (`build.ts:163-169`). Build command: yours, else the package manager's build script if `package.json` has a `build` script. After upload the container runs the production install (`npm ci --omit=dev`, `pnpm install --prod --frozen-lockfile`, `yarn install --production --frozen-lockfile`, or `npm install --omit=dev`). `node_modules` is left out of the archive. Default start: `npm start` (also for pnpm and yarn projects).
 - **Python:** no default build. The container runs `python3 -m venv .venv && .venv/bin/pip install --disable-pip-version-check -r requirements.txt` if `requirements.txt` exists. The service PATH starts with the venv `bin`. Default start: `python3 app.py`.
 - **Static site:** build as Node when `package.json` exists. The folder shipped is the Output directory (default the root `.`). Default start serves it with Egg's own static server (`STATIC_PYTHON_SCRIPT`, run as `python3 -c ... <port>`), or the equivalent Node script (`STATIC_NODE_SCRIPT`) if Python 3 is missing. Both answer GET and HEAD only, list no folders, return 400 for a malformed address, and return 404 for any path with a dot-prefixed segment or whose real location is outside the folder. Error: "Static sites need Python 3 or Node.js on your Nest container to be served."
 - **Custom command:** no detection, no remote install. Install, build and start commands come from you. Error: "Set a start command for this project (for example ./my-binary)."
 - **Always:** the app runs from its release folder with `PORT`, `HOST=0.0.0.0`, `NODE_ENV=production` (`server/deploy/remote.ts:108-109`). Reserved variable names: `PORT`, `HOST`, `PATH`, `HOME`, `EGG` (`runtime.ts:162`).
-- **Build image:** `node:22-bookworm` for Node, static and custom builds, `python:3.12-bookworm` for Python (`server/config.ts:33-34`).
+- **Build image:** none. The old `node:22-bookworm` / `python:3.12-bookworm` settings were removed with the central Docker build runner; see build step 3 above. The install and build now run on the user's container under a cap, or in GitHub Actions (checked 2026-11-22).
 
 ### Delete Project
 
@@ -272,6 +274,10 @@ Common errors: "Could not save. Try again." (client fallback); 403 "Confirm with
 - **What it does:** with the box ticked, stops the service, removes production and preview releases and the `current` link, but only if the unit and folder carry the Egg marker, then deletes the records. The `shared/` folder is kept, because the browser never sends `data=1` (`app/api/projects/[id]/route.ts:20-32`, `server/deploy/remote.ts:233-253`). Unticked, only the records go and the app keeps running.
 - **Errors:** "Could not remove the project from your container." (502). Records are kept so you can retry. Messages `<path> was not created by Egg, so it was left alone.` appear in the script output, not in the UI.
 - **Needs:** sign-in.
+
+### Project ownership (formerly a Team tab)
+
+Project-level collaboration (invitations, Viewer/Developer/Owner roles, a Team tab and an `/invite` page) was removed on 2026-11-22 to keep the product focused. Every project now has exactly one owner, who can perform all actions. `server/project-roles.ts` is retained only as the owner-only authorization boundary shared by the dashboard, API, MCP and worker. A deployment queued by a non-owner is rejected at queue time and again before the worker starts it.
 
 ---
 
@@ -315,9 +321,9 @@ Common errors: "Could not save. Try again." (client fallback); 403 "Confirm with
 
 - **Where it runs:** a worker process picks queued jobs (2 at a time by default, `WORKER_CONCURRENCY`; `instrumentation.ts:26-28`, `server/jobs.ts:161`), but never two jobs of the same project at once (`jobs.ts:31-38`). Polls every second.
 - **Steps (`server/deploy/pipeline.ts:287-505`):**
-  1. State becomes Building. Environment values for this environment are decrypted; those and the GitHub token are masked in the log (values shorter than 4 characters are not masked, `server/deploy/logger.ts:22`).
+  1. State becomes Building. Environment values for this environment are decrypted; those and the GitHub token are masked in the log by `server/deploy/redact.ts` (`secretNeedles` / `maskSecrets`). Values of 2 to 3 characters are masked where they stand alone, 1-character values are left alone so `CI=1` stays readable, and base64 and URL-encoded forms are masked too. The old claim that values under 4 characters were never masked was fixed (checked 2026-11-22).
   2. Clone: `git clone --depth 1 --branch <branch> --single-branch --no-tags` with a 5 minute limit (`build.ts:217-232`). A redeploy fetches the exact commit (3 minute limit); if it cannot, it builds the branch tip and logs "Could not fetch <sha>; building the branch tip instead."
-  3. Build in a sandbox: install command and build command joined with `&&`, `CI=true` set, your variables passed in. With `BUILD_RUNNER=docker` (default): `docker run --rm --memory 2g --memory-swap 2g --cpus 2 --pids-limit 2048 --cap-drop ALL --security-opt no-new-privileges` (`build.ts:363-407`). `BUILD_RUNNER=local` runs with no isolation (development only). Timeout `BUILD_TIMEOUT_SECONDS`, default 900 (`config.ts:35`).
+  3. Install and build on the **user's container**, not on Egg's host and not in a Docker sandbox on Egg's host. Only the source is cloned and packed here (`server/deploy/pipeline.ts`, stage `source`; comment at line 464). The container runs the install and build commands under a `systemd-run` scope with a memory cap (minimum `MIN_CONTAINER_CAP_MB` = 256, floor 1024 when a build step is present), low CPU weight and `OOMScoreAdjust=500`; the app gets `-500` (`server/deploy/container-build.ts`). A project with `buildLocation: "github"` instead receives a release uploaded by its GitHub Actions workflow and installs nothing here (`receiveGithubRelease` in `pipeline.ts`). Dockerfile and Docker Compose projects build their image on the target inside the same capped scope. `BUILD_TIMEOUT_SECONDS` is 900 (15 minutes). The old `BUILD_RUNNER=docker|local` settings were removed; no code reads them (checked 2026-11-22).
   4. Pack a tarball. Left out: `.git`, `node_modules` (Node and static), `.next/cache` (`build.ts:308-315`). Maximum 500 MB (`MAX_ARCHIVE_BYTES`, `build.ts:46`).
   5. State becomes Deploying. Connect over SSH, probe the container, check for conflicts (see Adopt), create folders, check the service name is free, upload the archive to `incoming/<release>.tar.gz`, verify SHA-256 if `sha256sum` exists, unpack into `releases/<release-id>/`, run the production install, write `.env` (mode 600), write the systemd unit, `daemon-reload` and `enable`.
   6. Production: point `current` at the new release and restart the service. Preview: restart the preview unit. Then wait for the app (see Health check).
@@ -509,10 +515,10 @@ Errors that end in Error (exact text):
   - unique per name and target (`schema.ts:210`)
 - **Errors:** "Names use letters, digits and underscores, and do not start with a digit" ; "That name is set by Egg" ; "A project can have up to 100 variables." ; import: "No example env file (such as .env.example) was found in the repository." ; "Every name in the repository is already here." ; "<n> added, then it stopped: <reason>" ; "Could not look at the repository."
 - **Delete dialog:** `Delete <name>?` "Deployments after this one will not have it."
-- **Masking:** values of 4 or more characters are replaced by `***` in build and deploy log lines (`logger.ts:22-29`, `build.ts:176-183`). Shorter values and transformed values (for example base64) are not masked.
+- **Masking:** `server/deploy/redact.ts` masks the value and its base64, URL-encoded and shifted-base64 forms in build and deploy output. Values of 2 to 3 characters are masked when they stand alone; 1-character values are left alone so `CI=1` stays readable. Fixed from the old "4 or more characters only" claim (checked 2026-11-22).
 - **If a name exists for All and for a specific target:** both are loaded and the later row wins (`pipeline.ts:91-95`). UNCONFIRMED which row is later: the query has no `ORDER BY`.
 - **Needs:** sign-in. API: `env:read` for names, `env:write` to set and remove. The API refuses to read `current/.env` and release `.env` files (see Files).
-- **Reading values back is possible in the browser file manager:** the Files page can open `current/.env`, which holds the values in plain text; only the API refuses it (`app/api/projects/[id]/files/read/route.ts` has no check; `server/api-v1-shell.ts:162-178` does). See the discrepancy list.
+- **Values cannot be read back from the Files page either (fixed, checked 2026-11-22).** `server/files.ts` calls `isSecretFile` from `server/secret-files.ts` on the read, list and download paths and refuses a release's top-level `.env`, `env/<id>.env` and `*.buildenv` with 403 "This file holds the project's environment variable values, so it is not shown here." The API has the same refusal. The old discrepancy claim is historical.
 
 ---
 
@@ -606,6 +612,16 @@ See "Deployment page". Stored per deployment, searchable in the page ("Find in l
 - **Filtering rules:** "Failures only" suppresses Ready messages. The "Deployment results" alert channel and an active pause also suppress them. The event is still written to history (`notify.ts:160-190`).
 - **Needs:** sign-in. API: `notifications:read` (read settings and send a test).
 
+### Signed outbound webhooks (Account page)
+
+Added after this inventory was first written; checked 2026-11-22. This is separate from the Discord/Slack "Notifications" card above: it delivers signed events to an arbitrary https address the owner adds.
+
+- **Where:** Account page, card with "Add a webhook address", "Add webhook" (`components/webhooks-card.tsx`, exported as the Account webhooks card). Each hook row shows On/Paused, the events it sends, "Send test", "New secret" and "Delete".
+- **Events:** `deployment.started`, `deployment.succeeded`, `deployment.failed`, `webhook.test` (`server/webhooks.ts`, `components/webhooks-card.tsx` event labels "started", "succeeded", "failed", "test").
+- **Signature:** every POST carries `X-Egg-Signature: t=<unix>,v1=<hex HMAC-SHA256>` over the request body, plus `X-Egg-Event` and `X-Egg-Delivery` (`server/webhook-sign.ts`, `server/webhooks.ts:373-386`). The random secret is shown once on create and on "New secret"; only a sealed copy is stored.
+- **Delivery:** the receiver must be https with a public address; DNS is resolved and checked for private, loopback and link-local ranges, redirects are refused, and the request times out after 5 seconds. Failures are recorded per delivery with codes such as `blocked_address`, `dns_failed`, `timeout`, `redirect`, `network`, `invalid_url`, `secret_unreadable`, `interrupted` and `http_<status>`; the card shows the last deliveries and their status.
+- **Needs:** sign-in and the account's webhook settings. No container permission switch.
+
 ### Alerts
 
 - **Label:** card "Alerts": "Pause all alerts", "When to warn" ("Disk full (%)", "Memory used (%)", "CPU load per core (%)", "Failed checks before down", "Slow response limit (ms)"), "Send to the webhook" (four checkboxes), "History" (`components/project-automation.tsx:379-715`).
@@ -618,6 +634,30 @@ See "Deployment page". Stored per deployment, searchable in the page ("Find in l
 - **History:** newest 50, badges "Still happening", "Resolved", "Not sent, paused"; "Kept for 90 days" (`notify.ts:229,336-357`). Open resource and down alerts are kept past 90 days; resolved rows and deploy rows are pruned (`notify.ts:440-455`).
 - **Errors:** "The disk limit must be a whole number from 1 to 100." (and the memory, CPU forms) ; "The response time limit must be at least 50 ms." ; "The response time limit cannot be above 60000 ms." ; "Failed checks must be a whole number from 1 to 10." ; "Could not load alert settings" (with "Try again") ; "Could not save" ; "Could not pause alerts" ; "Could not resume alerts".
 - **Needs:** sign-in; the worker running. A webhook is needed for any message to be sent. API: `alerts:read`.
+
+---
+
+## Scheduled jobs
+
+Added 2026-11-13; checked 2026-11-22.
+
+- **Where:** project Settings, card "Scheduled Jobs" (`components/scheduled-jobs-card.tsx`). The public API and MCP do not expose jobs (`docs-facts.test.ts` asserts no `/jobs` in the API page).
+- **What it does:** a job is a systemd timer plus a oneshot service beside the app's unit, so it keeps running when Egg is down and appears in `journalctl`. Egg stores only the name, schedule and command; the last run and its result are read from the container. Controls: "Add job", edit, "Run now", "Pause", "Resume", output, remove. Common schedules are offered as presets.
+- **Schedule:** five cron fields in UTC; names, `?` and `L` are refused, setting both day-of-month and day-of-week is refused, and the gap must be at least 5 minutes (`lib/cron-schedule.ts` `parseSchedule`, `MIN_GAP_MINUTES`). `@daily`, `@midnight`, `@hourly`, `@weekly`, `@monthly` are accepted; `@yearly` is not.
+- **Limits:** at most 5 jobs per project (`MAX_JOBS_PER_PROJECT`); a run stops after 30 minutes (`JOB_TIMEOUT_SECONDS`). Units use `Nice=10`, `OOMScoreAdjust=500`, `Persistent=false` and `TimeoutStartSec=1800`, with the same `# egg:managed project=<slug> job=<id>` marker as the app.
+- **Messages:** "Added. It is armed on your container now.", "A project can have 5 jobs. Remove one to add another.", "Succeeded <time>" / "Failed (exit <n>) <time>", "Started <name>. Open its output to see what it printed."
+- **Needs:** sign-in. No container permission switch; the job runs inside the project's release.
+
+---
+
+## Private security reports
+
+Added 2026-11-15; checked 2026-11-22. Separate from the public status page and from notifications.
+
+- **Where:** public form (`components/security-report-form.tsx`) and an administrator-only inbox (`components/security-report-inbox.tsx`), enabled per instance.
+- **What it does:** a person can send a vulnerability report, optionally anonymously, with a review step before it is sent. The sender gets a reference; only the configured administrator can read the inbox. Messages are rendered with `SafeReportMarkdown` (no raw HTML).
+- **Limits and privacy:** the intake route caps the body (5 MiB at Caddy, counted in the app) and uses database-backed limits that survive a restart: 12 reports an hour and 60 a day across all senders, a per-network share of the remaining daily space, and a tighter anonymous limit once the inbox is 80% full. A keyed digest of the sender's address is kept for one day in its own row, never with the report; the privacy page says so. The administrator sees a warning in the inbox and in the daily activity when it nears full.
+- **Needs:** the form needs nothing; the inbox needs an administrator session. No container permission switch.
 
 ---
 
@@ -639,7 +679,7 @@ See "Deployment page". Stored per deployment, searchable in the page ("Find in l
 
 - **Label:** page "Analytics" (project tab); card "Count visits" then "Tracking snippet"; buttons "Turn on analytics" and "Turn off" (`components/analytics-setup.tsx`).
 - **What it does:** creates a key `nda_<random>` and shows `<script defer data-key="nda_..." src="<APP_URL>/api/analytics/script?key=nda_..."></script>` to paste into the head of every page you want counted, then redeploy (`server/analytics.ts:23-52`).
-- **Counted by default:** page path and referring site only. No cookies. No IP address or browser details stored. A visitor is a hash of IP, browser, project and the date, salted with `APP_SECRET`, truncated to 16 characters, so it cannot be followed across days (`analytics.ts:83-85`).
+- **Counted with everything off:** page path only. **Referrers are opt-in, not counted by default** (fixed, checked 2026-11-22): `server/analytics.ts` sets `referrers: defaults.referrers ?? false` and stores `referrer: f.referrers ? cleanReferrer(d.r) : null`. The eight switches a person may turn on are in `lib/analytics-defaults.ts` (`ANALYTICS_FEATURES`): Clicks, Time on page, Funnel, Referrers, Speed and errors, Custom events, Live view and Retention. Campaigns and Record visitor countries are not in that list. No cookies. No IP address or browser details stored. A visitor is a hash of IP, browser, project and the date, salted with `APP_SECRET`, truncated to 16 characters, so it cannot be followed across days (`analytics.ts:83-85`).
 - **Skipped:** browsers that send Do Not Track or Global Privacy Control (the script exits, and the collector also drops a request carrying `DNT: 1` or `Sec-GPC: 1`), localhost and 127.0.0.1, and known bots (user agent matching bot, crawl, spider, slurp, preview, monitor, headless, lighthouse, curl, wget, python-requests) (`server/analytics-script.ts:25-27`, `server/analytics-events.ts:47-49`, `analytics.ts:56`).
 - **Rate guard:** one page view per second per project and address; click, time and goal events 30 per 10 seconds per project and address (`analytics.ts:89-98`, `analytics-events.ts:59-73`).
 - **Path cleaning:** query and fragment removed, trailing slash removed, 200 characters (`analytics.ts:63-69`). Referrer reduced to the host without `www.`, 100 characters.
@@ -651,6 +691,7 @@ See "Deployment page". Stored per deployment, searchable in the page ("Find in l
 
 ### What you see
 
+- **Tabs (added after this inventory was first written; checked 2026-11-22):** the analytics page has five tabs, selected by `?tab=`, in `lib/analytics-tabs.ts` and `components/analytics-tabs.tsx`: Overview, Speed and errors, Events, Visitors, Setup. Only the selected tab's content is sent by the server; unknown values fall back to Overview.
 - Page views and visitors for the last 30 days, a bar chart per day, "Top pages" and referring sites (top 10 each) (`server/analytics.ts:154-207`). "Visitors are counted per day, so someone who comes on two days counts twice."
 - Percentages, shares and the median appear only with at least 50 visits or visitors behind them (`MIN_SAMPLE = 50`, `server/stats.ts:31`). Below that the page shows counts and "Not enough data".
 
@@ -715,7 +756,7 @@ Only `projects`, `deployments`, `env` and `domains` have a write scope. Notifica
 - **Address:** `<site>/api/v1/...`, bearer token only (`Authorization: Bearer egg_...`). The OpenAPI 3.1 document is at `/api/v1/openapi.json`, generated from the same endpoint list as the routes and MCP tools (`server/api-v1-openapi.ts`).
 - **First call:** `GET /api/v1/me` needs no scope. Returns the owner's display name, the token's name, scopes and expiry, and counts of servers and projects. No email, no ids (`server/api-v1-me.ts`).
 - **Endpoint list (id, method, path, scope, rate bucket):** `list_projects`, `get_project`, `create_project`, `update_project`, `delete_project`; `list_deployments`, `deploy_branch` (POST `/projects/{id}/deployments`), `get_deployment`, `get_deployment_logs` (ssh bucket), `redeploy`, `cancel_deployment`, `rollback_deployment`; `get_logs`; `list_env_vars`, `set_env_var` (PUT `/projects/{id}/env/{key}`), `delete_env_var`; `list_domains`, `add_domain`, `verify_domain`, `remove_domain`; `rotate_deploy_hook`, `revoke_deploy_hook`; `get_notifications`, `test_notification`, `get_alerts`, `get_status_page`, `get_analytics`; `get_server_usage`, `get_resource_history` and `get_project_resources` (ssh bucket); `list_servers`, `get_container_inventory` (ssh bucket); `get_activity`; terminal: `terminal_status`, `terminal_open`, `terminal_send`, `terminal_read`, `terminal_resize`, `terminal_close`; files: `list_files`, `read_file`, `download_file`, `make_folder`, `rename_file`, `write_file`, `delete_file` (all ssh bucket).
-- **Limits:** per token per minute: 120 reads, 30 changes, 10 for SSH-opening calls, 300 for terminal input (`api-v1-kit.ts:24-29`). Request body at most 16 KB unless an endpoint says otherwise (`DEFAULT_MAX_BODY_BYTES`). API file write at most 1 MB; API file download at most 2 MB (`api-v1-shell.ts:151,260`). Unknown body fields are refused: `Unknown field "<name>". Allowed: ...` (400).
+- **Limits:** per account per minute, shared across every token the account holds (a burst on one token consumes the same budget as any other): 120 reads, 30 changes, 10 for SSH-opening calls, 300 for terminal input (`api-v1-kit.ts`). Request body at most 16 KB unless an endpoint says otherwise (`DEFAULT_MAX_BODY_BYTES`). API file write at most 1 MB; API file download at most 2 MB (`api-v1-shell.ts:151,260`). Unknown body fields are refused: `Unknown field "<name>". Allowed: ...` (400).
 - **Errors:** 401 "Send an access token as an Authorization: Bearer egg_... header." ; 401 "That access token is not valid." (missing, revoked, expired and unknown look the same) ; 403 "This token does not have the <scope> permission." ; 404 "No such item, or it belongs to someone else." ; 413 "The request body is too large." ; 429 "Too many requests for this token. Wait <n> second(s) and try again." with `Retry-After` ; 502 container not reachable ; 503 "Too many terminals are open right now. Try again soon." Errors are JSON `{ "error": { "code", "message" } }`.
 - **Audit:** deploys, redeploys, rollbacks, cancels, file and terminal actions made with a token record "via: api" and the token id; Activity shows the token name.
 - **Secrets:** environment values, webhook URLs and token secrets are never returned; the deploy hook URL is returned once by the call that creates it. The API refuses to read `current/.env` and `releases/<id>/.env` with 403 "That file holds the project's environment variable values, which are never returned by the API." (`api-v1-shell.ts:162-178`).
@@ -781,7 +822,7 @@ Only `projects`, `deployments`, `env` and `domains` have a write scope. Notifica
   - an upload that arrives short is refused: "The upload arrived incomplete. Nothing was saved."
 - **Errors (`server/files.ts:189-200`):** "This project has no folder on your container yet. Deploy it first." ; "That path leaves the project folder." ; "This location is read only. Files in shared/ can be changed. The live release (current/) cannot." ; "Nothing exists at that path." ; "That path is not a folder." ; "That path is not a file." ; "That file is over the 50 MB limit." ; "That path is a symbolic link. Files are not written through links." ; "That path is a folder." ; "Something with that name already exists." ; "This container's tools are too limited to list files." ; "Your container could not finish that. Try again." ; "That is the same path." ; "A folder cannot move into itself." ; "Changing files is turned off for this server. Turn it on in Account, under Container permissions." ; "Could not save the file." ; "The upload failed." ; "Over the 50 MB limit." ; "A folder with this name already exists." ; "Could not load this folder".
 - **Binary and large files:** "Binary file, cannot preview" ; "Too large to preview" ; "This file is empty." ; "No file selected".
-- **The .env file:** Egg writes each release's variables to `.env` at the top of the release. The API refuses to read or download `current/.env` and `releases/<id>/.env` ("secret_file", 403). The browser file manager has no such refusal and can open them (read, list and download routes do not check). See the discrepancy list.
+- **The .env file:** Egg writes each release's variables to `.env` at the top of the release, and to `env/<release id>.env` for runtime use. Both the API and the browser file manager now refuse to read, list or download these files with 403 `secret_file` and the message "This file holds the project's environment variable values, so it is not shown here." (`server/secret-files.ts`, `server/files.ts:506`; checked 2026-11-22). The old browser-side refusal gap is fixed.
 - **Audit:** "Saved a file on", "Created a folder on", "Renamed a file on", "Deleted a file on" with the path. File contents are never recorded.
 - **Needs:** reading: sign-in only, no switch. Changing: File changes switch on for that server. API: `files:read`, `files:write` (7 day token) plus the switch.
 - **Files:** `server/files.ts`, `server/files-paths.ts`, `app/api/projects/[id]/files/*/route.ts`, `components/file-manager*.tsx`.
@@ -860,11 +901,13 @@ See "Start with automatic deploys off and container conflict check" under Projec
 - **Projects page** (`app/(app)/projects/page.tsx`): the list of projects with search ("Try a project name, repository, or domain."), the "Needs attention" card, the "UsageCard" and "Recent deployments" (latest 5).
 - **Empty states:** "Connect your Nest container first" ; "Import your first repository" (`components/projects-view.tsx`).
 - **Server switcher and project switcher** in the sidebar (`components/server-switcher.tsx`, `components/project-switcher.tsx`).
-- **Navigation:** team level "Projects", "Deployments", "Logs", "Resources", "Domains", "Activity", "Container", "Developer", "Connect"; project level "Overview", "Deployments", "Analytics", "Files", "Terminal", "Settings" (`lib/nav.ts`). "Account" opens from the account menu.
+- **Navigation:** account level "Projects", "Deployments", "Logs", "Resources", "Domains", "Activity", "Container", "Developer", "Connect"; project level "Overview", "Deployments", "Analytics", "Files", "Terminal", "Settings" (`lib/nav.ts`). Scheduled Jobs live inside Settings, not in the sidebar. "Account" opens from the account menu.
 
 ---
 
-## Checked against the existing docs (`web/src/app/(marketing)/docs/_content/sections.tsx`)
+## Checked against the existing docs (`web/src/app/(app)/docs/_content/`)
+
+This comparison was written against the old single-page file `web/src/app/(marketing)/docs/_content/sections.tsx`. The docs are now separate pages under `web/src/app/(app)/docs/_content/` (`index.ts`, `sections.tsx`, `guide-a.tsx` to `guide-e.tsx`), so the section numbers below are historical. Items 5 and 6 were fixed in the code; the rest were not rechecked on 2026-11-22.
 
 Claims the code contradicts or qualifies:
 
@@ -872,8 +915,8 @@ Claims the code contradicts or qualifies:
 2. `sections.tsx:214-216` "Deploy builds a branch now": the project page "Deploy" button can only build the production branch (`components/deploy-button.tsx`, no branch picker in the UI). It is labelled "Redeploy" when something is live (`app/(app)/projects/[slug]/page.tsx:146`) but builds the branch tip, not the same commit. The same-commit action is "Redeploy" in a row's actions menu. The rollback label is "Instant rollback", not "Rollback" (`sections.tsx:222`).
 3. `sections.tsx:232-235` "shows 25 at a time with a Show more button": the button reads "Show N more", and the page loads only the newest 100 deployments (`server/queries.ts:192`), so "25 at a time" is a window onto at most 100.
 4. `sections.tsx:238-239` "Production keeps your last five releases and the one that is live": correct for counting (`pipeline.ts:260-268`), but only Ready releases count and, after a rollback, up to six production releases can exist.
-5. `sections.tsx:257` and `:673` "never shown again in full" and "never sent back to your browser": values are never returned by the env routes or the API, but the browser Files page can open `current/.env` in plain text (`app/api/projects/[id]/files/read/route.ts` has no check; the API-only refusal is `server/api-v1-shell.ts:162-178`).
-6. `sections.tsx:272-275` "Values are masked wherever they would appear in build or deploy output": only values of 4 or more characters are masked, and only as the exact text (`server/deploy/logger.ts:22`, `build.ts:177`).
+5. `sections.tsx:257` and `:673` "never shown again in full" and "never sent back to your browser": **fixed** by 2026-11-22. Values are not returned by the env routes or the API, and the browser Files page now refuses `.env` files too (`server/secret-files.ts`, `server/files.ts:506`). The old gap was real when written.
+6. `sections.tsx:272-275` "Values are masked wherever they would appear in build or deploy output": **fixed** by 2026-11-22. `server/deploy/redact.ts` masks exact values, base64, URL-encoded and shifted-base64 forms, and 2 to 3 character values where they stand alone. One-character values are still left alone on purpose.
 7. `sections.tsx:288-289` runtime logs "latest 300 lines and can refresh every five seconds" is right, but the page also has a time range (1 hour, 24 hours, 7 days) and a level filter "Warnings and errors" and a "Download" button the docs do not mention (`components/logs-view.tsx`). Search and level read the newest 1000 lines.
 8. `sections.tsx:324-345` "Pull requests from forks, draft pull requests, and pull requests from the production branch are not built": a push to the head branch of a draft pull request in the same repository still builds a preview through the push webhook (`server/github/webhook.ts:60-86`). Only the pull request event skips drafts. The PR comment content also includes the project name, branch and port, not only "the state, the commit and a link" (`server/github/pulls.ts:31-49`).
 9. `sections.tsx:329-333` "With Deploy automatically on, a push ... deploys": not for projects made from a pasted public repository URL, which store no `repoFullName` (`new-project-flow.tsx:224,624-629`, `webhook.ts:48-51`).
@@ -898,4 +941,4 @@ Claims the code contradicts or qualifies:
 - Reauth failure messages for the permission switches: set by the server, shown nowhere.
 - Hosted container sizes (2 vCPU, 2 GB, 16 GB) quoted in the docs.
 - Whether the probe's "error" issues should block a deploy (`server/ssh/probe.ts:98-100` says so, nothing enforces it).
-- Stale code comments that say the opposite of the code: `server/permissions.ts:15-17` says the terminal input and resize routes do not call a guard (the input route does, `app/api/projects/[id]/terminal/[sessionId]/input/route.ts:21-22`); `app/(app)/projects/[slug]/files/page.tsx:36` says file changes default to on (they default to off). Writers should follow the code.
+- Stale code comments that say the opposite of the code: `server/permissions.ts:15-17` says the terminal input and resize routes do not call a guard. Both routes now call `requireProjectFeature` (`app/api/projects/[id]/terminal/[sessionId]/input/route.ts` and `.../resize/route.ts`; checked 2026-11-22), so that comment is historical. `app/(app)/projects/[slug]/files/page.tsx:36` says file changes default to on (they default to off). Writers should follow the code.

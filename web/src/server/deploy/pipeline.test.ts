@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { upsertUser } from "@/server/auth/session";
 import { schema } from "@/server/db";
 import { envForDeployment, mergeEnvForDeployment, runDeployJob, runRollbackJob, type PipelineDeps } from "@/server/deploy/pipeline";
+import { serverDiscriminator, unitName } from "@/server/deploy/layout";
 import {
   createProject,
   cancelDeployment,
@@ -27,12 +28,13 @@ import {
   type FixtureFiles,
 } from "@/server/test/fake-nest";
 import { useFreshDb } from "@/server/test/db";
-import { startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
+import { linuxTestHostAvailable, startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
 
 let ctx: Awaited<ReturnType<typeof useFreshDb>>;
 let mock: MockSsh;
 let userId: string;
 let server: ServerRow;
+let scope = "";
 let project: ProjectRow;
 let deps: PipelineDeps;
 let files: FixtureFiles = nodeApp("v1");
@@ -65,6 +67,8 @@ async function deploy(branch = "main") {
 }
 
 const answer = (port: number) => sh(`curl -s --max-time 3 http://127.0.0.1:${port}/`);
+const prodUnit = () => unitName("demo-app", undefined, scope);
+const previewUnit = (releaseId: string) => unitName("demo-app", { releaseId }, scope);
 
 beforeAll(async () => {
   ctx = await useFreshDb();
@@ -82,6 +86,7 @@ beforeAll(async () => {
   installFakeContainerBuild(mock);
   await ctx.db.update(schema.servers).set({ port: mock.port, hostKeyFingerprint: mock.hostKeyFingerprint }).where(eq(schema.servers.id, server.id));
   server = await getServerForUser(userId, server.id);
+  scope = serverDiscriminator(server.id);
 
   const port = await freePort();
   project = await createProject(userId, {
@@ -117,7 +122,7 @@ afterAll(async () => {
 // A deploy is roughly 15 SSH commands; tests that deploy several times in a row get a longer budget.
 const DEPLOY_LOOP_TIMEOUT = 90000;
 
-describe("deploy pipeline", () => {
+describe.skipIf(!linuxTestHostAvailable())("deploy pipeline", () => {
   let v1: typeof schema.deployments.$inferSelect;
   let v2: typeof schema.deployments.$inferSelect;
 
@@ -147,7 +152,7 @@ describe("deploy pipeline", () => {
 
   it("writes the service file, a locked-down env file and the current symlink", async () => {
     const home = mock.home.replace(/\\/g, "/");
-    const unit = await sh(`cat ${home}/units/egg-demo-app.service`);
+    const unit = await sh(`cat ${home}/units/${prodUnit()}`);
     expect(unit).toContain(`Environment=PORT=${project.port}`);
     expect(unit).toContain("Environment=HOST=0.0.0.0");
     expect(unit).toContain('ExecStart=/bin/bash -lc "exec node server.js"');
@@ -194,6 +199,22 @@ describe("deploy pipeline", () => {
     expect(mock.commands.length).toBeGreaterThan(before);
   });
 
+  it("masks the deployment's environment values in a failed rollback's stored error", async () => {
+    const rb = await rollback(userId, v2.id);
+    // The failure’s message embeds a production env value; the stored error must not carry it.
+    const broken: PipelineDeps = {
+      ...deps,
+      connect: async () => {
+        throw new Error("handshake failed: the banner contained hello-secret-value");
+      },
+    };
+    await runRollbackJob(rb.id, broken);
+    const done = await ctx.db.select().from(schema.deployments).where(eq(schema.deployments.id, rb.id)).get();
+    expect(done?.state).toBe("error");
+    expect(done?.error).not.toContain("hello-secret-value");
+    expect(done?.error).toContain("***");
+  });
+
   it("does not switch a rollback canceled while reading the current unit", async () => {
     const rb = await rollback(userId, v2.id);
     const abort = new AbortController();
@@ -207,7 +228,7 @@ describe("deploy pipeline", () => {
             if (prop !== "exec") return typeof value === "function" ? value.bind(target) : value;
             return async (command: string, options?: unknown) => {
               const result = await target.exec(command, options as never);
-              if (command.includes("egg-demo-app.service")) {
+              if (command.includes(prodUnit())) {
                 await cancelDeployment(userId, rb.id);
                 abort.abort();
               }
@@ -301,7 +322,7 @@ describe("deploy pipeline", () => {
             const value = Reflect.get(target, prop, target);
             if (prop !== "writeFile") return typeof value === "function" ? value.bind(target) : value;
             return async (path: string, content: string, mode?: string, options?: unknown) => {
-              if (path.endsWith("egg-demo-app.service")) {
+              if (path.endsWith(prodUnit())) {
                 await expect(cancelDeployment(userId, dep.id)).rejects.toMatchObject({ status: 409 });
               }
               return target.writeFile(path, content, mode, options as never);
@@ -317,7 +338,7 @@ describe("deploy pipeline", () => {
   }, DEPLOY_LOOP_TIMEOUT);
 });
 
-describe("deploy state races", () => {
+describe.skipIf(!linuxTestHostAvailable())("deploy state races", () => {
   it.each([false, true])("does not revive a preview closed after its health check (removal fails: %s)", async (removalFails) => {
     files = nodeApp("closed-preview");
     const dep = await deployBranch(userId, project.id, "closed-pr");
@@ -380,7 +401,7 @@ describe("deploy state races", () => {
   });
 });
 
-describe("runtime variables stay out of the release folder", () => {
+describe.skipIf(!linuxTestHostAvailable())("runtime variables stay out of the release folder", () => {
   const home = () => mock.home.replace(/\\/g, "/");
   const proj = () => `${home()}/.egg/demo-app`;
 
@@ -392,18 +413,18 @@ describe("runtime variables stay out of the release folder", () => {
     expect(await sh(`test -e '${proj()}/releases/${dep.releaseId}/.env' && echo inside || echo clean`)).toBe("clean");
     // No release folder holds a .env at its top level, which is the folder a static app serves.
     expect(await sh(`ls -A ${proj()}/releases/*/.env 2>/dev/null | wc -l`)).toBe("0");
-    const unit = await sh(`cat ${home()}/units/egg-demo-app.service`);
+    const unit = await sh(`cat ${home()}/units/${prodUnit()}`);
     expect(unit).toContain(`EnvironmentFile=${proj()}/current.env`);
     expect(unit).not.toContain("current/.env");
   }, DEPLOY_LOOP_TIMEOUT);
 
   it("a preview reads its own file, and removing the preview removes the file", async () => {
     // Earlier tests leave preview services running on their ports; stop them so this one can have a port.
-    await sh("for u in $HOME/units/egg-demo-app-pv-*.service; do [ -e \"$u\" ] && systemctl stop \"$(basename \"$u\")\"; done; true");
+    await sh(`for u in $HOME/units/egg-demo-app-${scope}-pv-*.service; do [ -e "$u" ] && systemctl stop "$(basename "$u")"; done; true`);
     files = nodeApp("pvsec");
     const pv = await deploy("feature/env-out");
     expect(pv.state, pv.error ?? "").toBe("ready");
-    const unit = await sh(`cat ${home()}/units/egg-demo-app-pv-${pv.releaseId.slice(0, 8)}.service`);
+    const unit = await sh(`cat ${home()}/units/${previewUnit(pv.releaseId)}`);
     expect(unit).toContain(`EnvironmentFile=${proj()}/env/${pv.releaseId}.env`);
     expect(await sh(`test -e '${proj()}/releases/${pv.releaseId}/.env' && echo inside || echo clean`)).toBe("clean");
     for (const n of [1, 2, 3]) {
@@ -444,8 +465,8 @@ describe("runtime variables stay out of the release folder", () => {
     await sh(`set -e; p='${proj()}'
 for id in ${l1.releaseId} ${l2.releaseId}; do mv "$p/env/$id.env" "$p/releases/$id/.env"; done
 rm -f "$p/current.env"
-sed -i "s|^EnvironmentFile=.*|EnvironmentFile=$p/current/.env|" '${home()}/units/egg-demo-app.service'`);
-    expect(await sh(`grep '^EnvironmentFile=' ${home()}/units/egg-demo-app.service`)).toBe(`EnvironmentFile=${proj()}/current/.env`);
+sed -i "s|^EnvironmentFile=.*|EnvironmentFile=$p/current/.env|" '${home()}/units/${prodUnit()}'`);
+    expect(await sh(`grep '^EnvironmentFile=' ${home()}/units/${prodUnit()}`)).toBe(`EnvironmentFile=${proj()}/current/.env`);
 
     const rb = await rollback(userId, l1.id);
     await runRollbackJob(rb.id, deps);
@@ -455,7 +476,7 @@ sed -i "s|^EnvironmentFile=.*|EnvironmentFile=$p/current/.env|" '${home()}/units
     // The target's own .env is out of its folder, and the unit now reads the link.
     expect(await sh(`test -e '${proj()}/releases/${l1.releaseId}/.env' && echo inside || echo clean`)).toBe("clean");
     expect(await sh(`stat -c %a '${proj()}/env/${l1.releaseId}.env'`)).toBe("600");
-    expect(await sh(`grep '^EnvironmentFile=' ${home()}/units/egg-demo-app.service`)).toBe(`EnvironmentFile=${proj()}/current.env`);
+    expect(await sh(`grep '^EnvironmentFile=' ${home()}/units/${prodUnit()}`)).toBe(`EnvironmentFile=${proj()}/current.env`);
 
     // The next deploy moves the other old release's file out of its folder too.
     files = nodeApp("L3");

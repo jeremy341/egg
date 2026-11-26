@@ -1,4 +1,7 @@
 allowBuilds:
+  cpu-features: false
+  esbuild: true
+  ssh2: false
   sharp: false
   unrs-resolver: false
 minimumReleaseAgeExclude:

@@ -3,7 +3,7 @@ import { canBulkCancel, canBulkDelete, type BulkCandidate } from "@/lib/deployme
 import { audit } from "@/server/audit";
 import { config } from "@/server/config";
 import { getDb, schema } from "@/server/db";
-import { unitName } from "@/server/deploy/layout";
+import { serverDiscriminator, unitName } from "@/server/deploy/layout";
 import { removePreview } from "@/server/deploy/remote";
 import { HttpError } from "@/server/http";
 import { cancelDeployment, ownedDeployment } from "@/server/projects";
@@ -42,11 +42,19 @@ export async function cancelPreview(userId: string, deploymentId: string) {
  * automatically.
  */
 export async function deletePreview(userId: string, deploymentId: string) {
-  const { dep, project } = await ownedDeployment(userId, deploymentId);
+  // Deleting is admin-only; cancelling a preview is an edit.
+  const { dep, project } = await ownedDeployment(userId, deploymentId, "admin");
   if (!canBulkDelete(candidate(dep))) {
     throw new HttpError(409, "Only old previews that are not live or removed can be deleted in bulk.", "conflict");
   }
-  const server = await getServerForUser(userId, project.serverId);
+  // Removing previews runs on the owner's server key, so a collaborator without
+  // it gets an honest refusal instead of a "not found" that hides the project.
+  const server = await getServerForUser(userId, project.serverId).catch((err: unknown) => {
+    if (err instanceof HttpError && err.status === 404) {
+      throw new HttpError(403, "Only the project owner can remove previews from the server.", "forbidden");
+    }
+    throw err;
+  });
   const res = await withServerSession(server, async (s) => {
     const probe = await probeSession(s);
     return s.script(
@@ -54,8 +62,10 @@ export async function deletePreview(userId: string, deploymentId: string) {
         home: probe.home,
         slug: project.slug,
         releaseId: dep.releaseId,
-        unit: unitName(project.slug, { releaseId: dep.releaseId }),
+        unit: unitName(project.slug, { releaseId: dep.releaseId }, serverDiscriminator(server.id)),
         unitDir: config().UNIT_DIR,
+        docker: project.deploymentMode !== "native",
+        scope: serverDiscriminator(server.id),
       }),
       { timeoutMs: 60_000 }
     );
@@ -68,20 +78,31 @@ export async function deletePreview(userId: string, deploymentId: string) {
   await audit(userId, "deploy.preview_delete", project.id, { branch: dep.branch });
 }
 
+/** One bulk run stops here even if not every id has been processed yet. */
+export const BULK_BUDGET_MS = 300_000;
+
 /** Run `fn` for each id in turn. One failure never stops the rest. */
 export async function runBulk(
   ids: string[],
-  fn: (id: string) => Promise<void>
+  fn: (id: string) => Promise<void>,
+  opts: { budgetMs?: number } = {}
 ): Promise<BulkItemResult[]> {
+  const deadline = Date.now() + (opts.budgetMs ?? BULK_BUDGET_MS);
   const unique = [...new Set(ids)];
   const results: BulkItemResult[] = [];
   for (const id of unique) {
+    if (Date.now() > deadline) {
+      results.push({ id, ok: false, message: "This batch ran out of time before reaching that deployment." });
+      continue;
+    }
     try {
       await fn(id);
       results.push({ id, ok: true });
     } catch (e) {
+      // Responses are per-item; a foreign or missing id must not reveal which
+      // deployment ids exist at all, so every "not found" looks the same.
       const message =
-        e instanceof HttpError ? e.message : "Something went wrong on our side.";
+        e instanceof HttpError ? (e.status === 404 ? "Deployment not found" : e.message) : "Something went wrong on our side.";
       if (!(e instanceof HttpError)) console.error("Bulk deployment action failed", e);
       results.push({ id, ok: false, message });
     }
