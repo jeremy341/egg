@@ -7,17 +7,13 @@ import { HttpError } from "@/server/http";
 import { getProjectForUser } from "@/server/projects";
 import { invalidatePublicFeed } from "@/server/public-feed-tags";
 import { uiState } from "@/lib/status";
-import { PUBLIC_FALLBACK_NAME } from "@/lib/preferences";
-import { publicNamesFor } from "@/server/preferences";
 
 /**
  * The deployments feed on the public Egg homepage.
  *
  * What is public, and nothing more: the first line of the commit message, the short commit, the
- * branch, the state, the environment, the time, the repository's public `owner/name`, and the owner's
- * public name (their display name, or "Someone" when they have turned the switch off or have no display
- * name; never their Hack Club name). No project id, server, port, user id, email, environment variable,
- * error text or log ever enters this module's output.
+ * branch, the state, the environment, the time and the repository's public `owner/name`. No project
+ * id, server, port, user, environment variable, error text or log ever enters this module's output.
  *
  * A project is listed only when ALL of these hold, checked again every time the feed is built:
  *  - its owner switched `homepageFeed` on (off by default, owner only);
@@ -48,8 +44,6 @@ export type FeedRow = {
   at: string;
   /** `owner/name` of the public GitHub repository. */
   repo: string;
-  /** The project owner's public name: their display name, or "Someone". See publicName(). */
-  by: string;
 };
 
 // Control characters and the invisible bidi marks that can reorder text on a page.
@@ -75,7 +69,7 @@ type Candidate = {
 };
 
 /** Turn a stored deployment into a public row, or null when it cannot be shown honestly. */
-export function toFeedRow(d: Candidate, repo: string, by: string = PUBLIC_FALLBACK_NAME): FeedRow | null {
+export function toFeedRow(d: Candidate, repo: string): FeedRow | null {
   if (!d.sha || !FULL_SHA.test(d.sha) || !d.message) return null;
   if (!isRepoFullName(repo)) return null;
   const message = oneLine(d.message, MESSAGE_MAX);
@@ -91,7 +85,6 @@ export function toFeedRow(d: Candidate, repo: string, by: string = PUBLIC_FALLBA
     env: d.env,
     at: d.at.toISOString(),
     repo,
-    by: oneLine(by, 40) || PUBLIC_FALLBACK_NAME,
   };
 }
 
@@ -113,7 +106,6 @@ export async function buildPublicFeed(
       id: schema.projects.id,
       repo: schema.projects.repoFullName,
       installationId: schema.projects.installationId,
-      userId: schema.projects.userId,
     })
     .from(schema.projects)
     .where(
@@ -143,10 +135,6 @@ export async function buildPublicFeed(
   );
   if (publicRepoOf.size === 0) return [];
 
-  // Each project's owner's public name, read once for all of them.
-  const ownerOf = new Map(optedIn.map((p) => [p.id, p.userId] as const));
-  const names = await publicNamesFor([...publicRepoOf.keys()].map((id) => ownerOf.get(id) ?? ""));
-
   const rows = await db
     .select({
       projectId: schema.deployments.projectId,
@@ -173,8 +161,7 @@ export async function buildPublicFeed(
   const out: FeedRow[] = [];
   for (const r of rows) {
     const repo = publicRepoOf.get(r.projectId);
-    const owner = ownerOf.get(r.projectId) ?? "";
-    const row = repo ? toFeedRow(r, repo, names.get(owner) ?? PUBLIC_FALLBACK_NAME) : null;
+    const row = repo ? toFeedRow(r, repo) : null;
     if (row) out.push(row);
     if (out.length >= limit) break;
   }

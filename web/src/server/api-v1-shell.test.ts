@@ -755,7 +755,7 @@ describe("the excluded operations", () => {
     // Terminal sessions are /terminal/{sessionId}; the browser sessions of an account are /sessions.
     const bad = /\/(orphans?|permissions?|sessions?|account|tokens?|leftovers?|rotate-key)(\/|$)/;
     expect(ENDPOINTS.filter((e) => bad.test(e.path)).map((e) => e.id)).toEqual([]);
-    expect(ENDPOINTS.filter((e) => /orphan|permission|account|token|leftover|rotate_key|revoke_session/.test(e.id) && e.id !== "list_deploy_webhook_tokens").map((e) => e.id)).toEqual([]);
+    expect(ENDPOINTS.filter((e) => /orphan|permission|account|token|leftover|rotate_key|revoke_session/.test(e.id)).map((e) => e.id)).toEqual([]);
     // Nothing changes a server at all.
     expect(ENDPOINTS.filter((e) => e.path.startsWith("/servers") && !e.readOnly)).toEqual([]);
   });

@@ -128,7 +128,7 @@ describe("status page", () => {
     expect(status?.state).toBe("unknown");
     expect(status?.uptime).toBeNull();
     expect(Object.keys(status ?? {}).sort()).toEqual(
-      ["days", "incidents", "name", "owner", "since", "state", "uptime", "windowDays", "workloadKind"].sort()
+      ["days", "incidents", "name", "since", "state", "uptime", "windowDays", "workloadKind"].sort()
     );
     // Each day in the strip is only a date, a state and a count of minutes.
     expect(status?.days.length).toBe(30);

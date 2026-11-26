@@ -15,13 +15,7 @@ import { HttpError } from "@/server/http";
 
 export async function apiGetMe(p: Principal) {
   const db = await getDb();
-  // The name the owner chose to show, falling back to the Hack Club name. The real name is never sent by default.
-  const user = await db
-    .select({ name: schema.users.name, displayName: schema.userPreferences.displayName })
-    .from(schema.users)
-    .leftJoin(schema.userPreferences, eq(schema.userPreferences.userId, schema.users.id))
-    .where(eq(schema.users.id, p.userId))
-    .get();
+  const user = await db.select({ name: schema.users.name }).from(schema.users).where(eq(schema.users.id, p.userId)).get();
   const token = await db
     .select({ name: schema.apiTokens.name, expiresAt: schema.apiTokens.expiresAt })
     .from(schema.apiTokens)
@@ -33,7 +27,7 @@ export async function apiGetMe(p: Principal) {
   const [servers] = await db.select({ n: count() }).from(schema.servers).where(and(eq(schema.servers.userId, p.userId), ne(schema.servers.status, "disconnected")));
   const [projects] = await db.select({ n: count() }).from(schema.projects).where(eq(schema.projects.userId, p.userId));
   return {
-    user: { name: user.displayName?.trim() || user.name },
+    user: { name: user.name },
     token: { name: token.name, scopes: p.scopes, expiresAt: token.expiresAt.toISOString() },
     counts: { servers: servers?.n ?? 0, projects: projects?.n ?? 0 },
   };

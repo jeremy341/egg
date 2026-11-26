@@ -24,7 +24,7 @@ export type KindFilter = "all" | Exclude<ActivityKind, "other">;
 
 /** Action name prefixes per kind. An action that matches none is "other" and only shows under All. */
 export const KIND_PREFIXES: Record<Exclude<ActivityKind, "other">, readonly string[]> = {
-  projects: ["project.", "env.", "analytics.", "statistics.", "status.", "job.", "adoption.", "homepage_feed."],
+  projects: ["project.", "env.", "analytics.", "status.", "job.", "adoption.", "homepage_feed."],
   deployments: ["deploy.", "hook.", "build_token.", "build_credentials."],
   domains: ["domain."],
   servers: ["server.", "container."],

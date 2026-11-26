@@ -190,7 +190,7 @@ describe("the feed", () => {
     await deploy(p.id, { state: "error", env: "preview", branch: "feat/x", prNumber: 12 });
     const rows = await buildPublicFeed({ visibility: check });
     expect(rows).toHaveLength(1);
-    expect(Object.keys(rows[0]).sort()).toEqual(["at", "branch", "by", "env", "message", "repo", "sha", "state"]);
+    expect(Object.keys(rows[0]).sort()).toEqual(["at", "branch", "env", "message", "repo", "sha", "state"]);
     expect(rows[0]).toEqual({
       message: "Fix the thing",
       sha: "aaaaaaaaaa",
@@ -199,7 +199,6 @@ describe("the feed", () => {
       env: "preview",
       at: expect.stringMatching(/^2026-11-01T12:00:\d\d\.000Z$/),
       repo: "sam/keys",
-      by: "Someone",
     } satisfies FeedRow);
     const text = JSON.stringify(rows);
     for (const secret of [p.id, p.name, String(p.port), "4999", "secret-author", "SECRET", "/home/sam", "sam-r", sam.id, "rel-"]) {
@@ -361,7 +360,7 @@ describe("GET /api/public/deployments", () => {
     const body = (await res.json()) as { deployments: FeedRow[] };
     expect(Object.keys(body)).toEqual(["deployments"]);
     expect(body.deployments).toHaveLength(1);
-    expect(Object.keys(body.deployments[0]).sort()).toEqual(["at", "branch", "by", "env", "message", "repo", "sha", "state"]);
+    expect(Object.keys(body.deployments[0]).sort()).toEqual(["at", "branch", "env", "message", "repo", "sha", "state"]);
   });
 
   it("answers an empty list when nothing is opted in", async () => {

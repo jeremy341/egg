@@ -48,10 +48,10 @@ export function HomepageFeedCard({ project }: { project: ProjectView }) {
       <ul className="mt-1 list-disc space-y-1 pl-5 text-label text-muted-foreground">
         <li>
           For each deployment: the first line of the commit message, the short commit, the branch, the state, Production or
-          Preview, the time, the owner's name as you set it in Settings (Someone if you have turned that off), and the repository name ({project.repo ?? "owner/name"}). Each row links to the commit on GitHub.
+          Preview, the time, and the repository name ({project.repo ?? "owner/name"}). Each row links to the commit on GitHub.
         </li>
         <li>
-          Never build logs, your server, ports, or environment variables. Never your Hack Club name or email.
+          Never build logs, your server, ports, environment variables, or the name of anyone on your account.
         </li>
         <li>
           Public GitHub repositories only. Egg asks GitHub whether the repository is public when you turn this on and again each

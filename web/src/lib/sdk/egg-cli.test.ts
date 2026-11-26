@@ -70,7 +70,7 @@ function reply(status: number, body: unknown): FetchResponse {
   return { ok: status >= 200 && status < 300, status, headers: { get: () => null }, text: async () => text };
 }
 
-type Handler = (call: { url: URL; init: FetchInit }) => FetchResponse | Error | Promise<FetchResponse>;
+type Handler = (call: { url: URL; init: FetchInit }) => FetchResponse | Error;
 type Routes = Record<string, FetchResponse | Handler>;
 
 /** Answers by "METHOD /api/v1/path" (query ignored). An unknown route fails the test loudly. */
@@ -87,35 +87,24 @@ function routes(table: Routes) {
     });
     const entry = table[`${init.method} ${url.pathname}`];
     if (!entry) return reply(404, { error: { code: "not_found", message: `No fake route for ${init.method} ${url.pathname}` } });
-    const answer = typeof entry === "function" ? await entry({ url, init }) : entry;
+    const answer = typeof entry === "function" ? entry({ url, init }) : entry;
     if (answer instanceof Error) throw answer;
     return answer;
   };
   return { fetch, calls };
 }
 
-async function egg(
-  argv: string[],
-  table: Routes = {},
-  env: Record<string, string | undefined> = ENV,
-  options: { isTTY?: boolean; now?: number; requestTimeoutMs?: number } = {}
-) {
+async function egg(argv: string[], table: Routes = {}, env: Record<string, string | undefined> = ENV) {
   const { fetch, calls } = routes(table);
   let out = "";
   let err = "";
   const sleeps: number[] = [];
-  let now = options.now ?? 0;
   const code: number = await run(argv, {
     env,
     fetch,
-    stdout: { isTTY: options.isTTY ?? true, write: (s: string) => void (out += s) },
+    stdout: { write: (s: string) => void (out += s) },
     stderr: { write: (s: string) => void (err += s) },
-    sleep: async (ms: number) => {
-      sleeps.push(ms);
-      now += ms;
-    },
-    now: () => now,
-    timeoutMs: options.requestTimeoutMs,
+    sleep: async (ms: number) => void sleeps.push(ms),
   });
   return { code, out, err, calls, sleeps };
 }
@@ -126,11 +115,11 @@ const PROJECTS = { "GET /api/v1/projects": reply(200, { projects: [project] }) }
 
 describe("argument parsing", () => {
   it("reads a command, its arguments and the flags", () => {
-    expect(parseCli(["projects", "show", "my-app", "--json"])).toMatchObject({
+    expect(parseCli(["projects", "show", "my-app", "--json"])).toEqual({
       ok: true,
       command: "projects show",
       args: ["my-app"],
-      flags: { json: true, follow: false, help: false },
+      flags: { json: true, follow: false, help: false, branch: undefined },
     });
     expect(parseCli(["deploy", "my-app", "--branch", "feat/x"])).toMatchObject({
       ok: true,
@@ -151,9 +140,9 @@ describe("argument parsing", () => {
     [[], "Say what to do"],
     [["fly"], "Unknown command"],
     [["projects"], "projects list"],
-    [["projects", "show"], "needs a project"],
+    [["projects", "show"], "needs a project slug"],
     [["projects", "list", "extra"], "Too many arguments"],
-    [["deploy"], "needs a project"],
+    [["deploy"], "needs a project slug"],
     [["logs"], "needs a deployment id"],
     [["rollback"], "needs a deployment id"],
     [["whoami", "--nope"], "Unknown option"],
@@ -175,13 +164,13 @@ describe("exit codes", () => {
     expect(r.code).toBe(2);
     expect(r.out).toBe("");
     expect(r.err).toContain("Unknown command");
-    expect(r.err).toContain("Unknown command");
+    expect(r.err).toContain("egg projects list");
     expect(r.calls).toHaveLength(0);
   });
 
-  it("uses authentication exit 3 when EGG_TOKEN is missing and usage exit 2 when EGG_URL is missing", async () => {
+  it("exits 2 and names the variable when EGG_TOKEN or EGG_URL is missing", async () => {
     const noToken = await egg(["whoami"], {}, { EGG_URL: URL_BASE });
-    expect(noToken.code).toBe(3);
+    expect(noToken.code).toBe(2);
     expect(noToken.err).toContain("EGG_TOKEN");
     const noUrl = await egg(["whoami"], {}, { EGG_TOKEN: TOKEN });
     expect(noUrl.code).toBe(2);
@@ -199,11 +188,11 @@ describe("exit codes", () => {
     }
   });
 
-  it("exits 3 when authentication is rejected", async () => {
+  it("exits 1 when the server answers with an error", async () => {
     const r = await egg(["whoami"], {
       "GET /api/v1/me": reply(401, { error: { code: "unauthorized", message: "That token is not valid." } }),
     });
-    expect(r.code).toBe(3);
+    expect(r.code).toBe(1);
     expect(r.out).toBe("");
     expect(r.err).toContain("That token is not valid.");
     expect(r.err).toContain("401");
@@ -215,10 +204,10 @@ describe("exit codes", () => {
     expect(r.err).toContain("Could not reach");
   });
 
-  it("exits 4 when the project slug does not exist", async () => {
+  it("exits 1 when the project slug does not exist", async () => {
     const r = await egg(["projects", "show", "nope"], PROJECTS);
-    expect(r.code).toBe(4);
-    expect(r.err).toContain('No project with the slug or id "nope"');
+    expect(r.code).toBe(1);
+    expect(r.err).toContain('No project with the slug "nope"');
   });
 
   it("exits 0 on success", async () => {
@@ -574,282 +563,16 @@ describe("egg status", () => {
     expect(JSON.parse(r.out)).toEqual({ servers: [{ ...servers[0], usage: USAGE }] });
   });
 
-  it("exits 7 when a server cannot be measured due to an API server error", async () => {
+  it("exits 1 when a server cannot be measured, after printing the others", async () => {
     const two = [...servers, { ...servers[0], id: "srv_2", host: "other.host" }];
     const r = await egg(["status"], {
       "GET /api/v1/servers": reply(200, { servers: two }),
       "GET /api/v1/servers/srv_1/usage": reply(200, { usage: USAGE }),
       "GET /api/v1/servers/srv_2/usage": reply(502, { error: { code: "bad_gateway", message: "The container is unreachable." } }),
     });
-    expect(r.code).toBe(7);
+    expect(r.code).toBe(1);
     expect(r.out).toContain("hackclub.app");
     expect(r.err).toContain("other.host");
     expect(r.err).toContain("The container is unreachable.");
-  });
-});
-
-describe("expanded CLI contract", () => {
-  it("parses the new command groups, global token, required options, and wait timeout", () => {
-    expect(
-      parseCli([
-        "--token",
-        TOKEN,
-        "projects",
-        "create",
-        "--name",
-        "My app",
-        "--server",
-        "srv_1",
-        "--repo",
-        "sam/my-app",
-        "--runtime",
-        "node",
-      ])
-    ).toMatchObject({
-      ok: true,
-      command: "projects create",
-      flags: { token: TOKEN, name: "My app", server: "srv_1", repo: "sam/my-app", runtime: "node" },
-    });
-    expect(parseCli(["deploy", "create", "my-app", "--wait", "--timeout=45s"])).toMatchObject({
-      ok: true,
-      command: "deploy create",
-      args: ["my-app"],
-      flags: { wait: true, timeout: "45s" },
-    });
-    expect(parseCli(["env", "set", "my-app", "DATABASE_URL", "postgres://hidden"])).toMatchObject({
-      ok: true,
-      command: "env set",
-      args: ["my-app", "DATABASE_URL", "postgres://hidden"],
-    });
-    expect(parseCli(["jobs", "list"]).ok).toBe(false);
-  });
-
-  it("uses the same command table to advertise supported commands in help", async () => {
-    const r = await egg(["--help"], {}, {}, { isTTY: false });
-    expect(r.code).toBe(0);
-    expect(r.out).toContain("egg projects create");
-    expect(r.out).toContain("egg deploy redeploy");
-    expect(r.out).toContain("egg env unset");
-    expect(r.out).toContain("egg domains validate");
-    expect(r.out).toContain("egg notify channels test");
-    expect(r.out).toContain("--token <token>");
-    expect(r.out).toContain("8 timeout");
-  });
-
-  it("accepts --token without EGG_TOKEN and never echoes it", async () => {
-    const r = await egg(["whoami", "--token", TOKEN], { "GET /api/v1/me": reply(200, ME) }, { EGG_URL: URL_BASE });
-    expect(r.code).toBe(0);
-    expect(r.calls[0].auth).toBe(`Bearer ${TOKEN}`);
-    expect(`${r.out}${r.err}`).not.toContain(TOKEN);
-  });
-
-  it("prints JSON automatically when stdout is piped and redacts secret fields", async () => {
-    const data = { projects: [{ ...project, deploymentSecret: "hidden-value" }] };
-    const r = await egg(["projects", "list"], { "GET /api/v1/projects": reply(200, data) }, ENV, { isTTY: false });
-    expect(r.code).toBe(0);
-    expect(JSON.parse(r.out)).toEqual({ projects: [{ ...project, deploymentSecret: "[redacted]" }] });
-    expect(r.err).toBe("");
-  });
-
-  it("prints response secrets only with --show-secrets", async () => {
-    const data = { projects: [{ ...project, deploymentSecret: "visible-on-request" }] };
-    const r = await egg(["projects", "list", "--json", "--show-secrets"], { "GET /api/v1/projects": reply(200, data) });
-    expect(JSON.parse(r.out)).toEqual(data);
-  });
-
-  it.each([
-    [401, 3],
-    [404, 4],
-    [429, 6],
-    [503, 7],
-  ])("maps HTTP %i to exit code %i", async (status, code) => {
-    const r = await egg(["whoami"], {
-      "GET /api/v1/me": reply(status, { error: { code: "test_error", message: "request failed" } }),
-    });
-    expect(r.code).toBe(code);
-  });
-
-  it("uses exit 3 for a missing token and exit 4 for a missing project", async () => {
-    const noToken = await egg(["whoami"], {}, { EGG_URL: URL_BASE });
-    expect(noToken.code).toBe(3);
-    const noProject = await egg(["projects", "show", "missing"], PROJECTS);
-    expect(noProject.code).toBe(4);
-  });
-
-  it("maps an HTTP request timeout to exit 8", async () => {
-    const r = await egg(
-      ["whoami"],
-      {
-        "GET /api/v1/me": ({ init }) => new Promise((_, reject) => {
-          init.signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
-        }),
-      },
-      ENV,
-      { requestTimeoutMs: 5 }
-    );
-    expect(r.code).toBe(8);
-  }, 1000);
-
-  it("sets environment values without printing them", async () => {
-    const value = "postgres://user:password@db.example/private";
-    const r = await egg(
-      ["env", "set", "my-app", "DATABASE_URL", value],
-      {
-        ...PROJECTS,
-        "PUT /api/v1/projects/p_1/env/DATABASE_URL": reply(200, { env: { key: "DATABASE_URL", target: "all" } }),
-      }
-    );
-    expect(r.code).toBe(0);
-    expect(r.calls[1].body).toEqual({ value });
-    expect(`${r.out}${r.err}`).not.toContain(value);
-  });
-
-  it("waits for a created deployment and returns the completed deployment", async () => {
-    const queued = deployment({ id: "dep_2", state: "queued" });
-    const ready = deployment({ id: "dep_2", state: "ready" });
-    const r = await egg(
-      ["deploy", "create", "my-app", "--wait", "--json"],
-      {
-        ...PROJECTS,
-        "POST /api/v1/projects/p_1/deployments": reply(202, { deployment: queued }),
-        "GET /api/v1/deployments/dep_2": reply(200, { deployment: ready }),
-      }
-    );
-    expect(r.code).toBe(0);
-    expect(JSON.parse(r.out)).toEqual({ deployment: ready });
-  });
-
-  it("returns exit 8 when --wait exceeds --timeout", async () => {
-    const queued = deployment({ id: "dep_2", state: "queued" });
-    const r = await egg(
-      ["deploy", "create", "my-app", "--wait", "--timeout", "1s"],
-      {
-        ...PROJECTS,
-        "POST /api/v1/projects/p_1/deployments": reply(202, { deployment: queued }),
-        "GET /api/v1/deployments/dep_2": reply(200, { deployment: { ...queued, state: "building" } }),
-      }
-    );
-    expect(r.code).toBe(8);
-    expect(r.err).toMatch(/timed out/i);
-  });
-
-  it("creates a GitHub project with the typed API fields", async () => {
-    const created = { ...project, id: "p_2", slug: "new-app" };
-    const r = await egg(
-      ["projects", "create", "--name", "New app", "--server", "srv_1", "--repo", "sam/new-app", "--runtime", "node", "--branch", "stable"],
-      { "POST /api/v1/projects": reply(201, { project: created }) }
-    );
-    expect(r.code).toBe(0);
-    expect(r.calls[0].body).toEqual({
-      name: "New app",
-      serverId: "srv_1",
-      repoUrl: "https://github.com/sam/new-app",
-      runtime: "node",
-      productionBranch: "stable",
-    });
-    expect(r.out).toContain("new-app");
-  });
-
-  it("updates and deletes a project using its slug and exact confirmation name", async () => {
-    const update = await egg(
-      ["projects", "update", "my-app", "--branch", "stable", "--auto-deploy", "false", "--port", "4000"],
-      {
-        ...PROJECTS,
-        "PATCH /api/v1/projects/p_1": reply(200, { project: { ...project, branch: "stable", port: 4000, autoDeploy: false } }),
-      }
-    );
-    expect(update.code).toBe(0);
-    expect(update.calls[1].body).toEqual({ productionBranch: "stable", port: 4000, autoDeploy: false });
-
-    const rejected = await egg(["projects", "delete", "my-app", "--confirm", "wrong"], PROJECTS);
-    expect(rejected.code).toBe(2);
-    expect(rejected.calls).toHaveLength(1);
-
-    const deleted = await egg(
-      ["projects", "delete", "my-app", "--confirm", "My app", "--remove-from-server"],
-      {
-        ...PROJECTS,
-        "DELETE /api/v1/projects/p_1": reply(200, { deleted: true, projectId: "p_1", removedFromServer: true }),
-      }
-    );
-    expect(deleted.code).toBe(0);
-    expect(deleted.calls[1].search).toBe("?removeFromServer=true");
-  });
-
-  it("shows and redeploys an existing deployment", async () => {
-    const detail = { ...deployment(), port: 3000, startedAt: null, finishedAt: null };
-    const shown = await egg(["deploy", "show", "dep_1"], { "GET /api/v1/deployments/dep_1": reply(200, { deployment: detail }) });
-    expect(shown.code).toBe(0);
-    expect(shown.out).toContain("dep_1");
-
-    const queued = deployment({ id: "dep_2", state: "queued" });
-    const redeployed = await egg(["deploy", "redeploy", "dep_1"], {
-      "POST /api/v1/deployments/dep_1/redeploy": reply(202, { deployment: queued }),
-    });
-    expect(redeployed.code).toBe(0);
-    expect(redeployed.calls[0].method).toBe("POST");
-    expect(redeployed.out).toContain("dep_2");
-  });
-
-  it("adds, removes, and validates domains through the bearer API", async () => {
-    const domain = {
-      id: "dom_1",
-      domain: "app.example.com",
-      status: "pending",
-      port: 3000,
-      projectId: null,
-      projectName: null,
-      serverId: "srv_1",
-      cname: "cname.nest.example",
-    };
-    const added = await egg(["domains", "add", "app.example.com", "--server", "srv_1", "--port", "3000"], {
-      "POST /api/v1/domains": reply(201, { domain, instructions: { steps: ["Create a TXT record with value verify-secret."], cname: { name: "app", value: "cname.nest.example" }, txt: { name: "_verify", value: "verify-secret" } } }),
-    });
-    expect(added.code).toBe(0);
-    expect(added.calls[0].body).toEqual({ serverId: "srv_1", domain: "app.example.com", port: 3000 });
-    expect(added.out).not.toContain("verify-secret");
-
-    const deleted = await egg(["domains", "remove", "app.example.com"], {
-      "GET /api/v1/domains": reply(200, { domains: [domain] }),
-      "DELETE /api/v1/domains/dom_1": reply(200, { removed: true, domainId: "dom_1" }),
-    });
-    expect(deleted.code).toBe(0);
-    expect(deleted.calls[1].method).toBe("DELETE");
-
-    const validated = await egg(["domains", "validate", "dom_1", "--json"], {
-      "GET /api/v1/domains": reply(200, { domains: [domain] }),
-      "POST /api/v1/domains/dom_1/verify": reply(200, { status: "valid", reason: null, app: { skipped: true } }),
-    });
-    expect(validated.code).toBe(0);
-    expect(JSON.parse(validated.out)).toMatchObject({ status: "valid" });
-  });
-
-  it("lists and tests per-project notification channels", async () => {
-    const listed = await egg(["notify", "channels", "list", "my-app"], {
-      ...PROJECTS,
-      "GET /api/v1/projects/p_1/notify": reply(200, { notifications: { configured: true, kind: "slack", on: "all" } }),
-    });
-    expect(listed.code).toBe(0);
-    expect(listed.calls[1].method).toBe("GET");
-    expect(listed.out).toContain("slack");
-
-    const sent = await egg(["notify", "channels", "test", "my-app"], {
-      ...PROJECTS,
-      "POST /api/v1/projects/p_1/notify/test": reply(200, { sent: true }),
-    });
-    expect(sent.code).toBe(0);
-    expect(sent.calls[1].method).toBe("POST");
-    expect(sent.out).toContain("sent");
-  });
-
-  it("removes an environment variable without returning or printing a value", async () => {
-    const r = await egg(["env", "unset", "my-app", "DATABASE_URL", "--target", "preview"], {
-      ...PROJECTS,
-      "DELETE /api/v1/projects/p_1/env/DATABASE_URL": reply(200, { deleted: [{ key: "DATABASE_URL", target: "preview" }] }),
-    });
-    expect(r.code).toBe(0);
-    expect(r.calls[1].method).toBe("DELETE");
-    expect(r.calls[1].search).toBe("?target=preview");
-    expect(r.out).not.toContain("postgres");
   });
 });

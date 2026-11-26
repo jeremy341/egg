@@ -14,7 +14,6 @@ const row = (over: Partial<FeedRow> = {}): FeedRow => ({
   env: "production",
   at: "2026-11-13T10:00:00.000Z",
   repo: "sam/site",
-  by: "Sam Display",
   ...over,
 });
 
@@ -50,7 +49,7 @@ describe("feedRowsToViews", () => {
       env: "preview",
       repo: "sam/site",
       age: "2h ago",
-      author: "Sam Display",
+      author: null,
       projectId: "live",
       port: 0,
       error: null,
@@ -78,12 +77,6 @@ describe("a live row on the page", () => {
     expect(out).toContain('rel="noreferrer"');
     expect(out).toContain("opens the commit on GitHub in a new tab");
     expect(out).toContain("Fix the thing");
-  });
-
-  it("shows the owner public name as text, and never a Hack Club name or an email", () => {
-    const out = html({ by: "Someone" });
-    expect(out).toContain("Someone");
-    expect(out).not.toMatch(/@|hack club/i);
   });
 
   it("shows no author and no actions menu", () => {

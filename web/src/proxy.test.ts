@@ -10,26 +10,17 @@ function request(path: string, cookie?: string) {
 
 const SIGNED_IN = "egg_session=abc";
 
-describe("docs are public", () => {
-  it.each(["/docs", "/docs/quickstart", "/docs/quickstart/", "/llms.txt", "/llms-full.txt"])(
-    "lets a signed-out visitor read %s without a sign-in",
-    (path) => {
-      const res = proxy(request(path));
-      expect(res.status).toBe(200);
-      expect(res.headers.get("location")).toBeNull();
-      expect(res.headers.get("x-middleware-next")).toBe("1");
-    }
-  );
-
-  it.each(["/docs/quickstart.md", "/docs/servers.md"])("serves %s as Markdown to a signed-out visitor", (path) => {
+describe("docs are for signed-in people only", () => {
+  it.each(["/docs", "/docs/quickstart"])("sends a signed-out visitor from %s to /login", (path) => {
     const res = proxy(request(path));
-    expect(res.headers.get("location")).toBeNull();
-    expect(res.headers.get("x-middleware-rewrite")).toBe(`http://localhost:3100/docs-md/${path.slice(6, -3)}`);
+    expect(res.status).toBe(307);
+    expect(new URL(res.headers.get("location")!).pathname).toBe("/login");
   });
 
-  it("does not treat a signed-in-only dashboard page as docs", () => {
-    const res = proxy(request("/projects"));
-    expect(new URL(res.headers.get("location")!).pathname).toBe("/login");
+  it.each(["/docs", "/docs/quickstart"])("lets a visitor with a session cookie read %s", (path) => {
+    const res = proxy(request(path, SIGNED_IN));
+    expect(res.headers.get("location")).toBeNull();
+    expect(res.headers.get("x-middleware-next")).toBe("1");
   });
 });
 

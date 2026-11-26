@@ -7,7 +7,6 @@ import { api } from "@/components/api";
 import { Swap } from "@/components/motion/swap";
 import { GithubBuildCard } from "@/components/github-build-card";
 import { HomepageFeedCard } from "@/components/homepage-feed-card";
-import { StatisticsCard } from "@/components/statistics-card";
 import { AlertsCard, DeployHookCard, NotificationsCard, StatusPageCard } from "@/components/project-automation";
 import { ScheduledJobsCard } from "@/components/scheduled-jobs-card";
 import { PageHeader } from "@/components/page-header";
@@ -457,8 +456,6 @@ export function ProjectSettings({
             <ScheduledJobsCard projectId={project.id} />
 
             <NotificationsCard project={project} />
-
-            <StatisticsCard projectId={project.id} />
 
             <Advanced open={autoOpen} onOpenChange={setAutoOpen}>
               <div className="space-y-6">
