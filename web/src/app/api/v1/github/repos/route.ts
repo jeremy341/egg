@@ -1,3 +1,3 @@
 import { v1Route } from "@/server/api-v1-http";
 
-export const GET = v1Route("get_job_run_logs");
+export const GET = v1Route("list_github_repos");

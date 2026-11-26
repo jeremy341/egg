@@ -25,8 +25,6 @@ export const TOOLSETS = [
   "projects",
   "domains",
   "hooks",
-  "jobs",
-  "notifications",
   "alerts",
   "servers",
   "analytics",
@@ -58,9 +56,6 @@ export const TOOLSET_OF: Record<string, Toolset> = {
   list_env_vars: "env",
   set_env_var: "env",
   delete_env_var: "env",
-  add_env_vars: "env",
-  set_env_vars: "env",
-  delete_env_vars: "env",
 
   update_project: "projects",
   delete_project: "projects",
@@ -72,26 +67,10 @@ export const TOOLSET_OF: Record<string, Toolset> = {
 
   rotate_deploy_hook: "hooks",
   revoke_deploy_hook: "hooks",
-  list_deploy_webhook_tokens: "hooks",
 
   get_alerts: "alerts",
   get_notifications: "alerts",
   test_notification: "alerts",
-
-  create_job: "jobs",
-  list_jobs: "jobs",
-  get_job: "jobs",
-  update_job: "jobs",
-  run_job: "jobs",
-  list_job_runs: "jobs",
-  get_job_run_logs: "jobs",
-  delete_job: "jobs",
-
-  list_notification_channels: "notifications",
-  create_notification_channel: "notifications",
-  list_notification_rules: "notifications",
-  create_notification_rule: "notifications",
-  test_notification_channel: "notifications",
 
   list_servers: "servers",
   get_server_usage: "servers",
@@ -123,10 +102,10 @@ export const TOOLSET_OF: Record<string, Toolset> = {
 /**
  * Tools whose result carries a secret that is shown once. Marked in the tool list
  * with `_meta: { "egg/sensitive": true }` so a client can keep the result out of
- * logs and transcripts. Deploy-hook URLs and webhook signing secrets cannot be
- * read again after creation or rotation.
+ * logs and transcripts. rotate_deploy_hook returns the hook URL, which starts a
+ * deployment for anyone who has it. Other tools never return a secret value.
  */
-export const SENSITIVE_TOOLS: ReadonlySet<string> = new Set(["rotate_deploy_hook", "create_notification_channel"]);
+export const SENSITIVE_TOOLS: ReadonlySet<string> = new Set(["rotate_deploy_hook"]);
 
 export const SCOPE_LEVELS = ["full", "read", "deploy"] as const;
 export type ScopeLevel = (typeof SCOPE_LEVELS)[number];
