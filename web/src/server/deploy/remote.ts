@@ -1,11 +1,11 @@
 import { shellQuote } from "@/server/ssh/connection";
+import { APP_OOM_SCORE_ADJUST } from "@/server/deploy/container-build";
 import {
   FOLDER_MARKER,
   RELEASE_ID,
   SH_MARKER_HELPERS,
   UNIT_MARKER,
   currentLink,
-  incomingArchive,
   projectDir,
   releaseDir,
   sharedDir,
@@ -56,33 +56,6 @@ export function guardUnitFree(unitDir: string, unit: string) {
   );
 }
 
-/** Verify the upload, unpack it, and install production dependencies. */
-export function unpackRelease(args: {
-  home: string;
-  slug: string;
-  releaseId: string;
-  sha256: string;
-  remoteInstall: string | null;
-}) {
-  const archive = incomingArchive(args.home, args.slug, args.releaseId);
-  const dir = releaseDir(args.home, args.slug, args.releaseId);
-  return (
-    HEAD +
-    `archive=${shellQuote(archive)}\ndir=${shellQuote(dir)}\n` +
-    `if command -v sha256sum >/dev/null 2>&1; then\n` +
-    `  actual=$(sha256sum "$archive" | cut -d' ' -f1)\n` +
-    `  if [ "$actual" != ${shellQuote(args.sha256)} ]; then echo "Upload is corrupted: checksum mismatch" >&2; exit 20; fi\n` +
-    `  echo "Checksum verified"\n` +
-    `else echo "sha256sum not found, skipping verification"; fi\n` +
-    `rm -rf "$dir"\nmkdir -p "$dir"\n` +
-    `tar -xzf "$archive" -C "$dir"\nrm -f "$archive"\n` +
-    `echo "Unpacked release"\n` +
-    (args.remoteInstall
-      ? `cd "$dir"\necho ${shellQuote(`Installing dependencies: ${args.remoteInstall}`)}\nbash -lc ${shellQuote(args.remoteInstall)} 2>&1\necho "Dependencies installed"\n`
-      : "")
-  );
-}
-
 /** systemd expands $VAR and %specifiers in ExecStart; double them so bash sees them. */
 export function systemdEscape(value: string) {
   return value.replace(/\$/g, "$$$$").replace(/%/g, "%%");
@@ -110,7 +83,9 @@ export function unitFile(args: {
     path +
     // login shell so tools installed with nvm and friends are on PATH
     `ExecStart=/bin/bash -lc ${JSON.stringify(systemdEscape(`exec ${args.startCommand}`))}\n` +
-    `Restart=always\nRestartSec=3\n\n` +
+    `Restart=always\nRestartSec=3\n` +
+    // The kernel's out-of-memory killer takes a build (which runs at +500) before this app.
+    `OOMScoreAdjust=${APP_OOM_SCORE_ADJUST}\n\n` +
     `[Install]\nWantedBy=multi-user.target\n`
   );
 }
@@ -123,21 +98,54 @@ export function installUnit(unitDir: string, unit: string) {
   );
 }
 
+/** Restore the production unit after cancellation/failure before activation. */
+export function restoreUnit(unitDir: string, unit: string, content: string | null) {
+  const file = `${unitDir}/${unit}`;
+  const restore = content === null
+    ? `rm -f ${shellQuote(file)}\nsystemctl disable ${shellQuote(unit)} >/dev/null 2>&1 || true\n`
+    : `printf '%s' ${shellQuote(content)} > ${shellQuote(file)}\n`;
+  return HEAD + restore + "systemctl daemon-reload\n";
+}
+
 /** Point `current` at a release (production) and restart the service. */
 export function activateProduction(args: {
   home: string;
   slug: string;
   releaseId: string;
   unit: string;
+  unitDir?: string;
+  /** Desired unit content when restoring a prior deployment. */
+  unitFile?: string | null;
+  /** Unit content to restore if changing to this release cannot restart. */
+  restoreUnitFile?: string | null;
 }) {
   const link = currentLink(args.home, args.slug);
   const target = releaseDir(args.home, args.slug, args.releaseId);
+  const unitPath = `${args.unitDir ?? "/etc/systemd/system"}/${args.unit}`;
+  const writeUnit = args.unitFile === undefined
+    ? ""
+    : args.unitFile === null
+      ? `rm -f ${shellQuote(unitPath)}\nsystemctl daemon-reload\n`
+      : `printf '%s' ${shellQuote(args.unitFile)} > ${shellQuote(unitPath)}\nsystemctl daemon-reload\n`;
+  const restoreUnit = args.restoreUnitFile === undefined
+    ? `if [ -n "$saved_unit" ]; then cp "$saved_unit" ${shellQuote(unitPath)}; else rm -f ${shellQuote(unitPath)}; fi\n`
+    : args.restoreUnitFile === null
+      ? `rm -f ${shellQuote(unitPath)}\nsystemctl disable ${shellQuote(args.unit)} >/dev/null 2>&1 || true\n`
+      : `printf '%s' ${shellQuote(args.restoreUnitFile)} > ${shellQuote(unitPath)}\n`;
   return (
     HEAD +
     `[ -d ${shellQuote(target)} ]\n` +
+    `saved_unit=""\nif [ -f ${shellQuote(unitPath)} ]; then saved_unit=${shellQuote(unitPath)}.egg-previous-$$; cp ${shellQuote(unitPath)} "$saved_unit"; fi\n` +
+    writeUnit +
+    `old_link=$(readlink ${shellQuote(link)} 2>/dev/null || true)\n` +
     `ln -sfn ${shellQuote(target)} ${shellQuote(link + ".new")}\n` +
     `mv -Tf ${shellQuote(link + ".new")} ${shellQuote(link)}\n` +
-    `systemctl restart ${shellQuote(args.unit)}\n` +
+    `if ! systemctl restart ${shellQuote(args.unit)}; then\n` +
+    `  if [ -n "$old_link" ]; then ln -sfn "$old_link" ${shellQuote(link + ".new")} && mv -Tf ${shellQuote(link + ".new")} ${shellQuote(link)}; else rm -f ${shellQuote(link)}; fi\n` +
+    `  ${restoreUnit.trim()}\n` +
+    `  systemctl daemon-reload || true\n  systemctl restart ${shellQuote(args.unit)} || true\n` +
+    `  [ -z "$saved_unit" ] || rm -f "$saved_unit"\n  exit 1\nfi\n` +
+    `[ -z "$saved_unit" ] || rm -f "$saved_unit"\n` +
     `echo "Switched to release ${args.releaseId.slice(0, 8)} and restarted"\n`
   );
 }
@@ -183,12 +191,27 @@ export function journalTail(unit: string, lines = 40, since?: string, until?: nu
   );
 }
 
-/** Delete release folders that are not in the keep list. */
-export function pruneReleases(home: string, slug: string, keep: string[]) {
+/**
+ * Delete release folders that are not in the keep list, the uploaded archives, and the build
+ * variables files (`incoming/<release id>.buildenv`) of every release that is not being built
+ * right now. A build removes its own variables file as soon as it has loaded it, so one that is
+ * still here belongs to a build that was interrupted. `building` lists the release ids of builds
+ * that may be running, and their files are never removed. Pruning runs after a deploy is
+ * activated, and a project has one deploy at a time, so in practice that list is empty.
+ */
+export function pruneReleases(home: string, slug: string, keep: string[], building: string[] = []) {
   const dir = `${projectDir(home, slug)}/releases`;
   const safeKeep = keep.filter((k) => RELEASE_ID.test(k));
+  const safeBuilding = building.filter((k) => RELEASE_ID.test(k));
   return (
     HEAD +
+    // The variables files go first: they are the only plaintext here, and the folder step below may exit early.
+    `building=" ${safeBuilding.join(" ")} "\n` +
+    `for f in ${shellQuote(`${projectDir(home, slug)}/incoming`)}/*.buildenv; do\n` +
+    `  [ -e "$f" ] || [ -L "$f" ] || continue\n` +
+    `  n=\${f##*/}; id=\${n%.buildenv}\n` +
+    `  if [[ "$id" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] && [[ "$building" != *" $id "* ]]; then rm -f -- "$f"; echo "Removed a leftover build variables file"; fi\n` +
+    `done\n` +
     `cd ${shellQuote(dir)} 2>/dev/null || exit 0\n` +
     `keep=" ${safeKeep.join(" ")} "\n` +
     `for d in */; do\n` +
@@ -223,7 +246,7 @@ export function removePreview(args: {
  * marker. A service with the same name that someone else wrote is left alone.
  * Needs SH_MARKER_HELPERS earlier in the script.
  */
-function removeOwnUnit(unitDir: string, unit: string) {
+export function removeOwnUnit(unitDir: string, unit: string) {
   const file = shellQuote(`${unitDir}/${unit}`);
   return (
     `if egg_unit_marked ${file}; then\n` +
@@ -255,6 +278,25 @@ export function removeProject(args: {
     `if egg_dir_managed ${shellQuote(p)}; then ${remove}; elif [ -e ${shellQuote(p)} ] || [ -L ${shellQuote(p)} ]; then echo ${shellQuote(`${p} was not created by Egg, so it was left alone.`)}; fi\n` +
     `true\n`
   );
+}
+
+/** Destructive cleanup requires explicit ownership markers and a confirmed stop. */
+export function cleanupOwnedProject(args: { home: string; slug: string; units: string[]; unitDir: string }) {
+  const folder = projectDir(args.home, args.slug);
+  return HEAD + SH_MARKER_HELPERS +
+    `d=${shellQuote(folder)}\n` +
+    `if [ -e "$d" ] || [ -L "$d" ]; then [ -d "$d" ] && [ ! -L "$d" ] && [ -f "$d/.egg-managed" ] && [ ! -L "$d/.egg-managed" ] || { echo 'Project folder ownership cannot be verified; nothing was deleted.' >&2; exit 44; }; fi\n` +
+    args.units.map((unit) => {
+      const file = shellQuote(`${args.unitDir}/${unit}`);
+      return `if [ -e ${file} ] || [ -L ${file} ]; then egg_unit_marked ${file} || { echo 'Service ownership cannot be verified; nothing was deleted.' >&2; exit 44; }; fi\n`;
+    }).join("") +
+    args.units.map((unit) => {
+      const file = shellQuote(`${args.unitDir}/${unit}`);
+      return `if [ -e ${file} ]; then systemctl stop ${shellQuote(unit)} || exit 45; if systemctl is-active --quiet ${shellQuote(unit)}; then echo 'Service is still active; cleanup stopped.' >&2; exit 45; fi; systemctl disable ${shellQuote(unit)} || exit 45; rm -f -- ${file} || exit 45; fi\n`;
+    }).join("") +
+    `systemctl daemon-reload || exit 45\n` +
+    `if [ -d "$d" ]; then rm -rf -- "$d/releases" "$d/incoming"; rm -f -- "$d/current" "$d/current.new"; fi\n` +
+    `echo 'EGG_CLEANUP_WARNING: Shared application data was preserved. Remove it manually only after making a backup.'\n`;
 }
 
 export function runtimeLogs(unit: string, lines: number, since?: string, until?: number) {

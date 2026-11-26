@@ -413,15 +413,15 @@ function Configure({
             aria-describedby="np-adopt-note"
           />
           <span className="min-w-0">
-            <span className="block font-medium">Adopt an existing checkout</span>
+            <span className="block font-medium">Start with automatic deploys off</span>
             <span className="block text-label text-muted-foreground">
-              This repository already runs on this container.
+              For a repository you already run here by hand. Egg does not take over or stop that copy.
             </span>
           </span>
         </label>
         <p id="np-adopt-note" className="mt-1.5 text-label text-muted-foreground">
           {adopted
-            ? "Adopted means the first deploy is manual, and automatic deploys start only after you confirm that first deploy works."
+            ? "The first deploy is manual, and automatic deploys start only after you confirm that first deploy works. Egg changes nothing it did not create, so stop your old process yourself if it holds the port."
             : "Tick this if you already run this repository here by hand. Otherwise automatic deploys stay on."}
         </p>
       </div>

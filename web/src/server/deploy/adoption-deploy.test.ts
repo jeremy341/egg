@@ -8,7 +8,7 @@ import { createProject, deployBranch, deploymentLogs, type ProjectRow } from "@/
 import { removeProjectFromServer } from "@/server/runtime-info";
 import { connectToServer, createServer, getServerForUser, type ServerRow } from "@/server/servers";
 import { NestSession } from "@/server/ssh/connection";
-import { fakeBuilder, freePort, installFakeSystemd, nodeApp } from "@/server/test/fake-nest";
+import { fakeBuilder, freePort, containerReadyFacts, installFakeContainerBuild, installFakeSystemd, nodeApp } from "@/server/test/fake-nest";
 import { useFreshDb } from "@/server/test/db";
 import { startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
 
@@ -67,11 +67,14 @@ beforeAll(async () => {
   server = await createServer(userId, "sam-r", { host: "127.0.0.1", port: 1 });
   mock = await startMockSsh({ authorizedKeys: [server.publicKey] });
   installFakeSystemd(mock);
+  installFakeContainerBuild(mock);
   await ctx.db.update(schema.servers).set({ port: mock.port, hostKeyFingerprint: mock.hostKeyFingerprint }).where(eq(schema.servers.id, server.id));
   server = await getServerForUser(userId, server.id);
   home = mock.home.replace(/\\/g, "/");
   deps = {
-    build: fakeBuilder(() => nodeApp("v1")),
+    preflight: () => async () => containerReadyFacts,
+    lockPollMs: 50,
+    sourceBuild: fakeBuilder(() => nodeApp("v1")),
     connect: connectToServer,
     unitDir: `${home}/units`,
     healthTimeoutSeconds: 8,

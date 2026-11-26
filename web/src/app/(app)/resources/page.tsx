@@ -4,9 +4,9 @@ import { HardDrivesIcon } from "@phosphor-icons/react/dist/ssr";
 import { PageHeader } from "@/components/page-header";
 import { FactLine } from "@/components/pixel-kit";
 import { ResourceChart } from "@/components/resource-chart";
+import { ResourceTrend } from "@/components/resource-trend";
 import { ResourcesSkeleton } from "@/components/skeletons/resources";
 import { DocsLink } from "@/components/settings-ui";
-import { Sparkline } from "@/components/sparkline";
 import { StatusIndicator } from "@/components/status-dot";
 import { buttonVariants } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -214,10 +214,9 @@ async function ResourcesContent({ searchParams }: Props) {
                     <dd className="tabular font-mono text-[13px]">{p.restarts ?? "No reading"}</dd>
                   </dl>
                   )}
-                  <Sparkline
+                  <ResourceTrend
                     className="mt-2"
                     points={p.points.map((x) => ({ at: x.at, value: x.memMb }))}
-                    max={Math.max(peak * 1.15, 1)}
                     label={`${p.name} memory over the last ${range.label}, peak ${peak.toFixed(0)} megabytes`}
                   />
                 </li>
@@ -293,11 +292,9 @@ async function ResourcesContent({ searchParams }: Props) {
                         </>
                       )}
                       <td className="px-4 py-2">
-                        <Sparkline
-                          className="mt-0"
+                        <ResourceTrend
                           points={p.points.map((x) => ({ at: x.at, value: x.memMb }))}
-                          max={Math.max(peak * 1.15, 1)}
-                          label={`${p.name} memory over the last ${range.label}, peak ${peak.toFixed(0)} megabytes`}
+                                label={`${p.name} memory over the last ${range.label}, peak ${peak.toFixed(0)} megabytes`}
                         />
                       </td>
                     </tr>

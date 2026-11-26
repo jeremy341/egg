@@ -34,8 +34,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <head>
         {/*
-          Sets the accent, density and motion choices on <html> from the egg_prefs
-          cookie, and hands the theme to next-themes, before the first paint. A
+          Sets the colour theme, density and motion choices on <html> from the egg_prefs
+          cookie, and hands the mode to next-themes, before the first paint. A
           script rather than cookies() here: reading cookies in the root layout
           would make every public page render per request.
         */}

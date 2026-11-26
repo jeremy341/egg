@@ -1,24 +1,39 @@
 "use client";
 
-import { useId, useRef, useState, useTransition } from "react";
+import { useEffect, useId, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
-import { applyAppearance, savePreferences, storeAppearance } from "@/components/appearance";
+import { api } from "@/components/api";
+import {
+  applyAppearance,
+  currentCustomThemes,
+  deviceIsDark,
+  forgetCustomTheme,
+  rememberCustomThemes,
+  savePreferences,
+  storeAppearance,
+} from "@/components/appearance";
+import { CustomThemesSection } from "@/components/custom-themes";
 import { Segmented } from "@/components/segmented";
 import { Card } from "@/components/settings-ui";
 import { CharacterAvatar } from "@/components/ui/character-avatar";
 import { Input } from "@/components/ui/input";
 import { ANALYTICS_FEATURES, ANALYTICS_FEATURE_LABELS, type AnalyticsFeatureKey } from "@/lib/analytics-defaults";
+import type { CustomThemeView } from "@/lib/custom-theme";
 import {
-  ACCENTS,
-  ACCENT_LABELS,
-  ACCENT_SWATCH,
   AVATARS,
+  PRESETS,
+  effectivePreset,
   isValidBranchName,
+  themeMode,
+  type Appearance,
+  type DarkPreset,
   type Density,
+  type LightPreset,
   type Motion,
+  type PresetDef,
   type Preferences,
-  type Theme,
+  type Preset,
 } from "@/lib/preferences";
 import { cn } from "@/lib/utils";
 
@@ -84,11 +99,63 @@ function Fieldset({ legend, hint, hintId, children }: { legend: string; hint?: s
 const tile =
   "flex h-full flex-col items-start gap-2 rounded-md bg-background p-2.5 max-sm:p-2 shadow-border-base transition-[box-shadow] duration-(--dur-fast) hover:shadow-border-hover peer-checked:shadow-[0_0_0_2px_var(--foreground)] peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[var(--ds-focus-color)] max-sm:min-h-10";
 
+const LIGHT_PRESETS = PRESETS.filter((p) => p.scheme === "light");
+const DARK_PRESETS = PRESETS.filter((p) => p.scheme === "dark");
+const APPEARANCE_KEYS = ["matchDevice", "lightPreset", "darkPreset", "preset", "density", "reducedMotion"] as const;
+
+/** A custom theme as a picker tile: the same four colours a built-in theme shows. */
+function customDef(t: CustomThemeView): PresetDef {
+  return {
+    id: t.preset,
+    label: t.name,
+    scheme: t.scheme,
+    swatch: { page: t.tokens["ds-background-200"], surface: t.tokens["ds-background-100"], text: t.tokens.foreground, primary: t.tokens.primary },
+  };
+}
+const TILE_GRID = "grid grid-cols-2 gap-2 sm:max-w-[640px] sm:grid-cols-4";
+
+/** One theme as a radio tile: the four-colour preview, its name, and Light or Dark. */
+function ThemeTile({
+  name,
+  preset,
+  checked,
+  onSelect,
+}: {
+  name: string;
+  preset: PresetDef;
+  checked: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <label className="touch-target relative block min-w-0 cursor-pointer">
+      <input type="radio" name={name} value={preset.id} checked={checked} onChange={onSelect} className="peer sr-only" />
+      <span className={tile}>
+        <span
+          aria-hidden="true"
+          className="flex h-9 w-full items-end gap-1 rounded-[4px] p-1 shadow-border-base"
+          style={{ background: preset.swatch.page }}
+        >
+          <span className="h-full flex-1 rounded-[2px]" style={{ background: preset.swatch.surface }} />
+          <span className="size-2 shrink-0 rounded-full" style={{ background: preset.swatch.text }} />
+          <span className="size-2 shrink-0 rounded-full" style={{ background: preset.swatch.primary }} />
+        </span>
+        <span className="flex w-full min-w-0 flex-col">
+          <span className="line-clamp-2 text-label font-medium break-words">{preset.label}</span>
+          <span className="text-caption text-muted-foreground">{preset.scheme === "dark" ? "Dark" : "Light"}</span>
+        </span>
+      </span>
+    </label>
+  );
+}
+
 export function SettingsForm({
   initial,
   hackClubName,
+  customThemes = [],
 }: {
   initial: Preferences;
+  /** The person's own colour themes. They sit in the theme picker beside the built-in ones. */
+  customThemes?: readonly CustomThemeView[];
   /** Shown as the fallback when no display name is set. */
   hackClubName: string;
 }) {
@@ -96,6 +163,11 @@ export function SettingsForm({
   const { setTheme } = useTheme();
   const [, startTransition] = useTransition();
   const [prefs, setPrefs] = useState<Preferences>(initial);
+  const [themes, setThemes] = useState<readonly CustomThemeView[]>(customThemes);
+  // The page needs the colours of every theme that could be picked, to apply it and to write the cookie.
+  useEffect(() => rememberCustomThemes(themes), [themes]);
+  const lightList: PresetDef[] = [...LIGHT_PRESETS, ...themes.filter((t) => t.scheme === "light").map(customDef)];
+  const darkList: PresetDef[] = [...DARK_PRESETS, ...themes.filter((t) => t.scheme === "dark").map(customDef)];
   const [message, setMessage] = useState<Message | null>(null);
   const [nameDraft, setNameDraft] = useState(initial.displayName ?? "");
   const [branchDraft, setBranchDraft] = useState(initial.defaultBranch ?? "");
@@ -108,15 +180,13 @@ export function SettingsForm({
   async function change(group: Group, patch: Partial<Preferences>, opts: { refresh?: boolean } = {}) {
     const before = prefs;
     setPrefs((p) => ({ ...p, ...patch }));
-    if (patch.theme || patch.accent || patch.density || patch.reducedMotion) {
-      const appearance = storeAppearance({
-        ...(patch.theme && { theme: patch.theme }),
-        ...(patch.accent && { accent: patch.accent }),
-        ...(patch.density && { density: patch.density }),
-        ...(patch.reducedMotion && { reducedMotion: patch.reducedMotion }),
-      });
+    const look: Partial<Appearance> = {};
+    for (const key of APPEARANCE_KEYS) if (patch[key] !== undefined) Object.assign(look, { [key]: patch[key] });
+    if (Object.keys(look).length > 0) {
+      const appearance = storeAppearance(look);
       applyAppearance(appearance);
-      if (patch.theme) setTheme(patch.theme);
+      // next-themes puts the light or dark class on the page, and follows the device while matching.
+      setTheme(themeMode(appearance, currentCustomThemes()));
     }
     const ticket = ++saving.current;
     try {
@@ -180,7 +250,51 @@ export function SettingsForm({
     if (!ok) setBranchError("That branch name was not accepted.");
   }
 
+  /** After a custom theme is saved, changed or deleted: take the choice the account now holds and show it. */
+  async function syncChoice() {
+    try {
+      const { preferences } = await api<{ preferences: Preferences }>("/api/preferences");
+      const choice = {
+        lightPreset: preferences.lightPreset,
+        darkPreset: preferences.darkPreset,
+        preset: preferences.preset,
+      };
+      setPrefs((p) => ({ ...p, ...choice }));
+      const appearance = storeAppearance(choice);
+      applyAppearance(appearance);
+      setTheme(themeMode(appearance, currentCustomThemes()));
+    } catch {
+      // The page keeps what it shows; the next load takes the account's choice.
+    }
+  }
+
+  function themeSaved(theme: CustomThemeView, created: boolean) {
+    setThemes((list) => (list.some((t) => t.id === theme.id) ? list.map((t) => (t.id === theme.id ? theme : t)) : [...list, theme]));
+    rememberCustomThemes([theme]);
+    if (created) {
+      // A new theme is chosen straight away: in its own slot while matching the device, else as the theme.
+      const pick: Partial<Preferences> = prefs.matchDevice
+        ? theme.scheme === "light"
+          ? { lightPreset: theme.preset }
+          : { darkPreset: theme.preset }
+        : { preset: theme.preset };
+      void change("appearance", pick);
+    } else {
+      void syncChoice();
+    }
+  }
+
+  function themeDeleted(id: string) {
+    setThemes((list) => list.filter((t) => t.id !== id));
+    forgetCustomTheme(`custom:${id}`);
+    void syncChoice();
+  }
+
   const shown = prefs.displayName?.trim() || hackClubName;
+  /** Turning matching off keeps the theme that is showing now, so the page does not change under the person. */
+  function setMatchDevice(on: boolean) {
+    void change("appearance", on ? { matchDevice: true } : { matchDevice: false, preset: effectivePreset(prefs, deviceIsDark()) });
+  }
 
   /** The footer of a group: a quiet hint, and a live region for the result. */
   const footer = (group: Group) => (
@@ -199,6 +313,7 @@ export function SettingsForm({
   );
 
   const nameId = `${ids}-name`;
+  const matchId = `${ids}-match`;
   const branchId = `${ids}-branch`;
 
   return (
@@ -276,47 +391,95 @@ export function SettingsForm({
       <Card
         id="appearance-heading"
         title="Appearance"
-        description="Theme, colour and spacing. They apply straight away and follow you to other devices."
+        description="Theme and spacing. They apply straight away and follow you to other devices."
         footer={footer("appearance")}
       >
         <div className="space-y-6">
-          <Fieldset legend="Theme">
-            <Segmented<Theme>
-              label="Theme"
-              value={prefs.theme}
-              onChange={(theme) => void change("appearance", { theme })}
-              options={[
-                { value: "light", label: "Light" },
-                { value: "dark", label: "Dark" },
-                { value: "system", label: "System" },
-              ]}
-            />
-          </Fieldset>
+          <div>
+            <label htmlFor={matchId} className="flex min-h-11 cursor-pointer items-start gap-3 py-1">
+              <input
+                id={matchId}
+                type="checkbox"
+                role="switch"
+                name="matchDevice"
+                className="mt-1"
+                checked={prefs.matchDevice}
+                aria-describedby={`${matchId}-hint`}
+                onChange={(e) => setMatchDevice(e.target.checked)}
+              />
+              <span className="min-w-0 font-medium tracking-[-0.02em]">Match my device</span>
+            </label>
+            <p id={`${matchId}-hint`} className="max-w-[60ch] pl-7 text-label text-muted-foreground">
+              Use one theme when your device is light and another when it is dark. Choose each below.
+            </p>
+          </div>
 
-          <Fieldset legend="Accent colour" hint="Colours buttons, links and the focus ring. Text on them keeps at least 4.5:1 contrast." hintId={`${ids}-accent-hint`}>
-            <div className="grid grid-cols-2 gap-2 sm:max-w-[420px] sm:grid-cols-4">
-              {ACCENTS.map((a) => (
-                <label key={a} className="touch-target relative block min-w-0 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="accent"
-                    value={a}
-                    checked={prefs.accent === a}
-                    onChange={() => void change("appearance", { accent: a })}
-                    className="peer sr-only"
-                  />
-                  <span className={cn(tile, "flex-row items-center")}>
-                    <span
-                      aria-hidden="true"
-                      className="size-4 shrink-0 rounded-[3px] shadow-border-base"
-                      style={{ background: ACCENT_SWATCH[a] }}
+          {prefs.matchDevice ? (
+            <>
+              <Fieldset legend="Light theme">
+                <div className={TILE_GRID}>
+                  {lightList.map((p) => (
+                    <ThemeTile
+                      key={p.id}
+                      name="light-theme"
+                      preset={p}
+                      checked={prefs.lightPreset === p.id}
+                      onSelect={() => void change("appearance", { lightPreset: p.id as LightPreset })}
                     />
-                    <span className="truncate text-label">{ACCENT_LABELS[a]}</span>
-                  </span>
-                </label>
-              ))}
-            </div>
-          </Fieldset>
+                  ))}
+                </div>
+              </Fieldset>
+              <Fieldset legend="Dark theme">
+                <div className={TILE_GRID}>
+                  {darkList.map((p) => (
+                    <ThemeTile
+                      key={p.id}
+                      name="dark-theme"
+                      preset={p}
+                      checked={prefs.darkPreset === p.id}
+                      onSelect={() => void change("appearance", { darkPreset: p.id as DarkPreset })}
+                    />
+                  ))}
+                </div>
+              </Fieldset>
+            </>
+          ) : (
+            <Fieldset legend="Colour theme">
+              <div className="space-y-4">
+                {(
+                  [
+                    ["light", "Light themes", lightList],
+                    ["dark", "Dark themes", darkList],
+                  ] as const
+                ).map(([key, title, list]) => (
+                  <div key={key} role="group" aria-labelledby={`${ids}-group-${key}`}>
+                    <p id={`${ids}-group-${key}`} className="mb-1.5 text-label text-muted-foreground">
+                      {title}
+                    </p>
+                    <div className={TILE_GRID}>
+                      {list.map((p) => (
+                        <ThemeTile
+                          key={p.id}
+                          name="theme-preset"
+                          preset={p}
+                          checked={prefs.preset === p.id}
+                          onSelect={() => void change("appearance", { preset: p.id as Preset })}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Fieldset>
+          )}
+          <p className="-mt-3 max-w-[60ch] text-label text-muted-foreground">
+            A theme sets every colour in the signed-in pages together: backgrounds, cards, borders, text, links, buttons,
+            the selected item, the focus ring and the status colours. The public site always keeps the Egg look. Themes
+            marked &ldquo;Inspired by&rdquo; take their colours from well-known palettes; they are not made or endorsed by those projects.
+            VS Code Dark+ and Light+ use VS Code&rsquo;s own colours.
+          </p>
+
+          <CustomThemesSection themes={themes} onSaved={themeSaved} onDeleted={themeDeleted} />
 
           <Fieldset legend="Density" hint="Compact tightens the project and deployment lists." hintId={`${ids}-density-hint`}>
             <Segmented<Density>

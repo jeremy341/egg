@@ -1,4 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
+import { getDb, schema } from "@/server/db";
 import { upsertUser } from "@/server/auth/session";
 import { DEFAULT_PREFERENCES } from "@/lib/preferences";
 import { getPreferences, preferencesPatch, updatePreferences } from "@/server/preferences";
@@ -8,8 +10,11 @@ describe("preferencesPatch", () => {
   const ok = (v: unknown) => preferencesPatch.safeParse(v);
 
   it("accepts each field on its own", () => {
-    expect(ok({ theme: "dark" }).success).toBe(true);
-    expect(ok({ accent: "violet" }).success).toBe(true);
+    expect(ok({ matchDevice: false }).success).toBe(true);
+    expect(ok({ lightPreset: "github-light" }).success).toBe(true);
+    expect(ok({ darkPreset: "nord" }).success).toBe(true);
+    expect(ok({ preset: "github-dark" }).success).toBe(true);
+    expect(ok({ preset: "vscode-light" }).success).toBe(true);
     expect(ok({ density: "compact" }).success).toBe(true);
     expect(ok({ reducedMotion: "no-preference" }).success).toBe(true);
     expect(ok({ avatar: "pixel-08" }).success).toBe(true);
@@ -17,8 +22,19 @@ describe("preferencesPatch", () => {
   });
 
   it.each([
-    { theme: "neon" },
-    { accent: "pink" },
+    { theme: "dark" },
+    { accent: "blue" },
+    { matchDevice: "yes" },
+    { matchDevice: 1 },
+    { preset: "solarized" },
+    { preset: "default" },
+    { lightPreset: "solarized" },
+    { darkPreset: "default" },
+    // A light theme cannot be the dark one, nor the reverse.
+    { darkPreset: "github-light" },
+    { darkPreset: "egg-light" },
+    { lightPreset: "nord" },
+    { lightPreset: "egg-dark" },
     { density: "tiny" },
     { reducedMotion: "always" },
     { avatar: "pixel-99" },
@@ -77,32 +93,92 @@ describe("saved preferences", () => {
     expect(await getPreferences(userId)).toEqual(DEFAULT_PREFERENCES);
   });
 
+  it("starts with Match my device on, Egg Light by day and Egg Dark by night", () => {
+    expect(DEFAULT_PREFERENCES).toMatchObject({
+      matchDevice: true,
+      lightPreset: "egg-light",
+      darkPreset: "egg-dark",
+      preset: "egg-dark",
+    });
+  });
+
   it("saves a partial update and keeps the rest", async () => {
-    const a = await updatePreferences(userId, { theme: "dark", displayName: "  Pip " });
-    expect(a).toEqual({ ...DEFAULT_PREFERENCES, theme: "dark", displayName: "Pip" });
-    const b = await updatePreferences(userId, { accent: "green", avatar: "pixel-05", defaultBranch: "trunk" });
+    const a = await updatePreferences(userId, { matchDevice: false, displayName: "  Pip " });
+    expect(a).toEqual({ ...DEFAULT_PREFERENCES, matchDevice: false, displayName: "Pip" });
+    const b = await updatePreferences(userId, { preset: "nord", avatar: "pixel-05", defaultBranch: "trunk" });
     expect(b).toEqual({
       ...DEFAULT_PREFERENCES,
-      theme: "dark",
+      matchDevice: false,
       displayName: "Pip",
-      accent: "green",
+      preset: "nord",
       avatar: "pixel-05",
       defaultBranch: "trunk",
     });
     expect(await getPreferences(userId)).toEqual(b);
   });
 
+  it("saves the light and the dark theme on their own, and keeps the fixed one", async () => {
+    const c = await updatePreferences(userId, { matchDevice: true, lightPreset: "vscode-light", darkPreset: "gruvbox-dark" });
+    expect(c).toMatchObject({ matchDevice: true, lightPreset: "vscode-light", darkPreset: "gruvbox-dark", preset: "nord" });
+    expect(await getPreferences(userId)).toEqual(c);
+    const row = await (await getDb()).select().from(schema.userPreferences).where(eq(schema.userPreferences.userId, userId)).get();
+    expect(row).toMatchObject({ matchDevice: true, lightPreset: "vscode-light", darkPreset: "gruvbox-dark", accent: "nord" });
+    await updatePreferences(userId, { lightPreset: "egg-light", darkPreset: "egg-dark" });
+  });
+
   it("clears a field with null", async () => {
     const c = await updatePreferences(userId, { displayName: null, defaultBranch: "" });
     expect(c.displayName).toBeNull();
     expect(c.defaultBranch).toBeNull();
-    expect(c.accent).toBe("green");
+    expect(c.preset).toBe("nord");
   });
 
   it("rejects bad input with a 400 and changes nothing", async () => {
-    await expect(updatePreferences(userId, { accent: "pink" })).rejects.toMatchObject({ status: 400 });
+    await expect(updatePreferences(userId, { preset: "pink" })).rejects.toMatchObject({ status: 400 });
+    await expect(updatePreferences(userId, { darkPreset: "github-light" })).rejects.toMatchObject({ status: 400 });
+    await expect(updatePreferences(userId, { lightPreset: "nord" })).rejects.toMatchObject({ status: 400 });
+    await expect(updatePreferences(userId, { matchDevice: "no" })).rejects.toMatchObject({ status: 400 });
     await expect(updatePreferences(userId, { displayName: "x".repeat(41) })).rejects.toMatchObject({ status: 400 });
     await expect(updatePreferences(userId, "nope")).rejects.toMatchObject({ status: 400 });
-    expect((await getPreferences(userId)).accent).toBe("green");
+    expect((await getPreferences(userId)).preset).toBe("nord");
+  });
+
+  it("keeps the fixed theme in the accent column", async () => {
+    const row = await (await getDb()).select().from(schema.userPreferences).where(eq(schema.userPreferences.userId, userId)).get();
+    expect(row?.accent).toBe("nord");
+  });
+
+  it("reads a row from before light and dark themes once, and the next save converts it", async () => {
+    const db = await getDb();
+    const where = eq(schema.userPreferences.userId, userId);
+    const old = (theme: string, accent: string) => db.update(schema.userPreferences).set({ theme, accent }).where(where);
+
+    await old("light", "blue");
+    expect(await getPreferences(userId)).toMatchObject({
+      matchDevice: false,
+      lightPreset: "github-light",
+      darkPreset: "github-dark",
+      preset: "github-light",
+    });
+    await old("dark", "gruvbox");
+    expect(await getPreferences(userId)).toMatchObject({ matchDevice: false, darkPreset: "gruvbox-dark", preset: "gruvbox-dark" });
+    await old("system", "nord");
+    expect(await getPreferences(userId)).toMatchObject({ matchDevice: true, lightPreset: "egg-light", darkPreset: "nord" });
+    await old("system", "nonsense");
+    expect(await getPreferences(userId)).toMatchObject({ matchDevice: true, lightPreset: "egg-light", darkPreset: "egg-dark" });
+
+    // A save writes the whole choice, and the row is read as saved from then on.
+    await old("dark", "github-dark");
+    const saved = await updatePreferences(userId, { density: "compact" });
+    expect(saved).toMatchObject({ matchDevice: false, preset: "github-dark", lightPreset: "github-light", darkPreset: "github-dark" });
+    const row = await db.select().from(schema.userPreferences).where(where).get();
+    expect(row).toMatchObject({ theme: "choice", accent: "github-dark", matchDevice: false, lightPreset: "github-light", darkPreset: "github-dark" });
+    expect(await getPreferences(userId)).toEqual(saved);
+  });
+
+  it("gives a plain new row the defaults", async () => {
+    const other = (await upsertUser({ id: "hc-prefs-new-row", name: "New Row", email: null, slackId: null })).id;
+    await (await getDb()).insert(schema.userPreferences).values({ userId: other, updatedAt: new Date() });
+    expect(await getPreferences(other)).toEqual(DEFAULT_PREFERENCES);
   });
 });

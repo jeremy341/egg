@@ -86,6 +86,7 @@ export function PixelMeter({
   label,
   now,
   max,
+  valueText,
   cells = 20,
   className,
 }: {
@@ -93,6 +94,8 @@ export function PixelMeter({
   label: string;
   now: number;
   max: number;
+  /** The reading in words for a screen reader, such as "58 percent used". */
+  valueText?: string;
   cells?: number;
   className?: string;
 }) {
@@ -106,6 +109,7 @@ export function PixelMeter({
       aria-valuemin={0}
       aria-valuemax={max}
       aria-valuenow={now}
+      aria-valuetext={valueText}
       className={cn("grid gap-[2px]", className)}
       style={{ gridTemplateColumns: `repeat(${cells}, minmax(0, 1fr))` }}
     >

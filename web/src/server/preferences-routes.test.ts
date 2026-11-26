@@ -40,24 +40,27 @@ beforeEach(() => {
 describe("PATCH /api/preferences", () => {
   it("needs a signed-in person", async () => {
     vi.mocked(getCurrentUser).mockResolvedValue(null);
-    expect((await patch({ theme: "dark" })).status).toBe(401);
+    expect((await patch({ matchDevice: false })).status).toBe(401);
     expect((await GET(new NextRequest("http://localhost:3000/api/preferences"), undefined)).status).toBe(401);
   });
 
   it("blocks a write from another site", async () => {
-    const res = await patch({ theme: "dark" }, { origin: "https://evil.example" });
+    const res = await patch({ matchDevice: false }, { origin: "https://evil.example" });
     expect(res.status).toBe(403);
-    expect((await getPreferences(user.id)).theme).toBe("system");
+    expect((await getPreferences(user.id)).matchDevice).toBe(true);
   });
 
   it("blocks a browser request marked cross-site that has no Origin", async () => {
-    expect((await patch({ theme: "dark" }, { "sec-fetch-site": "cross-site" })).status).toBe(403);
+    expect((await patch({ matchDevice: false }, { "sec-fetch-site": "cross-site" })).status).toBe(403);
   });
 
   it("rejects values outside the lists with a 400 and a message", async () => {
-    const res = await patch({ accent: "pink" });
+    const res = await patch({ preset: "pink" });
     expect(res.status).toBe(400);
     expect((await res.json()).error.code).toBe("validation");
+    expect((await patch({ darkPreset: "github-light" })).status).toBe(400);
+    expect((await patch({ lightPreset: "nord" })).status).toBe(400);
+    expect((await patch({ matchDevice: "yes" })).status).toBe(400);
     expect((await patch({ avatar: "pixel-99" })).status).toBe(400);
     expect((await patch({ displayName: "x".repeat(41) })).status).toBe(400);
     expect((await patch({ defaultBranch: "bad branch" })).status).toBe(400);
@@ -70,15 +73,25 @@ describe("PATCH /api/preferences", () => {
 
   it("saves, answers with the full preferences, and sets the egg_prefs cookie", async () => {
     const res = await patch(
-      { theme: "dark", accent: "blue", density: "compact", displayName: " Rae ", avatar: "pixel-03" },
+      {
+        matchDevice: false,
+        lightPreset: "github-light",
+        darkPreset: "nord",
+        preset: "github-dark",
+        density: "compact",
+        displayName: " Rae ",
+        avatar: "pixel-03",
+      },
       { origin: "http://localhost:3000" }
     );
     expect(res.status).toBe(200);
     expect(res.headers.get("cache-control")).toBe("no-store");
     const body = await res.json();
     expect(body.preferences).toMatchObject({
-      theme: "dark",
-      accent: "blue",
+      matchDevice: false,
+      lightPreset: "github-light",
+      darkPreset: "nord",
+      preset: "github-dark",
       density: "compact",
       displayName: "Rae",
       avatar: "pixel-03",
@@ -88,7 +101,9 @@ describe("PATCH /api/preferences", () => {
     expect(cookie).toContain("SameSite=Lax");
     expect(cookie).not.toMatch(/httponly/i);
     // The cookie holds the look, never the name or the branch.
-    expect(decodeURIComponent(cookie)).toContain("theme=dark&accent=blue&density=compact&motion=system");
+    expect(decodeURIComponent(cookie)).toContain(
+      "match=0&light=github-light&dark=nord&preset=github-dark&density=compact&motion=system"
+    );
     expect(decodeURIComponent(cookie)).not.toContain("Rae");
     expect((await getPreferences(user.id)).displayName).toBe("Rae");
   });
@@ -97,6 +112,6 @@ describe("PATCH /api/preferences", () => {
     const res = await GET(new NextRequest("http://localhost:3000/api/preferences"), undefined);
     expect(res.status).toBe(200);
     expect(res.headers.get("cache-control")).toBe("no-store");
-    expect((await res.json()).preferences.accent).toBe("blue");
+    expect((await res.json()).preferences.preset).toBe("github-dark");
   });
 });

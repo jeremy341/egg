@@ -1,87 +1,92 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { CaretRightIcon } from "@phosphor-icons/react";
+import { useScrollSpy } from "@/components/motion/use-scroll-spy";
+import { cn } from "@/lib/utils";
 
 /*
- * The "On this page" list. It marks the section that is in view. An
- * IntersectionObserver wakes the check when a section crosses the reading line;
- * the check itself reads the section positions, so it works the same for short
- * and long sections. Nothing animates, so there is nothing to switch off for
- * reduced motion beyond the colour change on the links.
+ * The "On this page" list of the Security and Privacy pages, on a thin rail
+ * like the one in the docs. It marks the section that is in view. Sections may
+ * be gathered under a few group names so a long page can be taken in at once.
+ *
+ * From 1024px it is a sticky column beside the sheet. Below that it is a closed
+ * disclosure above the sheet, so a phone shows the page first and not a long
+ * list of links. Nothing animates beyond the colour change on the links.
  */
 
-/** Distance from the top of the window where a section counts as "current" (matches scroll-mt-24 plus a little). */
-const READING_LINE = 120;
+export type TocSection = { id: string; title: string; group?: string };
 
-export function Toc({ sections }: { sections: readonly { id: string; title: string }[] }) {
-  const [active, setActive] = useState<string>(sections[0]?.id ?? "");
+/** The sections in page order, cut into runs that share a group name. */
+function grouped(sections: readonly TocSection[]): { group: string | undefined; items: TocSection[] }[] {
+  const runs: { group: string | undefined; items: TocSection[] }[] = [];
+  for (const s of sections) {
+    const last = runs[runs.length - 1];
+    if (last && last.group === s.group) last.items.push(s);
+    else runs.push({ group: s.group, items: [s] });
+  }
+  return runs;
+}
 
-  useEffect(() => {
-    const els = sections.map((s) => document.getElementById(s.id)).filter((el): el is HTMLElement => el !== null);
-    if (els.length === 0) return;
+function Links({ sections, active }: { sections: readonly TocSection[]; active: string | null }) {
+  return (
+    <div className="flex flex-col gap-4">
+      {grouped(sections).map((run, i) => (
+        <div key={run.group ?? `run-${i}`}>
+          {run.group ? <p className="m-0 mb-1.5 text-[0.8125rem] leading-5 text-muted-foreground">{run.group}</p> : null}
+          <ul className="m-0 list-none border-l border-l-foreground/12 p-0">
+            {run.items.map((s) => {
+              const current = s.id === active;
+              return (
+                <li key={s.id}>
+                  {/* A 2px bar over the rail's own line marks the section in view. */}
+                  <a
+                    href={`#${s.id}`}
+                    aria-current={current ? "location" : undefined}
+                    className={cn(
+                      "-ml-px flex min-h-8 items-center border-l-2 py-1 pr-1 pl-[14px] text-[0.875rem] leading-5 outline-offset-2 transition-colors duration-(--dur-fast) focus-visible:outline-2 focus-visible:outline-[var(--ds-focus-color)] max-lg:min-h-10",
+                      current
+                        ? "border-l-foreground font-medium text-foreground"
+                        : "border-l-transparent text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {s.title}
+                  </a>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ))}
+    </div>
+  );
+}
 
-    const update = () => {
-      const atBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4;
-      if (atBottom) {
-        setActive(els[els.length - 1].id);
-        return;
-      }
-      let current = els[0].id;
-      for (const el of els) {
-        if (el.getBoundingClientRect().top <= READING_LINE) current = el.id;
-        else break;
-      }
-      setActive(current);
-    };
-
-    const observer = new IntersectionObserver(update, {
-      rootMargin: `-${READING_LINE}px 0px 0px 0px`,
-      threshold: [0, 1],
-    });
-    for (const el of els) observer.observe(el);
-    window.addEventListener("hashchange", update);
-    window.addEventListener("scroll", update, { passive: true });
-    update();
-    return () => {
-      observer.disconnect();
-      window.removeEventListener("hashchange", update);
-      window.removeEventListener("scroll", update);
-    };
-  }, [sections]);
+export function Toc({ sections }: { sections: readonly TocSection[] }) {
+  const active = useScrollSpy(
+    sections.map((s) => s.id),
+    { offset: 96 }
+  );
 
   return (
-    <nav aria-label="On this page" className="border border-border bg-background p-5 lg:sticky lg:top-24">
-      <p className="m-0 border-b-2 border-foreground pb-3 text-[0.875rem] leading-6 font-semibold text-foreground">
-        On this page
-      </p>
-      <ul className="m-0 mt-2 grid list-none grid-cols-1 gap-x-6 p-0 sm:grid-cols-2 lg:grid-cols-1">
-        {sections.map((s, i) => {
-          const current = s.id === active;
-          return (
-            <li key={s.id}>
-              <a
-                href={`#${s.id}`}
-                aria-current={current ? "location" : undefined}
-                className={`touch-target flex items-baseline gap-3 py-1.5 text-[0.9375rem] leading-6 underline decoration-transparent underline-offset-4 outline-offset-2 transition-[color,text-decoration-color] duration-(--dur-fast) focus-visible:outline-2 focus-visible:outline-[var(--ds-focus-color)] motion-reduce:transition-none ${
-                  current
-                    ? "font-semibold text-foreground"
-                    : "text-muted-foreground hover:text-foreground hover:decoration-current"
-                }`}
-              >
-                <span
-                  aria-hidden="true"
-                  className={`inline-block w-7 shrink-0 border px-1 text-center font-mono text-[0.75rem] leading-5 tabular-nums ${
-                    current ? "border-foreground bg-foreground text-background" : "border-border"
-                  }`}
-                >
-                  {String(i + 1).padStart(2, "0")}
-                </span>
-                <span>{s.title}</span>
-              </a>
-            </li>
-          );
-        })}
-      </ul>
-    </nav>
+    <>
+      <nav
+        aria-label="On this page"
+        className="sticky top-[90px] max-h-[calc(100dvh-120px)] overflow-y-auto pr-2 [scrollbar-width:thin] max-lg:hidden"
+      >
+        <p className="m-0 mb-4 text-[0.875rem] leading-6 font-medium text-foreground">On this page</p>
+        <Links sections={sections} active={active} />
+      </nav>
+
+      <details className="disclosure border bg-background lg:hidden">
+        <summary className="touch-target flex min-h-11 w-full items-center gap-2 px-4 text-[0.9375rem] leading-6 font-medium text-foreground">
+          <CaretRightIcon aria-hidden="true" className="disclosure-caret size-4 shrink-0" />
+          On this page
+          <span className="ml-auto text-[0.8125rem] font-normal text-muted-foreground">{sections.length} sections</span>
+        </summary>
+        <nav aria-label="On this page" className="border-t px-4 py-4">
+          <Links sections={sections} active={active} />
+        </nav>
+      </details>
+    </>
   );
 }

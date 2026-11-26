@@ -7,7 +7,7 @@ import { runDeployJob, type PipelineDeps } from "@/server/deploy/pipeline";
 import { createProject, deployBranch, type ProjectRow } from "@/server/projects";
 import { connectToServer, createServer, getServerForUser, type ServerRow } from "@/server/servers";
 import { NestSession } from "@/server/ssh/connection";
-import { brokenApp, fakeBuilder, freePort, installFakeSystemd, nodeApp, type FixtureFiles } from "@/server/test/fake-nest";
+import { brokenApp, fakeBuilder, freePort, containerReadyFacts, installFakeContainerBuild, installFakeSystemd, nodeApp, type FixtureFiles } from "@/server/test/fake-nest";
 import { useFreshDb } from "@/server/test/db";
 import { startMockSsh, type MockSsh } from "@/server/test/mock-ssh";
 
@@ -45,6 +45,7 @@ beforeAll(async () => {
   server = await createServer(userId, "edge-nest", { host: "127.0.0.1", port: 1 });
   mock = await startMockSsh({ authorizedKeys: [server.publicKey] });
   installFakeSystemd(mock);
+  installFakeContainerBuild(mock);
   await ctx.db.update(schema.servers).set({ port: mock.port }).where(eq(schema.servers.id, server.id));
   server = await getServerForUser(userId, server.id);
 
@@ -58,7 +59,9 @@ beforeAll(async () => {
     healthPath: "/",
   });
   deps = {
-    build: fakeBuilder(() => files),
+    preflight: () => async () => containerReadyFacts,
+    lockPollMs: 50,
+    sourceBuild: fakeBuilder(() => files),
     connect: connectToServer,
     unitDir: `${mock.home.split(String.fromCharCode(92)).join("/")}/units`,
     healthTimeoutSeconds: 8,

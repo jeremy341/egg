@@ -2,7 +2,8 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { PAGEVIEW_KEEP_MS, RETENTION_PERIOD_MS } from "@/server/analytics";
-import { UTM_MAX, cleanReferrer } from "@/server/analytics-fields";
+import { NO_FEATURES, featuresPatch } from "@/server/analytics-config";
+import { UTM_ALLOWLIST_MAX, UTM_ALLOWLIST_VALUE, allowlistedUtm, cleanReferrer } from "@/server/analytics-fields";
 import { optedOut } from "@/server/analytics-events";
 import { DEFAULT_MAX_BODY_BYTES } from "@/server/api-v1-kit";
 import { JSON_BODY_LIMIT } from "@/server/body-limit";
@@ -10,6 +11,16 @@ import { trustProxyEnabled } from "@/server/config";
 import { isUniqueViolation } from "@/server/db/errors";
 import { maskSecrets, secretNeedles } from "@/server/deploy/redact";
 import { checkDomainPolicy } from "@/server/domain-policy";
+import {
+  BUILD_CPU_STEP,
+  BUILD_STEP_FLOOR_MB,
+  CONTAINER_RESERVE_MB,
+  DEFAULT_BUILD_CPUS,
+  DEFAULT_CONTAINER_BUILD_MEMORY_MB,
+  MIN_BUILD_CPUS,
+} from "@/lib/build-memory";
+import { BUILD_TIMEOUT_SECONDS, MIN_CONTAINER_CAP_MB, systemdRunArgs } from "@/server/deploy/container-build";
+import { MIN_FREE_DISK_MB } from "@/server/deploy/container-probe";
 import { LOGIN_ERRORS } from "@/lib/login-errors";
 import { UPLOAD_LIMIT, FILE_READ_LIMIT } from "@/server/files";
 import { RATE_LIMITS, pickClientIp } from "@/server/rate-limit";
@@ -49,8 +60,28 @@ describe("security page numbers match the code", () => {
   });
 
   it("states the analytics privacy rules", () => {
-    expect(F.utmChars).toBe(UTM_MAX);
-    expect(F.analyticsKeepDays * 86_400_000).toBe(PAGEVIEW_KEEP_MS);
+    // Campaign values are recorded only from the allowlist, matched exactly.
+    expect(NO_FEATURES.campaigns).toBe(false);
+    expect(F.utmAllowlistMax).toBe(UTM_ALLOWLIST_MAX);
+    expect(UTM_ALLOWLIST_VALUE.test("a".repeat(F.utmValueChars))).toBe(true);
+    expect(UTM_ALLOWLIST_VALUE.test("a".repeat(F.utmValueChars + 1))).toBe(false);
+    const allow = { source: ["news"], medium: [], campaign: [] };
+    expect(allowlistedUtm({ source: "news", medium: "email", campaign: "x" }, allow)).toEqual({ source: "news", medium: null, campaign: null });
+    expect(allowlistedUtm({ source: "News" }, allow).source).toBeNull();
+    // A project keeps page views for 30, 60 or 90 days, and 90 until it chooses.
+    for (const days of F.analyticsKeepDays) expect(featuresPatch.safeParse({ retentionDays: days }).success).toBe(true);
+    expect(featuresPatch.safeParse({ retentionDays: 45 }).success).toBe(false);
+    expect(F.analyticsKeepDefaultDays).toBe(NO_FEATURES.retentionDays);
+    expect(F.analyticsKeepDefaultDays * 86_400_000).toBe(PAGEVIEW_KEEP_MS);
+    // Countries are off by default, looked up offline in the request, and only the code is stored.
+    expect(NO_FEATURES.locations).toBe(false);
+    expect(src("src/server/analytics.ts")).toContain("country: await countryToStore(f.locations, who.ip),");
+    expect(src("src/server/analytics-locations.ts")).toContain('import("geoip-country")');
+    // Turning these switches off deletes what they stored.
+    const config = src("src/server/analytics-config.ts");
+    for (const cleared of ["set({ vid: null })", "set({ country: null })", "set({ referrer: null })", "set({ utmSource: null, utmMedium: null, utmCampaign: null })"]) {
+      expect(config).toContain(cleared);
+    }
     expect(F.retentionRotationDays * 86_400_000).toBe(RETENTION_PERIOD_MS);
     // Referrers keep the host and nothing else.
     expect(cleanReferrer("https://news.example.com/a/b?token=1#x")).toBe("news.example.com");
@@ -128,31 +159,54 @@ describe("security page numbers match the code", () => {
     const cfg = src("next.config.ts");
     expect(cfg).toContain("cacheComponents: true");
     expect(cfg).toContain("script-src 'self' 'unsafe-inline'");
-    // The public page-view endpoint still reads its body without a cap.
+    // The analytics collector enforces its body cap as bytes arrive.
     const collect = src("src/app/api/collect/[key]/route.ts");
-    expect(collect).toContain("await req.text()");
-    expect(collect).not.toContain("readTextLimited");
-    // A local build is still unsandboxed, and Windows builds still do not set --user.
-    expect(src(".env.example")).toContain("local = no isolation");
-    expect(src("src/server/deploy/build.ts")).toContain('process.platform !== "win32"');
+    expect(collect).toContain("await readTextLimited(req, COLLECT_BODY_LIMIT_BYTES)");
+    expect(collect).not.toContain("await req.text()");
+    // A build still runs as the Nest user, so the cap limits memory and CPU, not what the build can reach.
+    const run = systemdRunArgs({ scope: "egg-build-0123abcd", memoryMb: 1024, cpuPercent: 200 }).join(" ");
+    expect(run).not.toMatch(/--uid|--gid|User=|--user|PrivateTmp|ProtectHome|ReadOnlyPaths/);
   });
 
-  it("states how long a GitHub delivery is remembered and how many build log lines are kept", () => {
-    expect(F.deliveryHours).toBe(1);
-    expect(src("src/server/github/webhook.ts")).toContain("DELIVERY_TTL_MS = 60 * 60_000;");
+  it("states GitHub replay retention and how many build log lines are kept", () => {
+    expect(F.deliveryDigestRetention).toBe("indefinitely");
+    expect(src("src/server/github/webhook.ts")).toContain("schema.githubWebhookEvents");
+    expect(src("src/server/github/webhook.ts")).toContain("Only the one-way digest is retained");
+    const page = src("src/app/(marketing)/security/page.tsx");
+    expect(page).not.toMatch(/delivery list are kept in\s+memory/i);
+    expect(page).toContain("GitHub signs the body, but not the");
+    expect(page).toContain("Because the event header is unsigned");
     expect(src("src/server/deploy/logger.ts")).toContain("MAX_LOG_ROWS = 20_000;");
     expect(F.buildLogLines).toBe(20_000);
   });
 
-  it("states the build sandbox", () => {
-    const build = src("src/server/deploy/build.ts");
-    const flag = (name: string, value: string | number) => new RegExp(`"${name}",\\s+"${value}",`);
-    expect(build).toMatch(flag("--cpus", F.buildCpus));
-    expect(build).toMatch(flag("--pids-limit", F.buildProcesses));
-    expect(build).toMatch(/"--cap-drop",\s+"ALL",/);
-    expect(build).toContain("no-new-privileges");
-    expect(build).toContain('"--memory",');
-    expect(build).toContain("`${memoryMb}m`");
+  it("caps the public analytics collector body while reading it", () => {
+    expect(F.analyticsCollectBodyBytes).toBe(5000);
+    expect(src("src/app/api/collect/[key]/route.ts")).toMatch(/COLLECT_BODY_LIMIT_BYTES\s*=\s*5_000/);
+  });
+
+  it("states the cap on a build on the container", () => {
+    expect(F.buildMemoryMb).toBe(DEFAULT_CONTAINER_BUILD_MEMORY_MB);
+    expect(F.buildStepFloorMb).toBe(BUILD_STEP_FLOOR_MB);
+    expect(F.buildReserveMb).toBe(CONTAINER_RESERVE_MB);
+    expect(F.buildMinCapMb).toBe(MIN_CONTAINER_CAP_MB);
+    expect(F.buildMinFreeDiskMb).toBe(MIN_FREE_DISK_MB);
+    expect(F.buildMinutes * 60).toBe(BUILD_TIMEOUT_SECONDS);
+    expect(F.buildCpuDefault).toBe(DEFAULT_BUILD_CPUS);
+    expect(F.buildCpuMin).toBe(MIN_BUILD_CPUS);
+    expect(F.buildCpuStep).toBe(BUILD_CPU_STEP);
+    // The properties the page promises: a memory cap with no swap, a CPU quota, a low priority and a process cap.
+    const args = systemdRunArgs({ scope: "egg-build-0123abcd", memoryMb: 1024, cpuPercent: 200 });
+    expect(args).toContain("--property=MemoryMax=1024M");
+    expect(args).toContain("--property=MemorySwapMax=0");
+    expect(args).toContain("--property=CPUQuota=200%");
+    expect(args.some((a) => a.startsWith("--property=CPUWeight="))).toBe(true);
+    expect(args).toContain(`--property=TasksMax=${F.buildProcesses}`);
+    // The page says nothing is built on Egg's server, and the GitHub token has no place in the container build.
+    const page = src("src/app/(marketing)/security/page.tsx").replace(/\s+/g, " ");
+    expect(page).toContain("Nothing is installed or built on Egg&apos;s server.");
+    expect(page).not.toMatch(/sandbox|Docker|BUILD_RUNNER/i);
+    expect(src("src/server/deploy/container-build.ts")).not.toMatch(/token/i);
   });
 
   it("sends the headers the page lists", () => {

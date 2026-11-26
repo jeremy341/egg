@@ -1,44 +1,45 @@
-import { countValue, describeCount, formatCount, type Count } from "@/lib/stats-format";
+"use client";
+
+import { BklitBars, type BarRow } from "@/components/charts/bklit-kit";
+import { bklitThemeStyle } from "@/components/charts/bklit-theme";
+import { describeCount, formatCount, type Count } from "@/lib/stats-format";
 import { TableDisclosure } from "./figures";
+import { INK } from "./layout";
 
 type Runtime = { runtime: string; count: Count };
 
-/**
- * One colour per runtime, always the same one: the first four slots of the
- * data-visualisation palette (light, dark), checked for colour-blind
- * separation between neighbours. Colour is never the only cue: each runtime
- * is also named in the legend with its own count, and there is a table.
- */
-const STYLE: Record<string, { label: string; swatch: string }> = {
-  node: { label: "Node", swatch: "bg-[#2a78d6] dark:bg-[#3987e5]" },
-  python: { label: "Python", swatch: "bg-[#eb6834] dark:bg-[#d95926]" },
-  static: { label: "Static site", swatch: "bg-[#1baf7a] dark:bg-[#199e70]" },
-  command: { label: "Custom command", swatch: "bg-[#eda100] dark:bg-[#c98500]" },
+const LABEL: Record<string, string> = {
+  node: "Node",
+  python: "Python",
+  static: "Static site",
+  command: "Custom command",
 };
 
-function styleFor(runtime: string) {
-  return STYLE[runtime] ?? { label: runtime, swatch: "bg-foreground" };
-}
+const labelFor = (runtime: string) => LABEL[runtime] ?? runtime;
 
 /**
- * Projects per runtime as one stacked bar. Only runtimes with 10 or more
- * projects are drawn, and their widths are shares of each other, so the bar
- * never implies a size for a runtime whose count is hidden. A runtime with
- * fewer than 10 is listed in the legend as a bound and left out of the bar.
+ * Projects per runtime as horizontal Bklit bars, one bar for each runtime with 10 or more
+ * projects, all from zero on one scale. Every bar is named on its axis and carries its rounded
+ * value, so the runtimes are told apart by their names and not by a colour. A runtime with fewer
+ * than 10 is listed under the chart as a bound and left out of it, so no bar implies a size for
+ * a count that is hidden.
  */
 export function RuntimeBar({ runtimes }: { runtimes: Runtime[] }) {
-  const drawn = runtimes.filter((r) => "approx" in r.count && r.count.approx > 0);
+  const drawn = runtimes.filter((r): r is { runtime: string; count: { approx: number } } => "approx" in r.count && r.count.approx > 0);
   const hidden = runtimes.length - drawn.length;
 
-  const summary =
-    drawn.length === 0
-      ? "No runtime has 10 or more projects, so there is no bar."
-      : `Projects by runtime. ${drawn
-          .map((r) => `${styleFor(r.runtime).label}: ${describeCount(r.count)}`)
-          .join(". ")}.${hidden > 0 ? ` ${hidden} more with fewer than 10 are not drawn.` : ""}`;
+  const summary = `Horizontal bar chart of projects by runtime. ${drawn
+    .map((r) => `${labelFor(r.runtime)}: ${describeCount(r.count)}`)
+    .join(". ")}.${hidden > 0 ? ` ${hidden} more with fewer than 10 are not drawn.` : ""}`;
+
+  const rows: BarRow[] = drawn.map((r) => ({
+    label: labelFor(r.runtime),
+    values: { value: r.count.approx },
+    tip: { value: describeCount(r.count) },
+  }));
 
   return (
-    <figure>
+    <figure style={bklitThemeStyle}>
       <figcaption className="text-body font-medium">Projects by runtime</figcaption>
 
       {drawn.length === 0 ? (
@@ -46,14 +47,14 @@ export function RuntimeBar({ runtimes }: { runtimes: Runtime[] }) {
           No runtime has 10 or more projects yet, so there is no bar to draw.
         </p>
       ) : (
-        <div role="img" aria-label={summary} className="mt-3 flex h-6 gap-[2px]">
-          {drawn.map((r) => (
-            <div
-              key={r.runtime}
-              className={styleFor(r.runtime).swatch}
-              style={{ flexGrow: countValue(r.count), flexBasis: 0, minWidth: 4 }}
-            />
-          ))}
+        <div role="img" aria-label={summary} className="mt-3">
+          <BklitBars
+            rows={rows}
+            series={[{ key: "value", label: "Projects", color: INK }]}
+            orientation="horizontal"
+            labelWidth={116}
+            formatValue={(n) => formatCount({ approx: n })}
+          />
         </div>
       )}
 
@@ -65,24 +66,24 @@ export function RuntimeBar({ runtimes }: { runtimes: Runtime[] }) {
               className={
                 "lessThan" in r.count
                   ? "size-2.5 shrink-0 border border-dashed border-foreground/50"
-                  : `size-2.5 shrink-0 ${styleFor(r.runtime).swatch}`
+                  : "size-2.5 shrink-0 bg-foreground"
               }
             />
-            <span className="min-w-0">{styleFor(r.runtime).label}</span>
+            <span className="min-w-0">{labelFor(r.runtime)}</span>
             <span className="tabular">{formatCount(r.count)}</span>
           </li>
         ))}
       </ul>
       <p className="mt-3 text-caption text-muted-foreground">
         {drawn.length > 0
-          ? `Bar widths compare the ${drawn.length === 1 ? "runtime" : "runtimes"} with 10 or more projects. Dashed squares are runtimes with fewer than 10, left out of the bar.`
+          ? `The bars compare the ${drawn.length === 1 ? "runtime" : "runtimes"} with 10 or more projects. Dashed squares are runtimes with fewer than 10, left out of the chart.`
           : "Dashed squares are runtimes with fewer than 10 projects."}
       </p>
 
       <TableDisclosure
         caption="Projects per runtime, rounded"
         head={["Runtime", "Projects"]}
-        rows={runtimes.map((r) => [styleFor(r.runtime).label, formatCount(r.count)])}
+        rows={runtimes.map((r) => [labelFor(r.runtime), formatCount(r.count)])}
       />
     </figure>
   );

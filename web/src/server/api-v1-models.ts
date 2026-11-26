@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { Principal } from "@/server/api-tokens";
-import { DEPLOY_STATES, RUNTIMES } from "@/server/db/schema";
+import { BUILD_LOCATIONS, DEPLOY_STATES, RUNTIMES } from "@/server/db/schema";
 import { notFound } from "@/server/http";
 import {
   deploymentView,
@@ -57,6 +57,7 @@ export const projectSchema = z
     startCommand: z.string().nullable(),
     healthPath: z.string(),
     autoDeploy: z.boolean(),
+    buildLocation: z.enum(BUILD_LOCATIONS).describe("Where builds run: container (on your Nest container, under a memory and CPU cap) or github (in your own GitHub Actions workflow)."),
     serverId: z.string(),
     monitor: z.enum(["unknown", "up", "down"]).describe("Result of the last uptime check."),
     state: z.enum(DEPLOY_STATES).nullable().describe("State of the latest deployment, or null if never deployed."),
@@ -126,6 +127,7 @@ export function toProject(v: ProjectView, latest: DeploymentView | null): Public
     startCommand: v.startCommand,
     healthPath: v.healthPath,
     autoDeploy: v.autoDeploy,
+    buildLocation: v.buildLocation,
     serverId: v.serverId,
     monitor: v.monitor,
     state: latest ? (latest.rawState as PublicDeployment["state"]) : null,

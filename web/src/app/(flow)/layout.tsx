@@ -12,6 +12,7 @@ export default function FlowLayout({ children }: { children: React.ReactNode }) 
     <Suspense
       fallback={
         <LoadingRegion label="Loading…" className="min-h-dvh">
+          <span hidden data-signed-in="" />
           <div
             aria-hidden="true"
             className="flex h-[var(--topbar-height)] items-center gap-3 border-b bg-background-subtle px-4 lg:px-6"

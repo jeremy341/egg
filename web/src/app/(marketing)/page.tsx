@@ -401,7 +401,7 @@ const WATCH_NOTES: [string, React.ReactNode][] = [
   ],
   [
     "Page views, if you want them",
-    `Add one script tag to your site to count page views. It stores no IP address and sets no cookie, and the numbers are kept for ${F.pageviewDays} days. It is off until you turn it on.`,
+    `Add one script tag to your site to count page views. It stores no IP address and sets no cookie, and the numbers are kept for ${F.pageviewDayChoices[0]}, ${F.pageviewDayChoices[1]} or ${F.pageviewDayChoices[2]} days, as you choose for each project (${F.pageviewDays} until you do). It is off until you turn it on.`,
   ],
 ];
 
@@ -446,8 +446,8 @@ function Security() {
             and if it ever changes Egg stops before sending anything.
           </p>
           <p>
-            Your repo is built in a sandbox outside your container, so your container&apos;s memory is for your
-            app, and the source is deleted when the build ends. Environment variables are encrypted, masked in
+            Your repo is built on your own container, under a memory and CPU cap, and never on the machine that
+            runs Egg. The copy of the source on Egg is deleted when the deploy ends. Environment variables are encrypted, masked in
             logs and never sent back to your browser. Sign-in is Hack Club Auth, which has no route to your
             container.
           </p>

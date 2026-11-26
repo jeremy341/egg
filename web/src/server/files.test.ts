@@ -291,10 +291,12 @@ ln -s ../releases $r/shared/to-releases
 ln -s ../current $r/shared/to-current
 ln -s nowhere $r/shared/dead
 printf 'API_KEY="top"\n' > $r/releases/r1/.env
+printf 'BUILD_SECRET="build-only"\n' > $r/incoming/11111111-1111-4111-8111-111111111111.buildenv
 printf 'kept' > $r/releases/r1/src/.env
 printf 'mine' > $r/shared/.env
 ln -s ../current/.env $r/shared/env-via-current
 ln -s ../releases/r1/.env $r/shared/env-via-release
+ln -s ../incoming/11111111-1111-4111-8111-111111111111.buildenv $r/shared/env-via-build
 `);
   }, 60_000);
 
@@ -451,6 +453,13 @@ ln -s ../releases/r1/.env $r/shared/env-via-release
 
   it("will not hand out a release's .env under another name, such as a link in shared/", async () => {
     for (const path of ["shared/env-via-current", "shared/env-via-release", "current/.env", "releases/r1/.env"]) {
+      expect(await status(readFile(session, root, path)), path).toMatchObject({ status: 403, code: "secret_file" });
+      expect(await status(downloadFile(session, root, path)), path).toMatchObject({ status: 403, code: "secret_file" });
+    }
+  });
+
+  it("will not hand out the temporary build environment directly or through a link", async () => {
+    for (const path of ["incoming/11111111-1111-4111-8111-111111111111.buildenv", "shared/env-via-build"]) {
       expect(await status(readFile(session, root, path)), path).toMatchObject({ status: 403, code: "secret_file" });
       expect(await status(downloadFile(session, root, path)), path).toMatchObject({ status: 403, code: "secret_file" });
     }

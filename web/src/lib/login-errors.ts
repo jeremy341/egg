@@ -6,6 +6,12 @@ export const LOGIN_ERRORS: Record<string, string> = {
   state_mismatch: "The sign-in took too long or came from another browser. Please try again.",
   login_failed: "Hack Club could not sign you in. Please try again in a moment.",
   rate_limited: "Too many sign-in attempts. Wait a minute and try again.",
+  password_invalid: "That password or recovery key is not right.",
+  local_password: "The local password is incorrect.",
+  local_recovery: "The recovery key is incorrect. Check the private .env.local file.",
+  local_password_invalid: "Use a password at least 12 characters long and no more than 256 bytes.",
+  local_password_mismatch: "The new passwords do not match.",
+  local_password_conflict: "The local password changed in another request. Try again or sign in.",
 };
 
 export function loginErrorMessage(code: string): string {

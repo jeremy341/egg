@@ -48,9 +48,8 @@ export type FileSession = {
  * the client is never left writing into a closed channel.
  * Exit codes are mapped in EXIT_ERRORS below.
  *
- * `secret` is true for a release's top-level .env once every link is resolved,
- * so the .env refusal holds under any name (a link in shared/, say) and not
- * just for the paths secret-files.ts spells out.
+ * `secret` is true for a release's top-level .env or an incoming build-env file
+ * once every link is resolved, so the refusal also holds through a link.
  *
  * `wr_ok` is the one place that decides where a change may land, after every
  * link is resolved: inside shared/ only. A release folder (where `current`
@@ -85,6 +84,7 @@ parent_of() {
 }
 exists() { [ -e "$1" ] || [ -L "$1" ]; }
 secret() {
+  case "$1" in "$rr"/incoming/*.buildenv) return 0;; esac
   rest=\${1#"$rr"/releases/}
   [ "$rest" != "$1" ] || return 1
   case "$rest" in */*/*) return 1;; */.env) return 0;; esac

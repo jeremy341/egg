@@ -99,8 +99,14 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
                 <Link href="/security" className={footerLink}>
                   How Egg protects your container
                 </Link>
+                <Link href="/privacy" className={footerLink}>
+                  Privacy and data use
+                </Link>
                 <Link href="/stats" className={footerLink}>
                   Stats
+                </Link>
+                <Link href="/nest-status" className={footerLink}>
+                  Nest status
                 </Link>
                 <a href={REPO_URL} target="_blank" rel="noreferrer" className={footerLink}>
                   Source on GitHub

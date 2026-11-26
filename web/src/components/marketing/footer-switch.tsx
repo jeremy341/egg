@@ -24,6 +24,7 @@ export function FooterSwitch({ full }: { full: React.ReactNode }) {
         <nav aria-label="Footer" className="flex flex-wrap gap-x-5 gap-y-2 text-muted-foreground">
           <Link href="/docs" className="hover:text-foreground">Docs home</Link>
           <Link href="/stats" className="hover:text-foreground">Stats</Link>
+          <Link href="/nest-status" className="hover:text-foreground">Nest status</Link>
           <a href={REPO_URL} target="_blank" rel="noreferrer" className="hover:text-foreground">
             Source on GitHub<span className="sr-only"> (opens in a new tab)</span>
           </a>

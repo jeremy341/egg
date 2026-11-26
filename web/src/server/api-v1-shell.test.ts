@@ -599,9 +599,14 @@ describe("reading files", () => {
     expect(await errorOf(missing)).toMatchObject({ status: 404, code: "not_found" });
   });
 
-  it("refuses the files where environment values are kept, before any SSH", async () => {
+  it("refuses runtime and temporary build environment files before any SSH", async () => {
     const secret = await token(["files:read"]);
-    for (const path of ["current/.env", "current/./.env", "releases/0a1b2c3d-0000-4000-8000-000000000000/.env"]) {
+    for (const path of [
+      "current/.env",
+      "current/./.env",
+      "releases/0a1b2c3d-0000-4000-8000-000000000000/.env",
+      "incoming/0a1b2c3d-0000-4000-8000-000000000000.buildenv",
+    ]) {
       for (const [handler, base] of [[readFileRoute, "content"], [downloadFileRoute, "download"]] as const) {
         const res = await run(handler, req(`/projects/${projectId}/files/${base}?path=${encodeURIComponent(path)}`, { secret }), { projectId });
         expect(await errorOf(res), `${base} ${path}`).toMatchObject({ status: 403, code: "secret_file" });

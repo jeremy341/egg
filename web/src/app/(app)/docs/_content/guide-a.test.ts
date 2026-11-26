@@ -14,6 +14,7 @@ const DETAILED = [
   "domains",
   "github",
   "hooks",
+  "jobs",
   "notifications",
 ] as const;
 

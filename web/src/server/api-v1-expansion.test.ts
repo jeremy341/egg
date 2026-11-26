@@ -42,6 +42,7 @@ import { getCurrentUser } from "@/server/auth/current";
 import { createServer, withServerSession } from "@/server/servers";
 import { GET as listProjectsRoute, POST as createProjectRoute } from "@/app/api/v1/projects/route";
 import { DELETE as deleteProjectRoute, PATCH as updateProjectRoute } from "@/app/api/v1/projects/[projectId]/route";
+import { PATCH as dashboardPatchRoute } from "@/app/api/projects/[id]/route";
 import { GET as getDeploymentRoute } from "@/app/api/v1/deployments/[deploymentId]/route";
 import { GET as deploymentLogsRoute } from "@/app/api/v1/deployments/[deploymentId]/logs/route";
 import { GET as listEnvRoute } from "@/app/api/v1/projects/[projectId]/env/route";
@@ -391,7 +392,7 @@ describe("create, change and delete a project", () => {
     const res = await run(createProjectRoute, req("/projects", { secret: t.secret, method: "POST", body: { serverId: myServerId, name: "Fresh Site", repoUrl: "https://github.com/sam/fresh.git", runtime: "static", port: 3901, outputDir: "dist" } }));
     expect(res.status).toBe(201);
     const { project } = await res.json();
-    expect(project).toMatchObject({ slug: "fresh-site", name: "Fresh Site", branch: "main", runtime: "static", port: 3901, autoDeploy: true, serverId: myServerId, state: null, latestDeployment: null, repo: null });
+    expect(project).toMatchObject({ slug: "fresh-site", name: "Fresh Site", branch: "main", runtime: "static", port: 3901, autoDeploy: true, buildLocation: "container", serverId: myServerId, state: null, latestDeployment: null, repo: null });
     for (const hidden of ["hookActive", "analyticsKey", "nestUsername", "repoUrl", "installationId"]) expect(project).not.toHaveProperty(hidden);
 
     const row = await ctx.db.select().from(schema.projects).where(eq(schema.projects.id, project.id)).get();
@@ -439,12 +440,52 @@ describe("create, change and delete a project", () => {
     const entries = (await auditRows("project.update")).filter((r) => r.meta?.token === t.id);
     expect(entries).toHaveLength(1);
     expect(entries[0].meta).toMatchObject({ fields: "startCommand", via: "api" });
+    expect(row?.buildLocation).toBe("container");
+
+    // Where builds run is not a setting: a token cannot send it, whatever the value.
+    for (const buildLocation of ["container", "central", "docker"]) {
+      expect((await run(updateProjectRoute, req(`/projects/${projectId}`, { secret: t.secret, method: "PATCH", body: { buildLocation } }), { projectId })).status, buildLocation).toBe(400);
+    }
 
     // Null puts a command back to its default, and a port can move.
     const cleared = await run(updateProjectRoute, req(`/projects/${projectId}`, { secret: t.secret, method: "PATCH", body: { startCommand: null, port: 3050, autoDeploy: true } }), { projectId });
     expect((await cleared.json()).project).toMatchObject({ startCommand: null, port: 3050, autoDeploy: true });
 
     await ctx.db.update(schema.projects).set({ autoDeploy: true, healthPath: "/", productionBranch: "main", rootDir: ".", port: 3000 }).where(eq(schema.projects.id, projectId));
+  });
+
+  it("does not take where builds run as a setting, and reports every project as built on the container", async () => {
+    const t = await mint(["projects:write", "projects:read"]);
+    const before = await counts();
+
+    // Create with the field, whatever the value: 400, nothing is made.
+    for (const buildLocation of ["central", "container"]) {
+      const created = await run(createProjectRoute, req("/projects", { secret: t.secret, method: "POST", body: { serverId: myServerId, name: "Trusted", repoUrl: "https://github.com/sam/trusted.git", runtime: "node", port: 3976, buildLocation } }));
+      expect(created.status, buildLocation).toBe(400);
+    }
+    expect(await ctx.db.select().from(schema.projects).where(eq(schema.projects.name, "Trusted"))).toHaveLength(0);
+
+    // Update with the field: 400, the stored value does not move and nothing is audited as a change.
+    const patched = await run(updateProjectRoute, req(`/projects/${projectId}`, { secret: t.secret, method: "PATCH", body: { buildLocation: "central", healthPath: "/up" } }), { projectId });
+    expect(patched.status).toBe(400);
+    const row = await ctx.db.select().from(schema.projects).where(eq(schema.projects.id, projectId)).get();
+    expect(row).toMatchObject({ buildLocation: "container", healthPath: "/" });
+    expect(await counts()).toEqual(before);
+
+    // The field is still readable, and it is always container.
+    const listed = await run(listProjectsRoute, req("/projects", { secret: t.secret }));
+    const { projects } = await listed.json();
+    expect(projects.length).toBeGreaterThan(0);
+    for (const p of projects) expect(p.buildLocation).toBe("container");
+
+    // The dashboard route takes only container too.
+    const dashboard = (buildLocation: string) =>
+      run(dashboardPatchRoute as unknown as Handler, new NextRequest(`http://localhost:3000/api/projects/${projectId}`, { method: "PATCH", headers: { "content-type": "application/json", origin: "http://localhost:3000" }, body: JSON.stringify({ buildLocation }) }), { id: projectId });
+    expect((await dashboard("central")).status).toBe(400);
+    expect((await ctx.db.select().from(schema.projects).where(eq(schema.projects.id, projectId)).get())?.buildLocation).toBe("container");
+    const ok = await dashboard("container");
+    expect(ok.status).toBe(200);
+    expect((await ok.json()).project).toMatchObject({ buildLocation: "container" });
   });
 
   it("refuses an empty change, a clashing or reserved port, and unknown or unsafe fields", async () => {

@@ -2,9 +2,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { upsertUser } from "@/server/auth/session";
 import { schema } from "@/server/db";
-import { runDeployJob, runRollbackJob, type PipelineDeps } from "@/server/deploy/pipeline";
+import { envForDeployment, mergeEnvForDeployment, runDeployJob, runRollbackJob, type PipelineDeps } from "@/server/deploy/pipeline";
 import {
   createProject,
+  cancelDeployment,
   deployBranch,
   deploymentLogs,
   listDeployments,
@@ -18,6 +19,8 @@ import {
   brokenApp,
   fakeBuilder,
   freePort,
+  containerReadyFacts,
+  installFakeContainerBuild,
   installFakeSystemd,
   nodeApp,
   type FixtureFiles,
@@ -68,12 +71,14 @@ beforeAll(async () => {
 
   mock = await startMockSsh({ authorizedKeys: [] });
   installFakeSystemd(mock);
+  installFakeContainerBuild(mock);
   await mock.stop();
 
   // Create the server first so we know the key, then start the mock with it.
   server = await createServer(userId, "sam-r", { host: "127.0.0.1", port: 1 });
   mock = await startMockSsh({ authorizedKeys: [server.publicKey] });
   installFakeSystemd(mock);
+  installFakeContainerBuild(mock);
   await ctx.db.update(schema.servers).set({ port: mock.port, hostKeyFingerprint: mock.hostKeyFingerprint }).where(eq(schema.servers.id, server.id));
   server = await getServerForUser(userId, server.id);
 
@@ -90,7 +95,9 @@ beforeAll(async () => {
   await setEnvVar(userId, project.id, { key: "GREETING", value: "hello-secret-value", target: "all" });
 
   deps = {
-    build: fakeBuilder(() => files, { onBuild: (r) => buildLogs.push(r.source.branch) }),
+    preflight: () => async () => containerReadyFacts,
+    lockPollMs: 50,
+    sourceBuild: fakeBuilder(() => files, { onBuild: (r) => buildLogs.push(r.source.branch) }),
     connect: connectToServer,
     unitDir: `${mock.home.replace(/\\/g, "/")}/units`,
     healthTimeoutSeconds: 8,
@@ -112,6 +119,20 @@ const DEPLOY_LOOP_TIMEOUT = 90000;
 describe("deploy pipeline", () => {
   let v1: typeof schema.deployments.$inferSelect;
   let v2: typeof schema.deployments.$inferSelect;
+
+  it("lets production and preview values override all regardless of insertion order", async () => {
+    expect(mergeEnvForDeployment([
+      { key: "OVERRIDE_ME", target: "preview", value: "preview-first" },
+      { key: "OVERRIDE_ME", target: "production", value: "production-first" },
+      { key: "OVERRIDE_ME", target: "all", value: "all-last" },
+    ], "preview")).toEqual({ OVERRIDE_ME: "preview-first" });
+    expect(mergeEnvForDeployment([
+      { key: "OVERRIDE_ME", target: "preview", value: "preview-first" },
+      { key: "OVERRIDE_ME", target: "production", value: "production-first" },
+      { key: "OVERRIDE_ME", target: "all", value: "all-last" },
+    ], "production")).toEqual({ OVERRIDE_ME: "production-first" });
+    expect(await envForDeployment(project.id, "preview")).toMatchObject({ GREETING: "hello-secret-value" });
+  });
 
   it("ships a production release, starts it and passes the health check", async () => {
     files = nodeApp("v1");
@@ -169,6 +190,39 @@ describe("deploy pipeline", () => {
     expect(await answer(project.port)).toBe("v1:hello-secret-value");
     expect(mock.commands.length).toBeGreaterThan(before);
   });
+
+  it("does not switch a rollback canceled while reading the current unit", async () => {
+    const rb = await rollback(userId, v2.id);
+    const abort = new AbortController();
+    const cancelDuringUnitRead: PipelineDeps = {
+      ...deps,
+      connect: async (srv) => {
+        const session = await deps.connect(srv);
+        return new Proxy(session, {
+          get(target, prop) {
+            const value = Reflect.get(target, prop, target);
+            if (prop !== "exec") return typeof value === "function" ? value.bind(target) : value;
+            return async (command: string, options?: unknown) => {
+              const result = await target.exec(command, options as never);
+              if (command.includes("egg-demo-app.service")) {
+                await cancelDeployment(userId, rb.id);
+                abort.abort();
+              }
+              return result;
+            };
+          },
+        });
+      },
+    };
+
+    await runRollbackJob(rb.id, cancelDuringUnitRead, abort.signal);
+
+    const canceled = await ctx.db.select().from(schema.deployments).where(eq(schema.deployments.id, rb.id)).get();
+    const currentRows = await ctx.db.select().from(schema.deployments).where(eq(schema.deployments.isCurrent, true));
+    expect(canceled?.state).toBe("canceled");
+    expect(currentRows.some((row) => row.projectId === project.id && row.releaseId === v1.releaseId)).toBe(true);
+    expect(await answer(project.port)).toBe("v1:hello-secret-value");
+  }, DEPLOY_LOOP_TIMEOUT);
 
   it("reverts automatically when a new release is unhealthy", async () => {
     files = brokenApp();
@@ -232,6 +286,32 @@ describe("deploy pipeline", () => {
   it("refuses to roll back to a release that was pruned", async () => {
     await expect(rollback(userId, v1.id)).rejects.toMatchObject({ status: 409 });
   });
+
+  it("rejects cancellation once the activation boundary is claimed", async () => {
+    const dep = await deployBranch(userId, project.id, "main");
+    const cancelAfterBoundary: PipelineDeps = {
+      ...deps,
+      connect: async (srv) => {
+        const session = await deps.connect(srv);
+        return new Proxy(session, {
+          get(target, prop) {
+            const value = Reflect.get(target, prop, target);
+            if (prop !== "writeFile") return typeof value === "function" ? value.bind(target) : value;
+            return async (path: string, content: string, mode?: string, options?: unknown) => {
+              if (path.endsWith("egg-demo-app.service")) {
+                await expect(cancelDeployment(userId, dep.id)).rejects.toMatchObject({ status: 409 });
+              }
+              return target.writeFile(path, content, mode, options as never);
+            };
+          },
+        });
+      },
+    };
+    await runDeployJob(dep.id, cancelAfterBoundary);
+    const after = await ctx.db.select().from(schema.deployments).where(eq(schema.deployments.id, dep.id)).get();
+    expect(after?.state).toBe("ready");
+    expect(after?.activationStartedAt).toBeInstanceOf(Date);
+  }, DEPLOY_LOOP_TIMEOUT);
 });
 
 describe("deploy state races", () => {
@@ -241,9 +321,9 @@ describe("deploy state races", () => {
     const cancelDuringBuild: PipelineDeps = {
       ...deps,
       // The cancel button writes straight to the database; the abort signal only follows on the next poll.
-      build: async (req) => {
+      sourceBuild: async (req) => {
         await ctx.db.update(schema.deployments).set({ state: "canceled" }).where(eq(schema.deployments.id, dep.id));
-        return deps.build(req);
+        return deps.sourceBuild!(req);
       },
     };
     await runDeployJob(dep.id, cancelDuringBuild);

@@ -352,14 +352,24 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         Limits table at the end says where each one is set. To report a vulnerability, use the{" "}
         <InternalLink href="/security">security page</InternalLink>, not a public issue.
       </P>
+      <P>
+        Words used on this page. Your <B>container</B> is the Nest account Egg deploys into. A <B>server</B> is one
+        connected container in Egg’s list. <B>Egg’s machine</B> is the computer that runs Egg: Egg’s own host, or
+        your computer if you run a copy yourself. The <B>worker</B> is the part of Egg that takes queued deployments
+        and runs them. A <B>build</B> installs and builds your project on your container, in a new release folder,
+        under a <B>cap</B>, a memory and CPU limit that the kernel enforces. <B>Sealed</B> means encrypted, so it cannot be read without <C>APP_SECRET</C>. A{" "}
+        <B>webhook</B> is a message one program sends to a web address when something happens. GitHub sends Egg one
+        on every push, and Egg sends one to your own address if you add it under Webhooks. An <B>access token</B> is
+        a secret you make on the Developer page for scripts and agents. A <B>session</B> is one signed-in browser.
+      </P>
 
       <H2 id="security-key" />
       <P>
-        When you press <B>Create key</B> on the Connect page, Egg makes one ed25519 key for that server and for
-        nothing else. You paste the public half into the SSH Keys page of the Nest dashboard. The private half is
-        sealed with AES-256-GCM before it is stored. The sealing key comes from the <C>APP_SECRET</C> setting, and
-        each sealed value is tied to its own record, so a value copied into another row does not open. The private
-        key is never shown, and no API call returns it.
+        Press <B>Create key</B> on the Connect page. Egg makes one ed25519 key for that server and for nothing else.
+        Then you paste the public half into the SSH Keys page of the Nest dashboard. The private half is sealed with
+        AES-256-GCM before it is stored in Egg’s database. The sealing key comes from the <C>APP_SECRET</C> setting,
+        and each sealed value is tied to its own record, so a value copied into another row does not open. The
+        private key is never shown, and no API call returns it.
       </P>
       <Callout tone="warning" title="This key is root on your container">
         SSH into Nest lands in a root shell inside your own container, so the key can do anything you can do there.
@@ -368,10 +378,16 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
       <P>
         Egg does not trust Nest’s SSH host on sight. The first time you press <B>Test connection</B>, Egg reaches the
         host, reads its host key, hangs up and shows the SHA-256 fingerprint in a “Confirm host key” box. Nothing is
-        sent until you press <B>Confirm host key</B>. Only then is the fingerprint pinned. Until it is, no deploy,
-        file change or terminal connects to the server. After that, if the host presents any other key, Egg stops
-        before it sends anything. <B>New key</B> replaces your key but keeps the pin. The way to clear a pin is{" "}
-        <B>Disconnect</B>, then connecting the server again, which asks you to confirm the fingerprint again.
+        sent to your container yet. Check the fingerprint against the one Nest shows for your server, then press{" "}
+        <B>Confirm host key</B>. Only then is the fingerprint pinned, which means stored and required from then on.
+        Until it is pinned, no deploy, file change or terminal connects to the server. After that, if the host
+        presents any other key, Egg stops before it sends anything and the connection fails.
+      </P>
+      <P>
+        <B>New key</B> deletes Egg’s old private key at once and keeps the pin. The server goes back to “Waiting for
+        the key”, and deploys, files and terminals fail until you paste the new public key into the Nest dashboard
+        and press <B>Test connection</B>. Apps that are already running are not touched. To clear a pin, press{" "}
+        <B>Disconnect</B> and connect the server again. That asks you to confirm the fingerprint again.
       </P>
       {why(
         <>
@@ -385,16 +401,18 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         </>
       )}
       <Callout tone="warning" title="Disconnect asks about the server’s projects">
-        Disconnect closes the terminals opened with this server’s key and removes Egg’s key. When the server has
+        Disconnect closes the terminals opened with this server’s key and deletes Egg’s copy of the private key. The
+        public key stays on the SSH Keys page of the Nest dashboard until you delete it there. When the server has
         projects, a box asks whether to delete them as well: “Also delete the project on this server”, or “Also
         delete the N projects on this server”. Left unticked, which is the default, the projects are kept, the server
         shows as disconnected, and connecting the same Nest username again reattaches them. Ticked, the projects and
-        their deployments and logs are deleted. Nothing on the container is removed either way.
+        their deployments and logs are deleted from Egg. Nothing on the container is removed either way, and running
+        apps keep running.
       </Callout>
       {steps("security-key-steps", "Take access back", [
         {
           title: "Delete the key in Nest",
-          body: "Access ends at once. Your apps keep running, because they are ordinary systemd services in your container.",
+          body: "Egg’s access ends at once. Your apps keep running, because they are ordinary services in your container (systemd, the Linux service manager) and do not need Egg to run.",
           path: ["Nest dashboard", "SSH Keys", "Delete the key"],
         },
         {
@@ -418,29 +436,55 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
 
       <H2 id="security-builds" />
       <P>
-        Builds run on the Egg side, never on your container. The container receives only the finished archive, and
-        unpacks it as its own user. Each build runs in a Docker sandbox:
+        A build turns your repository into files your app can run. Egg does it in four steps. Three of them happen on
+        your container, so this page says what they use.
       </P>
+      {steps("security-builds-steps", "Where each step runs", [
+        {
+          title: "Clone and pack the source, on Egg’s machine",
+          body: "The worker downloads a shallow copy of your branch from github.com (the latest commit only) into a work folder and packs the source into one archive, a compressed .tar.gz file. Nothing is installed or built there. The GitHub token is used for the clone and is never sent to your container. The clone stops after 5 minutes. The work folder is deleted when the deployment ends.",
+        },
+        {
+          title: "Check your container, then upload and unpack",
+          body: "Before anything is uploaded, Egg looks at your container: the Node.js version (the project’s engines range, or 22.13 or newer), the package manager the lockfile needs, Python 3 and venv for a Python project, systemd-run, timeout, and at least 2048 MB of free disk. If a check fails, the deployment ends with one line that says what to fix, and nothing is uploaded. If all pass, Egg uploads the source over SSH and unpacks it into a new release, a folder that holds one deployed version of your app. The running release is not touched.",
+        },
+        {
+          title: "Install and build, on your container, under a cap",
+          body: "Your install and build commands run in the new release folder, then the production install. All of it runs under the cap, a hard memory and CPU limit that the kernel enforces. The table below lists it. Your app keeps serving the whole time. Your project’s variables are written to a file with mode 600 for the build, and Egg deletes that file when the build ends. If the build fails, runs out of memory, times out or is canceled, Egg deletes the new folder and the running release stays.",
+        },
+        {
+          title: "Switch, on your container",
+          body: "Egg writes the release’s .env file, points the service at the new release and restarts it, so the app is unavailable for a moment. Then it waits up to 45 seconds for the app to answer.",
+        },
+      ])}
+      <P>
+        If the clone, the checks, the build or the upload fails, the deployment shows Error and your container keeps
+        running its current release. If the new release does not answer after the restart, a production deploy puts the
+        previous release back and shows Error.
+      </P>
+      <P>The cap is set like this:</P>
       <Table
-        caption="The build sandbox"
+        caption="The cap on a build"
         head={["Setting", "Value"]}
         rows={[
           [
             "Memory",
             <>
-              2048 MB by default. You set it for each server, from 512 MB up to the memory the server reports (8192
-              MB when it reports none), under Build memory on the Container page. Swap is capped at the same size so
-              the limit is real.
+              The server’s Build memory (MB), 512 MB by default, set on the Container page. A project with a build step
+              gets at least 1024 MB while it builds, if your container has room for it (its memory minus 512 MB is at
+              least 1024 MB). Installs use the setting. It is never more than your container’s memory minus 512 MB,
+              which stays free for your app. If that leaves less than 256 MB, the build does not start. There is no
+              swap, so the limit is real.
             </>,
           ],
-          ["CPUs", "2."],
-          ["Processes", "At most 2048."],
-          ["Linux capabilities", "All dropped."],
-          ["Privilege gain", <><C>no-new-privileges</C> is set.</>],
-          ["User", "The same user as the worker, not root. On Windows the image’s own user applies."],
-          ["What it can see", <>The cloned source folder, mounted at <C>/src</C>. Its home folder is <C>/tmp</C>.</>],
-          ["Network", "Normal outbound access, because installing packages needs it. No ports are published."],
-          ["What it is given", <>Your project’s variables, and <C>CI=true</C>.</>],
+          ["CPU", "The server’s Build CPU limit (cores), 2 by default, as a quota of 100% for each core. The build also runs at a low priority, so your app gets the CPU first when it is busy."],
+          ["Processes", "At most 4096."],
+          ["Time", "15 minutes, then the build is stopped. This limit cannot be changed."],
+          ["Builds at once", "One at a time on a container. A second build waits for up to 30 minutes."],
+          ["If memory runs out", "The kernel is told to stop the build before your app, so a build that goes over its cap is the one that dies."],
+          ["What it can see", "Everything your Nest user can see on your container. The cap limits memory and CPU. It does not hide your files from the build, which runs as the same user as your app."],
+          ["Network", "Normal access from your container, because installing packages needs it."],
+          ["What it is given", <>Your project’s variables for a production or a preview deployment, and <C>CI=true</C>.</>],
         ]}
       />
       <List>
@@ -448,30 +492,28 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
           <B>What is checked first.</B> The repository must be a plain <C>https</C> URL on <C>github.com</C>. A
           branch name may use letters, digits, dots, underscores, hyphens and slashes, and may not start with a hyphen or contain{" "}
           <C>..</C>, so it cannot be read as a Git option. The root and output folders are resolved to their real
-          paths, so a link inside a repository cannot pull in a file from the machine that builds.
+          paths, so a link inside a repository cannot pull in a file from Egg’s machine.
         </li>
         <li>
-          <B>What is kept.</B> The build output is capped at 500 MB. The source folder is deleted when the
-          deployment ends. A deployment stores at most 20,000 log lines, and then one line says “Further log output
-          was dropped: this deployment reached its log limit.” Colour codes and control characters are removed from
-          each line, and a line is cut at 4000 characters.
+          <B>What is limited.</B> The packed source may be 500 MiB (524,288,000 bytes). A larger one fails the
+          deployment before anything is uploaded. The work folder is deleted when the deployment ends. A deployment
+          stores at most 20,000 log lines, and then one line says “Further log output was dropped: this deployment
+          reached its log limit.” The build carries on. Colour codes and control characters are removed from each
+          line, and a line is cut at 4000 characters.
         </li>
         <li>
           <B>Pull requests from forks are never built</B>, because that would run a stranger’s code next to your
           variables.
         </li>
       </List>
-      <P>
-        A copy of Egg that you run yourself can set <C>BUILD_RUNNER=local</C>, which runs builds on the host with no
-        isolation. See <InternalLink href={docsHref("selfhost")}>Running your own</InternalLink>.
-      </P>
       {why(
         <>
-          A build runs code from a repository, so it runs on a machine that holds nothing of yours except the
-          variables for that one project. Your container’s small share of CPU and memory is not spent on compiling,
-          and a build that goes wrong cannot touch your other apps. The sandbox still has network access, because a
-          build that cannot install packages is no build. That is a deliberate trade, and it is why variables should
-          hold only what the build needs.
+          A build runs code from a repository, so it has to run somewhere. Egg runs it on your container, a machine
+          you already control and already run your own code on, and keeps strangers’ build code off the machine that
+          holds everyone’s data. The cap protects your running app from a build that uses too much memory or CPU. It
+          does not protect your files from the build. That is a deliberate trade, and it is why you should build only
+          code you wrote or trust, and why variables should hold only what the build needs. The build has network
+          access, because a build that cannot install packages is no build.
         </>
       )}
 
@@ -534,16 +576,17 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
           minutes before they turn on. Turning one off never asks.
         </li>
         <li>
-          <B>Guessing.</B> One address may make 20 sign-in attempts a minute, and 60 requests a minute with access
-          tokens that are not valid. Past that the answer is 429. The address comes from the proxy headers only when
-          the <C>TRUST_PROXY</C> setting is on, and it is off by default, so with it off there is no address to count
-          and these two limits do not apply. Turn it on only when every request reaches Egg through a reverse proxy
-          you run.
+          <B>Guessing.</B> One IP address may make 20 sign-in attempts a minute, and 60 requests a minute with access
+          tokens that are not valid. Past that the answer is 429. Egg reads the address from the proxy headers only
+          when the <C>TRUST_PROXY</C> setting is on. It is off by default, so with it off there is no address to
+          count and these two limits do not apply. Turn it on only when every request reaches Egg through a reverse
+          proxy you run.
         </li>
         <li>
-          <B>GitHub events.</B> A webhook is accepted only with a valid <C>X-Hub-Signature-256</C> signature over the
-          raw body. The body is capped at 25 MB, and a delivery id is remembered for 1 hour, so a replayed delivery
-          does nothing. A deploy hook takes a body of 4 KB at most.
+          <B>GitHub events.</B> A message from GitHub is accepted only with a valid <C>X-Hub-Signature-256</C>{" "}
+          signature over the raw body. The body is capped at 5 MB, and a request with no length or a missing or malformed signature is refused before its body is read. Each message has an id, called a delivery id, and
+          Egg remembers it for 1 hour, so a replayed delivery does nothing. A deploy hook takes a body of 4 KB at
+          most.
         </li>
         <li>
           <B>Browser headers.</B> Every page is sent with <C>X-Frame-Options: DENY</C> and a policy that forbids
@@ -576,9 +619,9 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
           so keys cannot be probed.
         </li>
         <li>
-          <B>Your receivers</B> see a signed message when you add a webhook. It never carries variables, logs,
-          commit messages or errors. Egg refuses to send to a private or internal address and does not follow
-          redirects.
+          <B>Your receivers</B>, the addresses you add under Webhooks, get a signed message when a deployment starts,
+          succeeds or fails. It never carries variables, logs, commit messages or errors. Egg refuses to send to a
+          private or internal address and does not follow redirects.
         </li>
         <li>
           <B>The log of your actions</B> records what you did, with names and paths. It never records the contents of
@@ -589,20 +632,25 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
 
       {limits("security-limits", [
         ["Session", "30 days", "The cookie and the stored session both expire. Sign in again.", "server/auth/session.ts (SESSION_DAYS)"],
-        ["Fresh sign-in", "5 minutes", "Older than that, turning on Terminal or File changes sends you to Hack Club again.", "server/auth/session.ts (REAUTH_WINDOW_MS)"],
+        ["Fresh sign-in", "5 minutes", "Older than that, turning on Terminal or File changes sends you to Hack Club again, and turning on password sign-in is refused until you sign in again.", "server/auth/session.ts (REAUTH_WINDOW_MS)"],
         ["Sign-in handshake", "10 minutes", "A sign-in that takes longer fails. Start again from the login page, in one browser.", "app/api/auth/login/route.ts (maxAge)"],
         ["Sign-in attempts", "20 a minute per address", "A redirect to the login page. Wait a minute.", "server/rate-limit.ts (RATE_LIMITS.signIn)"],
         ["Invalid access tokens", "60 a minute per address", "429 with Retry-After.", "server/rate-limit.ts (RATE_LIMITS.badToken)"],
         ["Token with terminal or file changes", "7 days at most", "The token form refuses a longer expiry.", "server/api-tokens.ts (SHORT_LIVED_MAX_DAYS)"],
         ["Terminals", "5 per account, 50 on the server", "“You can have 5 terminals open at once. Close one first.”", "server/terminal.ts (TERMINAL_LIMITS)"],
         ["Servers per account", "5", "“You can connect up to 5 servers.”", "server/servers.ts (MAX_SERVERS_PER_USER)"],
-        ["GitHub delivery", "25 MB, id remembered 1 hour", "A larger body or a repeated id is dropped.", "app/api/webhooks/github/route.ts, server/github/webhook.ts (DELIVERY_TTL_MS)"],
+        ["GitHub delivery", "5 MB, id remembered 1 hour", "A larger body or a repeated id is dropped.", "app/api/webhooks/github/route.ts, server/github/webhook.ts (DELIVERY_TTL_MS)"],
         ["Deploy hook body", "4 KB", "413.", "app/api/hooks/deploy/[token]/route.ts (MAX_BODY_BYTES)"],
         ["Dashboard JSON request", "256 KB", "413 “That request is too large.”", "server/body-limit.ts (JSON_BODY_LIMIT)"],
         ["Host key", "Confirmed by you on the first Test connection", "Nothing connects until it is confirmed. A different key later stops the connection.", "server/servers.ts"],
-        ["Build output", "500 MB", "The deployment fails with the size in the message.", "server/deploy/build.ts (MAX_ARCHIVE_BYTES)"],
-        ["Build log", "20,000 lines", "One line says the rest was dropped.", "server/deploy/logger.ts (MAX_LOG_ROWS)"],
-        ["Build memory", "2048 MB by default, 512 MB up to the server’s memory", "“Build memory must be a whole number of MB from 512 to <max>.”", "lib/build-memory.ts"],
+        ["Clone", "5 minutes", "“The build timed out.” Nothing changes on your container.", "server/deploy/build.ts (clone timeoutMs)"],
+        ["Build time", "15 minutes. It cannot be changed.", "The build is stopped and the deployment fails with “The build took longer than 15 minutes and was stopped.” The new release folder is deleted and the live release keeps running.", "server/deploy/container-build.ts (BUILD_TIMEOUT_SECONDS)"],
+        ["Free disk before a build", "2048 MB", "The deployment ends before the upload with “Free up disk space on your container: <n> MB is free and a build needs at least 2048 MB.”", "server/deploy/container-probe.ts (MIN_FREE_DISK_MB)"],
+        ["Build output", "500 MiB (524,288,000 bytes), measured on the packed archive", "The deployment fails with the size in the message, before the upload.", "server/deploy/build.ts (MAX_ARCHIVE_BYTES)"],
+        ["Unpack the source on your container", "15 minutes", "The deployment fails and the live release keeps running.", "server/deploy/container-build.ts (unpackSourceScript)"],
+        ["Build log", "20,000 lines", "One line says the rest was dropped. The build carries on.", "server/deploy/logger.ts (MAX_LOG_ROWS)"],
+        ["Build memory", "512 MB by default, 512 MB up to the server’s memory. A project with a build step gets at least 1024 MB while it builds, if the container has room. A build never gets more than the container’s memory minus 512 MB, and does not start under 256 MB.", "“Build memory must be a whole number of MB from 512 to <max>.”", "lib/build-memory.ts, server/deploy/container-build.ts (containerMemoryCapMb)"],
+        ["Build CPU", "2 cores by default, 0.5 to the Nest server’s reported cores in 0.25-core steps", "“Build CPU must be a number from 0.5 to <max> cores in 0.25-core steps.”", "lib/build-memory.ts, server/deploy/container-build.ts (cpuQuotaPercent)"],
         ["Notification post", "5 seconds", "The post is dropped and logged. Redirects are refused.", "server/notify.ts"],
       ])}
 
@@ -688,7 +736,8 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         Open Activity in the sidebar. Entries are grouped by day in UTC, with Today and Yesterday named. Each row
         says what happened, to which project, server or domain, and what did it. A change made with an access token
         shows the token’s name, so you can tell a script from yourself. A project, token or server that has since been
-        deleted still shows by the name it had, marked as gone.
+        deleted still shows by the name it had, marked as gone. The log is kept in Egg’s database, so reading,
+        searching and exporting it never contacts your container and changes nothing.
       </P>
       {why(
         <>
@@ -873,8 +922,31 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
             "One of eight small pixel characters: Egg, Cat, Ghost, Robot, Frog, Alien, Owl or Mushroom. You cannot upload a picture.",
             "Egg",
           ],
-          ["Appearance, Theme", "Light, Dark or System", "System"],
-          ["Appearance, Accent colour", "Neutral, Blue, Green or Violet. It colours buttons, links and the focus ring.", "Neutral"],
+          [
+            "Appearance, Match my device",
+            "On or off. On, Egg uses your light theme while your device is light and your dark theme while it is dark, and switches by itself when the device does. Off, one theme stays whatever the device does.",
+            "On",
+          ],
+          [
+            "Appearance, Light theme",
+            "Shown while Match my device is on. One of the light themes: Egg Light, GitHub Light, VS Code Light+, Inspired by Catppuccin Latte, Inspired by Rosé Pine Dawn, Inspired by Solarized Light, Inspired by Ayu Light or Inspired by One Light, or a light theme of your own.",
+            "Egg Light",
+          ],
+          [
+            "Appearance, Dark theme",
+            "Shown while Match my device is on. One of the dark themes: Egg Dark, GitHub Dark, VS Code Dark+, Nord, Gruvbox Dark, Inspired by Dracula, Inspired by One Dark, Inspired by Tokyo Night, Inspired by Catppuccin Mocha, Inspired by Rosé Pine, Inspired by Monokai, Inspired by Ayu Dark or Inspired by Solarized Dark, or a dark theme of your own.",
+            "Egg Dark",
+          ],
+          [
+            "Appearance, Theme",
+            "Shown while Match my device is off. Any one theme, listed as Light themes and Dark themes, that stays as you picked it.",
+            "Egg Dark",
+          ],
+          [
+            "Appearance, Your themes",
+            "New theme opens an editor with a name, light or dark, and eight colours: page background, card surface, border, text, muted text, primary, link and danger. Each colour is a picker and a hex field. A sample page and the contrast checks update as you type. Edit, Export and Delete are on each saved theme, and Import reads a theme file. Up to 20 themes.",
+            "None",
+          ],
           ["Appearance, Density", "Comfortable or Compact", "Comfortable"],
           [
             "Deploys, Default branch",
@@ -883,7 +955,7 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
           ],
           [
             "Analytics defaults",
-            "Eight checkboxes: Clicks, Time on page, Funnel, Referrers and campaigns, Speed and errors, Custom events, Live view and Retention. They decide which analytics features a project starts with the first time you turn analytics on for it.",
+            "Eight checkboxes: Clicks, Time on page, Funnel, Referrers, Speed and errors, Custom events, Live view and Retention. They decide which analytics features a project starts with the first time you turn analytics on for it.",
             "All off",
           ],
           [
@@ -895,10 +967,31 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
       />
       <List>
         <li>
+          <B>Themes</B> are each light or dark, as in VS Code, and none has a second version. A theme sets every
+          colour together: backgrounds, cards, borders, text, links, buttons, the selected item, the focus ring and
+          the status colours. Themes apply in the signed-in pages; the public site keeps the Egg look. Egg Light and
+          Egg Dark are the two defaults. Themes named “Inspired by” take their colours from well-known palettes and are not made or endorsed by those projects.
+        </li>
+        <li>
+          <B>Your own themes</B> are private to your account and follow you to every device. A colour is only ever
+          a hex value such as <C>#1a2b3c</C> (3, 4, 6 or 8 digits); nothing else is accepted. Egg builds the rest of the
+          theme from your eight colours. Text on the page and on a card must reach 4.5:1 contrast, or the theme is not
+          saved, and Egg names the pair, shows the ratio and suggests the nearest colour that passes. Weaker pairs
+          (button text, danger text, links, the focus ring at 3:1) only warn. An exported file holds the name, light
+          or dark, and the colours, and nothing about you; an import over 8 KB or with unknown keys is refused. If you
+          delete a theme you are using, Egg Light or Egg Dark takes its place.
+        </li>
+        <li>
+          <B>Earlier choices</B> are moved once. An account set to Light or Dark keeps that as one fixed theme, and
+          one set to System now has Match my device on. An old accent becomes the nearest theme (Blue becomes GitHub
+          Light, Nord becomes Nord, Amber and Gruvbox become Gruvbox Dark, and the rest become Egg Light). You can pick
+          another at any time.
+        </li>
+        <li>
           <B>Analytics defaults</B> only apply to a project the first time analytics is turned on for it. A project
           that already has analytics is not changed, and every project can still change its own switches. A Funnel
           switched on by default does nothing until the project has two steps. Retention stores a random id in the
-          visitor’s browser, so leave it off unless you want returning visitors. See{" "}
+          visitor’s browser, so leave it off unless you want returning visitors. Campaigns and Record visitor countries are not in this list: you turn them on for each project, and Campaigns also needs a list of allowed values. See{" "}
           <InternalLink href={docsHref("analytics")}>Analytics</InternalLink>.
         </li>
         <li>
@@ -918,10 +1011,21 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         minutes, and it must be the same Hack Club account. A copy of Egg running in local mode has no Hack Club
         account, so it skips the confirmation.
       </P>
+      <P>
+        Hack Club is the way to sign in until you add another. The <B>Sign in with a password</B> card on Account
+        can also turn on sign-in with your email and a password. It is off until you turn it on. You can turn it on
+        only within 5 minutes of a Hack Club sign-in. If your last one is older, Egg answers “Confirm with Hack Club
+        first. Turning on password sign-in needs a sign-in in the last 5 minutes.” Sign in with Hack Club again, then
+        retry. The account must share an email address with Egg, the password needs at least 12 characters, and Egg
+        shows a recovery key during setup, which you confirm you saved before the password is accepted. You cannot turn it
+        off if it would leave you with no way to sign in.
+      </P>
       {why(
         <>
-          Egg never stores a password. Hack Club proves who you are, and Egg keeps only a hash of its own session
-          token. The second confirmation exists because turning on a root shell is the one change that should not
+          Egg never stores your Hack Club password. Hack Club proves who you are, and Egg keeps only a hash of its own
+          session token. If you turn on a password, Egg keeps only a salted hash of it and of the recovery key, never
+          the text itself. The 5 minute rule means a borrowed session cookie cannot add a password that would outlive
+          the cookie. The second confirmation also exists because turning on a root shell is the one change that should not
           ride on a session cookie someone else may have borrowed from a laptop left open.
         </>
       )}
@@ -939,14 +1043,15 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         { title: "Press Delete account", body: "Your terminals close first, then your records are deleted." },
       ])}
       <P>
-        This deletes your projects, servers, domains, keys, access tokens, webhooks, sessions and your activity log.
-        Apps already on your container keep running, but nothing manages them any more. Delete the key on the SSH
-        Keys page of the Nest dashboard as well, so Egg’s old key does not stay on your container.
+        This deletes your projects, servers, domains, keys, access tokens, webhooks, sessions and your activity log
+        from Egg, and it cannot be undone. Nothing on your container is removed. Apps already there keep running, but
+        nothing manages them any more. Delete the key on the SSH Keys page of the Nest dashboard as well, so Egg’s
+        old public key does not stay on your container.
       </P>
 
       {limits("account-limits", [
         ["Session", "30 days", "Sign in again.", "server/auth/session.ts (SESSION_DAYS)"],
-        ["Fresh sign-in", "5 minutes", "It matters only for turning on Terminal or File changes.", "server/auth/session.ts (REAUTH_WINDOW_MS)"],
+        ["Fresh sign-in", "5 minutes", "It matters only for turning on Terminal, File changes or password sign-in.", "server/auth/session.ts (REAUTH_WINDOW_MS)"],
         ["Sign-in handshake", "10 minutes", "Start again from the login page, in one browser.", "app/api/auth/login/route.ts (maxAge)"],
         ["Sign-in attempts", "20 a minute per address", "A redirect to the login page. Wait a minute.", "server/rate-limit.ts (RATE_LIMITS.signIn)"],
         ["Servers", "5 per account", "“You can connect up to 5 servers.”", "server/servers.ts (MAX_SERVERS_PER_USER)"],
@@ -1010,9 +1115,11 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
       intro="Three switches decide what Egg may do inside your container beyond deploying. All three start off."
     >
       <P>
-        You need a connected server. The switches live in Account, under Container permissions, one card per server
-        named like <C>sam-r.hackclub.app</C>. The server checks the switch on every request, before it opens an SSH
-        session, so turning one off stops the very next call. Turning a switch on or off never restarts an app.
+        You need a connected server, which is one container in Egg’s list. The switches live in Account, under
+        Container permissions, one card per server named like <C>sam-r.hackclub.app</C>. Egg checks the switch on
+        every request, before it opens an SSH session to your container, so turning one off stops the very next
+        call. Turning a switch on or off never restarts an app. Only the Terminal switch closes anything: it closes
+        your open terminals on that server.
       </P>
 
       <H2 id="container-switches" />
@@ -1038,9 +1145,9 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         every switch off.
       </P>
       <Callout tone="warning" title="Check your older servers">
-        The File changes switch was reset to off once, for every server that existed at the time of that update. Do
-        not assume an older server kept its old setting: open Account and look. A server connected before the
-        switches existed may also still have Removing leftovers on. Turn off what you do not use.
+        An update once set File changes to off on every server that already existed. Do not assume an older server
+        kept its old setting: open Account and look at each card. A server connected before the switches started off
+        may also still have Removing leftovers on. Turn off what you do not use.
       </Callout>
       <Table
         caption="What each switch can destroy"
@@ -1078,8 +1185,9 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
 
       <H2 id="container-page" />
       <P>
-        Container in the sidebar reads your container in one read-only SSH round trip and shows what is running and
-        what Egg left behind. Pick a server if you have more than one, and press <B>Refresh</B> to read it again.
+        Container in the sidebar opens one SSH connection to your container and runs read-only commands, so it changes
+        nothing there. It shows what is running and what Egg left behind. Pick a server if you have more than one, and
+        press <B>Refresh</B> to read it again. A read that takes longer than 60 seconds fails.
       </P>
       <List>
         <li>
@@ -1101,34 +1209,68 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
       </List>
       <H3 id="container-build-memory" title="Build memory" />
       <P>
-        Builds run on the Egg side in a sandbox, not on your container. The sandbox gets 2048 MB by default, and the
-        limit belongs to the server, so every project on that server builds with the same amount. The Build memory
-        card on the Container page has a field, <B>Build memory (MB)</B>, and a <B>Save</B> button. The allowed range
-        is 512 MB up to the memory your server reported the last time you pressed Test connection, or up to 8192 MB
-        when it reported none. The hint under the field shows the range for this server.
+        Build memory is the cap on a build. The setting belongs to the server, so every project on that server builds
+        with the same amount. A new server starts at 512 MB. A server that still had the old 1024 MB default saved was
+        lowered to 512 MB; a value you saved yourself was kept. The Build memory card on the Container page has a field,{" "}
+        <B>Build memory (MB)</B>, and a <B>Save</B> button. The allowed range is 512 MB up to the memory your
+        container reported when Egg last read it, at Test connection or during a deploy, or up to 8192 MB when it
+        reported none. The hint under the field shows the range for this server.
+      </P>
+      <P>
+        A build runs on your container, so it can never use all of its memory. At deploy time Egg lowers the cap to
+        your container’s memory minus 512 MB, which stays free for your app, whatever the field says. A field set to
+        2048 MB on a container that reports 2048 MB gives a cap of 1536 MB. If that leaves less than 256 MB, the
+        build does not start.
+      </P>
+      <P>
+        Projects with a build step get at least 1024 MB while they build, if your container has room for it. A build
+        step is a build command, or a build script such as <C>next build</C>. The floor applies only when your
+        container’s memory minus 512 MB is at least 1024 MB, so a container that reports 1536 MB or more qualifies and
+        a 1 GB container keeps the setting. It is applied when the build starts: the saved setting does not change,
+        and a plain app or an install alone stays at the setting.
       </P>
       {steps("container-build-memory-steps", "Change the build memory", [
         { title: "Open Container", body: "Pick the server from the list if you have more than one.", path: ["Container", "Build memory"] },
         { title: "Type a number in Build memory (MB)", body: "A whole number of MB inside the range in the hint. Save stays off until the number differs from the saved one." },
         { title: "Press Save", body: "A message says “Build memory set to <n> MB”. The next build on that server uses it. A build already running keeps the old limit." },
-        { title: "Go back to the default", body: "Press Use 2048 MB, then Save. The button shows only while the saved value is not 2048." },
+        { title: "Go back to the default", body: "Press Use 512 MB, then Save. The button shows only while the saved value is not 512." },
       ], 3)}
       <P>
         A value outside the range is refused with “Build memory must be a whole number of MB from 512 to &lt;max&gt;.”
-        A build that needs more than the limit stops with “The build ran out of memory (limit &lt;n&gt; MB). Raise the
-        build memory for this server on the Container page, or make the build use less.” Raise it and deploy again.
-        The setting is changed in the browser only: no access token or agent call can change it. Each change is
-        recorded in Activity as “Changed the build memory limit for”.
+        A build that needs more than the cap stops with “The build needed more memory than the cap of &lt;n&gt; MB.”
+        When a release was already serving, “Your app is still running.” follows. The deployment shows Error, Egg
+        deletes the new release folder, and the live release keeps running. Raise the limit and deploy again. The
+        setting is changed in the browser only: no access token or agent call can change it. Each change is recorded
+        in Activity as “Changed the build memory limit for”.
       </P>
       {why(
         <>
-          A standard Nest container is happy with 2048 MB, so that is the default. The limit is per server because
-          servers differ: some can use more, and a build that fits a small server should not be given more than that
-          server could ever offer. The top of the range follows what the server reported, so the page does not let you
-          ask for memory the server does not have. Swap is capped at the same size so the limit is a real one and a
-          build cannot slip past it by swapping.
+          A build shares your container with your app, so the default is 512 MB, which covers installs and plain apps, a project with a
+          build step gets at least 1024 MB when the container has room, and the cap always leaves 512 MB for the app. The limit is per server because servers differ: some can use more, and a build that fits a
+          small server should not be given more than that server could ever offer. The top of the range follows what
+          the server reported, so the page does not let you ask for memory the server does not have. A build gets no
+          swap, so the limit is a real one and a build cannot slip past it by swapping.
         </>
       )}
+
+      <H3 id="container-build-cpu" title="Build CPU" />
+      <P>
+        The CPU limit applies to the build. It does not limit the app after it is installed on your Nest container.
+        Each connected server has its own limit: 2 cores by default, adjustable from 0.5 cores in 0.25-core steps up
+        to the core count the Nest container last reported when Egg checked it. If no count was reported, the maximum
+        stays at 2 cores. The default is capped to the reported count when a server has fewer than 2 cores. The build
+        also runs at a low priority, so your app gets the CPU first when it is busy.
+      </P>
+      {steps("container-build-cpu-steps", "Change the build CPU limit", [
+        { title: "Open Container", body: "Pick the server from the list if you have more than one.", path: ["Container", "Build CPU"] },
+        { title: "Set Build CPU limit (cores)", body: "Enter a value in 0.25-core steps within the range shown under the field." },
+        { title: "Press Save", body: "The next build on that server uses the new CPU cap. A build already running keeps its current limit." },
+        { title: "Restore the default", body: "Press Use 2 cores, or the lower capacity-based default shown by the button, then Save." },
+      ], 3)}
+      <P>
+        A value outside the range is refused with “Build CPU must be a number from 0.5 to &lt;max&gt; cores in
+        0.25-core steps.” The cap limits the build’s maximum CPU time; it does not reserve cores for a build.
+      </P>
 
       <H2 id="container-leftovers" />
       <P>
@@ -1141,7 +1283,7 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         { title: "Open Container", body: "Find the row under Orphans. Its kind is Service, Preview service or Folder." },
         {
           title: "Press Remove",
-          body: "A service asks “Remove <unit>?”. It stops the service, turns off starting at boot and deletes its unit file. Files in its folder are not touched.",
+          body: "A service asks “Remove <unit>?”. It stops the service, so anything running under it goes down, turns off starting at boot and deletes its unit file, the small file that tells Linux how to run it. Files in its folder are not touched.",
         },
         {
           title: "Confirm a folder by name",
@@ -1162,7 +1304,7 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
       </P>
       {why(
         <>
-          Another account on the same Nest username family can own services whose names also start with{" "}
+          Something you set up yourself can have a service whose name also starts with{" "}
           <C>egg-</C>, and a folder you made by hand can sit in <C>~/.egg</C>. A name alone proves nothing,
           so Egg trusts only its own marker, and checks it again at the moment you press Remove instead of
           trusting the list you were looking at.
@@ -1190,10 +1332,11 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
       </List>
       <P>
         When something blocks, the form says “Deploy is turned off because N thing(s) on this container is/are in the
-        way” and links to Open container status. Tick <B>Adopt an existing checkout</B> when the repository already
-        runs on this container. The project is created with automatic deploys off, so the first deploy is manual.
-        Nothing turns them on afterwards: when the first deploy works, open Settings, Build and Run and tick{" "}
-        <B>Deploy automatically on push</B>.
+        way” and links to Open container status. Tick <B>Start with automatic deploys off</B> when you already run the
+        repository on this container by hand. The project is created with automatic deploys off, so the first deploy
+        is manual. Nothing turns them on afterwards: when the first deploy works, open Settings, Build and Run and
+        tick <B>Deploy automatically on push</B>. This does not import, take over or stop the copy that is already
+        running, and Egg does not import a running service yet. If that copy holds the port, stop it yourself first.
       </P>
 
       <H2 id="container-terminal" />
@@ -1272,7 +1415,7 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         },
         {
           title: "Restart if the app needs to re-read it",
-          body: "A change does not restart the app. Press Restart on the Service card when your app reads the file only at start.",
+          body: "A change does not restart the app. Press Restart on the Service card when your app reads the file only at start. The app is unavailable for a moment while it restarts.",
         },
       ])}
       <P>
@@ -1305,7 +1448,9 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         ["Leftover removal", "50 items a request, 10 requests a minute", "“Remove at most 50 items at a time.”", "server/inventory.ts (MAX_ORPHANS_PER_REQUEST), server/rate-limit.ts (RATE_LIMITS.orphanRemoval)"],
         ["Container reads", "60 seconds a read, 120 seconds for a removal", "The read fails with the SSH message. Press Refresh.", "server/inventory.ts (timeoutMs)"],
         ["Conflict checks", "20 a minute", "“Too many checks. Wait <n> second(s) and try again.”", "app/api/projects/conflicts/route.ts (LIMIT)"],
-        ["Build memory", "512 MB to the server’s memory, default 2048 MB", "“Build memory must be a whole number of MB from 512 to <max>.”", "lib/build-memory.ts (DEFAULT_BUILD_MEMORY_MB, buildMemoryRange)"],
+        ["Build memory", "512 MB to the server’s memory, default 512 MB", "“Build memory must be a whole number of MB from 512 to <max>.”", "lib/build-memory.ts (DEFAULT_CONTAINER_BUILD_MEMORY_MB, buildMemoryRange)"],
+        ["Build cap on the container", "The Build memory setting, raised to at least 1024 MB for a project with a build step when the container’s memory minus 512 MB is at least 1024 MB, and never more than the container’s memory minus 512 MB. No build starts under 256 MB.", "“The build did not start: your container reports <n> MB of memory, and 512 MB of that is kept for your app, which leaves too little to build in. Use a larger container.”", "server/deploy/container-build.ts (containerMemoryCapMb, CONTAINER_RESERVE_MB, MIN_CONTAINER_CAP_MB)"],
+        ["Build CPU", "0.5 cores to the Nest server’s reported core count, in 0.25-core steps; defaults to 2 or the lower reported count", "“Build CPU must be a number from 0.5 to <max> cores in 0.25-core steps.”", "lib/build-memory.ts (DEFAULT_BUILD_CPUS, buildCpuRange, checkBuildCpu)"],
       ])}
 
       {wrong("container-wrong", [
@@ -1318,8 +1463,8 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         ["Remove at most 50 items at a time.", "400. Remove in batches."],
         ["Nothing was changed on your container. <details>", "The conflict check refused. The details say what is in the way: choose another name or port, or stop that program yourself."],
         ["Could not read the container.", "The page could not reach the container. Check it is running, then press Refresh."],
-        ["Build memory must be a whole number of MB from 512 to <max>.", "400. Type a whole number inside the range in the hint under Build memory (MB). The top of the range is the memory the server reported at its last Test connection."],
-        ["The build ran out of memory (limit <n> MB). Raise the build memory for this server on the Container page, or make the build use less.", "The build was stopped with exit 137. Raise Build memory (MB), press Save and deploy again, or make the build use less memory."],
+        ["Build memory must be a whole number of MB from 512 to <max>.", "400. Type a whole number inside the range in the hint under Build memory (MB). The top of the range is the memory your container reported when Egg last read it, at Test connection or during a deploy."],
+        ["The build needed more memory than the cap of <n> MB. Your app is still running.", "The build was stopped with exit 137. Your app was not. The second sentence is added only when a release was already serving. Raise Build memory (MB), press Save and deploy again, or make the build use less memory. The cap never goes above your container’s memory minus 512 MB."],
         ["Could not read the build memory.", "The Build memory card could not load the setting. Reload the page. It does not need the container to be reachable."],
         ["Could not save the build memory.", "The change did not go through. Try Save again."],
       ])}
@@ -1406,14 +1551,15 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
           ["Commands", "500 characters each, on one line.", <C key="5">command, server/projects.ts</C>],
           ["Root directory", "200 characters, relative, no ..", <C key="6">rootDir, server/projects.ts</C>],
           ["Branch name", "200 characters. Letters, digits, dots, underscores, hyphens and slashes, not starting with a hyphen.", <C key="7">branch, server/projects.ts</C>],
-          ["Deployments at once", "One per project. Two at a time overall by default.", <C key="8">WORKER_CONCURRENCY, instrumentation.ts</C>],
-          ["Clone", "5 minutes.", <C key="9">server/deploy/build.ts</C>],
-          ["Build", "15 minutes by default (900 seconds).", <C key="10">BUILD_TIMEOUT_SECONDS, server/config.ts</C>],
-          ["Build output", "500 MB.", <C key="11">MAX_ARCHIVE_BYTES, server/deploy/build.ts</C>],
-          ["Build sandbox", "2 CPUs and 2048 processes. Memory is 2048 MB by default, set for each server.", <C key="12">dockerBuildArgs, server/deploy/build.ts</C>],
-          ["Build memory", "512 MB up to the server’s reported memory, or 8192 MB when it reports none.", <C key="12b">lib/build-memory.ts</C>],
+          ["Deployments at once", "One per project. Two at a time overall by default. One build at a time on a container.", <C key="8">WORKER_CONCURRENCY, instrumentation.ts, server/deploy/build-lock.ts</C>],
+          ["Clone", "5 minutes, on Egg’s machine.", <C key="9">server/deploy/build.ts</C>],
+          ["Build", "15 minutes, on your container. It cannot be changed.", <C key="10">BUILD_TIMEOUT_SECONDS, server/deploy/container-build.ts</C>],
+          ["Build output", "500 MiB (524,288,000 bytes), measured on the packed archive.", <C key="11">MAX_ARCHIVE_BYTES, server/deploy/build.ts</C>],
+          ["Build cap", "On your container, for each build: a CPU cap (2 cores by default), 4096 processes, no swap, and memory (512 MB by default, at least 1024 MB for a project with a build step when the container has room, never more than the container’s memory minus 512 MB). The CPU cap and memory are set for each server.", <C key="12">systemdRunArgs, server/deploy/container-build.ts</C>],
+          ["Build memory", "512 MB up to the server’s reported memory, or 8192 MB when it reports none. Default 512 MB.", <C key="12b">lib/build-memory.ts</C>],
+          ["Free disk before a build", "2048 MB.", <C key="12c">MIN_FREE_DISK_MB, server/deploy/container-probe.ts</C>],
           ["Build log", "20,000 lines, 4000 characters each.", <C key="13">MAX_LOG_ROWS, server/deploy/logger.ts</C>],
-          ["Health wait", "45 seconds after the switch. A failed production deploy puts the previous release back.", <C key="14">healthTimeoutSeconds, server/deploy/pipeline.ts</C>],
+          ["Health wait", "45 seconds after the switch. The service restarts at the switch, so the app is unavailable for a moment. A failed production deploy puts the previous release back.", <C key="14">healthTimeoutSeconds, server/deploy/pipeline.ts</C>],
           ["Production releases kept", "The 5 newest ready ones, plus the live one.", <C key="15">KEEP_RELEASES, server/deploy/layout.ts</C>],
           ["Previews kept", "The 2 newest.", <C key="16">KEEP_PREVIEWS, server/deploy/layout.ts</C>],
           ["Preview ports", "20000 to 29999, one per preview.", <C key="17">PREVIEW_PORT_MIN, PREVIEW_PORT_MAX, server/projects.ts</C>],
@@ -1437,6 +1583,7 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
           ["File changes", "60 a minute.", <C key="9">RATE_LIMITS.fileWrite, server/rate-limit.ts</C>],
           ["Leftover removal", "50 items a request, 10 requests a minute.", <C key="10">MAX_ORPHANS_PER_REQUEST, server/inventory.ts</C>],
           ["Conflict checks", "20 a minute.", <C key="11">app/api/projects/conflicts/route.ts</C>],
+          ["Scheduled jobs", "5 per project. At most one run every 5 minutes. A run is stopped after 30 minutes.", <C key="12">MAX_JOBS_PER_PROJECT, server/scheduled-jobs.ts; MIN_GAP_MINUTES, lib/cron-schedule.ts; JOB_TIMEOUT_SECONDS, server/deploy/jobs-remote.ts</C>],
         ]}
       />
       <H2 id="limits-api" />
@@ -1469,10 +1616,10 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
           ["Resource history", "Sampled every 5 minutes, kept 7 days, shown for 24 hours or 7 days.", <C key="3">SAMPLE_KEEP_MS, server/monitor.ts</C>],
           ["Runtime logs", "Up to 300 lines shown, and 300 more each time you press Load older lines. A search or the Warnings and errors level reads up to 1000 lines for each read.", <C key="4">components/logs-view.tsx, lib/log-page.ts</C>],
           ["Alert history", "The newest 50 shown, kept 90 days.", <C key="5">ALERT_KEEP_MS, server/notify.ts</C>],
-          ["Analytics history", "90 days.", <C key="6">PAGEVIEW_KEEP_MS, server/analytics.ts</C>],
+          ["Analytics history", "30, 60 or 90 days for each project, 90 by default.", <C key="6">retentionDays, server/analytics-config.ts; prunePageviews, server/analytics.ts</C>],
           ["Funnel", "2 to 6 steps.", <C key="7">MIN_STEPS, MAX_STEPS, server/analytics-config.ts</C>],
           ["Analytics events", "30 per 10 seconds per project and address. Page views are 1 per second. With TRUST_PROXY off every visitor shares one address.", <C key="8">server/analytics-events.ts, server/analytics.ts</C>],
-          ["Analytics fields", "Campaign values 80 characters, event value 40, error message 200, 5 errors per page view. Speed and returning-visitor figures need 50 page views and 20 visitors.", <C key="8b">server/analytics-fields.ts, server/analytics-retention.ts</C>],
+          ["Analytics fields", "Allowed campaign values up to 20 each for source, medium and campaign, 40 characters each, event value 40, error message 200, 5 errors per page view. Speed and returning-visitor figures need 50 page views and 20 visitors.", <C key="8b">server/analytics-fields.ts, server/analytics-retention.ts</C>],
           ["Live view and retention", "A 5 minute window. Signals are kept 1 hour. The retention code changes every 90 days.", <C key="8c">server/analytics.ts (LIVE_WINDOW_MS, LIVE_KEEP_MS, RETENTION_PERIOD_MS)</C>],
           ["Status page", "30 days and the latest 10 outages.", <C key="9">server/status-page.ts</C>],
           ["Webhook delivery", "3 attempts, 5 seconds each, history kept 30 days.", <C key="10">MAX_ATTEMPTS, DELIVERY_RETENTION_MS, server/webhooks.ts</C>],
@@ -1544,7 +1691,7 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
       intro="Egg is open source. You can run your own copy, with your own database, secret and worker."
     >
       <P>
-        You need Node.js, pnpm and, for real builds, Docker. This page lists what the code reads. The{" "}
+        You need Node.js and pnpm. This page lists what the code reads. The{" "}
         <ExternalLink href={repoLink("docs/selfhost/README.md")}>self-hosting guide</ExternalLink> walks through a
         private install on your own computer and a server run with Docker Compose, the{" "}
         <ExternalLink href={repoLink("docs/selfhost/customising.md")}>customising guide</ExternalLink> lists the
@@ -1570,8 +1717,9 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
           body: (
             <>
               Setup writes <C>LOCAL_MODE=1</C>, so the login page gets a <B>Sign in on this computer</B> button and you
-              need no account. Or set the Hack Club values to use Hack Club sign-in. The setup script also writes{" "}
-              <C>DEV_LOGIN=1</C>, which shows a Development sign-in form in <C>pnpm dev</C> only.
+              need no external account. On first use, enter the generated <C>LOCAL_MODE_SECRET</C> from <C>.env.local</C>
+              and choose a password; use that password for later sign-ins.
+              Or set the Hack Club values to use Hack Club sign-in. Development sign-in is off by default.
             </>
           ),
         },
@@ -1579,8 +1727,9 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
           title: "Start it",
           body: (
             <>
-              <C>pnpm egg start</C> creates <C>.env.local</C> if it is missing, checks the computer, builds the app the
-              first time, starts it on the port in <C>APP_URL</C> and opens the browser. Setup turns on{" "}
+              <C>pnpm egg start</C> creates <C>.env.local</C> if it is missing, checks the computer, builds Egg itself
+              the first time, which makes that first start slower and uses your computer’s CPU and disk, starts it on
+              the port in <C>APP_URL</C> and opens the browser. Setup turns on{" "}
               <C>RUN_WORKER=1</C>, so the queue runs in the same process. Ctrl+C stops it. Add <C>--dev</C> to run the
               development server instead.
             </>
@@ -1601,21 +1750,19 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
       ])}
       <P>
         <C>pnpm run doctor</C> only checks the computer and starts nothing. A cross stops Egg from starting. A warning
-        does not: for example, builds need Docker, or <C>BUILD_RUNNER=local</C> in <C>.env.local</C>, but Egg itself
-        starts without it. You can also run <C>pnpm build</C> and then <C>pnpm start</C> yourself. The database
+        does not: for example, a missing optional tool is shown as a warning, and Egg itself starts without it. You can also run <C>pnpm build</C> and then <C>pnpm start</C> yourself. The database
         changes apply the first time a new version opens the file.
       </P>
       <P>
-        Your data is one file, <C>web/data/egg.db</C>. It stays on disk when Egg stops. Back it up with{" "}
-        <C>APP_SECRET</C>.
+        Your data is one file, <C>web/data/egg.db</C>. It stays on disk when Egg stops. Back it up together
+        with <C>APP_SECRET</C>, because the file cannot open your sealed keys without it.
       </P>
 
       {why(
         <>
-          Local mode is off unless you set <C>LOCAL_MODE=1</C>, because it has no password and no account: whoever can
-          press the button is the owner. That is why it also refuses to start unless <C>APP_URL</C> is localhost,{" "}
-          <C>127.0.0.1</C> or <C>::1</C>, and why each sign-in request has to arrive on a local address too, since the
-          server may listen on every network interface even when <C>APP_URL</C> says localhost.{" "}
+          Local mode is off unless you set <C>LOCAL_MODE=1</C>. It requires a private <C>LOCAL_MODE_SECRET</C> of at
+          least 32 characters to set or recover the owner password. Keep the recovery key private. It also refuses to start unless <C>APP_URL</C>
+          is localhost, <C>127.0.0.1</C> or <C>::1</C>.{" "}
           <C>LOCAL_MODE_ALLOW_REMOTE=1</C> exists for a copy behind a VPN or an access proxy you control, where
           something else decides who can reach the site.
         </>
@@ -1652,16 +1799,14 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
           [<C key="2">APP_URL</C>, "The public address. Used for sign-in redirects, hook URLs and links. Default http://localhost:3000."],
           [<C key="3">DATABASE_URL</C>, "The SQLite file. Default file:./data/egg.db. Migrations apply on startup."],
           [<C key="4">HACKCLUB_CLIENT_ID, HACKCLUB_CLIENT_SECRET</C>, "From a Hack Club Auth app. Without them the Continue with Hack Club button is off."],
-          [<C key="5">LOCAL_MODE</C>, "1 or true adds a Sign in on this computer button that signs you in as one owner, with no external account. Off by default. Refused unless APP_URL is localhost, 127.0.0.1 or ::1, and each sign-in request must arrive on a local address."],
-          [<C key="6">LOCAL_MODE_ALLOW_REMOTE</C>, "1 lets LOCAL_MODE run on another address. Use it only behind a VPN or access proxy you control, because anyone who can reach the site could sign in as the owner."],
+          [<C key="5">LOCAL_MODE</C>, "1 or true enables password-based owner sign-in without an external account. Off by default. Refused unless APP_URL is localhost, 127.0.0.1 or ::1."],
+          [<C key="5b">LOCAL_MODE_SECRET</C>, "Required in local mode; a private random recovery key of at least 32 characters for first-time setup and password reset. Setup generates it for new installations."],
+          [<C key="6">LOCAL_MODE_ALLOW_REMOTE</C>, "1 lets LOCAL_MODE run on another address. Use it only behind a VPN or access proxy you control."],
           [<C key="6b">TRUST_PROXY</C>, "Off by default. 1 or true makes Egg believe X-Forwarded-For and X-Real-IP for the visitor’s address. Set it to 1 only when every request reaches Egg through a reverse proxy you run that sets those headers itself. Without it, every visitor counts as one address for analytics, and the sign-in and invalid-token limits do not apply."],
           [<C key="7">DEV_LOGIN</C>, "1 shows a fake sign-in in pnpm dev. It is ignored in a production build."],
           [<C key="8">GITHUB_APP_ID, GITHUB_APP_SLUG, GITHUB_APP_CLIENT_ID, GITHUB_APP_CLIENT_SECRET, GITHUB_APP_PRIVATE_KEY, GITHUB_WEBHOOK_SECRET</C>, "All six are needed for private repositories, the repository picker and deploys on push. The private key may use \\n escapes."],
           [<C key="9">RUN_WORKER</C>, "1 runs the queue inside the web process. Anything else means no builds run there. Use pnpm worker."],
           [<C key="10">WORKER_CONCURRENCY</C>, "Deployments at once. Default 2. One project never builds twice at a time. Read by the worker, not by config.ts."],
-          [<C key="11">BUILD_RUNNER</C>, "docker (default) isolates builds, with the memory limit you set for each server. local runs them on the host with no isolation and no memory limit, and prints a warning."],
-          [<C key="12">BUILD_IMAGE_NODE, BUILD_IMAGE_PYTHON</C>, "Sandbox images. Defaults node:22-bookworm and python:3.12-bookworm."],
-          [<C key="13">BUILD_TIMEOUT_SECONDS</C>, "How long a build may run. Default 900."],
           [<C key="14">DEPLOY_WORK_DIR</C>, "Where builds are cloned. Default ./data/work."],
           [<C key="15">MONITOR_INTERVAL_MS</C>, "How often uptime and usage are checked. Default 300000. 0 turns the checks off."],
           [<C key="16">NEST_HOST, NEST_PORT, UNIT_DIR</C>, "Nest’s SSH host (hackclub.app, 22) and where systemd units are written (/etc/systemd/system). Change only for testing."],
@@ -1677,9 +1822,22 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         The worker takes queued deployments and runs the uptime monitor. It polls every second and never runs two jobs
         of one project at once. With <C>RUN_WORKER=1</C> it lives inside the web process. For production you can set{" "}
         <C>RUN_WORKER=0</C> and run <C>pnpm worker</C> on another machine. It finishes running jobs when it gets
-        SIGINT or SIGTERM. Builds run on the machine the worker runs on, so give it Docker and keep nothing private
-        reachable from it, because builds have normal network access. A job that has been running for an hour is
-        presumed dead and failed.
+        SIGINT or SIGTERM. Every project needs a worker, because the worker clones the repository and runs the
+        container build over SSH. The build itself runs on the project’s own container, so the machine that runs the
+        worker needs no Docker.
+      </P>
+      <P>
+        What a deployment costs the worker’s machine: a clone and a packed copy of the source in{" "}
+        <C>DEPLOY_WORK_DIR</C>, kept until the deployment ends, and an upload over SSH. Two deployments can run at
+        once by default. Set <C>WORKER_CONCURRENCY=1</C> to allow one at a time. The install and build use the
+        container’s memory and CPU, under the cap set for that server.
+      </P>
+      <P>
+        A worker renews a lease on its running job every 15 seconds. If the lease is 60 seconds old, Egg logs a
+        warning and leaves the job running, because commands it started on your container may still be changing
+        files. That deployment keeps its project blocked until you recover it by hand. See{" "}
+        <ExternalLink href={repoLink("docs/selfhost/README.md")}>Recovering a stale deployment</ExternalLink> in the
+        self-hosting guide.
       </P>
       <Callout tone="warning" title="Without a worker, nothing builds">
         If <C>RUN_WORKER</C> is not <C>1</C> and no <C>pnpm worker</C> is running, deployments stay queued, and uptime
@@ -1743,10 +1901,11 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
           title: "Make the data folder",
           body: (
             <>
-              The containers run as user 1000. The path must match <C>EGG_DATA_DIR</C>.
+              The Docker containers that run Egg use user 1000, so that user must own the data folder. The path must
+              match <C>EGG_DATA_DIR</C>.
             </>
           ),
-          code: { label: "Terminal", code: "sudo mkdir -p /srv/egg/data/work && sudo chown -R 1000:1000 /srv/egg/data" },
+          code: { label: "Terminal", code: "sudo mkdir -p /srv/egg/data && sudo chown -R 1000:1000 /srv/egg/data" },
         },
         {
           title: "Start it",
@@ -1758,11 +1917,11 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
           code: { label: "Terminal", code: "docker compose up -d --build" },
         },
       ])}
-      <Callout tone="warning" title="Builds are off until you turn them on">
-        The worker runs project builds in Docker, so it mounts the Docker socket. Anyone who can run code in the worker
-        can control Docker, which is root on the server. In the example file, <C>COMPOSE_PROFILES=builds</C> is
-        commented out. Remove the <C>#</C> only if you accept that. Without it, deployments stay queued. Set{" "}
-        <C>DOCKER_GID</C> to the group that owns the socket: <C>stat -c %g /var/run/docker.sock</C>.
+      <Callout tone="note" title="Nothing is built on this server">
+        The <C>worker</C> service in the Compose file runs every deployment. It clones the repository, packs the
+        source and sends it to the project’s Nest container, where the install and build run under a cap. So no
+        service here needs Docker access or extra privileges, and the worker starts with the rest. Without a running
+        worker, deployments stay queued.
       </Callout>
       <P>
         The example file sets <C>TRUST_PROXY=1</C>, because every request comes through Caddy. Do not publish the app
@@ -1784,7 +1943,7 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         rows={[
           ["Windows", "Full. pnpm fake-nest needs WSL."],
           ["Linux", "Full."],
-          ["macOS", "The same as Linux. Builds need Docker Desktop, or BUILD_RUNNER=local."],
+          ["macOS", "The same as Linux."],
         ]}
       />
       <P>
@@ -1794,8 +1953,8 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
 
       {limits("selfhost-limits", [
         ["Concurrent deployments", "2 by default", "Set WORKER_CONCURRENCY to change it.", "instrumentation.ts (WORKER_CONCURRENCY)"],
-        ["Build time", "900 seconds by default", "“The build timed out.”", "server/config.ts (BUILD_TIMEOUT_SECONDS)"],
-        ["Build memory and CPU", "2048 MB by default for each server, and 2 CPUs", "The build is stopped by Docker. With memory, exit 137 and “The build ran out of memory (limit <n> MB). Raise the build memory for this server on the Container page, or make the build use less.”", "server/deploy/build.ts (dockerBuildArgs), lib/build-memory.ts"],
+        ["Build time", "15 minutes, on the container. It cannot be changed.", "“The build took longer than 15 minutes and was stopped.”", "server/deploy/container-build.ts (BUILD_TIMEOUT_SECONDS)"],
+        ["Build memory and CPU", "512 MB (at least 1024 MB for a project with a build step, when the container has room) and 2 cores by default for each server; both are configurable", "The kernel stops the build at its cap. With memory, exit 137 and “The build needed more memory than the cap of <n> MB.”", "server/deploy/container-build.ts (systemdRunArgs), lib/build-memory.ts"],
         ["Uptime check", "Every 300000 ms by default", "Set MONITOR_INTERVAL_MS to 0 to stop checks.", "server/jobs.ts (MONITOR_INTERVAL_MS)"],
         ["Secret length", "32 characters at least", "“APP_SECRET must be at least 32 characters”", "server/config.ts (APP_SECRET)"],
       ])}
@@ -1807,15 +1966,14 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
           "LOCAL_MODE signs anyone in as the owner, so APP_URL must be localhost or 127.0.0.1. Set APP_URL to a local address, or set LOCAL_MODE_ALLOW_REMOTE=1 if you control who can reach the site.",
           "Set APP_URL=http://localhost:3000, or read the override above before you set LOCAL_MODE_ALLOW_REMOTE.",
         ],
-        ["Local sign-in only works from this computer", "403. You opened Egg through a network address. Open http://localhost:3000."],
+        ["The recovery key is incorrect.", "Enter the LOCAL_MODE_SECRET from your private .env.local file."],
         ["The login page has no Sign in on this computer button", "LOCAL_MODE is not 1 or true, or Egg was not restarted after the change. Edit .env.local and restart."],
         ["The GitHub App is not configured.", "Set all six GITHUB_APP settings and GITHUB_WEBHOOK_SECRET."],
         ["webhook not configured", "The webhook route answers 503 until GITHUB_WEBHOOK_SECRET is set."],
         ["Hack Club sign-in is not set up on this installation yet.", "Set HACKCLUB_CLIENT_ID and HACKCLUB_CLIENT_SECRET, or use local mode."],
         ["Egg did not start. Fix the lines marked with a cross, then run this again.", "The doctor found a problem that stops Egg. Read the Fix line under each cross. pnpm run doctor shows the same list."],
         ["Port 3000 is already in use", "Another program uses the port in APP_URL. Stop it, or change the port in APP_URL in .env.local."],
-        ["Deployments stay Queued on a server", "The worker is off by default. Uncomment COMPOSE_PROFILES=builds in .env if you accept the Docker socket risk, then run docker compose up -d."],
-        ["A build fails at once with a Docker error", "Docker is not running or not installed. Start it, or set BUILD_RUNNER=local for code you trust. The doctor shows this as a warning, not a stop."],
+        ["Deployments stay Queued on a server", "The worker service is not running. Run docker compose ps, then docker compose up -d. Read its output with docker compose logs worker."],
         ["Deployments stay Queued", "No worker is running. Set RUN_WORKER=1, or start pnpm worker."],
       ])}
 
@@ -1832,12 +1990,12 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
       })}
       {example("selfhost-example-local", {
         title: "Run a private copy on your laptop",
-        given: "A laptop with Node.js, pnpm and Docker, and a Nest container to deploy to.",
+        given: "A laptop with Node.js and pnpm, and a Nest container to deploy to.",
         steps: [
           { title: "Set up", body: "Run pnpm install and pnpm run setup in the web folder." },
-          { title: "Check local mode", body: "Setup wrote LOCAL_MODE=1 to .env.local. An older file may need the line added." },
+          { title: "Check local mode", body: "Setup wrote LOCAL_MODE=1 and LOCAL_MODE_SECRET to .env.local. Add a random secret of at least 32 characters to older files." },
           { title: "Start", body: "Run pnpm egg start. It checks the computer, builds the first time and opens the browser." },
-          { title: "Sign in", body: "Press Sign in on this computer on the page that opens." },
+          { title: "Sign in", body: "Use LOCAL_MODE_SECRET from .env.local to set your password on first use, then sign in with that password." },
         ],
         result:
           "You land on Projects as the owner. Connect your Nest username, paste the key into the Nest dashboard, press Test connection, and deploy as usual.",
@@ -1888,14 +2046,28 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
           ["Could not clone the repository. Check the branch name and that Egg has access to it.", "Check the production branch in Settings and, for a private repository, that the GitHub app is installed on it."],
           ["The root directory \"<dir>\" does not exist in this repository.", "Fix Root directory in Settings, Build and Run."],
           ["The build failed (exit <code>).", "Read the log above it. The usual causes are a missing lockfile or build script, the wrong root directory, or a command that needs a variable you have not set."],
-          ["The build timed out.", "A build may run 15 minutes by default. Make it faster."],
-          ["The build ran out of memory (limit <n> MB). Raise the build memory for this server on the Container page, or make the build use less.", "Exit 137. Raise Build memory (MB) on the Container page, or use less memory in the build."],
+          ["The build timed out.", "The clone took longer than 5 minutes. The limit is fixed. Nothing changes on your container."],
+          ["The build took longer than 15 minutes and was stopped. Your app is still running.", "The build on your container ran past 15 minutes. Make the build faster. This limit is fixed. “Your app is still running.” is added only when a release was already serving. Egg deletes the new release folder."],
+          ["The build needed more memory than the cap of <n> MB. Your app is still running.", "Exit 137. The build went over its cap and was stopped, and your app was not. Raise Build memory (MB) on the Container page and deploy again, or use less memory in the build. The cap never goes above your container’s memory minus 512 MB."],
+          ["The build did not start: your container reports <n> MB of memory, and 512 MB of that is kept for your app, which leaves too little to build in. Use a larger container.", "The cap would be under 256 MB. Egg keeps 512 MB of your container’s memory for your app, so a container with under 768 MB cannot build."],
+          ["Another build has been running on this container for more than 30 minutes, so this one did not start. Your app is still running.", "One build runs at a time on a container. Wait for the other build to finish or cancel it, then deploy again."],
+          ["Egg could not check your container before building, so nothing was uploaded. Check that the container is running and try again.", "The check before the upload got no answer. Check the Container page and Test connection, then deploy again."],
+          ["Free up disk space on your container: <n> MB is free and a build needs at least 2048 MB.", "Delete files you do not need on your container, then deploy again. Nothing was uploaded."],
+          ["Builds on your container run under a memory cap with systemd-run, which is not installed here, so the build did not start. Install systemd.", "Your container has no systemd-run, which the cap needs. Install systemd."],
+          ["Your container cannot apply a memory cap to a build (it needs systemd with cgroup v2 and the memory controller), so the build did not start rather than run without a limit.", "Egg does not run a build without a limit. Use a container with systemd, cgroup v2 and the memory controller."],
+          ["Install coreutils on your container: sudo apt install coreutils (the build needs the timeout command).", "Run the command on your container, then deploy again."],
+          ["Install Node.js <version> or newer on your container (nodejs.org), then deploy again.", "No Node.js was found. <version> is 22.13 when the project has no engines range. With a range, the line says: Install Node.js on your container (this project needs <range>), then deploy again."],
+          ["Node.js <installed> on your container does not match what this project needs (<wanted>). Install a matching Node.js on your container (nodejs.org), then deploy again.", "<wanted> is the engines range in package.json, or >=22.13 when there is none."],
+          ["Install npm on your container: sudo apt install npm (installing Node.js from nodejs.org includes it).", "Run the command, then deploy again."],
+          ["This project uses <pnpm or yarn>, which needs corepack. On your container run: npm install -g corepack", "Run the command, then deploy again."],
+          ["Install Python 3 on your container: sudo apt install python3", "Run the command, then deploy again."],
+          ["Install python3-venv on your container: sudo apt install python3-venv", "Run the command, then deploy again. On Debian and Ubuntu venv is a separate package."],
           ["Build memory must be a whole number of MB from 512 to <max>. Change it on the Container page.", "The saved build memory no longer fits the range, for example after the server reported less memory. Open Container, set Build memory (MB) inside the range and press Save."],
           ["The output folder \"<dir>\" was not created by the build.", "Set Output directory to the folder your build really writes."],
-          ["The build output is <n> MB, over the 524.288 MB limit.", "Leave out what the app does not need to run. The limit is 500 MiB, measured on the packed archive."],
+          ["The build output is <n> MB, over the 524.288 MB limit.", "Leave out what the app does not need to run. The limit is 500 MiB (524,288,000 bytes), measured on the packed archive. Nothing was uploaded to your container."],
           ["Set a start command for this project (for example ./my-binary).", "A Custom command project needs a Start command."],
           ["Static sites need Python 3 or Node.js on your Nest container to be served.", "Install one of them on the container."],
-          ["The worker stopped while this deployment was running. Try again.", "Press Redeploy. The worker restarted during the build."],
+          ["A deployment stays on Building or Deploying and nothing moves", "The worker that owned it stopped. Egg does not free the job on its own, because commands it started on your container may still be running, and that project cannot start another deployment. Only the person who runs Egg can fix it: see Recovering a stale deployment in the self-hosting guide."],
           ["No free preview ports on this server.", "All of 20000 to 29999 are in use. Delete old previews."],
           ["Further log output was dropped: this deployment reached its log limit.", "The log holds 20,000 lines. Make the build print less. The build itself carried on."],
         ],
@@ -1905,7 +2077,7 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
       {wrong(
         "troubleshooting-no-answer",
         [
-          ["The new release did not become healthy on port <port>. Make sure your app listens on the PORT environment variable and on 0.0.0.0.", "Listen on PORT and on 0.0.0.0, not only localhost. The log shows the last 30 lines of the app’s output, and the previous release is put back."],
+          ["The new release did not become healthy on port <port>. Make sure your app listens on the PORT environment variable and on 0.0.0.0.", "Listen on PORT and on 0.0.0.0, not only localhost. The log shows the last 30 lines of the app’s output. For a production deploy, the previous release is put back, so the app is unavailable for a short time while the new release starts and again while the old one returns."],
           ["Service crashed on start", "The service failed before the wait ended. Read the output printed under it."],
           ["The previous release did not come back either. Check the logs.", "Open Logs and read the runtime lines, then redeploy or use Instant rollback to an earlier release."],
         ],
@@ -2131,20 +2303,20 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         title: "Fix a build that stops with exit 137",
         given: (
           <>
-            A project named recipe-api whose deployment fails with “The build ran out of memory (limit 2048 MB).
-            Raise the build memory for this server on the Container page, or make the build use less.”
+            A project named recipe-api whose deployment fails with “The build needed more memory than the cap of 1024
+            MB. Your app is still running.”
           </>
         ),
         steps: [
           { title: "Open Container", body: "Pick the server that holds recipe-api, then find the Build memory card.", path: ["Container", "Build memory"] },
-          { title: "Raise the number", body: "Read the range in the hint under Build memory (MB). Type 3072 if the hint allows it, then press Save." },
+          { title: "Raise the number", body: "Read the range in the hint under Build memory (MB). Type 1536 if the hint allows it, then press Save." },
           { title: "Deploy again", body: "Open the project and press Redeploy, or push a commit." },
         ],
         result: (
           <>
-            The message “Build memory set to 3072 MB” appears, the next build runs with that limit and finishes, and
-            Activity lists “Changed the build memory limit for” the server. If the hint stops at 2048, the server
-            reports no more memory than that: make the build use less instead.
+            The message “Build memory set to 1536 MB” appears, the next build runs with that limit and finishes, and
+            Activity lists “Changed the build memory limit for” the server. The cap is at most your container’s memory
+            minus 512 MB, so on a container that reports less than 2048 MB, make the build use less instead.
           </>
         ),
       }, 2)}
@@ -2164,8 +2336,10 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
       <P>
         You make tokens on the Developer page. A token is a bearer secret that starts with <C>egg_</C>. The API is
         under <C>/api/v1</C>, the agent endpoint is <C>/api/mcp</C>, and everything here is also in the OpenAPI
-        description at <C>/api/v1/openapi.json</C>. A token can do nothing its permissions do not name, and a few
-        things it can never do at all.
+        description at <C>/api/v1/openapi.json</C>. A token can do nothing its permissions do not name (the API and
+        its code call them scopes), and a few things it can never do at all. Egg runs every call on Egg’s machine.
+        The calls marked “Container session” in the table below also open an SSH connection to your container, so
+        they use a little of its CPU and are limited to 10 a minute for each token.
       </P>
       <H2 id="api-tokens" />
       {steps("api-tokens-steps", "Make a token", [
@@ -2344,7 +2518,7 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         },
         {
           title: "Deploy a branch",
-          body: <>Needs <C>deployments:write</C>. Leave the body out to deploy the production branch. Any other branch becomes a preview. The answer is 202 with the queued deployment.</>,
+          body: <>Needs <C>deployments:write</C>. Leave the body out to deploy the production branch. Any other branch becomes a preview. The answer is 202 with the queued deployment. The build then runs on your container, and a production deploy restarts the app on your container.</>,
           code: {
             label: "Terminal",
             code: `curl -X POST -H "Authorization: Bearer $NEST_TOKEN" \\\n  -H "Content-Type: application/json" \\\n  -d '{"branch":"pricing-page"}' \\\n  https://your-egg/api/v1/projects/PROJECT_ID/deployments`,
@@ -2367,7 +2541,7 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         },
         {
           title: "Roll back",
-          body: <>Needs <C>deployments:write</C>. Pass the id of an earlier production deployment whose release is still on the server.</>,
+          body: <>Needs <C>deployments:write</C>. Pass the id of an earlier production deployment whose release is still on your container. Nothing is rebuilt: the service restarts on that older release, so the app is unavailable for a moment.</>,
           code: { label: "Terminal", code: `curl -X POST -H "Authorization: Bearer $NEST_TOKEN" \\\n  https://your-egg/api/v1/deployments/DEPLOYMENT_ID/rollback` },
         },
         {

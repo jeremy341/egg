@@ -3,7 +3,8 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { EXPIRY_OPTIONS, TOKEN_CANNOT } from "@/lib/developer";
 import { PAGEVIEW_KEEP_MS, snippet } from "@/server/analytics";
-import { DEFAULT_BUILD_MEMORY_MB } from "@/lib/build-memory";
+import { NO_FEATURES, featuresPatch } from "@/server/analytics-config";
+import { BUILD_STEP_FLOOR_MB, DEFAULT_CONTAINER_BUILD_MEMORY_MB } from "@/lib/build-memory";
 import { SCOPES, SHORT_LIVED_MAX_DAYS } from "@/server/api-tokens";
 import { REAUTH_WINDOW_MS } from "@/server/auth/session";
 import { KEEP_RELEASES } from "@/server/deploy/layout";
@@ -38,6 +39,12 @@ describe("homepage facts match the code", () => {
 
   it("states how long data is kept and how far the status page looks back", () => {
     expect(HOME_FACTS.pageviewDays * DAY).toBe(PAGEVIEW_KEEP_MS);
+    // A project chooses 30, 60 or 90 days and keeps 90 until it does.
+    expect(HOME_FACTS.pageviewDays).toBe(NO_FEATURES.retentionDays);
+    for (const days of HOME_FACTS.pageviewDayChoices) expect(featuresPatch.safeParse({ retentionDays: days }).success).toBe(true);
+    expect(featuresPatch.safeParse({ retentionDays: 45 }).success).toBe(false);
+    expect(HOME_FACTS.pageviewDayChoices).toContain(HOME_FACTS.pageviewDays);
+    expect(src("src/app/(marketing)/page.tsx")).toContain("${F.pageviewDayChoices[0]}, ${F.pageviewDayChoices[1]} or ${F.pageviewDayChoices[2]} days");
     expect(src("src/server/status-page.ts")).toContain(`const windowDays = ${HOME_FACTS.statusWindowDays};`);
   });
 
@@ -76,8 +83,9 @@ describe("homepage facts match the code", () => {
 
   it("states the health wait and the build memory limit", () => {
     expect(src("src/server/deploy/pipeline.ts")).toContain(`healthTimeoutSeconds: ${HOME_FACTS.healthWaitSeconds},`);
-    expect(DEFAULT_BUILD_MEMORY_MB).toBe(HOME_FACTS.buildMemoryGb * 1024);
-    expect(src("src/server/deploy/build.ts")).toContain('"--memory",');
+    expect(DEFAULT_CONTAINER_BUILD_MEMORY_MB).toBe(HOME_FACTS.buildMemoryMb);
+    expect(BUILD_STEP_FLOOR_MB).toBe(HOME_FACTS.buildStepFloorMb);
+    expect(src("src/server/deploy/container-build.ts")).toContain("--property=MemoryMax=");
   });
 
   it("uses the new project form's default port in the sample logs", () => {
