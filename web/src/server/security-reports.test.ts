@@ -2,11 +2,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { schema } from "@/server/db";
 import { eq } from "drizzle-orm";
 import { useFreshDb } from "@/server/test/db";
+import { upsertUser } from "@/server/auth/session";
+import { isInstanceAdmin } from "@/server/admin-identity";
 import {
   createSecurityReport,
   deleteSecurityReport,
   getSecurityReport,
-  isReportAdmin,
   listSecurityReports,
   REPORT_CAPACITY,
   validateEvidence,
@@ -32,13 +33,22 @@ const report = {
 };
 
 describe("private security reports", () => {
-  it("denies all admin access unless the exact configured account id matches", () => {
-    expect(isReportAdmin({ id: "admin-id" })).toBe(true);
-    expect(isReportAdmin({ id: "other" })).toBe(false);
-    expect(isReportAdmin(null)).toBe(false);
+  it("denies admin access unless the configured account or a granted account", async () => {
+    expect(await isInstanceAdmin("admin-id")).toBe(true);
+    expect(await isInstanceAdmin("other")).toBe(false);
+    expect(await isInstanceAdmin(null)).toBe(false);
     delete process.env.SECURITY_REPORT_ADMIN_ID;
-    expect(isReportAdmin({ id: "admin-id" })).toBe(false);
+    expect(await isInstanceAdmin("admin-id")).toBe(false);
     process.env.SECURITY_REPORT_ADMIN_ID = "admin-id";
+  });
+  it("treats a granted account as admin until the grant is removed", async () => {
+    const granted = await upsertUser({ id: "granted-admin", name: "Granted", email: null, slackId: null });
+    expect(await isInstanceAdmin(granted.id)).toBe(false);
+    const db = ctx.db;
+    await db.insert(schema.instanceAdmins).values({ userId: granted.id, grantedBy: null, grantedAt: new Date() });
+    expect(await isInstanceAdmin(granted.id)).toBe(true);
+    await db.delete(schema.instanceAdmins).where(eq(schema.instanceAdmins.userId, granted.id));
+    expect(await isInstanceAdmin(granted.id)).toBe(false);
   });
   it("seals report content and discards identity in anonymous mode", async () => {
     const id = await createSecurityReport({
