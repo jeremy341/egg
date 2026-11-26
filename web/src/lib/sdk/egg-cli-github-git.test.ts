@@ -46,6 +46,106 @@ async function egg(argv: string[], table: Routes) {
 }
 
 describe("github-git CLI group", () => {
+  it("parses GitHub status and prints linked installations as redacted JSON", async () => {
+    expect(parseCli(["github", "status", "--json"])).toMatchObject({
+      ok: true,
+      command: "github status",
+      args: [],
+    });
+
+    const result = await egg(["github", "status", "--json"], {
+      "GET /api/v1/github/status": reply(200, {
+        connected: true,
+        installations: [{ id: 123, accountLogin: "acme", accountType: "Organization", createdAt: "2026-01-01T00:00:00.000Z", token: "ghs_never_print_this" }],
+      }),
+    });
+
+    expect(result.code).toBe(0);
+    expect(result.calls).toMatchObject([{ method: "GET", path: "/api/v1/github/status", search: "" }]);
+    expect(JSON.parse(result.out)).toEqual({
+      connected: true,
+      installations: [{ id: 123, accountLogin: "acme", accountType: "Organization", createdAt: "2026-01-01T00:00:00.000Z", token: "[redacted]" }],
+    });
+    expect(result.out).not.toContain("ghs_never_print_this");
+  });
+
+  it("lists installation ids and account names through GitHub status", async () => {
+    expect(parseCli(["github", "installations"])).toMatchObject({
+      ok: true,
+      command: "github installations",
+      args: [],
+    });
+
+    const result = await egg(["github", "installations"], {
+      "GET /api/v1/github/status": reply(200, {
+        connected: true,
+        installations: [{ id: 123, accountLogin: "acme", accountType: "Organization", createdAt: "2026-01-01T00:00:00.000Z" }],
+      }),
+    });
+
+    expect(result.code).toBe(0);
+    expect(result.calls).toMatchObject([{ method: "GET", path: "/api/v1/github/status", search: "" }]);
+    expect(result.out).toContain("123");
+    expect(result.out).toContain("acme");
+    expect(result.err).toBe("");
+  });
+
+  it("lists repository branches with the required installation and optional limit", async () => {
+    expect(parseCli(["github", "branches", "sam/app", "--installation", "42", "--limit", "10"])).toMatchObject({
+      ok: true,
+      command: "github branches",
+      args: ["sam/app"],
+      flags: { installation: "42", limit: "10" },
+    });
+
+    const result = await egg(["github", "branches", "sam/app", "--installation", "42", "--limit", "10"], {
+      "GET /api/v1/github/branches": reply(200, { branches: [{ name: "main" }, { name: "stable" }] }),
+    });
+
+    expect(result.code).toBe(0);
+    expect(result.calls).toMatchObject([
+      { method: "GET", path: "/api/v1/github/branches", search: "?installation=42&repo=sam%2Fapp&limit=10" },
+    ]);
+    expect(result.out).toContain("main");
+    expect(result.err).toBe("");
+  });
+
+  it("treats a missing branch installation as incorrect usage", async () => {
+    const result = await egg(["github", "branches", "sam/app"], {});
+
+    expect(result.code).toBe(2);
+    expect(result.err).toContain("needs --installation");
+    expect(result.calls).toEqual([]);
+  });
+
+  it("finds repository Dockerfiles with the required installation and optional ref", async () => {
+    expect(parseCli(["github", "dockerfiles", "sam/app", "--installation", "42", "--ref", "stable"])).toMatchObject({
+      ok: true,
+      command: "github dockerfiles",
+      args: ["sam/app"],
+      flags: { installation: "42", ref: "stable" },
+    });
+
+    const result = await egg(["github", "dockerfiles", "sam/app", "--installation", "42", "--ref", "stable"], {
+      "GET /api/v1/github/dockerfiles": reply(200, { dockerfiles: ["Dockerfile", "services/api/Dockerfile"] }),
+    });
+
+    expect(result.code).toBe(0);
+    expect(result.calls).toMatchObject([
+      { method: "GET", path: "/api/v1/github/dockerfiles", search: "?installation=42&repo=sam%2Fapp&ref=stable" },
+    ]);
+    expect(result.out).toContain("Dockerfile");
+    expect(result.err).toBe("");
+  });
+
+  it("treats a missing Dockerfile installation as incorrect usage", async () => {
+    const result = await egg(["github", "dockerfiles", "sam/app"], {});
+
+    expect(result.code).toBe(2);
+    expect(result.err).toContain("needs --installation");
+    expect(result.calls).toEqual([]);
+  });
+
   it("parses and lists repositories through the typed GitHub repository endpoint", async () => {
     expect(parseCli(["github", "repos"])).toMatchObject({ ok: true, command: "github repos", args: [] });
 

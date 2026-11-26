@@ -5,6 +5,18 @@
 // optionTypes: { "option-name": "flag" | "value" } for options this group adds.
 export const commands = [
   {
+    name: "github status",
+    args: [],
+    description: "Report whether GitHub is connected and which app installations are available.",
+    runner: "githubStatus",
+  },
+  {
+    name: "github installations",
+    args: [],
+    description: "List GitHub App installations visible to the linked account.",
+    runner: "githubInstallations",
+  },
+  {
     name: "github repos",
     args: [],
     description: "List repositories available as deployment sources.",
@@ -24,7 +36,31 @@ export const commands = [
     description: "Summarize build metadata from a repository Dockerfile.",
     runner: "githubDockerfileInfo",
   },
+  {
+    name: "github branches",
+    args: ["owner/repo"],
+    options: ["installation", "limit"],
+    required: ["installation"],
+    description: "List the branches of a GitHub repository.",
+    runner: "githubBranches",
+  },
+  {
+    name: "github dockerfiles",
+    args: ["owner/repo"],
+    options: ["installation", "ref"],
+    required: ["installation"],
+    description: "Find Dockerfiles in a GitHub repository.",
+    runner: "githubDockerfiles",
+  },
 ];
+
+function positiveIntegerFlag(value, name, kit) {
+  const number = Number(value);
+  if (!Number.isSafeInteger(number) || number < 1) {
+    throw new kit.UsageError(`--${name} needs a positive integer.`);
+  }
+  return number;
+}
 
 function dockerfileText(value) {
   if (typeof value === "string") return value;
@@ -79,6 +115,16 @@ function dockerfileMetadata(text, repo, path, branch) {
 }
 
 export const runners = {
+  async githubStatus(nest, _args, flags, out, deps, _fail, kit) {
+    const data = await nest.getGithubStatus();
+    return kit.printData(data, flags, deps, out, kit.json);
+  },
+
+  async githubInstallations(nest, _args, flags, out, deps, _fail, kit) {
+    const data = await nest.getGithubStatus();
+    return kit.printData(data, flags, deps, out, kit.json);
+  },
+
   async githubRepos(nest, _args, flags, out, deps, _fail, kit) {
     const data = await nest.listGithubRepos();
     return kit.printData(data, flags, deps, out, kit.json);
@@ -110,6 +156,25 @@ export const runners = {
       "",
     ].join("\n"));
   },
+
+  async githubBranches(nest, [repo], flags, out, deps, _fail, kit) {
+    const options = { installation: positiveIntegerFlag(flags.installation, "installation", kit) };
+    if (flags.limit !== undefined) options.limit = positiveIntegerFlag(flags.limit, "limit", kit);
+    const data = await nest.getRepoBranches(repo, options);
+    return kit.printData(data, flags, deps, out, kit.json);
+  },
+
+  async githubDockerfiles(nest, [repo], flags, out, deps, _fail, kit) {
+    const installation = positiveIntegerFlag(flags.installation, "installation", kit);
+    const options = { installation };
+    if (flags.ref !== undefined) options.ref = flags.ref;
+    const data = await nest.getRepoDockerfiles(repo, options);
+    return kit.printData(data, flags, deps, out, kit.json);
+  },
 };
 
-export const optionTypes = {};
+export const optionTypes = {
+  installation: "value",
+  limit: "value",
+  ref: "value",
+};

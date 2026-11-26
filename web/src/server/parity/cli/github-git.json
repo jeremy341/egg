@@ -2,11 +2,10 @@
   {
     "orchard": "github status",
     "source": "github.go",
-    "status": "missing",
-    "egg": null,
+    "status": "present",
+    "egg": "github status",
     "endpoint": "get_github_status",
     "orchardTool": "get_github_status",
-    "reason": "needs SDK method getGithubStatus() without a project ID; the available method requires one.",
     "spec": {
       "summary": "Report whether GitHub is connected and which app installations are available.",
       "args": [],
@@ -90,11 +89,10 @@
   {
     "orchard": "github installations",
     "source": "github.go",
-    "status": "missing",
-    "egg": null,
+    "status": "present",
+    "egg": "github installations",
     "endpoint": "get_github_status",
     "orchardTool": "list_github_deploy_targets",
-    "reason": "needs SDK method getGithubStatus() without a project ID; the available method requires one.",
     "spec": {
       "summary": "List GitHub App installations visible to the linked account.",
       "args": [],
@@ -129,11 +127,10 @@
   {
     "orchard": "github branches",
     "source": "github.go",
-    "status": "missing",
-    "egg": null,
+    "status": "present",
+    "egg": "github branches",
     "endpoint": "get_repo_branches",
     "orchardTool": "get_repo_branches",
-    "reason": "needs SDK method getRepoBranches(ownerRepo); the available method cannot select a repository.",
     "spec": {
       "summary": "List the branches of a GitHub repository.",
       "args": ["owner/repo"],
@@ -145,11 +142,10 @@
   {
     "orchard": "github dockerfiles",
     "source": "github.go",
-    "status": "missing",
-    "egg": null,
+    "status": "present",
+    "egg": "github dockerfiles",
     "endpoint": "get_repo_dockerfiles",
     "orchardTool": "get_repo_dockerfiles",
-    "reason": "needs SDK method getRepoDockerfiles(ownerRepo, branch); the available method cannot select either.",
     "spec": {
       "summary": "Find Dockerfiles in a GitHub repository.",
       "args": ["owner/repo"],

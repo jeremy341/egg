@@ -2,15 +2,14 @@
   {
     "orchard": "use",
     "source": "use.go",
-    "status": "missing",
-    "egg": null,
+    "status": "present",
+    "egg": "use",
     "endpoint": null,
     "orchardTool": null,
-    "reason": "needs SDK method resolveAndSetDefaultScope",
     "spec": {
-      "summary": "Resolve an org, project, or environment and save its id and display name as the machine-local default scope for later commands.",
-      "args": ["org|project|env", "id-or-slug"],
-      "flags": ["--project"],
+      "summary": "Save a project and optional organization and environment names or ids as the machine-local default scope for later commands.",
+      "args": ["project|org"],
+      "flags": ["--org", "--env"],
       "destructive": false,
       "confirm": null
     }
@@ -18,13 +17,12 @@
   {
     "orchard": "context show",
     "source": "use.go",
-    "status": "missing",
-    "egg": null,
+    "status": "present",
+    "egg": "context show",
     "endpoint": null,
     "orchardTool": null,
-    "reason": "needs SDK method showContext",
     "spec": {
-      "summary": "Show the active connection and its machine-local org, project, and environment defaults, including a linked project override when present.",
+      "summary": "Show the saved machine-local project, organization, and environment defaults.",
       "args": [],
       "flags": [],
       "destructive": false,
@@ -34,13 +32,12 @@
   {
     "orchard": "context clear",
     "source": "use.go",
-    "status": "missing",
-    "egg": null,
+    "status": "present",
+    "egg": "context clear",
     "endpoint": null,
     "orchardTool": null,
-    "reason": "needs SDK method clearContext",
     "spec": {
-      "summary": "Clear the active connection's saved org, project, and environment defaults without deleting the connection or its credentials.",
+      "summary": "Clear the saved machine-local project, organization, and environment defaults.",
       "args": [],
       "flags": [],
       "destructive": false,
@@ -178,17 +175,16 @@
   {
     "orchard": "api",
     "source": "api.go",
-    "status": "missing",
-    "egg": null,
+    "status": "present",
+    "egg": "api",
     "endpoint": "compact:call_api",
     "orchardTool": "call_api",
-    "reason": "needs SDK method callApi",
     "spec": {
-      "summary": "Call an API operation by operation id or method and path; allow GET and non-destructive requests, require exact-target confirmation for destructive requests, and never print bearer tokens.",
-      "args": ["operationId | METHOD path"],
-      "flags": ["--data", "--path-param", "--query", "--confirm"],
+      "summary": "Call the API with a method and path; require exact final-path-segment confirmation for non-GET methods and never print bearer tokens.",
+      "args": ["METHOD", "path"],
+      "flags": ["--body", "--query", "--confirm"],
       "destructive": true,
-      "confirm": "--confirm <exact-resource-name>"
+      "confirm": "--confirm <exact-final-path-segment>"
     }
   },
   {
@@ -198,7 +194,7 @@
     "egg": null,
     "endpoint": "compact:search_api",
     "orchardTool": "search_api",
-    "reason": "needs SDK method searchApi",
+    "reason": "needs an operation catalogue in the SDK",
     "spec": {
       "summary": "Search API operation descriptions using one or more terms and optionally refresh the cached specification.",
       "args": ["query..."],
@@ -214,7 +210,7 @@
     "egg": null,
     "endpoint": "compact:describe_operation",
     "orchardTool": "describe_operation",
-    "reason": "needs SDK method describeOperation",
+    "reason": "needs an operation catalogue in the SDK",
     "spec": {
       "summary": "Show an API operation's parameters, request body, and response shape using its operation id or method and path.",
       "args": ["operationId | METHOD path"],

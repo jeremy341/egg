@@ -2,11 +2,11 @@
   {
     "orchard": "version",
     "source": "version.go",
-    "status": "missing",
-    "egg": null,
+    "status": "present",
+    "egg": "version",
     "endpoint": null,
     "orchardTool": null,
-    "reason": "needs SDK method getCliVersion",
+    "reason": null,
     "spec": {
       "summary": "Prints the CLI build version as text or JSON.",
       "args": [],
@@ -18,11 +18,11 @@
   {
     "orchard": "root",
     "source": "root.go",
-    "status": "missing",
-    "egg": null,
+    "status": "present",
+    "egg": "root",
     "endpoint": null,
     "orchardTool": null,
-    "reason": "needs SDK method getRootUsage",
+    "reason": null,
     "spec": {
       "summary": "The bare CLI entry point displays the command usage and available commands.",
       "args": [],
@@ -34,11 +34,11 @@
   {
     "orchard": "commands",
     "source": "commands.go",
-    "status": "missing",
-    "egg": null,
+    "status": "present",
+    "egg": "commands",
     "endpoint": null,
     "orchardTool": null,
-    "reason": "needs SDK method listCliCommands",
+    "reason": null,
     "spec": {
       "summary": "Lists the CLI command tree, with accepted flags, in readable or structured form.",
       "args": [],
@@ -50,11 +50,11 @@
   {
     "orchard": "exit-codes",
     "source": "exitcodes.go",
-    "status": "missing",
-    "egg": null,
+    "status": "present",
+    "egg": "exit-codes",
     "endpoint": null,
     "orchardTool": null,
-    "reason": "needs SDK method listCliExitCodes",
+    "reason": null,
     "spec": {
       "summary": "Shows the stable process exit codes and the failure class each one represents.",
       "args": [],
@@ -66,11 +66,11 @@
   {
     "orchard": "licenses",
     "source": "licenses.go",
-    "status": "missing",
-    "egg": null,
+    "status": "present",
+    "egg": "licenses",
     "endpoint": null,
     "orchardTool": null,
-    "reason": "needs SDK method listCliLicenses",
+    "reason": null,
     "spec": {
       "summary": "Prints the license notices for open-source packages included in the CLI.",
       "args": [],
@@ -82,11 +82,11 @@
   {
     "orchard": "doctor",
     "source": "doctor.go",
-    "status": "missing",
+    "status": "partial",
     "egg": "doctor",
     "endpoint": null,
     "orchardTool": null,
-    "reason": "needs SDK method getServerIsolation; cluster self-test also needs runClusterSelftest",
+    "reason": "local doctor checks this machine; server isolation and cluster self-test are not exposed",
     "spec": {
       "summary": "Reports server isolation and security checks, with an optional active cluster self-test.",
       "args": [],
