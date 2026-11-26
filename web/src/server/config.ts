@@ -48,6 +48,12 @@ const schema = z
     APP_SECRET: z.string().min(32, "APP_SECRET must be at least 32 characters"),
     DATABASE_URL: z.string().default("file:./data/egg.db"),
 
+    /**
+     * Optional email delivery: Egg POSTs {to, subject, text} as JSON here. Unset
+     * means no email; invitations then show a one-time link instead.
+     */
+    EMAIL_WEBHOOK_URL: z.string().url().optional(),
+
     HACKCLUB_CLIENT_ID: z.string().optional(),
     HACKCLUB_CLIENT_SECRET: z.string().optional(),
     /** Local development only: sign in as a fake user without Hack Club Auth. */
