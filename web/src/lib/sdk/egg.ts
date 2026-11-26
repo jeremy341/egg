@@ -960,6 +960,8 @@ export class Egg {
   getBuildLogs(deploymentId: string, q: Query = {}): Promise<unknown> { return this.request("GET", `/deployments/${seg(deploymentId)}/build-logs`, q); }
   getBuildHistory(projectId: string, q: Query = {}): Promise<unknown> { return this.request("GET", `/projects/${seg(projectId)}/builds`, q); }
   getKilledContainerLogs(projectId: string, q: Query = {}): Promise<unknown> { return this.request("GET", `/projects/${seg(projectId)}/logs/killed`, q); }
+  listCrashReports(projectId: string, q: Query = {}): Promise<unknown> { return this.request("GET", `/projects/${seg(projectId)}/crash-reports`, q); }
+  getCrashReport(crashId: string): Promise<unknown> { return this.request("GET", `/crash-reports/${seg(crashId)}`); }
   getRepoBranches(): Promise<unknown> { return this.request("GET", "/github/branches"); }
   getRepoContents(q: Query = {}): Promise<unknown> { return this.request("GET", "/github/contents", q); }
   getRepoDockerfiles(): Promise<unknown> { return this.request("GET", "/github/dockerfiles"); }

@@ -30,6 +30,7 @@ const PARAMS: Record<string, string> = {
   orgId: "ORG",
   fingerprint: "FP",
   jobId: "JOB",
+  crashId: "CRASH",
 };
 
 function recorder() {
@@ -119,6 +120,8 @@ const CLIENT_CALLS: Record<string, Call$> = {
   get_build_logs: (n) => n.getBuildLogs("D"),
   get_build_history: (n) => n.getBuildHistory("P"),
   get_killed_container_logs: (n) => n.getKilledContainerLogs("P"),
+  list_crash_reports: (n) => n.listCrashReports("P"),
+  get_crash_report: (n) => n.getCrashReport("CRASH"),
   get_repo_branches: (n) => n.getRepoBranches(),
   get_repo_contents: (n) => n.getRepoContents(),
   get_repo_dockerfiles: (n) => n.getRepoDockerfiles(),

@@ -159,6 +159,8 @@ export const TOOLSET_OF: Record<string, Toolset> = {
   get_build_logs: "logs",
   get_build_history: "logs",
   get_killed_container_logs: "logs",
+  list_crash_reports: "logs",
+  get_crash_report: "logs",
   get_repo_branches: "core",
   get_repo_contents: "core",
   get_repo_dockerfiles: "core",
