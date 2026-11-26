@@ -286,7 +286,7 @@ function Configure({
         tabIndex={-1}
         className="text-title-2 focus:outline-none focus-visible:outline-none"
       >
-        New Project
+        New project
       </h1>
 
       <div className="mt-5 rounded-md bg-[var(--ds-gray-100)] px-3 py-2.5">
@@ -666,7 +666,7 @@ export function NewProjectFlow({
 
       <section aria-labelledby="import-heading" className="mt-8">
         <h2 id="import-heading" className="mb-3 text-title-2">
-          Import Git Repository
+          Choose a repository
         </h2>
 
         {hasInstall ? (

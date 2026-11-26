@@ -7,7 +7,7 @@ import { userInstallations } from "@/server/github/app";
 import { getPreferences } from "@/server/preferences";
 import { serverViews } from "@/server/queries";
 
-export const metadata = { title: "New Project" };
+export const metadata = { title: "New project" };
 
 const NOTICES: Record<string, string> = {
   connected: "GitHub is connected. Pick a repository below.",
