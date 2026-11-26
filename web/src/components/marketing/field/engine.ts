@@ -107,8 +107,6 @@ const FORM = 0.5;
 const MAX_MOTES = 80;
 const MAX_SEEDS = 10;
 const SEED_LIFE = 16;
-/** How far above the bottom edge of the window the feet stand, in pixels. */
-const FLOOR_PAD = 12;
 /** The fixed header covers this much of the top of the window. */
 const HEADER = 64;
 /** Shades are mapped to colour in quarter steps: 1, 1.25, ... 5. */
@@ -172,6 +170,8 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean, params:
   let u = 10; // cell size
   let cols = 0;
   let rows = 0;
+  /** The grid starts this far below the top of the window, so that its last row ends exactly at the bottom edge. */
+  let off = 0;
   let family = "monospace";
   let trail = new Float32Array(0);
   // What the body covers this frame, per grid cell: how much of the cell, how bright, which
@@ -286,8 +286,8 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean, params:
 
   const bodyW = () => BW * u;
   const bodyH = () => BH * u;
-  /** The row of the grid the feet stand on, in pixels. */
-  const floorY = () => Math.floor((h - FLOOR_PAD) / u) * u;
+  /** The line the feet stand on: one cell above the bottom edge of the window, where the shadow row sits, so it stands on the very bottom. */
+  const floorY = () => h - u;
   /** The nearest place where the sprite sits exactly on the grid. */
   const onGridX = (x: number) => (Math.round(x / u - BW / 2) + BW / 2) * u;
   /** The highest the feet can be, so that the head stays under the header. */
@@ -356,11 +356,12 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean, params:
     dpr = ndpr;
     // As big as Orry: the body is 18 rows, so 7 pixel cells make it about 126 pixels tall on a desktop and 4 pixel cells about 72 on a phone.
     u = w < 640 ? 4 : 7;
+    off = h - Math.floor(h / u) * u;
     if (resized) {
       canvas.width = Math.round(w * dpr);
       canvas.height = Math.round(h * dpr);
       cols = Math.ceil(w / u);
-      rows = Math.ceil(h / u);
+      rows = Math.floor(h / u);
       const n = cols * rows;
       trail = new Float32Array(n);
       liveMark = new Uint32Array(n);
@@ -1363,13 +1364,13 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean, params:
     // A cell appears when the forming chicken reaches it, over a moment, not at once.
     const formed = (lx: number, ly: number) => (c.form >= 1 ? 1 : smooth((c.form * 1.2 - hash(lx, ly, seed)) / 0.2));
     const X = onGridX(c.x) / u;
-    const feet = Math.round(c.y / u);
+    const feet = Math.round((c.y - off) / u);
     const lift = Math.sin(Math.PI * smooth((c.hop - 0.12) / 0.72)) * 1.7 * SC;
     // A waddle: the body is a cell higher on each standing pose of the walk. A dash is a little above the ground.
     const stepUp = c.anim === "run" && Math.abs(c.vx) > 5 && Q.walk[Math.floor(walkPhase * 4) % Q.walk.length] === Q.rest[0] ? 1 : 0;
     const Y = feet - Math.round(lift) - stepUp - (c.anim === "dash" ? 2 : 0);
     // A soft shadow on the floor, smaller and fainter the higher it is.
-    const floorRow = Math.round(floorY() / u);
+    const floorRow = Math.round((floorY() - off) / u);
     const up = Math.min(1, (floorRow - Y) / (4 * SC));
     const half = Math.round(BW * 0.3 * (1 - up * 0.4));
     for (let k = -half; k <= half; k++) splat(X + k - 0.5, floorRow, 1, 0.7 * (1 - up * 0.6), 1);
@@ -1444,6 +1445,7 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean, params:
     const open = (i: number) => (liveMark[i] === mark ? Math.max(0, 1 - cover[i] - clear[i]) : 1);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, off * dpr);
 
     // Characters at a cell: the density and colour level pick the one from the atlas.
     const put = (i: number, level: number, g: number, alpha: number) => {
@@ -1482,7 +1484,7 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean, params:
     // Seed: a star each, fading out for the last seconds.
     for (const s of seeds) {
       const sx = Math.round(s.x / u - 0.5);
-      const sy = Math.round(s.y / u - 1);
+      const sy = Math.round((s.y - off) / u - 1);
       if (sx < 0 || sy < 0 || sx >= cols || sy >= rows) continue;
       put(sy * cols + sx, dark ? 12 : 9, SEED, smooth((SEED_LIFE - s.age) / 3));
     }
@@ -1503,7 +1505,7 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean, params:
       ctx.globalAlpha = smooth((m.life / m.max) * 1.6) * 0.95;
       ctx.fillStyle = m.color;
       const px = Math.round(m.x / u) * u;
-      const py = Math.round(m.y / u) * u;
+      const py = Math.round((m.y - off) / u) * u;
       if (m.heart) {
         const cell = Math.max(2, Math.round(u * 0.45 * m.size));
         for (let r = 0; r < HEART.length; r++) {
