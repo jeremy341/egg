@@ -393,6 +393,13 @@
       "when": 1795600000000,
       "tag": "0055_error_groups",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "6",
+      "when": 1795700000000,
+      "tag": "0056_crash_exit",
+      "breakpoints": true
     }
   ]
 }

@@ -13,6 +13,7 @@ import { api } from "@/components/api";
 import { Segmented } from "@/components/segmented";
 import { StatusIndicator } from "@/components/status-dot";
 import { ConnectionAlert } from "@/components/connection-alert";
+import { CrashPanel } from "@/components/crash-panel";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
@@ -350,6 +351,8 @@ export function LogsView({
       </div>
 
       {error ? <ConnectionAlert message={error} onRetry={() => void load()} retrying={loading} /> : null}
+
+      {projectId ? <CrashPanel projectId={projectId} lines={all} /> : null}
 
       {/* What is on screen, in one line. Not a live region: auto refresh would chatter. */}
       <p className="tabular min-h-[18px] text-label text-muted-foreground">
