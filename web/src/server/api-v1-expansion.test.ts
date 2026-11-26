@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { NextRequest } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { createApiToken, SCOPES, type Scope } from "@/server/api-tokens";
@@ -44,7 +45,10 @@ import { GET as listProjectsRoute, POST as createProjectRoute } from "@/app/api/
 import { DELETE as deleteProjectRoute, PATCH as updateProjectRoute } from "@/app/api/v1/projects/[projectId]/route";
 import { PATCH as dashboardPatchRoute } from "@/app/api/projects/[id]/route";
 import { GET as getDeploymentRoute } from "@/app/api/v1/deployments/[deploymentId]/route";
+import { GET as listDeploymentsRoute } from "@/app/api/v1/projects/[projectId]/deployments/route";
 import { GET as deploymentLogsRoute } from "@/app/api/v1/deployments/[deploymentId]/logs/route";
+import { GET as rolloutRoute } from "@/app/api/v1/deployments/[deploymentId]/rollout/route";
+import { POST as restartRoute } from "@/app/api/v1/projects/[projectId]/restart/route";
 import { GET as listEnvRoute } from "@/app/api/v1/projects/[projectId]/env/route";
 import { DELETE as deleteEnvRoute, PUT as setEnvRoute } from "@/app/api/v1/projects/[projectId]/env/[key]/route";
 import { GET as listDomainsRoute, POST as addDomainRoute } from "@/app/api/v1/domains/route";
@@ -262,6 +266,8 @@ const SPECS: Record<string, Spec> = {
   delete_project: { scope: "projects:write", handler: deleteProjectRoute, method: "DELETE", path: proj(""), params: projParams, owned: true },
   get_deployment: { scope: "deployments:read", handler: getDeploymentRoute, method: "GET", path: (i) => `/deployments/${i.deploymentId}`, params: (i) => ({ deploymentId: i.deploymentId }), owned: true },
   get_deployment_logs: { scope: "deployments:read", handler: deploymentLogsRoute, method: "GET", path: (i) => `/deployments/${i.deploymentId}/logs`, params: (i) => ({ deploymentId: i.deploymentId }), owned: true },
+  restart_service: { scope: "deployments:write", handler: restartRoute, method: "POST", path: proj("/restart"), params: projParams, owned: true },
+  get_rollout: { scope: "deployments:read", handler: rolloutRoute, method: "GET", path: (i) => `/deployments/${i.deploymentId}/rollout`, params: (i) => ({ deploymentId: i.deploymentId }), owned: true },
   list_env_vars: { scope: "env:read", handler: listEnvRoute, method: "GET", path: proj("/env"), params: projParams, owned: true },
   set_env_var: { scope: "env:write", handler: setEnvRoute, method: "PUT", path: proj("/env/NEW_KEY"), params: (i) => ({ projectId: i.projectId, key: "NEW_KEY" }), body: () => ({ value: "x" }), owned: true },
   delete_env_var: { scope: "env:write", handler: deleteEnvRoute, method: "DELETE", path: proj("/env/API_KEY"), params: (i) => ({ projectId: i.projectId, key: "API_KEY" }), owned: true },
@@ -600,7 +606,12 @@ describe("environment variables", () => {
   it("lists names and targets only", async () => {
     const res = await run(listEnvRoute, req(`/projects/${projectId}/env`, { secret: await token(["env:read"]) }), { projectId });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ env: [{ key: "API_KEY", target: "production" }] });
+    const body = await res.json();
+    // The old field is untouched; the page fields are added next to it.
+    expect(body.env).toEqual([{ key: "API_KEY", target: "production" }]);
+    expect(body.items).toEqual(body.env);
+    expect(body.total).toBe(1);
+    expect(body.nextCursor).toBeNull();
   });
 
   it("sets a variable write-only, stores it sealed, audits it with the token, and never echoes the value", async () => {
@@ -985,6 +996,149 @@ describe("the activity log", () => {
     });
     const text = await (await run(activityRoute, req("/activity?limit=5", { secret }))).text();
     for (const leak of ["PLANTEDWEBHOOKSECRET", "egg_aaaa", "hunter2"]) expect(text).not.toContain(leak);
+  });
+});
+
+// ---------------------------------------------------------- cursor pagination
+
+type Page<T> = { items: T[]; total: number; nextCursor: string | null };
+
+const listPage = async <T>(
+  handler: Handler,
+  path: string,
+  secret: string,
+  params: Record<string, string> = {}
+): Promise<Page<T> & Record<string, T[]>> => {
+  const res = await run(handler, req(path, { secret }), params);
+  expect(res.status).toBe(200);
+  return (await res.json()) as Page<T> & Record<string, T[]>;
+};
+
+/** Follow nextCursor until it runs out, checking that no row repeats. */
+const walk = async <T>(get: (cursor: string | null) => Promise<Page<T>>, key: (item: T) => string) => {
+  const seen: string[] = [];
+  let cursor: string | null = null;
+  let pages = 0;
+  do {
+    const page = await get(cursor);
+    expect(page.items.length).toBeLessThanOrEqual(2);
+    seen.push(...page.items.map(key));
+    cursor = page.nextCursor;
+    pages++;
+  } while (cursor && pages < 50);
+  expect(cursor).toBeNull();
+  expect(new Set(seen).size, "a row was returned twice").toBe(seen.length);
+  return seen;
+};
+
+const pagedPath = (path: string, cursor: string | null) =>
+  `${path}?limit=2${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
+
+describe("cursor pagination on the list endpoints", () => {
+  it("declares limit, cursor, items, total and nextCursor on every MCP list tool", () => {
+    for (const id of ["list_projects", "list_deployments", "list_domains", "list_env_vars", "list_servers", "get_activity"]) {
+      const ep = ENDPOINTS.find((e) => e.id === id)!;
+      expect(ep.query.limit, `${id}.limit`).toBeDefined();
+      expect(ep.query.cursor, `${id}.cursor`).toBeDefined();
+      const shape = (ep.response as z.ZodObject<z.ZodRawShape>).shape;
+      for (const field of ["items", "total", "nextCursor"]) {
+        expect(shape[field], `${id}.${field}`).toBeDefined();
+      }
+    }
+  });
+
+  it("pages deployments newest first by creation time and id, with no repeats and an exact total", async () => {
+    const secret = await token(["deployments:read"]);
+    for (let i = 0; i < 3; i++) await deployBranch(me.id, projectId);
+    const path = `/projects/${projectId}/deployments`;
+    const all = await listPage<{ id: string }>(listDeploymentsRoute, `${path}?limit=100`, secret, { projectId });
+    expect(all.items.length).toBeGreaterThan(3);
+    expect(all.total).toBe(all.items.length);
+    expect(all.deployments.map((d) => d.id)).toEqual(all.items.map((d) => d.id));
+
+    const seen = await walk<{ id: string }>(
+      (cursor) => listPage(listDeploymentsRoute, pagedPath(path, cursor), secret, { projectId }),
+      (d) => d.id
+    );
+    expect(seen).toEqual(all.items.map((d) => d.id));
+    const bad = await run(listDeploymentsRoute, req(`${path}?cursor=not-a-cursor`, { secret }), { projectId });
+    expect((await errorOf(bad)).code).toBe("bad_cursor");
+  });
+
+  it("adds a page to projects without changing the full list in projects", async () => {
+    const secret = await token(["projects:read"]);
+    for (let i = 0; i < 3; i++) {
+      await createProject(me.id, { serverId: myServerId, name: `Page ${i}`, repoUrl: "https://github.com/sam/page.git", runtime: "node", port: 3960 + i });
+    }
+    const all = await listPage<{ id: string }>(listProjectsRoute, "/projects?limit=100", secret);
+    expect(all.items).toEqual(all.projects);
+    expect(all.total).toBe(all.projects.length);
+    expect(all.items.length).toBeGreaterThan(3);
+
+    const seen = await walk<{ id: string }>(
+      (cursor) => listPage(listProjectsRoute, pagedPath("/projects", cursor), secret),
+      (p) => p.id
+    );
+    expect(seen).toEqual(all.items.map((p) => p.id));
+    expect((await run(listProjectsRoute, req("/projects?cursor=abc", { secret }))).status).toBe(400);
+  });
+
+  it("adds a page to domains without changing the full list in domains", async () => {
+    const secret = await token(["domains:read"]);
+    const now = new Date();
+    for (let i = 0; i < 3; i++) {
+      await ctx.db.insert(schema.domains).values({
+        id: newId(), userId: me.id, serverId: myServerId, projectId,
+        domain: `page-${i}.example.com`, port: 3000, status: "pending", createdAt: new Date(now.getTime() + i), updatedAt: now,
+      });
+    }
+    const all = await listPage<{ id: string }>(listDomainsRoute, "/domains?limit=100", secret);
+    expect(all.items).toEqual(all.domains);
+    expect(all.total).toBe(all.domains.length);
+
+    const seen = await walk<{ id: string }>(
+      (cursor) => listPage(listDomainsRoute, pagedPath("/domains", cursor), secret),
+      (d) => d.id
+    );
+    expect(seen).toEqual(all.items.map((d) => d.id));
+    expect((await run(listDomainsRoute, req("/domains?cursor=abc", { secret }))).status).toBe(400);
+  });
+
+  it("pages environment names in a stable order, without returning values", async () => {
+    const secret = await token(["env:read"]);
+    await setEnvVar(me.id, projectId, { key: "PAGE_A", value: "v", target: "all" });
+    await setEnvVar(me.id, projectId, { key: "PAGE_A", value: "v", target: "preview" });
+    await setEnvVar(me.id, projectId, { key: "PAGE_B", value: "v", target: "production" });
+    const path = `/projects/${projectId}/env`;
+    const all = await listPage<{ key: string; target: string }>(listEnvRoute, `${path}?limit=100`, secret, { projectId });
+    expect(all.items).toEqual(all.env);
+    expect(all.total).toBe(all.env.length);
+    const keys = all.env.map((e) => `${e.key}|${e.target}`);
+    expect(keys).toEqual([...keys].sort());
+
+    const seen = await walk<{ key: string; target: string }>(
+      (cursor) => listPage(listEnvRoute, pagedPath(path, cursor), secret, { projectId }),
+      (e) => `${e.key}|${e.target}`
+    );
+    expect(seen).toEqual(keys);
+    expect((await run(listEnvRoute, req(`${path}?cursor=abc`, { secret }), { projectId })).status).toBe(400);
+  });
+
+  it("adds a page to servers without changing the full list in servers", async () => {
+    const secret = await token(["container:read"]);
+    await createServer(me.id, "sam-page-1");
+    await createServer(me.id, "sam-page-2");
+    const all = await listPage<{ id: string }>(listServersRoute, "/servers?limit=100", secret);
+    expect(all.items).toEqual(all.servers);
+    expect(all.total).toBe(all.servers.length);
+    expect(all.items.length).toBeGreaterThanOrEqual(3);
+
+    const seen = await walk<{ id: string }>(
+      (cursor) => listPage(listServersRoute, pagedPath("/servers", cursor), secret),
+      (s) => s.id
+    );
+    expect(seen).toEqual(all.items.map((s) => s.id));
+    expect((await run(listServersRoute, req("/servers?cursor=abc", { secret }))).status).toBe(400);
   });
 });
 

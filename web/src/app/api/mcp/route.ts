@@ -1,9 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { IDEMPOTENCY_HEADER } from "@/server/api-idempotency";
 import { authenticate, jsonResponse, readCappedText } from "@/server/api-v1-http";
 import { handle, HttpError } from "@/server/http";
 import { handleMcpMessage, RPC } from "@/server/mcp";
+import { parseMcpView } from "@/server/mcp-toolsets";
 
-const MAX_BODY_BYTES = 64 * 1024;
+const MAX_BODY_BYTES = 100 * 1024;
 
 /**
  * MCP over plain HTTP: one JSON-RPC message in, one JSON response out. Bearer
@@ -12,6 +14,9 @@ const MAX_BODY_BYTES = 64 * 1024;
 export const POST = handle(
   async (req: NextRequest) => {
     const principal = await authenticate(req);
+    // The query string narrows the list (toolsets, read or deploy). It is read after the token, so a bad
+    // value is a 400 only for a caller that is authenticated.
+    const view = parseMcpView(req.nextUrl);
     const text = await readCappedText(req, MAX_BODY_BYTES);
 
     let raw: unknown;
@@ -21,7 +26,9 @@ export const POST = handle(
       return jsonResponse({ jsonrpc: "2.0", id: null, error: { code: RPC.parse, message: "Parse error" } }, 400);
     }
 
-    const outcome = await handleMcpMessage(principal, raw);
+    const outcome = await handleMcpMessage(principal, raw, view, {
+      idempotencyHeader: req.headers.get(IDEMPOTENCY_HEADER),
+    });
     if (outcome.kind === "accepted") return new NextResponse(null, { status: 202, headers: { "Cache-Control": "no-store" } });
     return jsonResponse(outcome.body, outcome.status);
   },

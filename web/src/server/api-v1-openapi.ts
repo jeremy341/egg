@@ -156,3 +156,33 @@ export function buildOpenApi(): Json {
   cached = relink(doc);
   return cached;
 }
+
+/**
+ * A trimmed description for agents with a small context window: one entry per
+ * operation with its id, method, path, summary and parameters. No schemas, no
+ * descriptions, no bodies, no error tables. Built from the full document, so the
+ * two cannot disagree on ids or parameters. The full document is the reference.
+ */
+export function buildAgentSpec(): Json {
+  const doc = buildOpenApi();
+  const paths = doc.paths as Record<string, Record<string, Json>>;
+  const operations: Json[] = [];
+  for (const [path, methods] of Object.entries(paths)) {
+    for (const [method, op] of Object.entries(methods)) {
+      if (op.operationId === "get_openapi") continue;
+      operations.push({
+        operationId: op.operationId,
+        method: method.toUpperCase(),
+        path: `/api/v1${path}`,
+        summary: op.summary,
+        parameters: op.parameters ?? [],
+      });
+    }
+  }
+  return {
+    name: "egg-api",
+    version: (doc.info as Json).version,
+    auth: "Send Authorization: Bearer egg_... The full reference is at /api/v1/openapi.json.",
+    operations,
+  };
+}
