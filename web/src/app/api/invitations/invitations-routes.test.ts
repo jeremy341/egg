@@ -14,7 +14,10 @@ vi.mock("@/server/auth/current", () => ({
 import { POST as createInvite, GET as listInvites } from "@/app/api/orgs/[id]/invitations/route";
 import { POST as resendInvite } from "@/app/api/orgs/[id]/invitations/[invitationId]/resend/route";
 import { DELETE as cancelInvite } from "@/app/api/orgs/[id]/invitations/[invitationId]/route";
-import { POST as acceptInvite } from "@/app/api/invitations/accept/route";
+import { POST as acceptInviteRoute } from "@/app/api/invitations/accept/route";
+
+// The accept route takes no route params, so only the request is passed.
+const acceptInvite = acceptInviteRoute as unknown as (req: NextRequest) => Promise<Response>;
 
 let ctx: Awaited<ReturnType<typeof useFreshDb>>;
 const t0 = new Date("2026-11-01T12:00:00Z");
