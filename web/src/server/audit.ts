@@ -34,6 +34,7 @@ export const LABELS: Record<string, string> = {
   "project.workflow.publish": "Opened a pull request that adds the build workflow to",
   "env.set": "Saved environment variable on",
   "env.delete": "Removed environment variable from",
+  "env.replace": "Replaced environment variables on",
   "deploy.redeploy": "Redeployed",
   "deploy.rollback": "Rolled back",
   "deploy.cancel": "Canceled a deployment of",
