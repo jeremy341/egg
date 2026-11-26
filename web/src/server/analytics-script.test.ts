@@ -18,6 +18,7 @@ function browser(
     search?: string;
     store?: Record<string, string>;
     storeBlocked?: boolean;
+    pathTemplate?: string;
   } = {}
 ) {
   const bodies: string[] = [];
@@ -35,8 +36,10 @@ function browser(
       if (i >= 0) listeners.splice(i, 1);
     },
   });
+  const documentElement = { pathTemplate: opts.pathTemplate ?? null };
   const doc: Record<string, unknown> = {
     ...target("document"),
+    documentElement: { getAttribute: (n: string) => (n === "data-egg-path" ? documentElement.pathTemplate : null) },
     currentScript: {
       getAttribute: (n: string) => (n === "data-key" ? "nda_k" : null),
       src: "https://nest.example/api/analytics/script?key=nda_k",
@@ -148,7 +151,7 @@ describe("the analytics script", () => {
   it("with every switch off is the plain page view script: no click or time listeners", async () => {
     const b = browser(buildScript({ clicks: false, time: false, goals: [] }));
     expect(b.listeners.map((l) => `${l.target}:${l.type}`).sort()).toEqual(["window:pagehide", "window:popstate"]);
-    expect(await b.sent()).toEqual([{ p: "/" }]);
+    expect(await b.sent()).toEqual([{ p: "/", pt: 1 }]);
   });
 
   it("stays small when everything is off", () => {
@@ -180,20 +183,19 @@ describe("the analytics script", () => {
       ]);
     });
 
-    it("labels a click with the element text, collapsed and cut to 40 characters", async () => {
+    it("does not collect visible text or accessible labels", async () => {
       const b = browser(script);
       b.fire("document", "click", clickOn("  Start   your\n free trial of the very best product ever made  "));
       const clicks = (await b.sent()).filter((m) => m.e === "click");
-      expect(clicks).toEqual([{ e: "click", l: "Start your free trial of the very best p" }]);
-      expect((clicks[0].l as string).length).toBeLessThanOrEqual(40);
+      expect(clicks).toEqual([]);
     });
 
-    it("prefers a data-egg-track name, then aria-label, then text", async () => {
+    it("uses only an explicit data-egg-track name", async () => {
       const b = browser(script);
       b.fire("document", "click", clickOn("Buy", { "data-egg-track": "buy-button", "aria-label": "Buy now" }));
       b.fire("document", "click", clickOn("X", { "aria-label": "Close dialog" }));
       const labels = (await b.sent()).filter((m) => m.e === "click").map((m) => m.l);
-      expect(labels).toEqual(["buy-button", "Close dialog"]);
+      expect(labels).toEqual(["buy-button"]);
     });
 
     it("ignores clicks that are not on a link, button or tracked element, and clicks with no label", async () => {
@@ -349,28 +351,41 @@ describe("the analytics script", () => {
 
     it("sends the referrer's host only, never the address or the query string", async () => {
       const b = browser(script, { referrer: "https://www.news.example.com/post/1?id=9&token=secret#top" });
-      expect(await views(b)).toEqual([{ p: "/", r: "www.news.example.com" }]);
+      expect(await views(b)).toEqual([{ p: "/", pt: 1, r: "www.news.example.com" }]);
     });
 
     it("sends no referrer for a visit from the same site or with none", async () => {
-      expect(await views(browser(script, { referrer: "https://app.example/other" }))).toEqual([{ p: "/" }]);
-      expect(await views(browser(script, { referrer: "" }))).toEqual([{ p: "/" }]);
-      expect(await views(browser(script, { referrer: "not a url" }))).toEqual([{ p: "/" }]);
+      expect(await views(browser(script, { referrer: "https://app.example/other" }))).toEqual([{ p: "/", pt: 1 }]);
+      expect(await views(browser(script, { referrer: "" }))).toEqual([{ p: "/", pt: 1 }]);
+      expect(await views(browser(script, { referrer: "not a url" }))).toEqual([{ p: "/", pt: 1 }]);
     });
 
-    it("sends the three utm values, trimmed and cut to 80 characters, and no other parameter", async () => {
-      const long = "x".repeat(120);
-      const b = browser(script, {
-        search: `?utm_source=%20news%20&utm_medium=email&utm_campaign=${long}&utm_term=secret&email=a%40b.co`,
+    it("does not send campaigns just because referrers are enabled", async () => {
+      const b = browser(script, { search: "?utm_source=newsletter&utm_medium=email&utm_campaign=spring-26" });
+      expect(await views(b)).toEqual([{ p: "/", pt: 1 }]);
+    });
+
+    it("sends only exact campaign labels that the owner allowlisted", async () => {
+      const optedIn = buildScript({
+        clicks: false, time: false, goals: [], referrers: true, campaigns: true,
+        utmAllowlist: { source: ["newsletter"], medium: ["email"], campaign: ["spring-26"] },
       });
-      const [v] = await views(b);
-      expect(v).toEqual({ p: "/", us: "news", um: "email", uc: "x".repeat(80) });
+      const allowed = browser(optedIn, { search: "?utm_source=newsletter&utm_medium=email&utm_campaign=spring-26&utm_term=secret" });
+      const [v] = await views(allowed);
+      expect(v).toEqual({ p: "/", pt: 1, us: "newsletter", um: "email", uc: "spring-26" });
     });
 
-    it("sends the referrer and campaign with the first page only, not with a later navigation", async () => {
-      const b = browser(script, { referrer: "https://news.example.com/", search: "?utm_source=a" });
+    it("sends the allowed campaign with the first page only, not with later navigation", async () => {
+      const optedIn = buildScript({
+        clicks: false, time: false, goals: [], referrers: true, campaigns: true,
+        utmAllowlist: { source: ["news"], medium: [], campaign: [] },
+      });
+      const b = browser(optedIn, { referrer: "https://news.example.com/", search: "?utm_source=news" });
       b.history.pushState("/next");
-      expect(await views(b)).toEqual([{ p: "/", r: "news.example.com", us: "a" }, { p: "/next" }]);
+      expect(await views(b)).toEqual([
+        { p: "/", pt: 1, r: "news.example.com", us: "news" },
+        { p: "/", pt: 1 },
+      ]);
     });
 
     it("is left out entirely when the switch is off", async () => {
@@ -378,8 +393,15 @@ describe("the analytics script", () => {
         referrer: "https://news.example.com/",
         search: "?utm_source=a",
       });
-      expect(await views(b)).toEqual([{ p: "/" }]);
+      expect(await views(b)).toEqual([{ p: "/", pt: 1 }]);
     });
+  });
+
+  it("uses an explicitly declared safe route template and defaults to the root", async () => {
+    const defaultPage = browser(buildScript({ clicks: false, time: false, goals: [] }));
+    expect(await defaultPage.sent()).toEqual([{ p: "/", pt: 1 }]);
+    const templated = browser(buildScript({ clicks: false, time: false, goals: [] }), { pathTemplate: "/users/:id" });
+    expect(await templated.sent()).toEqual([{ p: "/users/:id", pt: 1 }]);
   });
 
   describe("speed and errors", () => {
@@ -397,7 +419,7 @@ describe("the analytics script", () => {
       feedAll(b);
       b.doc.hidden = true;
       b.fire("document", "visibilitychange");
-      expect(await sentOf(b, "vitals")).toEqual([{ e: "vitals", p: "/", lcp: 2413, cls: 0.083, fcp: 640, inp: 184, ttfb: 123 }]);
+      expect(await sentOf(b, "vitals")).toEqual([{ e: "vitals", p: "/", pt: 1, lcp: 2413, cls: 0.083, fcp: 640, inp: 184, ttfb: 123 }]);
     });
 
     it("sends the summary once however often the page is hidden or left", async () => {
@@ -410,13 +432,16 @@ describe("the analytics script", () => {
       expect(await sentOf(b, "vitals")).toHaveLength(1);
     });
 
-    it("sends nothing when the browser reported nothing, and ignores layout shifts caused by input", async () => {
+    it("sends no exception text and ignores layout shifts caused by input", async () => {
       const b = browser(script);
       b.feed("layout-shift", [{ value: 0.4, hadRecentInput: true }]);
+      b.fire("window", "error", { message: "token=secret" });
+      b.fire("window", "unhandledrejection", { reason: new Error("user@example.com") });
       b.doc.hidden = true;
       b.fire("document", "visibilitychange");
       const [v] = await sentOf(b, "vitals");
-      expect(v).toEqual({ e: "vitals", p: "/", ttfb: 123 });
+      expect(v).toEqual({ e: "vitals", p: "/", pt: 1, ttfb: 123 });
+      expect((await b.sent()).some((m) => m.e === "err")).toBe(false);
     });
 
     it("reads interactions from a duration threshold of 40 ms and disconnects its observers on leaving", () => {
@@ -428,28 +453,24 @@ describe("the analytics script", () => {
       expect(b.listeners).toHaveLength(0);
     });
 
-    it("sends an error's message cut to 200 characters, the file name without its address, and the line", async () => {
+    it("does not collect exception text", async () => {
       const b = browser(script);
       b.fire("window", "error", { message: "x".repeat(500), filename: "https://cdn.example.com/js/app.js?v=3#a", lineno: 42, error: { stack: "at https://cdn.example.com/js/app.js?v=3:42:1" } });
-      const [e] = await sentOf(b, "err");
-      expect(e).toEqual({ e: "err", m: "x".repeat(200), f: "app.js", l: 42 });
-      expect(JSON.stringify(e)).not.toContain("cdn.example.com");
+      expect(b.listeners.some((l) => l.target === "window" && l.type === "error")).toBe(false);
+      expect(await sentOf(b, "err")).toEqual([]);
     });
 
-    it("reports an unhandled rejection by its message", async () => {
+    it("does not report an unhandled rejection", async () => {
       const b = browser(script);
       b.fire("window", "unhandledrejection", { reason: { message: "network down" } });
       b.fire("window", "unhandledrejection", { reason: "plain text" });
-      expect((await sentOf(b, "err")).map((m) => m.m)).toEqual(["network down", "plain text"]);
+      expect(await sentOf(b, "err")).toEqual([]);
     });
 
-    it("sends at most 5 errors for a page view, and again after the address changes", async () => {
+    it("does not add exception listeners when vitals are enabled", async () => {
       const b = browser(script);
       for (let i = 0; i < 12; i++) b.fire("window", "error", { message: `e${i}`, filename: "a.js", lineno: i });
-      expect(await sentOf(b, "err")).toHaveLength(5);
-      b.history.pushState("/next");
-      for (let i = 0; i < 12; i++) b.fire("window", "error", { message: `f${i}`, filename: "a.js", lineno: i });
-      expect(await sentOf(b, "err")).toHaveLength(10);
+      expect(await sentOf(b, "err")).toEqual([]);
     });
 
     it("adds no observers or error listeners when the switch is off", () => {
@@ -497,24 +518,24 @@ describe("the analytics script", () => {
       const b = browser(on);
       const id = b.store["_egg_id"];
       expect(id).toMatch(/^[a-f0-9]{24}$/);
-      expect(await b.sent()).toEqual([{ p: "/", i: id }]);
+      expect(await b.sent()).toEqual([{ p: "/", pt: 1, i: id }]);
       expect(on).not.toMatch(/cookie/i);
     });
 
     it("keeps the id it already has", async () => {
       const b = browser(on, { store: { _egg_id: "abcdef0123456789abcdef01" } });
-      expect(await b.sent()).toEqual([{ p: "/", i: "abcdef0123456789abcdef01" }]);
+      expect(await b.sent()).toEqual([{ p: "/", pt: 1, i: "abcdef0123456789abcdef01" }]);
     });
 
     it("sends no id when storage is blocked", async () => {
       const b = browser(on, { storeBlocked: true });
-      expect(await b.sent()).toEqual([{ p: "/" }]);
+      expect(await b.sent()).toEqual([{ p: "/", pt: 1 }]);
     });
 
     it("removes an id left by an earlier setting when retention is off", async () => {
       const b = browser(buildScript({ clicks: false, time: false, goals: [] }), { store: { _egg_id: "abcdef0123456789abcdef01" } });
       expect(b.store["_egg_id"]).toBeUndefined();
-      expect(await b.sent()).toEqual([{ p: "/" }]);
+      expect(await b.sent()).toEqual([{ p: "/", pt: 1 }]);
     });
 
     it("sends a heartbeat every 60 seconds while the page is visible", async () => {

@@ -3,22 +3,36 @@ import {
   Skeleton,
   SkeletonCard,
   SkeletonPageHeader,
-  SkeletonRow,
   SkeletonText,
-  skeletonWidth,
 } from "@/components/ui/skeleton";
 
-/** Fixed bar heights (percent) so the server and client markup match. */
-const BAR_HEIGHTS = [
-  38, 52, 44, 61, 70, 48, 35, 56, 82, 64, 47, 40, 58, 73, 90, 66, 51, 43, 60, 77, 55, 46, 39, 62,
-  68, 84, 59, 50, 42, 71,
-];
+/** Fixed bar widths (percent), longest first like a ranked list, so the server and client markup match. */
+const BAR_WIDTHS = [92, 64, 41, 38, 36, 33];
 
-/** /projects/[slug]/analytics. Stats, daily chart, two top lists and the setup card. */
+/** The header of a chart card: its title and one-sentence summary on the left, the Export button on the right. */
+function ChartHeader() {
+  return (
+    <div className="flex items-start justify-between gap-3 border-b px-4 py-3">
+      <div className="min-w-0">
+        <SkeletonText size="title-3" width="w-36" />
+        <SkeletonText size="label" width="w-64" className="mt-0.5 max-w-full" />
+      </div>
+      <Skeleton className="h-7 w-20 shrink-0 max-sm:h-10" />
+    </div>
+  );
+}
+
+/** /projects/[slug]/analytics, Overview tab: the tab bar, two totals, the daily chart and two ranked bar charts. */
 export function AnalyticsSkeleton() {
   return (
     <LoadingRegion label="Loading analytics…" className="space-y-6">
       <SkeletonPageHeader description />
+
+      <div className="flex h-11 items-center gap-6 border-b px-3" aria-hidden="true">
+        {["w-16", "w-28", "w-12", "w-14", "w-10"].map((w, i) => (
+          <SkeletonText key={i} size="body" width={w} />
+        ))}
+      </div>
 
       <div className="grid gap-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         {[0, 1].map((i) => (
@@ -31,51 +45,29 @@ export function AnalyticsSkeleton() {
         ))}
       </div>
 
-      <SkeletonCard className="p-4">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <SkeletonText size="body" width="w-36" />
-          <SkeletonText size="caption" width="w-28" />
-        </div>
-        <div className="flex h-32 items-end gap-[3px]">
-          {BAR_HEIGHTS.map((h, i) => (
-            <Skeleton
-              key={i}
-              className="min-w-0 flex-1 rounded-none"
-              style={{ height: `${h}%` }}
-            />
-          ))}
-        </div>
-        <div className="mt-2 flex justify-between">
-          <SkeletonText size="caption" width="w-12" />
-          <SkeletonText size="caption" width="w-12" />
+      <SkeletonCard>
+        <ChartHeader />
+        <div className="p-4">
+          <Skeleton className="h-44 w-full" />
+          <SkeletonText size="caption" width="w-40" className="mt-2" />
         </div>
       </SkeletonCard>
 
       <div className="grid gap-4 md:grid-cols-2">
         {[0, 1].map((c) => (
-          <SkeletonCard key={c} header>
-            <div className="hairline-y">
-              {Array.from({ length: 5 }, (_, i) => (
-                <SkeletonRow key={i} className="min-h-0 justify-between py-2.5">
-                  <SkeletonText size="body" width={skeletonWidth(i + c)} className="min-w-0" />
-                  <SkeletonText size="body" width="w-8" />
-                </SkeletonRow>
+          <SkeletonCard key={c}>
+            <ChartHeader />
+            <div className="flex flex-col gap-3 p-4">
+              {BAR_WIDTHS.slice(0, c === 0 ? 6 : 4).map((w, i) => (
+                <div key={i} className="grid grid-cols-[7rem_minmax(0,1fr)] items-center gap-2">
+                  <SkeletonText size="label" width="w-20" className="justify-self-end" />
+                  <Skeleton className="h-5 rounded-[3px]" style={{ width: `${w}%` }} />
+                </div>
               ))}
             </div>
           </SkeletonCard>
         ))}
       </div>
-
-      <SkeletonCard className="p-5">
-        <SkeletonText size="title-2" width="w-40" />
-        <SkeletonText size="body" width="w-full" lines={2} className="mt-1" />
-        <div className="mt-4 space-y-1">
-          {[0, 1, 2, 3].map((i) => (
-            <SkeletonText key={i} size="label" width={i === 0 ? "w-96" : i === 3 ? "w-48" : "w-80"} />
-          ))}
-        </div>
-        <Skeleton className="mt-4 h-8 w-36 max-sm:h-10" />
-      </SkeletonCard>
     </LoadingRegion>
   );
 }

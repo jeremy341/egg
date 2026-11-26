@@ -1,8 +1,9 @@
 import { createHmac } from "node:crypto";
-import { and, desc, eq, gte, lt, sql } from "drizzle-orm";
+import { and, desc, eq, gte, lt, sql, type AnyColumn } from "drizzle-orm";
 import { z } from "zod";
 import { featuresForKey, getAnalyticsDefaults } from "@/server/analytics-config";
-import { cleanPath, cleanReferrer, cleanUtm } from "@/server/analytics-fields";
+import { cleanPath, cleanReferrer, allowlistedUtm } from "@/server/analytics-fields";
+import { countryToStore } from "@/server/analytics-locations";
 import { audit } from "@/server/audit";
 import { config } from "@/server/config";
 import { randomToken, sha256Hex } from "@/server/crypto";
@@ -117,6 +118,8 @@ export function retentionCode(args: { projectId: string; browserId: string; at: 
 
 const hit = z.object({
   p: z.string().max(2000).default("/"),
+  /** Added by the current first-party snippet; legacy snippets' raw paths are discarded. */
+  pt: z.literal(1).optional(),
   r: z.string().max(2000).optional(),
   us: z.string().max(400).optional(),
   um: z.string().max(400).optional(),
@@ -152,15 +155,16 @@ export async function recordPageview(
   if (tooFast(`${project.id}|${who.ip}`, now.getTime())) return false;
   const d = parsed.data;
   // Each extra is stored only while its switch is on.
-  const utm = f.referrers ? cleanUtm({ source: d.us, medium: d.um, campaign: d.uc }) : null;
+  const utm = f.campaigns ? allowlistedUtm({ source: d.us, medium: d.um, campaign: d.uc }, f.utmAllowlist) : null;
   await db.insert(schema.pageviews).values({
     projectId: project.id,
     at: now,
-    path: cleanPath(d.p),
+    path: d.pt === 1 ? cleanPath(d.p) : "/",
     referrer: f.referrers ? cleanReferrer(d.r) : null,
     utmSource: utm?.source ?? null,
     utmMedium: utm?.medium ?? null,
     utmCampaign: utm?.campaign ?? null,
+    country: await countryToStore(f.locations, who.ip),
     vid: f.retention && d.i && BROWSER_ID.test(d.i) ? retentionCode({ projectId: project.id, browserId: d.i, at: now }) : null,
     visitor: visitorHash({
       projectId: project.id,
@@ -174,12 +178,19 @@ export async function recordPageview(
 
 export async function prunePageviews(now = new Date()) {
   const db = await getDb();
-  const cutoff = new Date(now.getTime() - PAGEVIEW_KEEP_MS);
-  await db.delete(schema.pageviews).where(lt(schema.pageviews.at, cutoff));
-  // Click, time, goal and custom events age out on the same schedule, by day.
-  await db.delete(schema.analyticsEvents).where(lt(schema.analyticsEvents.day, cutoff.toISOString().slice(0, 10)));
-  await db.delete(schema.analyticsVitals).where(lt(schema.analyticsVitals.at, cutoff));
-  await db.delete(schema.analyticsErrors).where(lt(schema.analyticsErrors.at, cutoff));
+  // Per-project retention overrides are read in the delete query; projects that
+  // predate this setting keep the existing 90-day policy. Event days are coarse
+  // UTC buckets, so event rows may stay up to one extra day at the boundary.
+  const retention = (projectId: AnyColumn) => sql`coalesce((select ${schema.analyticsSettings.retentionDays}
+    from ${schema.analyticsSettings} where ${schema.analyticsSettings.projectId} = ${projectId}), 90)`;
+  const pageviewCutoff = sql`${now.getTime()} - ${retention(schema.pageviews.projectId)} * 86400000`;
+  const eventCutoff = sql`date(${Math.floor(now.getTime() / 1000)}, 'unixepoch', '-' || ${retention(schema.analyticsEvents.projectId)} || ' days')`;
+  const vitalCutoff = sql`${now.getTime()} - ${retention(schema.analyticsVitals.projectId)} * 86400000`;
+  const errorCutoff = sql`${now.getTime()} - ${retention(schema.analyticsErrors.projectId)} * 86400000`;
+  await db.delete(schema.pageviews).where(sql`${schema.pageviews.at} < (${pageviewCutoff})`);
+  await db.delete(schema.analyticsEvents).where(sql`${schema.analyticsEvents.day} < (${eventCutoff})`);
+  await db.delete(schema.analyticsVitals).where(sql`${schema.analyticsVitals.at} < (${vitalCutoff})`);
+  await db.delete(schema.analyticsErrors).where(sql`${schema.analyticsErrors.at} < (${errorCutoff})`);
   // Heartbeats are only for the last few minutes, so they go after an hour.
   await db.delete(schema.analyticsLive).where(lt(schema.analyticsLive.at, new Date(now.getTime() - LIVE_KEEP_MS)));
 }

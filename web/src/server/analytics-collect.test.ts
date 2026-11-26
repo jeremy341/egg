@@ -4,7 +4,7 @@ import { LIVE_KEEP_MS, RETENTION_PERIOD_MS, campaignsSummary, enableAnalytics, p
 import { featuresForUser, getAnalyticsDefaults, updateFeatures } from "@/server/analytics-config";
 import { eventsSummary, recordHit } from "@/server/analytics-events";
 import { MIN_COHORT, liveSummary, retentionSummary, returnRate } from "@/server/analytics-retention";
-import { errorsSummary, speedSummary, summariseVitals, type VitalRow } from "@/server/analytics-speed";
+import { speedSummary, summariseVitals, type VitalRow } from "@/server/analytics-speed";
 import { upsertUser } from "@/server/auth/session";
 import { getDb, schema } from "@/server/db";
 import { updatePreferences } from "@/server/preferences";
@@ -61,20 +61,26 @@ describe("every feature starts off", () => {
       funnel: false,
       steps: [],
       referrers: false,
+      campaigns: false,
+      utmAllowlist: { source: [], medium: [], campaign: [] },
+      retentionDays: 90,
       vitals: false,
       events: false,
       live: false,
       retention: false,
+      locations: false,
     });
     expect(await (await getDb()).select().from(schema.analyticsSettings).where(eq(schema.analyticsSettings.projectId, p.id))).toEqual([]);
   });
 
   it("drops what each feature would record while its switch is off, whatever the script sends", async () => {
     const p = await newProject();
-    const body = { p: "/a", r: "https://news.example.com/x", us: "s", um: "m", uc: "c", i: "abcdef0123456789abcdef01" };
+    const body = { p: "/a", pt: 1 as const, r: "https://news.example.com/x", us: "s", um: "m", uc: "c", i: "abcdef0123456789abcdef01" };
     expect(await recordHit(p.key, body, who(), now)).toBe(true);
     const [row] = await views(p.id);
     expect(row).toMatchObject({ path: "/a", referrer: null, utmSource: null, utmMedium: null, utmCampaign: null, vid: null });
+    expect(await recordHit(p.key, { p: "/reset/secret-token" }, who(), new Date(now.getTime() + 1000))).toBe(true);
+    expect((await views(p.id)).some((page) => page.path === "/")).toBe(true);
     expect(await recordHit(p.key, { e: "track", n: "buy", v: "pro" }, who(), now)).toBe(false);
     expect(await recordHit(p.key, { e: "vitals", p: "/", lcp: 1000 }, who(), now)).toBe(false);
     expect(await recordHit(p.key, { e: "err", m: "boom" }, who(), now)).toBe(false);
@@ -137,22 +143,38 @@ describe("account defaults", () => {
 });
 
 describe("referrers and campaigns", () => {
-  it("store the referring host and the cut, whitelisted campaign values when the switch is on", async () => {
+  it("stores the referring host and only explicitly allowlisted campaign values", async () => {
     const p = await newProject();
-    await updateFeatures(userId, p.id, { referrers: true });
+    await updateFeatures(userId, p.id, { referrers: true, campaigns: true, utmAllowlist: {
+      source: ["newsletter"], medium: ["email"], campaign: ["spring-26"],
+    } });
     const body = {
       p: "/pricing?x=1",
+      pt: 1 as const,
       r: "www.news.example.com",
       us: "  newsletter ",
       um: "email",
-      uc: "c".repeat(200),
+      uc: "spring-26",
       ut: "term-is-not-stored",
     };
     expect(await recordHit(p.key, body, who(), now)).toBe(true);
     const [row] = await views(p.id);
-    expect(row).toMatchObject({ path: "/pricing", referrer: "www.news.example.com", utmSource: "newsletter", utmMedium: "email" });
-    expect(row.utmCampaign).toHaveLength(80);
+    expect(row).toMatchObject({ path: "/pricing", referrer: "www.news.example.com", utmSource: "newsletter", utmMedium: "email", utmCampaign: "spring-26" });
     expect(JSON.stringify(row)).not.toContain("term-is-not-stored");
+  });
+
+  it("drops a plausible identifier from the raw campaign payload when it is not allowlisted", async () => {
+    const p = await newProject();
+    await updateFeatures(userId, p.id, { referrers: true, campaigns: true, utmAllowlist: {
+      source: ["newsletter"], medium: ["email"], campaign: ["spring-26"],
+    } });
+    await recordHit(p.key, { p: "/", pt: 1, us: "person@example.com", um: "email", uc: "user-12345" }, who(), now);
+    expect((await views(p.id))[0]).toMatchObject({ utmSource: null, utmMedium: "email", utmCampaign: null });
+  });
+
+  it("does not enable campaigns without at least one approved label", async () => {
+    const p = await newProject();
+    await expect(updateFeatures(userId, p.id, { campaigns: true })).rejects.toThrow(/allow at least one/i);
   });
 
   it("store nulls for a page view that has none", async () => {
@@ -164,7 +186,9 @@ describe("referrers and campaigns", () => {
 
   it("add up by campaign for the owner, with source and medium", async () => {
     const p = await newProject();
-    await updateFeatures(userId, p.id, { referrers: true });
+    await updateFeatures(userId, p.id, { referrers: true, campaigns: true, utmAllowlist: {
+      source: ["news", "x"], medium: ["email", "social"], campaign: ["spring", "launch"],
+    } });
     for (let i = 0; i < 3; i++) await recordHit(p.key, { p: "/", uc: "spring", us: "news", um: "email" }, who(), now);
     await recordHit(p.key, { p: "/", uc: "launch", us: "x", um: "social" }, who(), now);
     await recordHit(p.key, { p: "/" }, who(), now);
@@ -173,6 +197,102 @@ describe("referrers and campaigns", () => {
       { campaign: "spring", source: "news", medium: "email", views: 3 },
       { campaign: "launch", source: "x", medium: "social", views: 1 },
     ]);
+  });
+
+  it("records campaign values only while Campaigns is on, whatever Referrers says", async () => {
+    const p = await newProject();
+    await updateFeatures(userId, p.id, { referrers: true });
+    await recordHit(p.key, { p: "/", pt: 1, r: "news.example.com", us: "newsletter", um: "email", uc: "spring-26" }, who(), now);
+    expect((await views(p.id))[0]).toMatchObject({ referrer: "news.example.com", utmSource: null, utmMedium: null, utmCampaign: null });
+  });
+
+  it("stops recording a value as soon as it is taken off the allowlist", async () => {
+    const p = await newProject();
+    await updateFeatures(userId, p.id, { campaigns: true, utmAllowlist: { source: ["newsletter", "x"], medium: [], campaign: [] } });
+    await updateFeatures(userId, p.id, { utmAllowlist: { source: ["x"] } });
+    expect((await featuresForUser(userId, p.id)).utmAllowlist).toEqual({ source: ["x"], medium: [], campaign: [] });
+    await recordHit(p.key, { p: "/", pt: 1, us: "newsletter" }, who(), now);
+    await recordHit(p.key, { p: "/", pt: 1, us: "x" }, who(), now);
+    expect((await views(p.id)).map((v) => v.utmSource).sort()).toEqual([null, "x"]);
+  });
+
+  it("refuses an allowlist value or list the server rules do not allow", async () => {
+    const p = await newProject();
+    await expect(updateFeatures(userId, p.id, { utmAllowlist: { source: ["has space"] } })).rejects.toThrow(/short static labels/i);
+    await expect(updateFeatures(userId, p.id, { utmAllowlist: { source: ["a".repeat(41)] } })).rejects.toThrow(/short static labels/i);
+    const tooMany = Array.from({ length: 21 }, (_, i) => `v${i}`);
+    await expect(updateFeatures(userId, p.id, { utmAllowlist: { campaign: tooMany } })).rejects.toThrow();
+    // Emptying the list while Campaigns is on is refused: it would record nothing.
+    await updateFeatures(userId, p.id, { campaigns: true, utmAllowlist: { source: ["x"] } });
+    await expect(updateFeatures(userId, p.id, { utmAllowlist: { source: [] } })).rejects.toThrow(/allow at least one/i);
+  });
+
+  it("deletes the stored referrers when Referrers is turned off, and leaves campaign values and other projects alone", async () => {
+    const p = await newProject();
+    const other = await newProject();
+    const allow = { source: ["newsletter"], medium: ["email"], campaign: ["spring-26"] };
+    for (const q of [p, other]) {
+      await updateFeatures(userId, q.id, { referrers: true, campaigns: true, utmAllowlist: allow });
+      await recordHit(q.key, { p: "/", pt: 1, r: "news.example.com", us: "newsletter", um: "email", uc: "spring-26" }, who(), now);
+    }
+    await updateFeatures(userId, p.id, { referrers: false });
+    expect((await views(p.id))[0]).toMatchObject({ referrer: null, utmSource: "newsletter", utmMedium: "email", utmCampaign: "spring-26" });
+    expect((await views(other.id))[0]).toMatchObject({ referrer: "news.example.com", utmCampaign: "spring-26" });
+    // Saving something else does not delete anything.
+    await updateFeatures(userId, other.id, { clicks: true });
+    expect((await views(other.id))[0].referrer).toBe("news.example.com");
+  });
+
+  it("deletes the stored campaign values when Campaigns is turned off, and leaves referrers and other projects alone", async () => {
+    const p = await newProject();
+    const other = await newProject();
+    const allow = { source: ["newsletter"], medium: ["email"], campaign: ["spring-26"] };
+    for (const q of [p, other]) {
+      await updateFeatures(userId, q.id, { referrers: true, campaigns: true, utmAllowlist: allow });
+      await recordHit(q.key, { p: "/", pt: 1, r: "news.example.com", us: "newsletter", um: "email", uc: "spring-26" }, who(), now);
+    }
+    await updateFeatures(userId, p.id, { campaigns: false });
+    expect((await views(p.id))[0]).toMatchObject({ referrer: "news.example.com", utmSource: null, utmMedium: null, utmCampaign: null });
+    expect((await views(other.id))[0]).toMatchObject({ referrer: "news.example.com", utmSource: "newsletter", utmMedium: "email", utmCampaign: "spring-26" });
+    expect((await campaignsSummary(userId, p.id, 30, new Date("2026-11-05T00:00:00Z"))).rows).toEqual([]);
+    // The allowlist is kept, so turning Campaigns back on needs no retyping, and new views are recorded again.
+    expect((await featuresForUser(userId, p.id)).utmAllowlist).toEqual(allow);
+    await updateFeatures(userId, p.id, { campaigns: true });
+    await recordHit(p.key, { p: "/", pt: 1, us: "newsletter", um: "email", uc: "spring-26" }, who(), now);
+    expect((await views(p.id)).filter((v) => v.utmCampaign === "spring-26")).toHaveLength(1);
+  });
+});
+
+describe("how long analytics is kept", () => {
+  it("accepts 30, 60 or 90 days, starts at 90, and refuses any other number", async () => {
+    const p = await newProject();
+    expect((await featuresForUser(userId, p.id)).retentionDays).toBe(90);
+    for (const days of [30, 60, 90] as const) {
+      expect((await updateFeatures(userId, p.id, { retentionDays: days })).retentionDays).toBe(days);
+      expect((await featuresForUser(userId, p.id)).retentionDays).toBe(days);
+    }
+    await expect(updateFeatures(userId, p.id, { retentionDays: 45 as never })).rejects.toThrow();
+    await expect(updateFeatures(userId, p.id, { retentionDays: 120 as never })).rejects.toThrow();
+    expect((await featuresForUser(userId, p.id)).retentionDays).toBe(90);
+  });
+
+  it("deletes page views older than the project's own number of days and keeps the rest", async () => {
+    const short = await newProject();
+    const long = await newProject();
+    await updateFeatures(userId, short.id, { retentionDays: 30 });
+    const day = 86_400_000;
+    for (const q of [short, long]) {
+      for (const ago of [10, 40, 70]) {
+        await (await getDb()).insert(schema.pageviews).values({
+          projectId: q.id, at: new Date(now.getTime() - ago * day), path: "/", visitor: `kept-${q.id}-${ago}`,
+        });
+      }
+    }
+    await prunePageviews(now);
+    const ages = async (q: { id: string }) =>
+      (await views(q.id)).map((v) => Math.round((now.getTime() - v.at.getTime()) / day)).sort((a, b) => a - b);
+    expect(await ages(short)).toEqual([10]);
+    expect(await ages(long)).toEqual([10, 40, 70]);
   });
 });
 
@@ -395,9 +515,9 @@ describe("speed", () => {
   it("stores a summary per page view with rounded numbers and the cleaned path, and reads it back for the owner", async () => {
     const p = await newProject();
     await updateFeatures(userId, p.id, { vitals: true });
-    expect(await recordHit(p.key, { e: "vitals", p: "/a?x=1", lcp: 1234.6, cls: 0.12345, ttfb: 90 }, who(), now)).toBe(true);
+    expect(await recordHit(p.key, { e: "vitals", p: "/a?x=1", pt: 1, lcp: 1234.6, cls: 0.12345, ttfb: 90 }, who(), now)).toBe(true);
     expect(await recordHit(p.key, { e: "vitals", p: "/a" }, who(), now)).toBe(false);
-    expect(await recordHit(p.key, { e: "vitals", p: "/a", lcp: "slow", cls: -1 }, who(), now)).toBe(false);
+    expect(await recordHit(p.key, { e: "vitals", p: "/a", pt: 1, lcp: "slow", cls: -1 }, who(), now)).toBe(false);
     const [row] = await (await getDb()).select().from(schema.analyticsVitals).where(eq(schema.analyticsVitals.projectId, p.id));
     expect(row).toMatchObject({ path: "/a", lcp: 1235, cls: 0.123, inp: null, fcp: null, ttfb: 90 });
     const s = await speedSummary(userId, p.id, 30, new Date("2026-11-05T00:00:00Z"));
@@ -407,29 +527,22 @@ describe("speed", () => {
 });
 
 describe("errors", () => {
-  it("stores the cut message, the file name and the line, with no address and no visitor", async () => {
+  it("rejects exception messages at the collector", async () => {
     const p = await newProject();
     await updateFeatures(userId, p.id, { vitals: true });
     const body = { e: "err", m: "m".repeat(400), f: "app.js", l: 12 };
-    expect(await recordHit(p.key, body, who(), now)).toBe(true);
+    expect(await recordHit(p.key, body, who(), now)).toBe(false);
     expect(await recordHit(p.key, { e: "err", m: "   " }, who(), now)).toBe(false);
-    const [row] = await (await getDb()).select().from(schema.analyticsErrors).where(eq(schema.analyticsErrors.projectId, p.id));
-    expect(row.message).toHaveLength(200);
-    expect(row).toMatchObject({ file: "app.js", line: 12 });
-    expect(Object.keys(row).sort()).toEqual(["at", "file", "id", "line", "message", "projectId"]);
+    const rows = await (await getDb()).select().from(schema.analyticsErrors).where(eq(schema.analyticsErrors.projectId, p.id));
+    expect(rows).toEqual([]);
   });
 
-  it("counts the same error together and gives the last time it was seen", async () => {
+  it("does not persist errors with potentially identifying content", async () => {
     const p = await newProject();
     await updateFeatures(userId, p.id, { vitals: true });
-    const at = (m: number) => new Date(now.getTime() + m * 60_000);
-    for (const [i, m] of [0, 5, 9].entries()) await recordHit(p.key, { e: "err", m: "x is undefined", f: "a.js", l: 3 }, who(), at(m + i * 0));
-    await recordHit(p.key, { e: "err", m: "other", f: "b.js", l: 1 }, who(), at(20));
-    const s = await errorsSummary(userId, p.id, 30, at(60));
-    expect(s.total).toBe(4);
-    expect(s.rows[0]).toMatchObject({ message: "x is undefined", file: "a.js", line: 3, count: 3 });
-    expect(s.rows[0].lastSeen.getTime()).toBe(at(9).getTime());
-    expect(s.rows[1]).toMatchObject({ message: "other", count: 1 });
+    await recordHit(p.key, { e: "err", m: "token=secret https://example.test/users/456" }, who(), now);
+    const rows = await (await getDb()).select().from(schema.analyticsErrors).where(eq(schema.analyticsErrors.projectId, p.id));
+    expect(rows).toEqual([]);
   });
 });
 

@@ -2,24 +2,22 @@ import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { z } from "zod";
 import { featuresForKey } from "@/server/analytics-config";
 import { BROWSER_ID, KEY_PREFIX, isBot, recordPageview, retentionCode, visitorHash } from "@/server/analytics";
-import { VITALS, cleanError, cleanEventName, cleanEventValue, cleanPath, cleanVital } from "@/server/analytics-fields";
+import { TRACK_NAME, VITALS, cleanEventName, cleanEventValue, cleanPath, cleanVital } from "@/server/analytics-fields";
 import { getDb, schema } from "@/server/db";
 import { getProjectForUser } from "@/server/projects";
 import { MIN_SAMPLE } from "@/server/stats";
 
 /**
  * Opt-in analytics events: clicks, time on page, funnel goals, custom events
- * (a name and an optional value), speed measurements, script errors and the
- * live view heartbeat.
+ * (a name and an optional value), speed measurements and the live view heartbeat.
  *
  * Click and time events store the project and the UTC day, and a short label or
  * a time bucket. They store no visitor id, no timestamp, no IP address, no
  * cookie and no browser details. A goal event (a funnel step the owner named)
  * also stores the same daily salted visitor hash a page view has, and the time,
  * because a funnel has to count a visitor once and in order. A custom event stores
- * its name, its value and the day. A speed summary stores the path, the time and
- * the rounded measurements; an error stores the message, the file name and the
- * line; neither has a visitor id. A heartbeat stores the project, the time and
+ * its name, its value and the day. A speed summary stores a declared route template,
+ * the time and rounded measurements. A heartbeat stores the project, the time and
  * the salted retention code, and is deleted after an hour.
  */
 
@@ -28,26 +26,14 @@ export type TimeBucket = (typeof TIME_BUCKETS)[number];
 
 export const LABEL_MAX = 40;
 
-const EMAIL = /[^\s@]+@[^\s@]+\.[^\s@]+/;
-const URLISH = /^(?:https?:\/\/|www\.|\/)/i;
-
 /**
- * A click label from whatever the page sent: white space collapsed, a URL's
- * query string and fragment cut off, at most 40 characters. A label that
- * contains an email address is dropped whole, since text like "Signed in as ..."
- * is the likeliest way a person's details reach a button. Null when nothing is left.
+ * A click label is an explicit, static instrumentation name. Do not accept
+ * visible UI text or arbitrary dynamic strings that could contain personal data.
  */
 export function cleanLabel(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
-  let t = raw.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, " ").replace(/\s+/g, " ").trim();
-  if (!t || EMAIL.test(t)) return null;
-  t = t
-    .split(" ")
-    .map((w) => (URLISH.test(w) || /\?\S*=/.test(w) ? w.split(/[?#]/)[0] : w))
-    .join(" ")
-    .trim();
-  t = Array.from(t).slice(0, LABEL_MAX).join("").trim();
-  return t || null;
+  const t = raw.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, " ").replace(/\s+/g, " ").trim();
+  return t.length <= LABEL_MAX && TRACK_NAME.test(t) ? t : null;
 }
 
 /** True when the request carries Do Not Track or Global Privacy Control. */
@@ -65,6 +51,7 @@ const event = z.discriminatedUnion("e", [
   z.object({
     e: z.literal("vitals"),
     p: z.string().max(2000).default("/"),
+    pt: z.literal(1).optional(),
     lcp: z.unknown().optional(),
     cls: z.unknown().optional(),
     inp: z.unknown().optional(),
@@ -99,7 +86,7 @@ function overLimit(key: string, now: number): boolean {
 /**
  * Record one report from the script: a page view (the default) or, when the
  * project has switched the feature on, a click, time, goal, custom event,
- * speed summary, error or heartbeat. Any other report is dropped, and so is one
+ * speed summary or heartbeat. Any other report is dropped, and so is one
  * for a switch that is off.
  */
 export async function recordHit(
@@ -146,15 +133,13 @@ export async function recordHit(
     const m = Object.fromEntries(VITALS.map((k) => [k, cleanVital(k, e[k])])) as Record<(typeof VITALS)[number], number | null>;
     if (VITALS.every((k) => m[k] === null)) return false;
     if (overLimit(`${projectId}|${who.ip}`, now.getTime())) return false;
-    await db.insert(schema.analyticsVitals).values({ projectId, at: now, path: cleanPath(e.p), ...m });
+    await db.insert(schema.analyticsVitals).values({ projectId, at: now, path: e.pt === 1 ? cleanPath(e.p) : "/", ...m });
     return true;
   }
   if (e.e === "err") {
-    const clean = cleanError({ message: e.m, file: e.f, line: e.l });
-    if (!features.vitals || !clean) return false;
-    if (overLimit(`${projectId}|${who.ip}`, now.getTime())) return false;
-    await db.insert(schema.analyticsErrors).values({ projectId, at: now, ...clean });
-    return true;
+    // Never store exception text: application errors can expose tokens, paths,
+    // or user content. Reject legacy event payloads at the collector.
+    return false;
   }
   if (e.e === "ping") {
     // A heartbeat only means something with the retention code to count, so it needs both switches.
@@ -185,6 +170,13 @@ const DAY_MS = 86_400_000;
 /** The first UTC day of a window of `days` days that ends today. */
 export function sinceDay(days: number, now: Date): string {
   return new Date(now.getTime() - (days - 1) * DAY_MS).toISOString().slice(0, 10);
+}
+
+/** Every UTC day of a window of `days` days that ends today, oldest first. A quiet day is still in the list. */
+export function lastDays(days: number, now: Date): string[] {
+  const out: string[] = [];
+  for (let i = days - 1; i >= 0; i--) out.push(new Date(now.getTime() - i * DAY_MS).toISOString().slice(0, 10));
+  return out;
 }
 
 export type ClicksSummary = {
@@ -304,6 +296,10 @@ export type EventsSummary = {
   days: number;
   total: number;
   rows: { name: string; value: string | null; count: number }[];
+  /** The same events added up by name alone, the most frequent first. At most 10. */
+  byName: { name: string; count: number }[];
+  /** Events on each UTC day of the range, quiet days as zero. */
+  daily: { day: string; count: number }[];
 };
 
 /** Custom events by name and value for the last `days` days, the most frequent first. */
@@ -323,9 +319,24 @@ export async function eventsSummary(userId: string, projectId: string, days = 30
     .orderBy(desc(sql`count(*)`), schema.analyticsEvents.label, schema.analyticsEvents.value)
     .limit(20);
   const total = await db.select({ n: sql<number>`count(*)` }).from(schema.analyticsEvents).where(where).get();
+  const byName = await db
+    .select({ name: schema.analyticsEvents.label, count: sql<number>`count(*)` })
+    .from(schema.analyticsEvents)
+    .where(where)
+    .groupBy(schema.analyticsEvents.label)
+    .orderBy(desc(sql`count(*)`), schema.analyticsEvents.label)
+    .limit(10);
+  const perDay = await db
+    .select({ day: schema.analyticsEvents.day, count: sql<number>`count(*)` })
+    .from(schema.analyticsEvents)
+    .where(where)
+    .groupBy(schema.analyticsEvents.day);
+  const counts = new Map(perDay.map((r) => [r.day, Number(r.count)]));
   return {
     days,
     total: Number(total?.n ?? 0),
     rows: rows.map((r) => ({ name: r.name ?? "", value: r.value, count: Number(r.count) })),
+    byName: byName.map((r) => ({ name: r.name ?? "", count: Number(r.count) })),
+    daily: lastDays(days, now).map((day) => ({ day, count: counts.get(day) ?? 0 })),
   };
 }

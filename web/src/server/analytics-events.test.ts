@@ -9,18 +9,19 @@ import { createServer } from "@/server/servers";
 import { useFreshDb } from "@/server/test/db";
 
 describe("cleanLabel", () => {
-  it("collapses white space and keeps at most 40 characters", () => {
-    expect(cleanLabel("  Sign \n  up  ")).toBe("Sign up");
-    expect(cleanLabel("x".repeat(100))).toHaveLength(40);
+  it("accepts only static instrumentation names", () => {
+    expect(cleanLabel("  sign-up  ")).toBe("sign-up");
+    expect(cleanLabel("https://example.test/users/sam")).toBeNull();
+    expect(cleanLabel("x".repeat(100))).toBeNull();
   });
   it("drops empty labels and non-strings", () => {
     expect(cleanLabel("   ")).toBeNull();
     expect(cleanLabel(42)).toBeNull();
     expect(cleanLabel(undefined)).toBeNull();
   });
-  it("never keeps a query string or fragment from a URL in the text", () => {
-    expect(cleanLabel("Read https://shop.example/cart?token=abc#x now")).toBe("Read https://shop.example/cart now");
-    expect(cleanLabel("/account?id=9")).toBe("/account");
+  it("rejects URL and arbitrary text", () => {
+    expect(cleanLabel("https://shop.example/cart?token=abc#x")).toBeNull();
+    expect(cleanLabel("/account?id=9")).toBeNull();
   });
   it("drops a label that is an email address", () => {
     expect(cleanLabel("Signed in as sam@example.com")).toBeNull();

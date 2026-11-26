@@ -1,9 +1,11 @@
 import { type NextRequest } from "next/server";
 import { optedOut, recordHit } from "@/server/analytics-events";
-import { handle } from "@/server/http";
+import { handle, HttpError } from "@/server/http";
 import { clientIp } from "@/server/rate-limit";
+import { readTextLimited } from "@/server/body-limit";
 
 type Ctx = { params: Promise<{ key: string }> };
+export const COLLECT_BODY_LIMIT_BYTES = 5_000;
 
 // Any site may report to its own key, so this answers every origin. It only
 // ever writes an analytics event; it reads nothing and returns nothing.
@@ -29,10 +31,20 @@ export const POST = handle<Ctx>(
     // signal (an old copy of the script, a hand-made call) is not recorded either.
     if (optedOut(req.headers)) return new Response(null, { status: 204, headers: CORS });
     // sendBeacon sends text/plain, so read the body as text and parse it ourselves.
-    const raw = await req.text();
+    let raw: string;
+    try {
+      raw = await readTextLimited(req, COLLECT_BODY_LIMIT_BYTES);
+    } catch (err) {
+      // Keep the collector's CORS response shape while refusing to buffer large
+      // or chunked bodies. This endpoint deliberately reveals nothing about keys.
+      if (err instanceof HttpError && err.status === 413) {
+        return new Response(null, { status: 413, headers: CORS });
+      }
+      throw err;
+    }
     let body: unknown = {};
     try {
-      body = JSON.parse(raw.slice(0, 5000));
+      body = JSON.parse(raw);
     } catch {
       /* a malformed body is dropped by the validator */
     }

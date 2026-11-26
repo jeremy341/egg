@@ -4,9 +4,9 @@ import { PixelField } from "@/components/pixel-field";
 import { pixel } from "@/lib/fonts";
 import { cn } from "@/lib/utils";
 
-/** The marketing pill: 40px tall, square, the same as "Sign in" in the top bar. */
+/** The marketing button: 40px tall. A rounded rectangle in the phone stack, a capsule in the row from sm up. */
 const btn =
-  "pressable inline-flex h-10 items-center justify-center px-4 text-[14px] font-medium whitespace-nowrap max-sm:w-full";
+  "touch-target pressable inline-flex h-10 items-center justify-center rounded-md px-4 text-[14px] font-medium whitespace-nowrap max-sm:w-full sm:rounded-full sm:px-5";
 const btnPrimary =
   "bg-foreground text-background transition-[background-color] duration-(--dur-fast) hover:bg-[color-mix(in_oklab,var(--foreground)_86%,var(--background))]";
 const btnSecondary = "shadow-border-base bg-background hover:bg-[var(--ds-gray-100)]";

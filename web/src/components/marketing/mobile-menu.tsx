@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ArrowUpRightIcon, ListIcon, XIcon } from "@phosphor-icons/react";
 import { isCurrent, type NavItem } from "@/components/marketing/marketing-nav";
+import { IconTip } from "@/components/ui/tooltip";
 
 const row =
   "flex h-11 items-center gap-2 px-6 text-[15px] text-muted-foreground transition-colors duration-(--dur-fast) hover:bg-[var(--ds-gray-alpha-100)] hover:text-foreground aria-[current=page]:text-foreground";
@@ -61,17 +62,19 @@ export function MobileMenu({
 
   return (
     <>
-      <button
-        ref={button}
-        type="button"
-        aria-label={open ? "Close menu" : "Open menu"}
-        aria-expanded={open}
-        aria-controls="site-menu"
-        onClick={() => setOpen((o) => !o)}
-        className="pressable inline-flex size-10 items-center justify-center rounded-md text-muted-foreground hover:bg-[var(--ds-gray-100)] hover:text-foreground md:hidden"
-      >
-        {open ? <XIcon aria-hidden="true" className="size-[18px]" /> : <ListIcon aria-hidden="true" className="size-[18px]" />}
-      </button>
+      <IconTip label={open ? "Close menu" : "Open menu"}>
+        <button
+          ref={button}
+          type="button"
+          aria-label={open ? "Close menu" : "Open menu"}
+          aria-expanded={open}
+          aria-controls="site-menu"
+          onClick={() => setOpen((o) => !o)}
+          className="touch-target pressable inline-flex size-10 items-center justify-center rounded-full text-muted-foreground hover:bg-[var(--ds-gray-100)] hover:text-foreground md:hidden"
+        >
+          {open ? <XIcon aria-hidden="true" className="size-[18px]" /> : <ListIcon aria-hidden="true" className="size-[18px]" />}
+        </button>
+      </IconTip>
 
       <nav
         ref={panel}

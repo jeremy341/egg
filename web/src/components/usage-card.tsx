@@ -55,12 +55,12 @@ export function UsageCard({ server }: { server: ServerView | undefined }) {
         {server ? (
           <Link
             href="/resources"
-            className="group inline-flex shrink-0 items-center gap-1 text-label font-medium text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground max-sm:min-h-10"
+            className="touch-target group inline-flex shrink-0 items-center gap-1 text-label font-medium text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground max-sm:min-h-10"
           >
             Resources
             <ArrowRightIcon
               aria-hidden="true"
-              className="size-3.5 transition-transform duration-(--dur-fast) group-hover:translate-x-0.5"
+              className="size-3.5"
             />
           </Link>
         ) : null}

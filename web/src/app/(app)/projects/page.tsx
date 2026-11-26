@@ -204,7 +204,7 @@ async function ProjectsContent() {
               </ul>
               <Link
                 href="/deployments"
-                className="block border-t px-4 py-2.5 text-label font-medium text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground max-sm:py-3"
+                className="touch-target block border-t px-4 py-2.5 text-label font-medium text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground max-sm:py-3"
               >
                 All deployments
               </Link>

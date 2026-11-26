@@ -223,7 +223,7 @@ function ServerCard({ initial }: { initial: ServerView }) {
             href="https://dashboard.hackclub.app"
             target="_blank"
             rel="noreferrer"
-            className="link inline-flex items-center gap-1 font-medium max-sm:min-h-10"
+            className="touch-target link inline-flex items-center gap-1 font-medium max-sm:min-h-10"
           >
             Open the Nest dashboard
             <ArrowUpRightIcon aria-hidden="true" className="size-4" />

@@ -1,5 +1,6 @@
 "use client";
 
+import { IconTip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 type Option<T extends string> = {
@@ -34,7 +35,7 @@ export function Segmented<T extends string>({
     >
       {options.map((option) => {
         const active = option.value === value;
-        return (
+        const control = (
           <button
             key={option.value}
             type="button"
@@ -43,7 +44,7 @@ export function Segmented<T extends string>({
             onClick={() => onChange(option.value)}
             className={cn(
               // Inset focus ring: the global ring would be clipped by the frame.
-              "pressable inline-flex h-7 items-center justify-center gap-1.5 rounded-[4px] px-2 text-[13px] font-medium tracking-[-0.02em] focus-visible:outline-offset-[-2px] max-sm:h-10 max-sm:min-w-10 [&_svg]:size-4",
+              "touch-target inline-flex h-7 items-center transition-colors duration-(--dur-fast) ease-snappy justify-center gap-1.5 rounded-[4px] px-2 text-[13px] font-medium tracking-[-0.02em] focus-visible:outline-offset-[-2px] max-sm:h-10 max-sm:min-w-10 [&_svg]:size-4",
               active
                 ? "bg-[var(--ds-gray-200)] text-foreground"
                 : "text-muted-foreground hover:text-foreground"
@@ -52,6 +53,13 @@ export function Segmented<T extends string>({
             {option.icon}
             {option.iconOnly ? null : option.label}
           </button>
+        )
+        return option.iconOnly ? (
+          <IconTip key={option.value} label={option.label}>
+            {control}
+          </IconTip>
+        ) : (
+          control
         );
       })}
     </div>

@@ -134,7 +134,7 @@ export function ActivityRow({ item, now }: { item: ActivityItem; now: number }) 
           aria-controls={panelId}
           aria-label={`Details for ${sentenceName}`}
           onClick={() => setOpen((v) => !v)}
-          className="pressable -my-1 -mr-2 inline-flex h-8 shrink-0 items-center justify-center gap-1 rounded-md px-2 text-label text-muted-foreground hover:bg-[var(--ds-gray-alpha-100)] hover:text-foreground max-sm:h-10 max-sm:min-w-10 [&_svg]:size-4"
+          className="touch-target pressable -my-1 -mr-2 inline-flex h-8 shrink-0 items-center justify-center gap-1 rounded-md px-2 text-label text-muted-foreground hover:bg-[var(--ds-gray-alpha-100)] hover:text-foreground max-sm:h-10 max-sm:min-w-10 [&_svg]:size-4"
         >
           <span className="max-sm:sr-only" aria-hidden="true">
             Details
@@ -190,7 +190,7 @@ export function ActivityRun({
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => setOpen((v) => !v)}
-        className="pressable flex min-h-14 w-full items-center gap-3 px-4 py-3 text-left hover:bg-[var(--ds-gray-alpha-100)]"
+        className="touch-target transition-colors duration-(--dur-fast) ease-snappy flex min-h-14 w-full items-center gap-3 px-4 py-3 text-left hover:bg-[var(--ds-gray-alpha-100)]"
       >
         <span
           aria-hidden="true"

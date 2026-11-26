@@ -1,0 +1,91 @@
+"use client";
+
+import { type ReactNode, useMemo } from "react";
+import { cn } from "@/lib/utils";
+
+/*
+ * Egg change: the registry file animates the number with `@number-flow/react`. That package is not
+ * installed, so the value is shown as plain text, in "en" like every other number in the charts.
+ * The exports and props are unchanged, and the number never counts up, so there is nothing to stop
+ * under reduced motion.
+ */
+
+/** Subset of `Intl.NumberFormatOptions` the stat accepts */
+export interface ChartStatFlowFormat {
+  notation?: "standard" | "compact";
+  compactDisplay?: "short" | "long";
+  minimumFractionDigits?: number;
+  maximumFractionDigits?: number;
+  minimumIntegerDigits?: number;
+  minimumSignificantDigits?: number;
+  maximumSignificantDigits?: number;
+  style?: "decimal" | "percent" | "currency";
+  currency?: string;
+  currencyDisplay?: "symbol" | "narrowSymbol" | "code" | "name";
+  unit?: string;
+  unitDisplay?: "short" | "long" | "narrow";
+}
+
+export const defaultChartStatFlowFormat: ChartStatFlowFormat = {
+  notation: "standard",
+  maximumFractionDigits: 0,
+};
+
+function formatStatValue(
+  value: number,
+  formatOptions: ChartStatFlowFormat,
+  prefix?: string,
+  suffix?: string
+): string {
+  const formatted = new Intl.NumberFormat("en", formatOptions).format(value);
+  return `${prefix ?? ""}${formatted}${suffix ?? ""}`;
+}
+
+export interface ChartStatFlowProps {
+  value: number;
+  label: string;
+  formatOptions?: ChartStatFlowFormat;
+  prefix?: string;
+  suffix?: string;
+  valueClassName?: string;
+  labelClassName?: string;
+  icon?: ReactNode;
+}
+
+/**
+ * Shared value + label stack (same layout as pie / ring centers).
+ * Parent should provide flex alignment and sizing when needed.
+ */
+export function ChartStatFlow({
+  value,
+  label,
+  formatOptions = defaultChartStatFlowFormat,
+  prefix,
+  suffix,
+  valueClassName = "text-2xl font-bold",
+  labelClassName = "text-xs",
+  icon,
+}: ChartStatFlowProps) {
+  const staticValue = useMemo(
+    () => formatStatValue(value, formatOptions, prefix, suffix),
+    [value, formatOptions, prefix, suffix]
+  );
+
+  return (
+    <>
+      {icon ? (
+        <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-muted/50">
+          {icon}
+        </div>
+      ) : null}
+      <span className={cn("text-foreground tabular-nums", valueClassName)}>
+        {staticValue}
+      </span>
+      <span className={cn("mt-0.5 text-(--chart-label)", labelClassName)}>
+        {label}
+      </span>
+    </>
+  );
+}
+
+ChartStatFlow.displayName = "ChartStatFlow";

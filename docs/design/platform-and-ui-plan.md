@@ -93,6 +93,38 @@ Model and effort: **Sonnet 5.5, high** for the audit and build, with `project-fr
 - **Haiku 5.5** for mechanical tasks: line endings, renaming, copying a settled list into docs, and the `doctor` checks once designed.
 - **Sonnet 5.5 at high** for anything that touches setup, deploy, security, migrations, platform code, or UI design.
 
+## Apple UX research (UX-level only: radius, hover, motion, targets)
+
+Source pages (Apple HIG, Markdown, fetched and read):
+- Motion: https://developer.apple.com/design/human-interface-guidelines/motion
+- Buttons: https://developer.apple.com/design/human-interface-guidelines/buttons
+- Layout: https://developer.apple.com/design/human-interface-guidelines/layout
+- Sidebars: https://developer.apple.com/design/human-interface-guidelines/sidebars
+- Materials: https://developer.apple.com/design/human-interface-guidelines/materials
+
+What the guidance says that applies to Egg:
+- **Motion is feedback, not decoration.** Animate only to show status or feedback. Keep feedback brief and precise.
+- **Do not animate frequent interactions.** Standard controls already have system animations, so custom motion on every click wastes attention.
+- **Let people cancel motion.** Never make people wait for an animation before they can act, especially if they see it often.
+- **Make motion optional.** Do not rely on motion as the only way to show important information. Reduced motion must still show the same information.
+- **Touch targets of at least 44 by 44 points.** Apple's hit-region rule for buttons. Egg's compact density must keep this on touch screens.
+- **Space between buttons.** Keep button centres far enough apart that a hover or focus state does not cover the next button.
+- **Button shape.** Prefer capsule buttons on their own, rounded-rectangle buttons in a vertical stack, and capsules in a horizontal row. More rounded shapes are easier to look at steadily.
+- **Tooltips on hover** for icon-only buttons (macOS), after a short pause.
+- **Sidebar.** At most two levels of hierarchy, and disclosure controls for long lists (already the plan).
+- **Materials.** Apple uses translucent materials for layered surfaces. Egg keeps its white surface, so use the material idea only for sheets and popovers, if at all.
+
+What the pages I read do NOT say:
+- They do not give a rule for concentric corner radii (inner radius equals outer radius minus padding). I searched the five pages and found nothing. If we want that rule, it needs a different source; I have not checked it.
+- They do not give hover durations or easing numbers. Apple states that system easing cannot be changed. Egg's own durations (`--dur-fast` and similar) stay as they are.
+
+UX changes to plan (for the UI build, not done yet):
+1. Hover and focus states: brief, no motion on frequent controls (rows, tabs, nav items). Keep colour and background changes.
+2. Every touch target at least 44 by 44 points on coarse pointers (`pointer-coarse`), even in compact density.
+3. Reduced motion: the same information without motion, checked on each animated feature (the homepage wipe, the 404 wipe, the live view, the speed bars).
+4. Button shapes: one shape rule for the app (capsule for single actions, rounded rectangle in stacks) and check every button group against it.
+5. Tooltips on icon-only buttons, with the label also in the accessible name.
+
 ## Questions to answer before building
 
 1. **"Saving even if the server is off":** do you mean (a) data stays on disk and the app starts again quickly, which I recommend, or (b) unsent form text is kept in the browser and sent later? Or both?

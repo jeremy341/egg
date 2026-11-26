@@ -71,7 +71,7 @@ export function ContainerPermissionsSection({ servers }: { servers: PermissionSe
       <p className="mt-1 max-w-[62ch] text-muted-foreground">{INTRO_LEAD}</p>
       {INTRO_MORE ? (
         <details className="mt-1 max-w-[62ch] text-muted-foreground">
-          <summary className="inline-flex min-h-8 cursor-pointer items-center text-foreground underline decoration-[var(--ds-gray-alpha-400)] underline-offset-4 max-sm:min-h-10">
+          <summary className="touch-target inline-flex min-h-8 cursor-pointer items-center text-foreground underline decoration-[var(--ds-gray-alpha-400)] underline-offset-4 max-sm:min-h-10">
             More about these switches
           </summary>
           <p className="mt-1">{INTRO_MORE}</p>
@@ -254,7 +254,7 @@ function PermissionRow({
             aria-describedby={error ? `${descId} ${errorId}` : descId}
             aria-busy={pending || undefined}
             className={cn(
-              "relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full p-0.5 outline-none",
+              "touch-target relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full p-0.5 outline-none",
               "bg-[var(--ds-gray-700)] data-[checked]:bg-foreground",
               "transition-colors duration-(--dur-fast) ease-snappy",
               "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ds-focus-color)]",

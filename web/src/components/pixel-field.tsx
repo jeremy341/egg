@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { motionReduced } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 /**
@@ -84,7 +85,7 @@ export function PixelField({
     const host = base.parentElement!;
     const bctx = base.getContext("2d")!;
     const lctx = live.getContext("2d")!;
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const reduced = motionReduced();
     // The resting grid is hairlines between the cells. A lit pixel is a box that
     // swells from the middle of its cell until it fills it, inside the lines.
     const REST = Math.round(cell * 0.4);

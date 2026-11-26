@@ -21,7 +21,7 @@ const wrap = "mx-auto w-full max-w-[1400px] px-6";
 const h2 =
   "font-pixel max-w-[17ch] text-[clamp(2.1rem,4vw,3.5rem)] leading-[1.02] font-medium text-balance";
 const pill =
-  "pressable inline-flex h-10 items-center rounded-full px-5 text-[14px] font-medium tracking-[-0.01em]";
+  "touch-target pressable inline-flex h-10 items-center rounded-full px-5 text-[14px] font-medium tracking-[-0.01em]";
 const primary = cn(
   pill,
   "bg-foreground text-background hover:bg-[color-mix(in_oklab,var(--foreground)_86%,var(--background))]"
@@ -471,7 +471,7 @@ function Security() {
             To take access back, delete the key in your Nest dashboard. It ends at once, and your apps keep
             running.
           </p>
-          <Link href="/security" className="link inline-flex items-center py-2 text-[14px] font-medium text-foreground max-sm:py-2.5">
+          <Link href="/security" className="touch-target link inline-flex items-center py-2 text-[14px] font-medium text-foreground max-sm:py-2.5">
             How Egg protects your container
           </Link>
         </div>
@@ -573,7 +573,7 @@ function Cta() {
                 href={REPO_URL}
                 target="_blank"
                 rel="noreferrer"
-                className="link inline-flex items-center py-2 text-[14px] font-medium max-sm:py-2.5"
+                className="touch-target link inline-flex items-center py-2 text-[14px] font-medium max-sm:py-2.5"
               >
                 View the source
                 <span className="sr-only"> (opens in a new tab)</span>

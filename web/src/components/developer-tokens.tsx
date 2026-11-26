@@ -248,7 +248,7 @@ export function DeveloperTokens({ scopes, aside }: { scopes: ScopeOption[]; asid
 
         {groups.revoked.length > 0 ? (
           <details className="disclosure">
-            <summary className="pressable -ml-1 min-h-10 items-center gap-2 rounded-md px-1 font-medium text-muted-foreground select-none hover:text-foreground sm:min-h-8">
+            <summary className="touch-target transition-colors duration-(--dur-fast) ease-snappy -ml-1 min-h-10 items-center gap-2 rounded-md px-1 font-medium text-muted-foreground select-none hover:text-foreground sm:min-h-8">
               <CaretRightIcon aria-hidden="true" className="disclosure-caret size-3.5 motion-reduce:transition-none" />
               Revoked
               <span className="tabular font-normal">{groups.revoked.length}</span>
@@ -820,7 +820,7 @@ function TokenRow({
                 aria-controls={scopesId}
                 onClick={() => setShowScopes((v) => !v)}
                 // 40px to touch on phones, without growing the row: the margins take back the extra height.
-                className="pressable -mx-1 inline-flex items-center gap-1 rounded-sm px-1 align-top sm:hover:bg-muted max-sm:-my-[11px] max-sm:min-h-10"
+                className="touch-target pressable -mx-1 inline-flex items-center gap-1 rounded-sm px-1 align-top sm:hover:bg-muted max-sm:-my-[11px] max-sm:min-h-10"
               >
                 <span className="tabular">
                   {token.scopes.length} {token.scopes.length === 1 ? "permission" : "permissions"}

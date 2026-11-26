@@ -96,7 +96,7 @@ async function Content({ params }: Props) {
             </ul>
             {/* The same days as text, so no detail lives only in a colour or a hover tooltip. */}
             <details className="disclosure mt-4 border-t pt-3">
-              <summary className="-mx-1 w-fit items-center gap-1.5 rounded-sm px-1 py-1.5 text-label font-medium max-sm:min-h-10">
+              <summary className="touch-target -mx-1 w-fit items-center gap-1.5 rounded-sm px-1 py-1.5 text-label font-medium max-sm:min-h-10">
                 <CaretRightIcon aria-hidden="true" className="disclosure-caret size-4" />
                 Show each day as text
               </summary>

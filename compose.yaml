@@ -1,0 +1,94 @@
+# Egg on your own server: the app, the build worker and Caddy (automatic HTTPS).
+#
+# Start:   cp deploy/.env.example .env, edit .env, then  docker compose up -d --build
+# Upgrade: sh deploy/upgrade.sh        Backup: sh deploy/backup.sh
+#
+# Ports: only Caddy is published (80 and 443). The app listens on 3000 inside the network.
+#
+# SECURITY NOTE ABOUT THE DOCKER SOCKET
+# The "worker" service runs project builds in throwaway containers, so it mounts
+# /var/run/docker.sock. Whoever can run code in the worker can start any container on the
+# host, which is the same as being root on this server. That is why the worker is behind the
+# "builds" profile and is not started unless COMPOSE_PROFILES=builds is set in .env (or you
+# pass --profile builds). The web app has no socket. The build containers themselves drop all
+# capabilities and run with limited memory. If you do not accept this, leave the profile off,
+# or run the worker on a separate machine that has nothing else on it.
+#
+# Build paths: the Docker daemon mounts the build folder by its path on the HOST, so the worker
+# sees the work folder at the same path as the host (EGG_DATA_DIR/work). Do not change that.
+
+x-egg: &egg
+  image: egg-app:local
+  init: true
+  restart: unless-stopped
+  user: "1000:1000"
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  env_file: .env
+  environment: &egg-env
+    NODE_ENV: production
+    HOME: /tmp
+    DATABASE_URL: ${DATABASE_URL:-file:/data/egg.db}
+
+services:
+  app:
+    <<: *egg
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+    environment:
+      <<: *egg-env
+      RUN_WORKER: "0"
+    volumes:
+      - ${EGG_DATA_DIR:?Set EGG_DATA_DIR in .env}:/data
+    expose:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.status<500?0:1),()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  worker:
+    <<: *egg
+    profiles: ["builds"]
+    command: ["node_modules/.bin/tsx", "--tsconfig", "tsconfig.json", "worker/index.ts"]
+    environment:
+      <<: *egg-env
+      DEPLOY_WORK_DIR: ${EGG_DATA_DIR:?Set EGG_DATA_DIR in .env}/work
+    # Starts after the app is healthy, so only one of them runs the database migrations.
+    depends_on:
+      app:
+        condition: service_healthy
+    group_add:
+      - "${DOCKER_GID:-999}"
+    volumes:
+      - ${EGG_DATA_DIR}:/data
+      - ${EGG_DATA_DIR}/work:${EGG_DATA_DIR}/work
+      # SECURITY: gives this container control of Docker on the host. See the note at the top.
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      APP_HOST: ${APP_HOST:?Set APP_HOST in .env}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+
+volumes:
+  # Certificates live here. Keep it, or Caddy asks for new ones and can hit rate limits.
+  caddy_data:
+  caddy_config:

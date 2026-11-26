@@ -106,11 +106,11 @@ describe("security page numbers match the code", () => {
     expect(src("src/server/auth/throttle.ts")).toContain('"rate_limited"');
   });
 
-  it("has a dependency audit script, and no CI workflow runs it yet", () => {
+  it("has a dependency audit script, and a CI workflow that runs it", () => {
     const pkg = JSON.parse(src("package.json")) as { scripts: Record<string, string> };
     expect(pkg.scripts["audit:prod"]).toBe("pnpm audit --prod --audit-level high");
-    // When a workflow is added, say so on the page and change this line.
-    expect(existsSync(path.resolve(__dirname, "../../../../../.github/workflows"))).toBe(false);
+    expect(existsSync(path.resolve(__dirname, "../../../../../.github/workflows/ci.yml"))).toBe(true);
+    expect(readFileSync(path.resolve(__dirname, "../../../../../.github/workflows/ci.yml"), "utf8")).toContain("audit:prod");
   });
 
   it("applies the domain rules the page lists", () => {

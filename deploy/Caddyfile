@@ -1,0 +1,17 @@
+# Caddy in front of Egg. It gets and renews a free HTTPS certificate on its own.
+#
+# Ports (open them in your firewall and on your cloud provider):
+#   80/tcp   needed: the certificate check and the redirect to https
+#   443/tcp  needed: the site
+#   443/udp  optional: HTTP/3
+#
+# APP_HOST is the host name part of APP_URL, for example egg.example.com (no https://, no path).
+# Its DNS record must already point at this server, or Caddy cannot get a certificate.
+# For a trial on one machine, APP_HOST=localhost makes Caddy use its own local certificate.
+#
+# Caddy replaces any X-Forwarded-For sent by the client with the real address, which is what
+# TRUST_PROXY=1 relies on. The app is never published on a port of its own: only Caddy is.
+{$APP_HOST} {
+	encode zstd gzip
+	reverse_proxy app:3000
+}

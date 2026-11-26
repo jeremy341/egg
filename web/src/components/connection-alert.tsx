@@ -34,8 +34,8 @@ export function ConnectionAlert({
       ) : null}
       {note ? <p className="text-muted-foreground">{note}</p> : null}
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <Button type="button" variant="outline" size="sm" onClick={onRetry} disabled={retrying}>
-          <ArrowClockwiseIcon aria-hidden="true" className={cn(retrying && "animate-spin")} />
+        <Button type="button" variant="outline" size="sm" onClick={onRetry} loading={retrying}>
+          <ArrowClockwiseIcon aria-hidden="true" />
           Try again
         </Button>
         {view.connection ? (
@@ -46,7 +46,7 @@ export function ConnectionAlert({
       </div>
       {view.connection ? (
         <details className="mt-2 text-label">
-          <summary className="inline-flex min-h-8 cursor-pointer items-center text-muted-foreground underline decoration-[var(--ds-gray-alpha-400)] underline-offset-4 hover:text-foreground max-sm:min-h-10">
+          <summary className="touch-target inline-flex min-h-8 cursor-pointer items-center text-muted-foreground underline decoration-[var(--ds-gray-alpha-400)] underline-offset-4 hover:text-foreground max-sm:min-h-10">
             Show details
           </summary>
           <p className="mt-1 font-mono text-[13px] break-words text-muted-foreground">{view.detail}</p>

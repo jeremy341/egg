@@ -103,7 +103,7 @@ async function ResourcesContent({ searchParams }: Props) {
               href={href(r.value)}
               aria-current={r.value === range.value ? "true" : undefined}
               className={cn(
-                "pressable inline-flex h-7 items-center rounded-[4px] px-3 text-[13px] font-medium tracking-[-0.02em] max-sm:h-10",
+                "touch-target transition-colors duration-(--dur-fast) ease-snappy inline-flex h-7 items-center rounded-[4px] px-3 text-[13px] font-medium tracking-[-0.02em] max-sm:h-10",
                 r.value === range.value
                   ? "bg-[var(--ds-gray-200)] text-foreground"
                   : "text-muted-foreground hover:text-foreground"
@@ -121,7 +121,7 @@ async function ResourcesContent({ searchParams }: Props) {
                 href={href(range.value, s.id)}
                 aria-current={s.id === server.id ? "true" : undefined}
                 className={cn(
-                  "pressable inline-flex h-7 items-center rounded-md px-2.5 text-[13px] font-medium max-sm:h-10",
+                  "touch-target transition-colors duration-(--dur-fast) ease-snappy inline-flex h-7 items-center rounded-md px-2.5 text-[13px] font-medium max-sm:h-10",
                   s.id === server.id ? "shadow-border-base bg-background" : "text-muted-foreground hover:text-foreground"
                 )}
               >
@@ -178,7 +178,7 @@ async function ResourcesContent({ searchParams }: Props) {
                   <div className="flex items-center gap-2">
                     <Link
                       href={`/projects/${p.slug}`}
-                      className="-my-2 inline-flex min-h-10 min-w-0 items-center truncate font-medium text-foreground underline-offset-4 hover:underline"
+                      className="-my-2 inline-flex min-h-10 min-w-0 items-center truncate pointer-coarse:min-h-11 font-medium text-foreground underline-offset-4 hover:underline"
                     >
                       {p.name}
                     </Link>

@@ -1546,7 +1546,7 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
       <P>
         You need Node.js, pnpm and, for real builds, Docker. This page lists what the code reads. The{" "}
         <ExternalLink href={repoLink("docs/selfhost/README.md")}>self-hosting guide</ExternalLink> walks through a
-        private install on your own computer, the{" "}
+        private install on your own computer and a server run with Docker Compose, the{" "}
         <ExternalLink href={repoLink("docs/selfhost/customising.md")}>customising guide</ExternalLink> lists the
         files to change for the name and the wording, and the{" "}
         <ExternalLink href={setupDoc}>backend setup guide</ExternalLink> has the Hack Club and GitHub registration
@@ -1569,10 +1569,9 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
           title: "Pick a way to sign in",
           body: (
             <>
-              Add <C>LOCAL_MODE=1</C> to <C>.env.local</C> for a private copy with no account: the login page gets a
-              <B> Sign in on this computer</B> button. Or set the Hack Club values to use Hack Club sign-in.{" "}
-              The setup script also writes <C>DEV_LOGIN=1</C>, which shows a Development sign-in form in{" "}
-              <C>pnpm dev</C> only.
+              Setup writes <C>LOCAL_MODE=1</C>, so the login page gets a <B>Sign in on this computer</B> button and you
+              need no account. Or set the Hack Club values to use Hack Club sign-in. The setup script also writes{" "}
+              <C>DEV_LOGIN=1</C>, which shows a Development sign-in form in <C>pnpm dev</C> only.
             </>
           ),
         },
@@ -1580,11 +1579,13 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
           title: "Start it",
           body: (
             <>
-              Setup turns on <C>RUN_WORKER=1</C>, so the queue runs in the same process. Open{" "}
-              <C>http://localhost:3000</C> and sign in.
+              <C>pnpm egg start</C> creates <C>.env.local</C> if it is missing, checks the computer, builds the app the
+              first time, starts it on the port in <C>APP_URL</C> and opens the browser. Setup turns on{" "}
+              <C>RUN_WORKER=1</C>, so the queue runs in the same process. Ctrl+C stops it. Add <C>--dev</C> to run the
+              development server instead.
             </>
           ),
-          code: { label: "Terminal", code: "pnpm dev" },
+          code: { label: "Terminal", code: "pnpm egg start" },
         },
         {
           title: "Try deploys without a Nest account",
@@ -1599,9 +1600,16 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         },
       ])}
       <P>
-        For a copy you keep running, use <C>pnpm build</C> and then <C>pnpm start</C>. The database changes apply the
-        first time a new version opens the file.
+        <C>pnpm run doctor</C> only checks the computer and starts nothing. A cross stops Egg from starting. A warning
+        does not: for example, builds need Docker, or <C>BUILD_RUNNER=local</C> in <C>.env.local</C>, but Egg itself
+        starts without it. You can also run <C>pnpm build</C> and then <C>pnpm start</C> yourself. The database
+        changes apply the first time a new version opens the file.
       </P>
+      <P>
+        Your data is one file, <C>web/data/egg.db</C>. It stays on disk when Egg stops. Back it up with{" "}
+        <C>APP_SECRET</C>.
+      </P>
+
       {why(
         <>
           Local mode is off unless you set <C>LOCAL_MODE=1</C>, because it has no password and no account: whoever can
@@ -1612,6 +1620,28 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
           something else decides who can reach the site.
         </>
       )}
+
+      <H2 id="selfhost-login" />
+      <P>
+        <C>pnpm run service:install</C> writes one file that starts Egg when you sign in to your computer. It is
+        optional. Nothing starts until you run the command it prints. Run <C>pnpm egg start</C> once first, so a build
+        exists, then press Ctrl+C. <C>pnpm run service:remove</C> stops the service and deletes the file.
+      </P>
+      <List>
+        <li>
+          <B>macOS.</B> A LaunchAgent at <C>~/Library/LaunchAgents/app.egg.web.plist</C>. Turn it on with{" "}
+          <C>launchctl bootstrap gui/$(id -u)</C> and that file. The log is <C>~/Library/Logs/egg.log</C>.
+        </li>
+        <li>
+          <B>Linux.</B> A systemd user unit at <C>~/.config/systemd/user/egg.service</C>. Turn it on with{" "}
+          <C>systemctl --user enable --now egg</C>. To start at boot without signing in, run{" "}
+          <C>loginctl enable-linger</C>.
+        </li>
+        <li>
+          <B>Windows.</B> A script at <C>%LOCALAPPDATA%\Egg\egg-task.ps1</C>. Run it to register a Scheduled Task
+          named Egg that runs <C>pnpm start</C> at sign-in.
+        </li>
+      </List>
 
       <H2 id="selfhost-config" />
       <Table
@@ -1687,6 +1717,81 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         </li>
       </List>
 
+      <H2 id="selfhost-server" />
+      <P>
+        To run Egg on a Linux server, use Docker Compose. You need Docker and Docker Compose, a domain that points at
+        the server, and ports 80 and 443 open. Caddy sits in front of the app, and gets and renews HTTPS by itself on
+        ports 80 and 443, and 443/udp for HTTP/3. The app is not reachable on any other port.
+      </P>
+      {steps("selfhost-server-steps", "Start it on a server", [
+        {
+          title: "Get the code and the settings file",
+          body: "Clone the repository and copy the example file to .env in the repository root.",
+          code: { label: "Terminal", code: "git clone https://github.com/jeremy341/egg.git\ncd egg\ncp deploy/.env.example .env" },
+        },
+        {
+          title: "Set the address and the secret",
+          body: (
+            <>
+              In <C>.env</C>, set <C>APP_URL</C> (starting with https://), <C>APP_HOST</C> (the same name without
+              https://) and <C>APP_SECRET</C>. Make the secret with the command below and back it up.
+            </>
+          ),
+          code: { label: "Terminal", code: "openssl rand -base64 32" },
+        },
+        {
+          title: "Make the data folder",
+          body: (
+            <>
+              The containers run as user 1000. The path must match <C>EGG_DATA_DIR</C>.
+            </>
+          ),
+          code: { label: "Terminal", code: "sudo mkdir -p /srv/egg/data/work && sudo chown -R 1000:1000 /srv/egg/data" },
+        },
+        {
+          title: "Start it",
+          body: (
+            <>
+              From <C>web/</C>, <C>pnpm run compose:up</C> does the same.
+            </>
+          ),
+          code: { label: "Terminal", code: "docker compose up -d --build" },
+        },
+      ])}
+      <Callout tone="warning" title="Builds are off until you turn them on">
+        The worker runs project builds in Docker, so it mounts the Docker socket. Anyone who can run code in the worker
+        can control Docker, which is root on the server. In the example file, <C>COMPOSE_PROFILES=builds</C> is
+        commented out. Remove the <C>#</C> only if you accept that. Without it, deployments stay queued. Set{" "}
+        <C>DOCKER_GID</C> to the group that owns the socket: <C>stat -c %g /var/run/docker.sock</C>.
+      </Callout>
+      <P>
+        The example file sets <C>TRUST_PROXY=1</C>, because every request comes through Caddy. Do not publish the app
+        port yourself. <C>sh deploy/backup.sh</C> (or <C>pnpm run backup</C>) makes a consistent copy while Egg runs,
+        gzips it into <C>backups/</C> and keeps the newest 14. <C>sh deploy/upgrade.sh</C> backs up first, pulls,
+        rebuilds and restarts. Database changes apply when the app starts.
+      </P>
+      <P>
+        Security on a server: a signed-in JSON request is limited to 256 KB. One address may make 20 sign-in attempts a
+        minute and 60 requests a minute with unrecognised tokens, counted only when <C>TRUST_PROXY</C> is on. The
+        content policy still allows inline scripts, and the nonce fix is open. See{" "}
+        <InternalLink href={docsHref("security")}>Security</InternalLink>.
+      </P>
+
+      <H2 id="selfhost-platforms" />
+      <Table
+        caption="What works where"
+        head={["System", "Support"]}
+        rows={[
+          ["Windows", "Full. pnpm fake-nest needs WSL."],
+          ["Linux", "Full."],
+          ["macOS", "The same as Linux. Builds need Docker Desktop, or BUILD_RUNNER=local."],
+        ]}
+      />
+      <P>
+        The CI workflow runs the typecheck, lint, tests and the dependency audit on Linux and macOS. The audit fails
+        the Linux run on a high finding and only reports it on macOS.
+      </P>
+
       {limits("selfhost-limits", [
         ["Concurrent deployments", "2 by default", "Set WORKER_CONCURRENCY to change it.", "instrumentation.ts (WORKER_CONCURRENCY)"],
         ["Build time", "900 seconds by default", "“The build timed out.”", "server/config.ts (BUILD_TIMEOUT_SECONDS)"],
@@ -1707,7 +1812,10 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         ["The GitHub App is not configured.", "Set all six GITHUB_APP settings and GITHUB_WEBHOOK_SECRET."],
         ["webhook not configured", "The webhook route answers 503 until GITHUB_WEBHOOK_SECRET is set."],
         ["Hack Club sign-in is not set up on this installation yet.", "Set HACKCLUB_CLIENT_ID and HACKCLUB_CLIENT_SECRET, or use local mode."],
-        ["A build fails at once with a Docker error", "Docker is not running or not installed. Start it, or set BUILD_RUNNER=local for code you trust."],
+        ["Egg did not start. Fix the lines marked with a cross, then run this again.", "The doctor found a problem that stops Egg. Read the Fix line under each cross. pnpm run doctor shows the same list."],
+        ["Port 3000 is already in use", "Another program uses the port in APP_URL. Stop it, or change the port in APP_URL in .env.local."],
+        ["Deployments stay Queued on a server", "The worker is off by default. Uncomment COMPOSE_PROFILES=builds in .env if you accept the Docker socket risk, then run docker compose up -d."],
+        ["A build fails at once with a Docker error", "Docker is not running or not installed. Start it, or set BUILD_RUNNER=local for code you trust. The doctor shows this as a warning, not a stop."],
         ["Deployments stay Queued", "No worker is running. Set RUN_WORKER=1, or start pnpm worker."],
       ])}
 
@@ -1727,9 +1835,9 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         given: "A laptop with Node.js, pnpm and Docker, and a Nest container to deploy to.",
         steps: [
           { title: "Set up", body: "Run pnpm install and pnpm run setup in the web folder." },
-          { title: "Turn on local mode", body: "Add LOCAL_MODE=1 to .env.local." },
-          { title: "Build and start", body: "Run pnpm build, then pnpm start." },
-          { title: "Sign in", body: "Open http://localhost:3000/login and press Sign in on this computer." },
+          { title: "Check local mode", body: "Setup wrote LOCAL_MODE=1 to .env.local. An older file may need the line added." },
+          { title: "Start", body: "Run pnpm egg start. It checks the computer, builds the first time and opens the browser." },
+          { title: "Sign in", body: "Press Sign in on this computer on the page that opens." },
         ],
         result:
           "You land on Projects as the owner. Connect your Nest username, paste the key into the Nest dashboard, press Test connection, and deploy as usual.",

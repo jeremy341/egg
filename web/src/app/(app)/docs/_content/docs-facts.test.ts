@@ -209,4 +209,32 @@ describe("self-hosting", () => {
       expect(Object.keys(scripts), `pnpm ${name}`).toContain(name);
     }
   });
+
+  it("names the scripts, files and defaults that the one-command start and the server setup rely on", () => {
+    const scripts = JSON.parse(read("web/package.json")).scripts as Record<string, string>;
+    for (const name of ["egg", "doctor", "service:install", "service:remove", "compose:up", "backup"]) {
+      expect(Object.keys(scripts), name).toContain(name);
+    }
+    const page = html("selfhost");
+    for (const text of ["pnpm egg start", "pnpm run doctor", "pnpm run service:install", "docker compose up -d --build", "deploy/backup.sh", "deploy/upgrade.sh"]) {
+      expect(readme, text).toContain(text);
+      expect(page, text).toContain(text);
+    }
+    // The commands in the guide are the ones the scripts print and the files hold.
+    expect(read("web/scripts/egg-cli.mjs")).toContain("egg start [--dev]");
+    expect(read("web/scripts/setup.mjs")).toContain("LOCAL_MODE=1");
+    expect(read("web/scripts/service/templates.mjs")).toContain("systemctl --user enable --now");
+    expect(readme).toContain("systemctl --user enable --now egg");
+    expect(read("web/scripts/service/install.mjs")).toContain("loginctl enable-linger");
+    // The worker, and so Docker socket access, is off in the example file.
+    expect(read("deploy/.env.example")).toMatch(/^# COMPOSE_PROFILES=builds$/m);
+    expect(read("compose.yaml")).toContain('profiles: ["builds"]');
+    expect(readme).toContain("`COMPOSE_PROFILES=builds` is commented out");
+    expect(page).toContain("COMPOSE_PROFILES=builds");
+    // The numbers in the server security notes match the code.
+    expect(JSON_BODY_LIMIT).toBe(256 * 1024);
+    expect(readme).toContain("up to 256 KB");
+    expect(readme).toContain("20 sign-in attempts a minute");
+    expect(readme).toContain("60 requests a minute");
+  });
 });

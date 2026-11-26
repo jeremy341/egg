@@ -8,6 +8,7 @@ import {
   WarningCircleIcon,
   XIcon,
 } from "@phosphor-icons/react"
+import { IconTip } from "@/components/ui/tooltip"
 
 type ToastType = "success" | "error" | "info"
 
@@ -62,12 +63,14 @@ function ToastList() {
             <ToastPrimitive.Title className="font-medium" />
             <ToastPrimitive.Description className="text-label text-muted-foreground" />
           </div>
-          <ToastPrimitive.Close
-            aria-label="Dismiss"
-            className="absolute top-2 right-2 inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors duration-(--dur-fast) hover:bg-[var(--ds-gray-alpha-100)] hover:text-foreground max-sm:top-1 max-sm:right-1 max-sm:size-10"
-          >
-            <XIcon aria-hidden="true" className="size-4" />
-          </ToastPrimitive.Close>
+          <IconTip label="Dismiss">
+            <ToastPrimitive.Close
+              aria-label="Dismiss"
+              className="touch-target absolute top-2 right-2 inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors duration-(--dur-fast) hover:bg-[var(--ds-gray-alpha-100)] hover:text-foreground max-sm:top-1 max-sm:right-1 max-sm:size-10"
+            >
+              <XIcon aria-hidden="true" className="size-4" />
+            </ToastPrimitive.Close>
+          </IconTip>
         </ToastPrimitive.Content>
       </ToastPrimitive.Root>
     )

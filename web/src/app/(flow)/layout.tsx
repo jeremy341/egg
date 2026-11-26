@@ -29,7 +29,7 @@ export default function FlowLayout({ children }: { children: React.ReactNode }) 
             <Link
               href="/projects"
               aria-label="Egg home"
-              className="flex size-10 shrink-0 items-center justify-center rounded-md transition-colors duration-(--dur-fast) hover:bg-[var(--ds-gray-alpha-100)]"
+              className="touch-target flex size-10 shrink-0 items-center justify-center rounded-md transition-colors duration-(--dur-fast) hover:bg-[var(--ds-gray-alpha-100)]"
             >
               <NestMark className="size-6" />
             </Link>

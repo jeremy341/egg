@@ -26,7 +26,7 @@ export function StartHere() {
               {sectionTitle(id)}
               <ArrowRightIcon
                 aria-hidden="true"
-                className="size-4 shrink-0 text-muted-foreground transition-transform duration-(--dur-fast) ease-snappy group-hover:translate-x-1 group-hover:text-foreground"
+                className="size-4 shrink-0 text-muted-foreground transition-colors duration-(--dur-fast) ease-snappy group-hover:text-foreground"
               />
             </Link>
             <p className="mt-1 text-[14px] leading-6 text-muted-foreground">{SUMMARIES[id]}</p>

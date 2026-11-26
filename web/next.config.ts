@@ -3,6 +3,8 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   /* config options here */
   cacheComponents: true,
+  // Reads its country database from its own folder, so it is loaded from node_modules, not bundled.
+  serverExternalPackages: ["geoip-country"],
   // Uploads through the file manager can be 50 MB; proxy buffering defaults to 10 MB.
   experimental: {
     proxyClientMaxBodySize: "50mb",

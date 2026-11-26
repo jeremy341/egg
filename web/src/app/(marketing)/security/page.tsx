@@ -599,7 +599,8 @@ export default function SecurityPage() {
               </li>
               <li>
                 Dependencies are checked by running <Code>pnpm audit:prod</Code>, which fails on a high or critical
-                finding. There is no CI workflow yet, so nothing runs it automatically.
+                finding. A CI workflow runs it on every change, with the typecheck, lint and tests. On Linux a high
+                finding fails the run; on macOS the run reports it without failing.
               </li>
             </Points>
           </Section>

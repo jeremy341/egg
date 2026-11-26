@@ -20,10 +20,10 @@ const NAV = [
 ];
 
 const small =
-  "pressable inline-flex h-8 items-center whitespace-nowrap rounded-md px-2.5 text-[13px] font-medium tracking-[-0.01em] max-sm:h-10";
+  "touch-target pressable inline-flex h-8 items-center whitespace-nowrap rounded-full px-2.5 text-[13px] font-medium tracking-[-0.01em] max-sm:h-10";
 
 const footerLink =
-  "w-fit py-1 text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground max-sm:py-2.5";
+  "touch-target w-fit py-1 text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground max-sm:py-2.5";
 
 export default function MarketingLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -45,7 +45,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
       {/* 60px tall: two grid cells, so the bar sits on the grid. */}
       <SiteHeader>
         <div className="mx-auto flex h-15 max-w-[1400px] items-center gap-3 px-6 md:gap-6 lg:gap-8">
-          <Link href="/" aria-label="Egg, home" className="flex shrink-0 items-center gap-2 rounded-md outline-offset-4">
+          <Link href="/" aria-label="Egg, home" className="touch-target flex shrink-0 items-center gap-2 rounded-md outline-offset-4">
             <NestMark className="size-6" />
             <span className="font-pixel text-[21px] leading-none font-semibold whitespace-nowrap">Egg</span>
           </Link>
@@ -77,7 +77,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
           <footer>
             <div className="mx-auto grid max-w-[1400px] gap-12 px-6 py-16 md:grid-cols-[1.5fr_1fr_1fr_1fr]">
               <div>
-                <Link href="/" className="flex w-fit items-center gap-2 rounded-md">
+                <Link href="/" className="touch-target flex w-fit items-center gap-2 rounded-md">
                   <NestMark className="size-6" />
                   <span className="font-pixel text-[21px] leading-none font-semibold">Egg</span>
                 </Link>

@@ -55,7 +55,7 @@ export default async function AccountPage() {
             <Row label="Shown as">
               {shownName(prefs, user.name)}
               <span className="ml-2 text-label text-muted-foreground">{characterFor(prefs.avatar).label}</span>
-              <Link href="/settings#profile-heading" className="link ml-3 text-label font-medium max-sm:inline-flex max-sm:min-h-10 max-sm:items-center">
+              <Link href="/settings#profile-heading" className="touch-target link ml-3 text-label font-medium max-sm:inline-flex max-sm:min-h-10 max-sm:items-center">
                 Change in Settings
               </Link>
             </Row>

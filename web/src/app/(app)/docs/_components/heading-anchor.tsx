@@ -24,7 +24,7 @@ export function HeadingAnchor({ id, title }: { id: string; title: string }) {
       href={`#${id}`}
       onClick={copy}
       aria-label={`Link to ${title}`}
-      className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-subtle-foreground opacity-0 transition-[opacity,color] duration-(--dur-fast) ease-snappy group-hover:opacity-100 hover:text-foreground focus-visible:opacity-100 max-sm:hidden pointer-coarse:opacity-100 lg:absolute lg:top-1/2 lg:-left-8 lg:-translate-y-1/2"
+      className="touch-target inline-flex size-6 shrink-0 items-center justify-center rounded-md text-subtle-foreground opacity-0 transition-[opacity,color] duration-(--dur-fast) ease-snappy group-hover:opacity-100 hover:text-foreground focus-visible:opacity-100 max-sm:hidden pointer-coarse:opacity-100 lg:absolute lg:top-1/2 lg:-left-8 lg:-translate-y-1/2"
     >
       <LinkSimpleIcon aria-hidden="true" className="size-4" />
     </a>

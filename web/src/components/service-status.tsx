@@ -155,9 +155,9 @@ export function ServiceCard({ projectId }: { projectId: string }) {
             variant="outline"
             size="sm"
             onClick={checkNow}
-            disabled={loading}
+            loading={loading}
           >
-            <ArrowClockwiseIcon aria-hidden="true" className={cn(loading && "animate-spin")} />
+            <ArrowClockwiseIcon aria-hidden="true" />
             Check now
           </Button>
         </div>

@@ -7,7 +7,7 @@ How to run Egg for real: what to register, what to configure, and how the pieces
 ```bash
 cd web
 pnpm install
-pnpm setup        # writes .env.local with a fresh APP_SECRET and DEV_LOGIN=1
+pnpm run setup    # writes .env.local with a fresh APP_SECRET and DEV_LOGIN=1
 pnpm dev          # http://localhost:3000, with the deployment worker built in
 ```
 

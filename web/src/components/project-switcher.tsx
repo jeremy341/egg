@@ -22,7 +22,7 @@ export function ProjectSwitcher({ slug, name }: { slug: string; name: string }) 
     <DropdownMenu>
       <DropdownMenuTrigger
         aria-label={`Project: ${name}. Switch project`}
-        className="flex h-8 min-w-0 max-w-64 items-center gap-2 rounded-md px-2 font-medium tracking-[-0.02em] transition-colors duration-(--dur-fast) hover:bg-[var(--ds-gray-alpha-100)] aria-expanded:bg-[var(--ds-gray-alpha-100)]"
+        className="touch-target flex h-8 min-w-0 max-w-64 items-center gap-2 rounded-md px-2 font-medium tracking-[-0.02em] transition-colors duration-(--dur-fast) hover:bg-[var(--ds-gray-alpha-100)] aria-expanded:bg-[var(--ds-gray-alpha-100)]"
       >
         <PixelAvatar seed={slug} size={16} />
         <span className="truncate">{name}</span>

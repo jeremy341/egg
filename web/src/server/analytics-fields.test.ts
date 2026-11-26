@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   ERROR_MESSAGE_MAX,
+  allowlistedUtm,
+  parseUtmAllowlist,
   UTM_MAX,
   VITALS,
   VITAL_THRESHOLDS,
@@ -51,6 +53,26 @@ describe("cleanUtm", () => {
   it("does not cut a character in half", () => {
     const face = String.fromCodePoint(0x1f600);
     expect(cleanUtm({ source: face.repeat(100) }).source).toBe(face.repeat(UTM_MAX));
+  });
+});
+
+describe("campaign allowlist", () => {
+  it("sends only exact allowlisted campaign labels", () => {
+    const allowed = parseUtmAllowlist({ source: ["newsletter"], medium: ["email"], campaign: ["spring-26"] });
+    expect(allowlistedUtm({ source: "newsletter", medium: "email", campaign: "spring-26" }, allowed)).toEqual({
+      source: "newsletter", medium: "email", campaign: "spring-26",
+    });
+    expect(allowlistedUtm({ source: "alice@example.com", medium: "email", campaign: "spring-26?user=alice" }, allowed)).toEqual({
+      source: null, medium: "email", campaign: null,
+    });
+  });
+  it("drops malformed, unsafe, duplicate and excessive values", () => {
+    expect(parseUtmAllowlist({
+      source: ["good", "a@b.test", "good", "x".repeat(41), "ok", ...Array(30).fill("another")],
+      medium: "email",
+      unexpected: ["drop-me"],
+    })).toEqual({ source: ["good", "ok", "another"], medium: [], campaign: [] });
+    expect(parseUtmAllowlist("not-json")).toEqual({ source: [], medium: [], campaign: [] });
   });
 });
 

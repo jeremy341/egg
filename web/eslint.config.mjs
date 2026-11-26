@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Bklit UI chart source, copied in unchanged apart from the edits listed in its README.
+    "src/components/charts/bklit/**",
   ]),
 ]);
 

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { GET as scriptRoute } from "@/app/api/analytics/script/route";
-import { POST as collectRoute } from "@/app/api/collect/[key]/route";
+import { COLLECT_BODY_LIMIT_BYTES, POST as collectRoute } from "@/app/api/collect/[key]/route";
 import { enableAnalytics, snippet } from "@/server/analytics";
 import { featuresForUser, updateFeatures } from "@/server/analytics-config";
 import { upsertUser } from "@/server/auth/session";
@@ -52,6 +52,15 @@ const collect = (body: unknown, headers: Record<string, string> = {}) =>
     }),
     { params: Promise.resolve({ key }) }
   );
+const collectRaw = (body: string, headers: Record<string, string> = {}) =>
+  collectRoute(
+    new NextRequest(`http://localhost:3000/api/collect/${key}`, {
+      method: "POST",
+      body,
+      headers: { "user-agent": "Mozilla/5.0 Firefox", "x-forwarded-for": "9.9.9.9", ...headers },
+    }),
+    { params: Promise.resolve({ key }) }
+  );
 const events = async () => (await getDb()).select().from(schema.analyticsEvents);
 const views = async () => (await getDb()).select().from(schema.pageviews);
 
@@ -63,10 +72,14 @@ describe("analytics settings", () => {
       funnel: false,
       steps: [],
       referrers: false,
+      campaigns: false,
+      utmAllowlist: { source: [], medium: [], campaign: [] },
+      retentionDays: 90,
       vitals: false,
       events: false,
       live: false,
       retention: false,
+      locations: false,
     });
   });
 
@@ -104,12 +117,44 @@ describe("the script route", () => {
     expect(s).not.toContain("visibilitychange");
     await updateFeatures(userId, projectId, { clicks: false });
   });
+
+  it("sends campaign values only while Campaigns is on, and only the ones listed", async () => {
+    await updateFeatures(userId, projectId, { referrers: true });
+    const referrersOnly = await getScript(key);
+    expect(referrersOnly).toContain("document.referrer");
+    expect(referrersOnly).not.toContain("utm_source");
+    await updateFeatures(userId, projectId, {
+      campaigns: true,
+      utmAllowlist: { source: ["newsletter"], medium: ["email"], campaign: [] },
+    });
+    const withCampaigns = await getScript(key);
+    expect(withCampaigns).toContain("utm_source");
+    expect(withCampaigns).toContain('"newsletter"');
+    expect(withCampaigns).toContain('"email"');
+    await updateFeatures(userId, projectId, { campaigns: false, referrers: false });
+    expect(await getScript(key)).not.toContain("utm_source");
+  });
 });
 
 describe("the collect route", () => {
   it("records a page view for an ordinary request", async () => {
     expect((await collect({ p: "/" })).status).toBe(204);
     expect(await views()).toHaveLength(1);
+  });
+
+  it("rejects a declared oversized request before recording or buffering it", async () => {
+    const before = (await views()).length;
+    const res = await collectRaw("{}", { "content-length": String(COLLECT_BODY_LIMIT_BYTES + 1) });
+    expect(res.status).toBe(413);
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+    expect((await views()).length).toBe(before);
+  });
+
+  it("counts streamed bytes when an oversized sender omits Content-Length", async () => {
+    const before = (await views()).length;
+    const res = await collectRaw("x".repeat(COLLECT_BODY_LIMIT_BYTES + 1));
+    expect(res.status).toBe(413);
+    expect((await views()).length).toBe(before);
   });
 
   it.each([

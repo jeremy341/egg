@@ -1,15 +1,17 @@
 "use client"
 
+import type * as React from "react"
 import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip"
 import { cn } from "@/lib/utils"
 
 /**
- * Tooltips wait 400ms before the first one opens, then switch instantly
+ * Tooltips wait 500ms before the first one opens, then switch instantly
  * while the pointer moves between triggers (Base UI marks that with
- * data-instant, which turns the animation off). They close at once.
+ * data-instant, which turns the animation off). They close at once. A
+ * tooltip also opens when its trigger gets keyboard focus.
  */
 function TooltipProvider({
-  delay = 400,
+  delay = 500,
   closeDelay = 0,
   ...props
 }: TooltipPrimitive.Provider.Props) {
@@ -69,4 +71,26 @@ function TooltipContent({
   )
 }
 
-export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider }
+/**
+ * Name tooltip for an icon-only control. Wrap the control (a button or a link)
+ * and pass the same text as its accessible name; the tooltip repeats it for
+ * people who hover or tab to it. The name stays on the control itself.
+ */
+function IconTip({
+  label,
+  side,
+  children,
+}: {
+  label: string
+  side?: "top" | "bottom" | "left" | "right"
+  children: React.ReactElement<Record<string, unknown>>
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger render={children} />
+      <TooltipContent side={side}>{label}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider, IconTip }

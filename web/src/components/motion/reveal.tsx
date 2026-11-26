@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { motionReduced } from "@/lib/motion"
 
 type RevealTag = "div" | "section" | "article" | "ul" | "ol" | "li" | "p" | "span" | "figure"
 
@@ -38,7 +39,7 @@ export function Reveal({
   React.useEffect(() => {
     const el = ref.current
     if (!el) return
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return
+    if (motionReduced()) return
     if (typeof IntersectionObserver === "undefined") return
     if (el.getBoundingClientRect().top <= window.innerHeight - 100) return
 

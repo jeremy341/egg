@@ -1,6 +1,7 @@
 import { and, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { LIVE_WINDOW_MS } from "@/server/analytics";
 import { getFeatures } from "@/server/analytics-config";
+import { lastDays } from "@/server/analytics-events";
 import { share } from "@/server/analytics-funnel";
 import { getDb, schema } from "@/server/db";
 import { getProjectForUser } from "@/server/projects";
@@ -72,7 +73,34 @@ export type RetentionSummary = {
   /** Of the visitors who first came 30 to 37 days ago, those who came back within 30 days. */
   month: ReturnRate;
   minimum: number;
+  /**
+   * For each UTC day of the last 30: visitors on their first stored day (new) and visitors who had
+   * been seen on an earlier day (returning). Someone first seen before the stored 90 days, or
+   * before the code changed, counts as new on their first stored day.
+   */
+  daily: { day: string; newVisitors: number; returning: number }[];
 };
+
+/**
+ * Splits each day's distinct visitors into new and returning. `perDay` has one row per visitor per
+ * day they visited; `firstSeen` is the first stored visit of each, as a UTC day. Pure.
+ */
+export function splitReturning(
+  days: readonly string[],
+  perDay: readonly { vid: string; day: string }[],
+  firstSeen: ReadonlyMap<string, string>
+): RetentionSummary["daily"] {
+  const counts = new Map<string, { newVisitors: number; returning: number }>(
+    days.map((day) => [day, { newVisitors: 0, returning: 0 }])
+  );
+  for (const row of perDay) {
+    const slot = counts.get(row.day);
+    if (!slot) continue;
+    if (firstSeen.get(row.vid) === row.day) slot.newVisitors += 1;
+    else slot.returning += 1;
+  }
+  return days.map((day) => ({ day, ...counts.get(day)! }));
+}
 
 export async function retentionSummary(userId: string, projectId: string, now = new Date()): Promise<RetentionSummary> {
   const project = await getProjectForUser(userId, projectId);
@@ -101,11 +129,35 @@ export async function retentionSummary(userId: string, projectId: string, now = 
     .limit(200_000);
   const visits: Visit[] = rows.flatMap((r) => (r.vid ? [{ vid: r.vid, at: r.at.getTime() }] : []));
 
+  // New against returning, per day of the last 30.
+  const window = lastDays(30, now);
+  const dayOf = sql<string>`strftime('%Y-%m-%d', ${schema.pageviews.at} / 1000, 'unixepoch')`;
+  const inRange = and(base, gte(schema.pageviews.at, new Date(`${window[0]}T00:00:00Z`)), lte(schema.pageviews.at, now));
+  const perDay = await db
+    .selectDistinct({ vid: schema.pageviews.vid, day: dayOf })
+    .from(schema.pageviews)
+    .where(inRange)
+    .limit(200_000);
+  const seen = db.selectDistinct({ vid: schema.pageviews.vid }).from(schema.pageviews).where(inRange);
+  const firsts = await db
+    .select({ vid: schema.pageviews.vid, first: sql<number>`min(${schema.pageviews.at})` })
+    .from(schema.pageviews)
+    .where(and(base, inArray(schema.pageviews.vid, seen)))
+    .groupBy(schema.pageviews.vid);
+  const firstSeen = new Map(
+    firsts.flatMap((r) => (r.vid ? [[r.vid, new Date(Number(r.first)).toISOString().slice(0, 10)] as const] : []))
+  );
+
   return {
     visitorsThisWeek: Number(thisWeek?.n ?? 0),
     week: returnRate(visits, t, 14, 7, 7),
     month: returnRate(visits, t, 37, 30, 30),
     minimum: MIN_COHORT,
+    daily: splitReturning(
+      window,
+      perDay.flatMap((r) => (r.vid ? [{ vid: r.vid, day: r.day }] : [])),
+      firstSeen
+    ),
   };
 }
 

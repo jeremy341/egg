@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 
 /** Shared by every row of the sidebar and the phone menu. 32px tall, 44px in the phone menu. */
 export const navItemClass =
-  "flex h-8 items-center gap-2.5 rounded-md px-2 font-medium tracking-[-0.02em] transition-colors duration-(--dur-fast) focus-visible:outline-offset-[-2px]";
+  "touch-target flex h-8 items-center gap-2.5 rounded-md px-2 font-medium tracking-[-0.02em] transition-colors duration-(--dur-fast) focus-visible:outline-offset-[-2px]";
 export const navItemIdle =
   "text-muted-foreground hover:bg-[var(--ds-gray-alpha-100)] hover:text-foreground";
 export const navItemCurrent = "bg-[var(--ds-gray-alpha-100)] text-foreground";
