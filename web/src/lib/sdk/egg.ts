@@ -926,6 +926,12 @@ export class Egg {
   getComposeStack(projectId: string): Promise<unknown> { return this.request("GET", `/compose-stacks/${seg(projectId)}`); }
   listComposeStacks(): Promise<unknown> { return this.request("GET", "/compose-stacks"); }
   listComposeReleases(projectId: string): Promise<unknown> { return this.request("GET", `/compose-stacks/${seg(projectId)}/releases`); }
+  /** Releases recorded for a project. Needs `deployments:read`. */
+  listReleases(projectId: string): Promise<unknown> { return this.request("GET", `/projects/${seg(projectId)}/releases`); }
+  /** Resource analysis for one deployment. Needs `deployments:read`. */
+  analyzeDeploymentResources(deploymentId: string): Promise<unknown> { return this.request("GET", `/deployments/${seg(deploymentId)}/resource-analysis`); }
+  /** Volumes attached to one deployment. Needs `deployments:read`. */
+  getDeploymentVolumes(deploymentId: string): Promise<unknown> { return this.request("GET", `/deployments/${seg(deploymentId)}/deployment-volumes`); }
   redeployComposeStack(projectId: string): Promise<unknown> { return this.request("POST", `/compose-stacks/${seg(projectId)}/redeploy`, {}, {}); }
   listOrganizations(): Promise<unknown> { return this.request("GET", "/organizations"); }
   getOrganization(orgId: string): Promise<unknown> { return this.request("GET", `/organizations/${seg(orgId)}`); }
