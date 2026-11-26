@@ -145,7 +145,7 @@ describe("scope narrowing on refresh", () => {
     const first = await login(c.clientId, ["mcp:read", "mcp:deploy", "mcp:exec"]);
     const narrowed = await refreshAt(first.refresh_token, c.clientId, T0, "mcp:read");
     expect(narrowed.scope).toBe("mcp:read");
-    expect((await principalForOAuthToken(narrowed.access_token))?.scopes).toEqual(["mcp:read"]);
+    expect((await principalForOAuthToken(narrowed.access_token, T0))?.scopes).toEqual(["mcp:read"]);
 
     const widen = await failure(refreshAt(narrowed.refresh_token, c.clientId, T0, "mcp:deploy"));
     expect(widen?.code).toBe("invalid_scope");
