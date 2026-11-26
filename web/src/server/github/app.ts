@@ -124,6 +124,61 @@ export async function listInstallationRepos(
   return out.sort((a, b) => (b.pushedAt ?? "").localeCompare(a.pushedAt ?? ""));
 }
 
+/** Resolve a public or installation-accessible repository and branch before saving them to a project. */
+export async function verifyGithubRepositoryBranch(
+  installationId: number | null,
+  repoFullName: string,
+  branch: string,
+  fetchImpl: FetchLike = fetch,
+): Promise<{ fullName: string; cloneUrl: string }> {
+  const [owner, name] = repoFullName.split("/");
+  const token = installationId ? await installationToken(installationId, fetchImpl) : null;
+  const requestHeaders = token
+    ? headers(token)
+    : { accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28", "user-agent": "egg" };
+  const request = async (path: string, operation: string) => {
+    let response: Response;
+    try {
+      response = await fetchImpl(`${API}${path}`, {
+        headers: requestHeaders,
+        signal: AbortSignal.timeout(5000),
+      });
+    } catch {
+      throw new GithubError(`Could not ${operation}.`);
+    }
+    if (response.status === 404) throw new GithubError("The repository or branch was not found.", 404);
+    if (response.status === 403) throw new GithubError("GitHub denied access to the repository.", 403);
+    if (!response.ok) throw new GithubError(`Could not ${operation} (${response.status}).`, response.status);
+    return response;
+  };
+
+  const repositoryResponse = await request(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`,
+    "read the repository from GitHub",
+  );
+  let repository: { full_name?: unknown };
+  try {
+    repository = (await repositoryResponse.json()) as { full_name?: unknown };
+  } catch {
+    throw new GithubError("GitHub returned an invalid repository response.");
+  }
+  if (
+    typeof repository.full_name !== "string" ||
+    repository.full_name.toLowerCase() !== repoFullName.toLowerCase()
+  ) {
+    throw new GithubError("GitHub returned a different repository.", 404);
+  }
+
+  await request(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/branches/${encodeURIComponent(branch)}`,
+    "verify the branch on GitHub",
+  );
+  return {
+    fullName: repository.full_name,
+    cloneUrl: `https://github.com/${repository.full_name}.git`,
+  };
+}
+
 // ------------------------------------------------------------ user linking
 
 export function githubAuthorizeUrl(): { url: string; state: string } {

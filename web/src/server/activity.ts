@@ -28,7 +28,7 @@ export const KIND_PREFIXES: Record<Exclude<ActivityKind, "other">, readonly stri
   deployments: ["deploy.", "hook.", "build_token.", "build_credentials."],
   domains: ["domain."],
   servers: ["server.", "container."],
-  access: ["token.", "account.", "auth.", "webhook.", "admin.", "security_report.", "provider.", "key.", "registry.", "org."],
+  access: ["token.", "account.", "auth.", "webhook.", "admin.", "graft.", "security_report.", "provider.", "key.", "registry.", "org."],
   monitoring: ["monitor.", "alert_rule."],
   terminal: ["terminal.", "file."],
 };
@@ -506,6 +506,7 @@ function suffixFor(action: string, m: Record<string, Scalar>): string | null {
 export function fallbackTargetName(action: string, m: Record<string, Scalar>): string | null {
   const s = (key: string) => (typeof m[key] === "string" ? (m[key] as string) : null);
   if (action.startsWith("domain.")) return s("domain");
+  if (action.startsWith("env.sets.")) return s("name");
   if (action === "project.create" || action === "project.delete" || action === "token.create") return s("name");
   if (action === "server.rotate_key") return s("server");
   // Key rows vanish with their project; the record still names the key or the project it lived under.
@@ -522,6 +523,13 @@ const TARGET_FROM_META: Record<string, string> = {
   "token.create": "name",
   "key.create": "name",
   "key.revoke": "name",
+  "env.sets.create": "name",
+  "env.sets.rename": "name",
+  "env.sets.delete": "name",
+  "env.sets.default": "name",
+  "env.sets.variables.set": "name",
+  "env.sets.variables.replace": "name",
+  "env.sets.variables.delete": "name",
 };
 
 /**

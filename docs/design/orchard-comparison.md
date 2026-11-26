@@ -1,6 +1,6 @@
 # Egg and Hack Club Orchard
 
-Updated 2026-11-24. Orchard is Hack Club’s app platform; Egg deploys apps to a user’s existing Nest server. The [feature comparison](../feature-comparison.md) and [217-tool parity checklist](../../web/src/server/parity/orchard-parity.json) use the current 75-endpoint registry in [`api-v1.ts`](../../web/src/server/api-v1.ts#L471).
+Updated 2026-11-25. Orchard is Hack Club’s app platform; Egg deploys apps to a user’s existing Nest server. The [feature comparison](../feature-comparison.md) and [217-tool parity checklist](../../web/src/server/parity/orchard-parity.json) use the current registry assembled in [`api-v1.ts`](../../web/src/server/api-v1.ts#L471), which drives REST, OpenAPI, and MCP.
 
 ## Product boundary
 
@@ -10,12 +10,12 @@ Orchard provides a cluster-managed platform for projects and teams. Egg provides
 
 | Status | Tools | Count |
 | --- | --- | ---: |
-| Present | Projects, deployments, environment variables, GitHub repository/status, current user, DNS validation, diagnostics/logs/rollout, redeploy/rollback, scheduled jobs, webhook notifications | 42 |
-| Partial | Branch deploy, domains/ingress, service restart, resource history/quota, hook rotation, activity, deployment cancellation | 11 |
-| Not applicable | Cluster-only database, pod/container, node-pool, sandbox and template features | 80 |
-| Missing | No matching or nearby endpoint in the current registry | 84 |
+| Present | Projects, service port and internal-domain configuration, deployments and lifecycle, GitHub repository and branch configuration, project and shared environment variables, named shared environments, GitHub discovery, domains, diagnostics/logs/rollout, scheduled jobs, notifications, resource usage, and DNS validation | 121 |
+| Partial | Branch deploy, domains/ingress, service restart, resource history/quota, hook rotation, activity, deployment cancellation | 10 |
+| Not applicable | Cluster-only database, pod/container, node-pool, sandbox and template features | 82 |
+| Missing | No matching or nearby endpoint in the current registry | 4 |
 
-The 42 present and 11 partial tools are counted from statuses, with exact baselines enforced by [`orchard-parity.test.ts`](../../web/src/server/parity/orchard-parity.test.ts). The [feature comparison](../feature-comparison.md) lists the mapping groups and definitions.
+The status totals are counted from the manifest, with exact baselines enforced by [`orchard-parity.test.ts`](../../web/src/server/parity/orchard-parity.test.ts). The [feature comparison](../feature-comparison.md) lists the mapping groups and definitions.
 
 ## What may be worth borrowing
 

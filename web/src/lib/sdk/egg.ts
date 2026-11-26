@@ -926,6 +926,20 @@ export class Egg {
   deleteService(serviceId: string): Promise<unknown> { return this.request("DELETE", `/services/${seg(serviceId)}`); }
   setServiceExposure(serviceId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/services/${seg(serviceId)}/exposure`, {}, input); }
   setServicePortPublic(serviceId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/services/${seg(serviceId)}/port`, {}, input); }
+  /** Change a service's port list or internal domain. Needs `projects:write`. */
+  updateService(serviceId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/services/${seg(serviceId)}`, {}, input); }
+  /** Point a deployment at another GitHub repository or branch. Needs `projects:write`. */
+  updateDeploymentGithubRepo(deploymentId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/deployments/${seg(deploymentId)}/github-repo`, {}, input); }
+  /** Shared environment sets (named variable groups) for the signed-in user. */
+  listEnvironments(): Promise<unknown> { return this.request("GET", "/environments"); }
+  createEnvironment(input: unknown): Promise<unknown> { return this.request("POST", "/environments", {}, input); }
+  renameEnvironment(environmentId: string, input: unknown): Promise<unknown> { return this.request("PATCH", `/environments/${seg(environmentId)}`, {}, input); }
+  deleteEnvironment(environmentId: string, confirmName: string): Promise<unknown> { return this.request("DELETE", `/environments/${seg(environmentId)}`, {}, { confirmName }); }
+  setDefaultEnvironment(environmentId: string): Promise<unknown> { return this.request("PUT", `/environments/${seg(environmentId)}/default`); }
+  getSharedEnvVars(environmentId: string): Promise<unknown> { return this.request("GET", `/environments/${seg(environmentId)}/variables`); }
+  addSharedEnvVars(environmentId: string, input: unknown): Promise<unknown> { return this.request("POST", `/environments/${seg(environmentId)}/variables`, {}, input); }
+  setSharedEnvVars(environmentId: string, input: unknown): Promise<unknown> { return this.request("PUT", `/environments/${seg(environmentId)}/variables`, {}, input); }
+  deleteSharedEnvVars(environmentId: string, input: unknown): Promise<unknown> { return this.request("DELETE", `/environments/${seg(environmentId)}/variables`, {}, input); }
   getComposeStack(projectId: string): Promise<unknown> { return this.request("GET", `/compose-stacks/${seg(projectId)}`); }
   listComposeStacks(): Promise<unknown> { return this.request("GET", "/compose-stacks"); }
   listComposeReleases(projectId: string): Promise<unknown> { return this.request("GET", `/compose-stacks/${seg(projectId)}/releases`); }

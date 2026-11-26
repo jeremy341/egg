@@ -288,6 +288,10 @@ export const projects = sqliteTable(
     /** Port the app listens on. Map your domain to this port in Nest. */
     port: integer("port").notNull(),
     listenPort: integer("listen_port"),
+    /** Full Egg host-to-container listener list; null keeps the legacy single-port view. */
+    servicePorts: text("service_ports"),
+    /** Optional private service name recorded by Egg; DNS is managed outside Egg. */
+    internalDomain: text("internal_domain"),
     healthPath: text("health_path").notNull().default("/"),
     autoDeploy: integer("auto_deploy", { mode: "boolean" })
       .notNull()
@@ -350,6 +354,7 @@ export const projects = sqliteTable(
     // server, so the slug must be unique per server across all users of that server.
     uniqueIndex("projects_server_slug_idx").on(t.serverId, t.slug),
     uniqueIndex("projects_server_listen_port_idx").on(t.serverId, t.listenPort).where(sql`${t.listenPort} is not null`),
+    uniqueIndex("projects_server_internal_domain_idx").on(t.serverId, t.internalDomain).where(sql`${t.internalDomain} is not null`),
     uniqueIndex("projects_hook_idx").on(t.hookHash),
     uniqueIndex("projects_analytics_idx").on(t.analyticsKey),
     uniqueIndex("projects_status_idx").on(t.statusKey),
@@ -459,6 +464,43 @@ export const envVars = sqliteTable(
     createdAt: ts("created_at").notNull(),
   },
   (t) => [uniqueIndex("env_project_key_idx").on(t.projectId, t.key, t.target)]
+);
+
+/** Account-wide sets of variables shared by the owner's projects. */
+export const sharedEnvSets = sqliteTable(
+  "shared_env_sets",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
+    createdAt: ts("created_at").notNull(),
+    updatedAt: ts("updated_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("shared_env_sets_user_name_idx").on(t.userId, t.name),
+    uniqueIndex("shared_env_sets_default_user_idx").on(t.userId).where(sql`${t.isDefault} = 1`),
+  ]
+);
+
+/** Encrypted values stored in one shared environment set. */
+export const sharedEnvVars = sqliteTable(
+  "shared_env_vars",
+  {
+    id: text("id").primaryKey(),
+    setId: text("set_id")
+      .notNull()
+      .references(() => sharedEnvSets.id, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    valueEnc: text("value_enc").notNull(),
+    target: text("target", { enum: ["all", "production", "preview"] })
+      .notNull()
+      .default("all"),
+    createdAt: ts("created_at").notNull(),
+  },
+  (t) => [uniqueIndex("shared_env_vars_set_key_idx").on(t.setId, t.key, t.target)]
 );
 
 /**
@@ -1452,4 +1494,130 @@ export const idempotencyKeys = sqliteTable(
     expiresAt: ts("expires_at").notNull(),
   },
   (t) => [primaryKey({ columns: [t.scope, t.key] }), index("idempotency_keys_expires_idx").on(t.expiresAt)]
+);
+
+/** Installed first-party grafts are selected from the static Egg registry. */
+export const graftInstallations = sqliteTable("graft_installations", {
+  graftId: text("graft_id").primaryKey(),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(false),
+  changedBy: text("changed_by").references(() => users.id, { onDelete: "set null" }),
+  changedAt: ts("changed_at").notNull(),
+  createdAt: ts("created_at").notNull(),
+});
+
+export const graftAnnouncements = sqliteTable(
+  "graft_announcements",
+  {
+    id: text("id").primaryKey(),
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    status: text("status", { enum: ["draft", "published"] }).notNull().default("draft"),
+    pinned: integer("pinned", { mode: "boolean" }).notNull().default(false),
+    publishedAt: ts("published_at"),
+    expiresAt: ts("expires_at"),
+    createdBy: text("created_by").notNull().references(() => users.id, { onDelete: "cascade" }),
+    createdAt: ts("created_at").notNull(),
+    updatedAt: ts("updated_at").notNull(),
+  },
+  (t) => [index("graft_announcements_feed_idx").on(t.status, t.pinned, t.publishedAt)]
+);
+
+export const graftAnnouncementDismissals = sqliteTable(
+  "graft_announcement_dismissals",
+  {
+    announcementId: text("announcement_id")
+      .notNull()
+      .references(() => graftAnnouncements.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    dismissedAt: ts("dismissed_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.announcementId, t.userId] }),
+    index("graft_announcement_dismissals_user_idx").on(t.userId),
+  ]
+);
+
+export const GRAFT_FORUM_CATEGORIES = ["bug", "feature", "question", "discussion"] as const;
+export const GRAFT_FORUM_STATUSES = ["open", "planned", "in_progress", "complete", "declined"] as const;
+export const GRAFT_FORUM_PRIORITIES = ["normal", "high", "low"] as const;
+
+export const graftForumThreads = sqliteTable(
+  "graft_forum_threads",
+  {
+    id: text("id").primaryKey(),
+    category: text("category", { enum: GRAFT_FORUM_CATEGORIES }).notNull(),
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    status: text("status", { enum: GRAFT_FORUM_STATUSES }).notNull().default("open"),
+    priority: text("priority", { enum: GRAFT_FORUM_PRIORITIES }).notNull().default("normal"),
+    pinned: integer("pinned", { mode: "boolean" }).notNull().default(false),
+    locked: integer("locked", { mode: "boolean" }).notNull().default(false),
+    authorId: text("author_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    createdAt: ts("created_at").notNull(),
+    updatedAt: ts("updated_at").notNull(),
+  },
+  (t) => [index("graft_forum_threads_feed_idx").on(t.pinned, t.updatedAt)]
+);
+
+export const graftForumReplies = sqliteTable(
+  "graft_forum_replies",
+  {
+    id: text("id").primaryKey(),
+    threadId: text("thread_id")
+      .notNull()
+      .references(() => graftForumThreads.id, { onDelete: "cascade" }),
+    authorId: text("author_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    body: text("body").notNull(),
+    createdAt: ts("created_at").notNull(),
+  },
+  (t) => [index("graft_forum_replies_thread_idx").on(t.threadId, t.createdAt)]
+);
+
+export const graftForumVotes = sqliteTable(
+  "graft_forum_votes",
+  {
+    threadId: text("thread_id")
+      .notNull()
+      .references(() => graftForumThreads.id, { onDelete: "cascade" }),
+    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    createdAt: ts("created_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.threadId, t.userId] }),
+    index("graft_forum_votes_user_idx").on(t.userId),
+  ]
+);
+
+export const GRAFT_GREENHOUSE_STATUSES = ["draft", "active", "review", "complete"] as const;
+
+export const graftGreenhouseWorkspaces = sqliteTable(
+  "graft_greenhouse_workspaces",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    goal: text("goal").notNull(),
+    branch: text("branch"),
+    status: text("status", { enum: GRAFT_GREENHOUSE_STATUSES }).notNull().default("draft"),
+    createdAt: ts("created_at").notNull(),
+    updatedAt: ts("updated_at").notNull(),
+  },
+  (t) => [index("graft_greenhouse_user_idx").on(t.userId, t.updatedAt), index("graft_greenhouse_project_idx").on(t.projectId)]
+);
+
+export const graftGreenhouseNotes = sqliteTable(
+  "graft_greenhouse_notes",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => graftGreenhouseWorkspaces.id, { onDelete: "cascade" }),
+    authorId: text("author_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    body: text("body").notNull(),
+    createdAt: ts("created_at").notNull(),
+  },
+  (t) => [index("graft_greenhouse_notes_workspace_idx").on(t.workspaceId, t.createdAt)]
 );

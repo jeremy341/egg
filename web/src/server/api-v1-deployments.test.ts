@@ -43,6 +43,7 @@ describe("deployment CRUD endpoint definitions", () => {
       "rename_deployment",
       "retry_deployment_apply",
       "update_deployment_build_config",
+      "update_deployment_github_repo",
       "update_deployment_health_check",
       "update_deployment_image",
       "update_deployment_pull_policy",

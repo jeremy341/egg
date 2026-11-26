@@ -8,6 +8,7 @@ import { Sidebar } from "@/components/sidebar";
 import { TopBar, TopBarSkeleton } from "@/components/top-bar";
 import { MaintenanceNotice } from "@/components/maintenance-notice";
 import { AccountStandingBanner } from "@/components/account-standing-banner";
+import { GraftAnnouncementsBanner } from "@/components/graft-announcements-banner";
 import {
   LoadingRegion,
   Skeleton,
@@ -83,6 +84,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               >
                 <Suspense fallback={null}>
                   <AccountStandingBanner />
+                </Suspense>
+                <Suspense fallback={null}>
+                  <GraftAnnouncementsBanner />
                 </Suspense>
                 <MaintenanceNotice />
                 {children}

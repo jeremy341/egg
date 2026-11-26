@@ -25,9 +25,14 @@ async function AdminContent() {
   return (
     <div className="space-y-6">
       <div className="flex justify-end">
-        <Link href="/admin/users" className={buttonVariants({ variant: "outline", size: "sm" })}>
-          Accounts and bans
-        </Link>
+        <div className="flex gap-2">
+          <Link href="/admin/grafts" className={buttonVariants({ variant: "outline", size: "sm" })}>
+            Apps
+          </Link>
+          <Link href="/admin/users" className={buttonVariants({ variant: "outline", size: "sm" })}>
+            Accounts and bans
+          </Link>
+        </div>
       </div>
       <AdminDashboard initial={await adminOverview(user.id)} />
       <AdminAdministrators />

@@ -12,7 +12,8 @@ import { IMAGE_REF_MAX, parseImageRef } from "@/server/deploy/image-ref";
 import { assertCloneUrl, BuildError } from "@/server/deploy/build";
 import { isValidSlug, slugify } from "@/server/deploy/layout";
 import { ENV_KEY, RESERVED_ENV } from "@/server/deploy/runtime";
-import { assertInstallationOwned, GithubError } from "@/server/github/app";
+import { normalizeInternalDomain, servicePortsForProject, servicePortsSchema, type ServicePort } from "@/server/service-config";
+import { assertInstallationOwned, GithubError, verifyGithubRepositoryBranch } from "@/server/github/app";
 import { HttpError, notFound } from "@/server/http";
 import { moveDomainsToPort } from "@/server/domains";
 import { getServerForUser } from "@/server/servers";
@@ -170,6 +171,20 @@ export const updateProjectInput = createProjectInput
     deletionProtected: z.boolean(),
   })
   .partial();
+
+export const updateGithubRepositoryInput = z.object({
+  repoFullName: z
+    .string()
+    .trim()
+    .min(3)
+    .max(200)
+    .regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/, "Use a GitHub repository full name like owner/name.")
+    .describe("The GitHub repository full name, owner/name. Omit to keep the project's current repository.")
+    .optional(),
+  productionBranch: branch
+    .describe("The production branch to deploy. Omit to keep the project's current branch.")
+    .optional(),
+}).strict();
 
 export type CreateProjectInput = z.infer<typeof createProjectInput>;
 
@@ -460,6 +475,24 @@ export async function updateProject(userId: string, projectId: string, raw: unkn
   if (portTouched) {
     if (selectedPort != null) { clean.port = selectedPort; clean.listenPort = selectedPort; }
     else if (project.workloadKind === "worker") { clean.port = 0; clean.listenPort = null; }
+    if (project.servicePorts != null) {
+      const ports = servicePortsForProject(project);
+      if (selectedPort == null) {
+        clean.servicePorts = JSON.stringify([]);
+      } else {
+        const primary = ports[0] ?? {
+          containerPort: project.containerPort ?? selectedPort,
+          servicePort: selectedPort,
+          protocol: "TCP" as const,
+        };
+        ports[0] = {
+          ...primary,
+          containerPort: project.deploymentMode === "native" ? selectedPort : primary.containerPort,
+          servicePort: selectedPort,
+        };
+        clean.servicePorts = JSON.stringify(ports);
+      }
+    }
   }
   if (!isImage) {
     // Image settings only mean something for an image app. A registry login is kept by its owner, not by the app.
@@ -474,6 +507,15 @@ export async function updateProject(userId: string, projectId: string, raw: unkn
     clean.composeFilePath = null;
     clean.composeService = null;
     clean.containerPort = null;
+    if (project.servicePorts != null || clean.servicePorts != null) {
+      const currentPorts = typeof clean.servicePorts === "string"
+        ? servicePortsSchema.parse(JSON.parse(clean.servicePorts))
+        : servicePortsForProject(project);
+      clean.servicePorts = JSON.stringify(currentPorts.map((port) => ({
+        ...port,
+        containerPort: port.servicePort,
+      })));
+    }
   }
   const newPort = selectedPort != null && selectedPort !== project.port ? selectedPort : null;
   await withLockRetry(() => db.transaction(async (tx) => {
@@ -515,6 +557,191 @@ export async function updateProject(userId: string, projectId: string, raw: unkn
   }));
   await audit(userId, "project.update", project.id, { fields: Object.keys(clean).join(", ") });
   return getProjectAtLevel(userId, projectId, "edit");
+}
+
+/** Replace a service's listener list and/or its recorded internal DNS name. */
+export async function updateServiceConfiguration(
+  userId: string,
+  projectId: string,
+  changes: { ports?: ServicePort[]; internalDomain?: string | null }
+) {
+  await assertAccountCanWrite(userId);
+  if (changes.ports === undefined && changes.internalDomain === undefined) {
+    throw new HttpError(400, "Send ports, domain, or both to change.", "validation");
+  }
+
+  const project = await getProjectAtLevel(userId, projectId, "edit");
+  const ports = changes.ports === undefined ? undefined : servicePortsSchema.parse(changes.ports);
+  const internalDomain = changes.internalDomain === undefined
+    ? undefined
+    : changes.internalDomain === null ? null : normalizeInternalDomain(changes.internalDomain);
+  const db = await getDb();
+  const clean: Partial<typeof schema.projects.$inferInsert> = {};
+  let portsChanged = false;
+  let newPort: number | null = null;
+
+  if (ports !== undefined) {
+    if (project.workloadKind === "web" && ports.length === 0) {
+      throw new HttpError(400, "A web service needs at least one exposed port.", "validation");
+    }
+    if (project.deploymentMode === "native" && ports.some((port) => port.containerPort !== port.servicePort)) {
+      throw new HttpError(400, "Native Egg services listen on their configured port directly, so containerPort and servicePort must match.", "validation");
+    }
+    if (project.deploymentMode !== "image" && ports.some((port) => port.servicePort < SOURCE_MIN_PORT)) {
+      throw new HttpError(400, "Ports below 1024 need a container image. Choose 1024 or higher.", "validation");
+    }
+    if (ports.length === 0) {
+      clean.port = 0;
+      clean.listenPort = null;
+      clean.containerPort = null;
+    } else {
+      const primary = ports[0]!;
+      clean.port = primary.servicePort;
+      clean.listenPort = primary.servicePort;
+      clean.containerPort = project.deploymentMode === "native" ? null : primary.containerPort;
+      newPort = primary.servicePort !== project.port ? primary.servicePort : null;
+    }
+    clean.servicePorts = JSON.stringify(ports);
+    portsChanged = project.servicePorts === null || JSON.stringify(ports) !== JSON.stringify(servicePortsForProject(project));
+  }
+  if (internalDomain !== undefined) clean.internalDomain = internalDomain;
+
+  await withLockRetry(() => db.transaction(async (tx) => {
+    await assertCleanupAllowsWork(tx, userId, projectId);
+    if (portsChanged) {
+      if (ports?.length === 0) {
+        const linked = await tx.select({ id: schema.domains.id }).from(schema.domains).where(eq(schema.domains.projectId, project.id));
+        if (linked.length > 0) {
+          throw new HttpError(409, "Detach this service's domains before removing its last port.", "conflict");
+        }
+      }
+      const active = await tx
+        .select({ id: schema.deployments.id })
+        .from(schema.deployments)
+        .where(and(
+          eq(schema.deployments.projectId, project.id),
+          inArray(schema.deployments.state, ["queued", "building", "deploying"]),
+        ))
+        .get();
+      if (active) {
+        throw new HttpError(409, "A deployment is still running for this service. Wait for it to finish before changing its ports.", "conflict");
+      }
+      if (ports && ports.length > 0) {
+        const requested = new Set(ports.map((port) => port.servicePort));
+        const existingProjects = await tx.select().from(schema.projects).where(eq(schema.projects.serverId, project.serverId));
+        for (const existing of existingProjects) {
+          if (existing.id === project.id) continue;
+          if (servicePortsForProject(existing).some((port) => requested.has(port.servicePort))) {
+            throw new HttpError(409, "One of those ports is already used by another project on this server.", "conflict");
+          }
+        }
+        const deployments = await tx
+          .select({ projectId: schema.deployments.projectId, env: schema.deployments.env, port: schema.deployments.port })
+          .from(schema.deployments)
+          .innerJoin(schema.projects, eq(schema.deployments.projectId, schema.projects.id))
+          .where(eq(schema.projects.serverId, project.serverId));
+        if (deployments.some((deployment) =>
+          deployment.port > 0 && requested.has(deployment.port) &&
+          (deployment.projectId !== project.id || deployment.env === "preview")
+        )) {
+          throw new HttpError(409, "One of those ports is still used by a deployment on this server.", "conflict");
+        }
+      }
+      if (newPort !== null) {
+        await assertPortFree(tx, project.serverId, newPort, `Port ${newPort} is already used on this server.`, project.id);
+      }
+    }
+    if (internalDomain) {
+      const existing = await tx
+        .select({ id: schema.projects.id })
+        .from(schema.projects)
+        .where(and(eq(schema.projects.serverId, project.serverId), eq(schema.projects.internalDomain, internalDomain)))
+        .get();
+      if (existing && existing.id !== project.id) {
+        throw new HttpError(409, "That internal domain is already assigned to another service on this server.", "conflict");
+      }
+    }
+    await tx
+      .update(schema.projects)
+      .set({ ...clean, updatedAt: new Date() })
+      .where(eq(schema.projects.id, project.id))
+      .catch((err: unknown) => {
+        if (isUniqueViolation(err)) {
+          if (internalDomain) throw new HttpError(409, "That internal domain is already assigned to another service on this server.", "conflict");
+          throw new HttpError(409, "One of those ports is already used on this server.", "conflict");
+        }
+        throw err;
+      });
+    if (newPort !== null) await moveDomainsToPort(tx, project.id, newPort);
+  }));
+
+  await audit(userId, "project.update", project.id, {
+    fields: [ports !== undefined ? "ports" : null, internalDomain !== undefined ? "domain" : null].filter(Boolean).join(", "),
+  });
+  return getProjectAtLevel(userId, projectId, "edit");
+}
+
+/** Change a project's GitHub source after checking repository access and the selected branch. */
+export async function updateProjectGithubRepository(userId: string, projectId: string, raw: unknown) {
+  await assertAccountCanWrite(userId);
+  const input = updateGithubRepositoryInput.parse(raw);
+  if (input.repoFullName === undefined && input.productionBranch === undefined) {
+    throw new HttpError(400, "Set a GitHub repository or production branch to change.", "validation");
+  }
+
+  const project = await getProjectForUser(userId, projectId);
+  if (project.sourceProvider !== "github" || project.deploymentMode === "image") {
+    throw new HttpError(400, "This project does not use a GitHub repository.", "validation");
+  }
+  const repoFullName = input.repoFullName ?? project.repoFullName;
+  if (!repoFullName) {
+    throw new HttpError(400, "Set a GitHub repository before changing its production branch.", "validation");
+  }
+  if (project.installationId) {
+    try {
+      await assertInstallationOwned(userId, project.installationId);
+    } catch (error) {
+      if (error instanceof GithubError) throw new HttpError(403, error.message, "forbidden");
+      throw error;
+    }
+  }
+
+  const productionBranch = input.productionBranch ?? project.productionBranch;
+  let repository: { fullName: string; cloneUrl: string };
+  try {
+    repository = await verifyGithubRepositoryBranch(
+      project.installationId,
+      repoFullName,
+      productionBranch,
+    );
+  } catch (error) {
+    if (error instanceof GithubError) {
+      if (error.status === 403) throw new HttpError(403, "GitHub denied access to that repository.", "github");
+      if (error.status === 404) {
+        throw new HttpError(400, "That repository and branch are not available through the project's GitHub connection.", "validation");
+      }
+      throw new HttpError(502, "Could not verify the repository and branch with GitHub.", "github");
+    }
+    throw error;
+  }
+
+  const changes: Partial<typeof schema.projects.$inferInsert> = {};
+  if (project.repoFullName !== repository.fullName) changes.repoFullName = repository.fullName;
+  if (project.repoUrl !== repository.cloneUrl) changes.repoUrl = repository.cloneUrl;
+  if (project.productionBranch !== productionBranch) changes.productionBranch = productionBranch;
+  const fields = Object.keys(changes);
+  if (fields.length === 0) return project;
+
+  const db = await getDb();
+  await withLockRetry(() => db.transaction(async (tx) => {
+    await assertCleanupAllowsWork(tx, userId, projectId);
+    await tx
+      .update(schema.projects)
+      .set({ ...changes, updatedAt: new Date() })
+      .where(eq(schema.projects.id, project.id));
+  }));
+  await audit(userId, "project.update", project.id, { fields: fields.join(", ") });
+  return getProjectForUser(userId, projectId);
 }
 
 // ------------------------------------------------------------ environment

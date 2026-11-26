@@ -39,6 +39,8 @@ export type ProjectView = {
   composeService: string | null;
   containerPort: number | null;
   listenPort: number | null;
+  servicePorts?: string | null;
+  internalDomain?: string | null;
   startCommand: string | null;
   port: number;
   healthPath: string;
@@ -187,6 +189,8 @@ async function loadProjectViews(userId: string): Promise<ProjectView[]> {
       composeService: p.composeService,
       containerPort: p.containerPort,
       listenPort: p.listenPort ?? (p.workloadKind === "worker" ? null : p.port),
+      servicePorts: p.servicePorts,
+      internalDomain: p.internalDomain,
       startCommand: p.startCommand,
       port: p.port,
       healthPath: p.healthPath,

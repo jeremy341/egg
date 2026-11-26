@@ -64,6 +64,12 @@ const TEAM_ITEMS: NavItem[] = [
     active: (p) => p === "/projects",
   },
   {
+    href: "/grafts",
+    label: "Apps",
+    icon: SquaresFourIcon,
+    active: (p) => p === "/grafts" || p.startsWith("/grafts/"),
+  },
+  {
     href: "/deployments",
     label: "Deployments",
     icon: CubeIcon,
@@ -127,6 +133,7 @@ const TEAM_ITEMS: NavItem[] = [
 
 const TEAM_TITLES: Record<string, string> = {
   "/projects": "Projects",
+  "/grafts": "Apps",
   "/deployments": "Deployments",
   "/logs": "Logs",
   "/resources": "Resources",
@@ -247,6 +254,23 @@ export function navFor(pathname: string): NavContext {
   }
   if (pathname.startsWith("/admin")) {
     return { title: "Administration", backHref: "/projects", items: TEAM_ITEMS };
+  }
+
+  if (pathname.startsWith("/grafts/")) {
+    const segments = pathname.slice("/grafts/".length).split("/");
+    const graft = segments[0];
+    const labels: Record<string, string> = {
+      announcements: "Announcements",
+      forum: segments.length > 1 ? "Forum topic" : "Forum",
+      greenhouse: segments.length > 1 ? "Greenhouse workspace" : "Greenhouse",
+    };
+    const title = labels[graft] ?? "Apps";
+    const backHref = graft === "forum" && segments.length > 1
+      ? "/grafts/forum"
+      : graft === "greenhouse" && segments.length > 1
+        ? "/grafts/greenhouse"
+        : "/grafts";
+    return { title, crumb: title, backHref, backLabel: "Apps", items: TEAM_ITEMS };
   }
 
   if (pathname.startsWith("/settings")) {
