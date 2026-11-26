@@ -105,7 +105,7 @@
       "source": "apps/server/src/mcp/tools/configuration.ts",
       "status": "partial",
       "ours": "add_domain",
-      "reason": "Egg adds an owner-managed domain record but does not create a cluster ingress resource or route configuration."
+      "reason": "add_domain records a hostname with project/port metadata and instructs the owner to map it in the Nest dashboard; Egg does not create configured host/path routes."
     },
     {
       "name": "create_job",
@@ -195,7 +195,7 @@
       "source": "apps/server/src/mcp/tools/dangerous.ts",
       "status": "partial",
       "ours": "remove_domain",
-      "reason": "Egg removes the domain record; it does not manage separate Kubernetes ingress objects."
+      "reason": "remove_domain deletes only Egg's domain record. It leaves the Nest dashboard mapping and DNS record in place, so it cannot delete a configured host/path route."
     },
     {
       "name": "delete_job",
@@ -868,7 +868,7 @@
       "source": "apps/server/src/mcp/tools/query.ts",
       "status": "partial",
       "ours": "list_domains",
-      "reason": "Egg lists domain records and validation status, not ingress route objects or controller configuration."
+      "reason": "Egg lists owner domain claims and DNS status with project/port metadata, not configured host/path routing rules; routing remains in the Nest dashboard."
     },
     {
       "name": "list_job_runs",
