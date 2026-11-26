@@ -309,6 +309,48 @@
       "when": 1794595329949,
       "tag": "0043_homepage_feed",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "6",
+      "when": 1794763069915,
+      "tag": "0044_workload_profiles",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "6",
+      "when": 1794764022584,
+      "tag": "0045_violet_lorna_dane",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "6",
+      "when": 1794764202030,
+      "tag": "0046_redundant_frank_castle",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "6",
+      "when": 1794764259021,
+      "tag": "0047_silent_silver_fox",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "6",
+      "when": 1795069269516,
+      "tag": "0048_silent_omega_flight",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "6",
+      "when": 1795070291358,
+      "tag": "0049_dazzling_supernaut",
+      "breakpoints": true
     }
   ]
 }

@@ -56,6 +56,20 @@ describe("operator recovery", () => {
     await expect(withBuildLock(server.id, "next", { verifyStale: verify }, async () => {})).rejects.toThrow(/recovery/i);
     expect(verify).not.toHaveBeenCalled();
   });
+  it("a retry after a failed recovery adopts the stale recovery fence and clears it", async () => {
+    const { server, dep, job, stale } = await setup("recover-five");
+    // First attempt fails remote verification: the guard remains in place.
+    await expect(recoverBuild(admin, server.id, { confirm: true, holder: dep.id, lockAt: stale.toISOString(), workerStoppedConfirmed: true, workerId: job.lockedBy! }, async () => ({ script: async () => ({ code: 1, stdout: "", stderr: "" }), close() {} }) as never)).rejects.toThrow();
+    const fenced = (await ctx.db.select().from(schema.servers).where(eq(schema.servers.id, server.id)).get())!.buildLockHolder!;
+    expect(fenced.startsWith("recovery:")).toBe(true);
+    // Time passes; the operator retries, passing the fence inspect now shows.
+    const later = new Date(Date.now() - 120_000);
+    await ctx.db.update(schema.servers).set({ buildLockAt: later }).where(eq(schema.servers.id, server.id));
+    await ctx.db.update(schema.jobs).set({ lockedAt: later }).where(eq(schema.jobs.id, job.id));
+    await recoverBuild(admin, server.id, { confirm: true, holder: fenced, lockAt: later.toISOString(), workerStoppedConfirmed: true, workerId: job.lockedBy! }, async () => ({ script: async () => ({ code: 0, stdout: "", stderr: "" }), close() {} }) as never);
+    expect((await ctx.db.select().from(schema.jobs).where(eq(schema.jobs.id, job.id)).get())!.state).toBe("failed");
+    expect((await ctx.db.select().from(schema.servers).where(eq(schema.servers.id, server.id)).get())!.buildLockHolder).toBeNull();
+  });
   it("requires an administrator and an explicit matching worker attestation", async () => {
     const { server, dep, job, stale } = await setup("recover-four");
     const connect = vi.fn();

@@ -56,6 +56,7 @@ export async function deletePreview(userId: string, deploymentId: string) {
         releaseId: dep.releaseId,
         unit: unitName(project.slug, { releaseId: dep.releaseId }),
         unitDir: config().UNIT_DIR,
+        docker: project.deploymentMode !== "native",
       }),
       { timeoutMs: 60_000 }
     );

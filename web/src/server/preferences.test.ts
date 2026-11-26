@@ -181,4 +181,24 @@ describe("saved preferences", () => {
     await (await getDb()).insert(schema.userPreferences).values({ userId: other, updatedAt: new Date() });
     expect(await getPreferences(other)).toEqual(DEFAULT_PREFERENCES);
   });
+
+  it("keeps what a save of another field writes: each patch writes only what it carries", async () => {
+    const race = (await upsertUser({ id: "hc-prefs-race", name: "Race", email: null, slackId: null })).id;
+    await Promise.all([
+      updatePreferences(race, { displayName: "One" }),
+      updatePreferences(race, { density: "compact" }),
+    ]);
+    expect(await getPreferences(race)).toMatchObject({ displayName: "One", density: "compact" });
+  });
+
+  it("merges analytics switches over the saved ones instead of replacing them", async () => {
+    const other = (await upsertUser({ id: "hc-prefs-switches", name: "Switches", email: null, slackId: null })).id;
+    await updatePreferences(other, { analyticsDefaults: { clicks: true, retention: true } });
+    await updatePreferences(other, { analyticsDefaults: { time: true } });
+    expect((await getPreferences(other)).analyticsDefaults).toEqual({ clicks: true, time: true, retention: true });
+    const row = await (await getDb()).select().from(schema.userPreferences).where(eq(schema.userPreferences.userId, other)).get();
+    expect(JSON.parse(row?.analyticsDefaults ?? "{}")).toEqual({ clicks: true, time: true, retention: true });
+    await updatePreferences(other, { analyticsDefaults: { clicks: false } });
+    expect((await getPreferences(other)).analyticsDefaults).toEqual({ time: true, retention: true });
+  });
 });

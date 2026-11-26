@@ -10,11 +10,13 @@ import * as tar from "tar";
 import { config } from "@/server/config";
 import {
   resolveRuntime,
+  selectLockfile,
   type ProjectFiles,
   type RuntimeInput,
   type RuntimeSpec,
 } from "@/server/deploy/runtime";
 import { maskSecrets, secretNeedles } from "@/server/deploy/redact";
+import { genericGitEnvironment, validateGitVersion } from "@/server/providers/generic";
 
 export type LogFn = (level: "info" | "warn" | "error", message: string) => void;
 
@@ -26,6 +28,7 @@ export type BuildRequest = {
     cloneUrl: string;
     /** GitHub installation token for private repos. */
     token?: string | null;
+    provider?: "github" | "generic";
     branch: string;
     sha?: string | null;
   };
@@ -213,10 +216,12 @@ export function detectFiles(dir: string): ProjectFiles {
   const has = (f: string) => existsSync(path.join(dir, f));
   let hasBuildScript = false;
   let nodeEngine: string | null = null;
+  let packageManager: unknown;
   const hasPackageJson = has("package.json");
   if (hasPackageJson) {
     try {
       const pkg = JSON.parse(readFileSync(path.join(dir, "package.json"), "utf8"));
+      packageManager = pkg?.packageManager;
       hasBuildScript = typeof pkg?.scripts?.build === "string";
       if (typeof pkg?.engines?.node === "string") nodeEngine = pkg.engines.node.trim().slice(0, 200) || null;
     } catch {
@@ -224,16 +229,16 @@ export function detectFiles(dir: string): ProjectFiles {
     }
   }
   return {
-    lockfile: has("pnpm-lock.yaml")
-      ? "pnpm"
-      : has("yarn.lock")
-        ? "yarn"
-        : has("package-lock.json")
-          ? "npm"
-          : null,
+    lockfile: selectLockfile(has, packageManager),
     hasPackageJson,
     hasBuildScript,
     hasRequirements: has("requirements.txt"),
+    hasPyproject: has("pyproject.toml"),
+    hasGemfile: has("Gemfile"),
+    hasComposer: has("composer.json"),
+    hasCargoLock: has("Cargo.lock"),
+    hasMaven: has("pom.xml"),
+    hasGradle: has("build.gradle") || has("build.gradle.kts"),
     nodeEngine,
   };
 }
@@ -408,7 +413,8 @@ export async function cloneSource(
   line: (l: string) => void,
   limits: Partial<CloneLimits> = {}
 ): Promise<BuildResult["commit"]> {
-  assertCloneUrl(req.source.cloneUrl);
+  if (req.source.provider !== "generic") assertCloneUrl(req.source.cloneUrl);
+  if (req.source.provider === "generic" && req.source.token) throw new BuildError("Generic Git supports public repositories only.");
   assertGitRef(req.source.branch);
   if (req.source.sha) assertGitSha(req.source.sha);
   const resolved: CloneLimits = {
@@ -421,7 +427,7 @@ export async function cloneSource(
   if (lowDisk) throw lowDisk;
 
   log("info", `Cloning ${req.source.cloneUrl} (branch ${req.source.branch})`);
-  const gitEnv = gitEnvironment(req.source.token);
+  const gitEnv = req.source.provider === "generic" ? await genericGitEnvironment(req.source.cloneUrl) : gitEnvironment(req.source.token);
   const watched: { error: BuildError | null } = { error: null };
   const controller = new AbortController();
   const signal = AbortSignal.any(
@@ -432,6 +438,17 @@ export async function cloneSource(
     controller.abort();
   });
   try {
+    if (req.source.provider === "generic") {
+      const version: string[] = [];
+      if (await runProcess("git", ["--version"], { env: gitEnv, onLine: (s) => version.push(s), timeoutMs: 10_000, signal }) !== 0) throw new BuildError("Could not check Git version.");
+      validateGitVersion(version[0] ?? "");
+      const refs: string[] = [];
+      const branchRef = `refs/heads/${req.source.branch}`;
+      if (await runProcess("git", ["ls-remote", "--exit-code", "--heads", "--", req.source.cloneUrl, branchRef], { env: gitEnv, onLine: (s) => refs.push(s), timeoutMs: 30_000, signal }) !== 0) throw new BuildError("Could not read the public repository branch.");
+      const match = refs.map((line) => line.split(/\s+/)).find((parts) => parts[1] === branchRef);
+      if (!match) throw new BuildError("Could not verify the public repository branch.");
+      req = { ...req, source: { ...req.source, sha: req.source.sha ?? assertGitSha(match[0]) } };
+    }
     let cloneCode: number;
     try {
       cloneCode = await runProcess(
@@ -507,11 +524,16 @@ export async function cloneSource(
   }
 
   const info: string[] = [];
-  await runProcess("git", ["log", "-1", "--format=%H%n%an%n%s"], {
+  const commitCode = await runProcess("git", ["log", "-1", "--format=%H%n%an%n%s"], {
     cwd: srcDir,
     env: gitEnv,
     onLine: (l) => info.push(l),
   });
+  // An empty repository has no commits to anchor the deployment to: fail cleanly
+  // instead of recording an empty commit.
+  if (commitCode !== 0 || !info[0]) {
+    throw new BuildError(`No commits found on branch ${req.source.branch}.`);
+  }
   const commit = {
     sha: info[0] ?? "",
     author: info[1] ?? "",

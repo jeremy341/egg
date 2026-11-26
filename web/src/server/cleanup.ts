@@ -360,6 +360,7 @@ async function cleanItem(userId: string, itemId: string, deps: CleanupDeps, now:
         ...(await jobUnitNames(project.id, project.slug)),
       ],
       unitDir: deps.unitDir,
+      docker: project.deploymentMode !== "native",
     }), { timeoutMs: 120_000 });
     if (res.code !== 0) throw new Error(res.stderr.trim().slice(0, 300) || "Could not remove the Egg-managed project resources from the Nest server.");
     warnings.push(...extractWarnings(`${res.stdout}\n${res.stderr}`));
@@ -485,7 +486,7 @@ export async function runCleanupOnce(deps = defaultCleanupDeps(), now = new Date
       leaseOwner: null,
       leaseUntil: null,
       updatedAt: now,
-    }).where(eq(schema.cleanupJobs.id, job.id));
+    }).where(and(eq(schema.cleanupJobs.id, job.id), eq(schema.cleanupJobs.leaseOwner, workerId)));
     return job.id;
   } finally {
     clearInterval(heartbeat);

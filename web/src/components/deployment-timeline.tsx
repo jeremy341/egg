@@ -136,6 +136,7 @@ export function DeploymentTimeline({
         </div>
       ) : null}
       {timeline.outcome === "canceled" && canceledWhy ? <Alert tone="note">{canceledWhy}</Alert> : null}
+      {timeline.outcome === "live" && timeline.liveNote ? <Alert tone="note" title={timeline.summary}>{timeline.liveNote}</Alert> : null}
 
       <section aria-labelledby="timeline-heading" className="overflow-hidden rounded-lg bg-card shadow-border-small">
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b px-4 py-3">

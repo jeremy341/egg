@@ -20,6 +20,10 @@ import {
   useRepoDetection,
 } from "@/components/env-import";
 import { ProjectConflicts } from "@/components/project-conflicts";
+import { HostingOptions, RUNTIME_OPTIONS, StartCommandHelp, runtimeHint, workloadForRuntime, type DeploymentMode, type TargetCapabilities, type WorkloadKind } from "@/components/hosting-options";
+import { ProviderConnections } from "@/components/provider-connections";
+import { SOURCE_PROVIDERS, providerLabel, repositoryUrl, type SourceProvider } from "@/components/repository-source";
+import { ContainerDeploymentFields, containerConfigurationError, containerDeploymentBody, defaultContainerForm } from "@/components/container-deployment-fields";
 import type { Conflict } from "@/server/adoption";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
@@ -48,6 +52,8 @@ type Source = {
   repoFullName: string | null;
   installationId: number | null;
   branch: string;
+  sourceProvider: SourceProvider;
+  providerConnectionId: string | null;
 };
 
 export type GithubState = {
@@ -59,12 +65,7 @@ export type GithubState = {
 
 type Server = { id: string; nestUsername: string; status: string };
 
-const RUNTIMES = [
-  { value: "node", label: "Node.js", hint: "npm start" },
-  { value: "python", label: "Python", hint: "python3 app.py" },
-  { value: "static", label: "Static site", hint: "served for you" },
-  { value: "command", label: "Custom command", hint: "./my-binary" },
-] as const;
+const RUNTIMES = RUNTIME_OPTIONS;
 
 function Label({ htmlFor, children }: { htmlFor: string; children: React.ReactNode }) {
   return (
@@ -156,6 +157,12 @@ function Configure({
   const [name, setName] = useState(slugify(repoName));
   const [serverId, setServerId] = useState(servers[0]?.id ?? "");
   const [runtime, setRuntime] = useState<(typeof RUNTIMES)[number]["value"]>("node");
+  const [workloadKind, setWorkloadKind] = useState<WorkloadKind>("web");
+  /** Set when the person chooses the workload themselves, so a bot detection never overrides their choice. */
+  const workloadTouched = useRef(false);
+  const [deploymentMode, setDeploymentMode] = useState<DeploymentMode>("native");
+  const [container, setContainer] = useState(defaultContainerForm);
+  const [capabilityState, setCapabilityState] = useState<{ serverId: string; capabilities: TargetCapabilities | null; error: string | null } | null>(null);
   const [rootDir, setRootDir] = useState(".");
   const [branch, setBranch] = useState(source.branch);
   const [port, setPort] = useState("3000");
@@ -171,21 +178,55 @@ function Configure({
   // Set once the project exists, so a retry after a failed env save does not create it twice.
   const createdRef = useRef<{ id: string; slug: string } | null>(null);
 
+  useEffect(() => {
+    if (!serverId) return;
+    let live = true;
+    api<TargetCapabilities>(`/api/servers/${serverId}/capabilities`).then((capabilities) => {
+      if (live) setCapabilityState({ serverId, capabilities, error: null });
+    }).catch((e: Error) => { if (live) setCapabilityState({ serverId, capabilities: null, error: e.message }); });
+    return () => { live = false; };
+  }, [serverId]);
+  const capabilities = capabilityState?.serverId === serverId ? capabilityState.capabilities : null;
+  const capabilityError = capabilityState?.serverId === serverId ? capabilityState.error : null;
+
   // Detect from the repository: what it is, and the env names it asks for.
-  const repoForDetect =
-    source.repoFullName ?? source.repoUrl.replace(/^https:\/\/github\.com\//, "");
-  const detected = useRepoDetection({
+  const repoForDetect = source.sourceProvider === "github"
+    ? source.repoFullName ?? source.repoUrl.replace(/^https:\/\/github\.com\//, "")
+    : source.providerConnectionId ? source.repoFullName ?? source.repoUrl : source.repoUrl;
+  const detected = useRepoDetection(source.sourceProvider === "generic" ? null : {
     repo: repoForDetect,
     branch: branch.trim() || source.branch,
     installationId: source.installationId,
     rootDir,
+    sourceProvider: source.sourceProvider,
+    providerConnectionId: source.providerConnectionId,
   });
   const detection = detected.status === "ok" ? detected.detection : null;
+
+  /**
+   * The detection suggests "worker" for a bot repository. It is a default, so
+   * it is applied while the person has not chosen a workload themselves, and
+   * the picker stays editable afterwards.
+   */
+  useEffect(() => {
+    const suggestion = detection?.suggestedWorkloadKind;
+    if (!suggestion || workloadTouched.current || workloadKind === suggestion) return;
+    if (runtime === "static") setRuntime("node");
+    setWorkloadKind(suggestion);
+    // The suggestion is worth one look, not one per render: it changes only when the detection does.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detection?.suggestedWorkloadKind]);
+
+  /** Detected names from the repository plus the token names a detected bot framework reads. */
+  const envRows = detection
+    ? [...detection.env, ...detection.suggestedEnv.filter((s) => !detection.env.some((e) => e.name === s.name))]
+    : [];
 
   /** The user confirms the suggestions by pressing the button; the fields stay editable. */
   function applyDetected() {
     if (!detection || !detection.runtime) return;
     setRuntime(detection.runtime);
+    setWorkloadKind(detection.suggestedWorkloadKind ?? workloadForRuntime(detection.runtime, workloadKind));
     setInstallCommand(detection.commands.install ?? "");
     setBuildCommand(detection.commands.build ?? "");
     setStartCommand(detection.commands.start ?? "");
@@ -198,7 +239,10 @@ function Configure({
   }, []);
 
   const nameOk = /^[a-z0-9][a-z0-9-]{0,38}[a-z0-9]?$/.test(name);
-  const hint = RUNTIMES.find((r) => r.value === runtime)?.hint ?? "";
+  const hint = runtimeHint(runtime);
+  const modeReady = capabilities ? capabilities.deploymentModes[deploymentMode] === true : deploymentMode === "native";
+  const runtimeReady = !capabilities || capabilities.runtimes.includes(runtime);
+  const containerError = containerConfigurationError(deploymentMode, workloadKind, container);
 
   const portNumber = Number(port);
   const portOk = port.trim() !== "" && Number.isInteger(portNumber) && portNumber >= 1 && portNumber <= 65535;
@@ -206,8 +250,8 @@ function Configure({
     serverId,
     slug: name,
     port: portNumber,
-    repoFullName: repoForDetect.includes("/") ? repoForDetect.replace(/\.git$/, "") : null,
-    enabled: servers.length > 0 && Boolean(serverId) && nameOk && portOk,
+    repoFullName: source.repoFullName ?? (source.sourceProvider === "github" ? repoForDetect.replace(/\.git$/, "") : null),
+    enabled: workloadKind === "web" && servers.length > 0 && Boolean(serverId) && nameOk && portOk,
   });
   const blocking = check.status === "ok" ? check.conflicts.filter((c) => c.blocking) : [];
 
@@ -224,14 +268,20 @@ function Configure({
             repoUrl: source.repoUrl,
             repoFullName: source.repoFullName,
             installationId: source.installationId,
+            sourceProvider: source.sourceProvider,
+            providerConnectionId: source.providerConnectionId,
             productionBranch: branch,
             rootDir: rootDir || ".",
             runtime,
+            workloadKind,
+            deploymentMode,
+            ...containerDeploymentBody(deploymentMode, workloadKind, container),
             startCommand: startCommand.trim() || null,
             installCommand: installCommand.trim() || null,
             buildCommand: buildCommand.trim() || null,
             outputDir: runtime === "static" ? outputDir.trim() || null : null,
-            port: Number(port),
+            listenPort: workloadKind === "worker" ? (port.trim() === "" ? null : Number(port)) : Number(port),
+            autoDeploy: source.sourceProvider === "github" && source.installationId !== null && !adopted,
             // The server turns automatic deploys off for an adopted project.
             adopted,
           },
@@ -240,7 +290,7 @@ function Configure({
       }
       const project = createdRef.current;
       // Only names the user gave a value become variables, through the normal env path.
-      for (const e of detection?.env ?? []) {
+      for (const e of envRows) {
         const value = envValues[e.name] ?? "";
         if (!value) continue;
         try {
@@ -290,10 +340,10 @@ function Configure({
       </h1>
 
       <div className="mt-5 rounded-md bg-[var(--ds-gray-100)] px-3 py-2.5">
-        <p className="text-caption font-normal text-muted-foreground">Importing from GitHub</p>
+        <p className="text-caption font-normal text-muted-foreground">Importing from {providerLabel(source.sourceProvider)}</p>
         <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
           <span className="flex min-w-0 items-center gap-1.5 font-medium">
-            <GithubLogoIcon aria-hidden="true" className="size-4 shrink-0" />
+            {source.sourceProvider === "github" ? <GithubLogoIcon aria-hidden="true" className="size-4 shrink-0" /> : <GitBranchIcon aria-hidden="true" className="size-4 shrink-0" />}
             <span className="truncate">
               {source.repoFullName ?? source.repoUrl.replace("https://github.com/", "")}
             </span>
@@ -345,16 +395,20 @@ function Configure({
             </p>
           ) : null}
         </div>
+        <HostingOptions prefix="np" workloadKind={workloadKind} deploymentMode={deploymentMode} capabilities={capabilities} onWorkloadChange={(value) => { workloadTouched.current = true; setWorkloadKind(value); if (value === "worker" && runtime === "static") setRuntime("node"); }} onModeChange={setDeploymentMode} />
+        {capabilityError && <p role="status" className="text-label text-muted-foreground sm:col-span-2">Could not check target capabilities: {capabilityError} Container deployment modes remain unavailable.</p>}
+        <ContainerDeploymentFields prefix="np" mode={deploymentMode} workloadKind={workloadKind} value={container} onChange={setContainer} />
+        {containerError && <p role="alert" className="text-label text-destructive sm:col-span-2">{containerError}</p>}
         <div>
           <Label htmlFor="np-runtime">Application preset</Label>
           <NativeSelect
             id="np-runtime"
             value={runtime}
-            onChange={(e) => setRuntime(e.target.value as typeof runtime)}
+            onChange={(e) => { const next = e.target.value as typeof runtime; setRuntime(next); setWorkloadKind(workloadForRuntime(next, workloadKind)); }}
           >
             {RUNTIMES.map((r) => (
-              <option key={r.value} value={r.value}>
-                {r.label}
+              <option key={r.value} value={r.value} disabled={capabilities ? !capabilities.runtimes.includes(r.value) : false}>
+                {r.label}{capabilities && !capabilities.runtimes.includes(r.value) ? " · unavailable" : ""}
               </option>
             ))}
           </NativeSelect>
@@ -368,20 +422,22 @@ function Configure({
           <Input id="np-root" value={rootDir} onChange={(e) => setRootDir(e.target.value)} className="font-mono" />
         </div>
         <div>
-          <Label htmlFor="np-port">Port your app listens on</Label>
+          <Label htmlFor="np-port">{workloadKind === "worker" ? "Listen port (optional)" : "Port your app listens on"}</Label>
           <Input id="np-port" inputMode="numeric" value={port} onChange={(e) => setPort(e.target.value)} className="font-mono" />
+          {workloadKind === "worker" && <p className="text-label text-muted-foreground">Only for bots that must receive webhooks over HTTP. Leave it empty for a closed background app.</p>}
         </div>
         <div className="sm:col-span-2">
           <Label htmlFor="np-install">Install command (optional)</Label>
-          <Input id="np-install" value={installCommand} onChange={(e) => setInstallCommand(e.target.value)} placeholder="detected from your lockfile" className="font-mono" />
+          <Input id="np-install" value={installCommand} onChange={(e) => setInstallCommand(e.target.value)} placeholder="Leave empty to use the runtime preset" className="font-mono" />
         </div>
         <div className="sm:col-span-2">
           <Label htmlFor="np-start">Start command (optional)</Label>
-          <Input id="np-start" value={startCommand} onChange={(e) => setStartCommand(e.target.value)} placeholder={hint} className="font-mono" />
+          <Input id="np-start" value={startCommand} onChange={(e) => setStartCommand(e.target.value)} placeholder={hint} className="font-mono" aria-describedby="np-start-help" />
+          <StartCommandHelp runtime={runtime} id="np-start-help" />
         </div>
         <div className={runtime === "static" ? "" : "sm:col-span-2"}>
           <Label htmlFor="np-build">Build command (optional)</Label>
-          <Input id="np-build" value={buildCommand} onChange={(e) => setBuildCommand(e.target.value)} placeholder="detected from package.json" className="font-mono" />
+          <Input id="np-build" value={buildCommand} onChange={(e) => setBuildCommand(e.target.value)} placeholder="Leave empty to use the runtime preset" className="font-mono" />
         </div>
         {runtime === "static" ? (
           <div>
@@ -393,7 +449,7 @@ function Configure({
 
       {detection ? (
         <EnvValueFields
-          env={detection.env}
+          env={envRows}
           values={envValues}
           onChange={(name, value) => setEnvValues((v) => ({ ...v, [name]: value }))}
         />
@@ -422,7 +478,9 @@ function Configure({
         <p id="np-adopt-note" className="mt-1.5 text-label text-muted-foreground">
           {adopted
             ? "The first deploy is manual, and automatic deploys start only after you confirm that first deploy works. Egg changes nothing it did not create, so stop your old process yourself if it holds the port."
-            : "Tick this if you already run this repository here by hand. Otherwise automatic deploys stay on."}
+            : source.sourceProvider === "github" && source.installationId !== null
+              ? "Tick this if you already run this repository here by hand. Otherwise automatic deploys stay on."
+              : "Tick this if you already run this repository here by hand. This source uses manual deployments or a deploy hook; automatic push deployments are off."}
         </p>
       </div>
 
@@ -459,10 +517,7 @@ function Configure({
         ) : null}
       </div>
 
-      <p className="mt-4 text-label text-muted-foreground">
-        Your app must listen on the <code className="font-mono">PORT</code> environment variable on{" "}
-        <code className="font-mono">0.0.0.0</code>. Environment variables can be added in the project settings.
-      </p>
+      <p className="mt-4 text-label text-muted-foreground">Environment variables can be added in the project settings.</p>
 
       {error ? (
         <Alert tone="error" role="alert" className="mt-4">
@@ -475,7 +530,7 @@ function Configure({
         className="mt-5 h-10 w-full"
         onClick={() => void submit()}
         loading={busy}
-        disabled={!nameOk || !serverId || blocking.length > 0}
+        disabled={!nameOk || !serverId || ((workloadKind === "web" || port.trim() !== "") && !portOk) || !modeReady || !runtimeReady || Boolean(containerError) || blocking.length > 0}
         aria-describedby={blocking.length > 0 ? "np-blocked" : undefined}
       >
         {busy ? "Starting deployment…" : "Deploy"}
@@ -605,6 +660,7 @@ export function NewProjectFlow({
   const [installation, setInstallation] = useState<number | null>(github.installations[0]?.id ?? null);
   const [query, setQuery] = useState("");
   const [url, setUrl] = useState("");
+  const [provider, setProvider] = useState<SourceProvider>("github");
   const [urlError, setUrlError] = useState<string | null>(null);
   const [returned, setReturned] = useState(false);
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -629,17 +685,19 @@ export function NewProjectFlow({
 
   function useUrl(e: React.FormEvent) {
     e.preventDefault();
-    const m = url.trim().match(/^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/);
-    if (!m) {
-      setUrlError("Enter a GitHub repository URL such as https://github.com/owner/name");
+    let normalized: string;
+    try { normalized = repositoryUrl(provider, url); } catch (e) {
+      setUrlError(e instanceof Error ? e.message : "Enter a repository URL.");
       return;
     }
     setUrlError(null);
     setSource({
-      repoUrl: `https://github.com/${m[1]}/${m[2]}`,
-      repoFullName: null,
+      repoUrl: normalized,
+      repoFullName: provider === "github" ? null : new URL(normalized).pathname.replace(/^\/+|\/+$/g, "").replace(/\.git$/, ""),
       installationId: null,
       branch: defaultBranch,
+      sourceProvider: provider,
+      providerConnectionId: null,
     });
   }
 
@@ -669,7 +727,12 @@ export function NewProjectFlow({
           Choose a repository
         </h2>
 
-        {hasInstall ? (
+        <div className="mb-4"><Label htmlFor="source-provider">Git provider</Label><NativeSelect id="source-provider" value={provider} onChange={(e) => { setProvider(e.target.value as SourceProvider); setUrl(""); setUrlError(null); }}>
+          {SOURCE_PROVIDERS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+        </NativeSelect></div>
+        <p className="-mt-2 mb-4 text-label text-muted-foreground">Other Git servers import over public HTTPS, and deploys are by hand.</p>
+
+        {provider !== "github" && provider !== "generic" ? <ProviderConnections key={provider} provider={provider} onPick={(r, connectionId) => setSource({ repoUrl: r.cloneUrl, repoFullName: r.fullName, installationId: null, branch: r.defaultBranch, sourceProvider: provider, providerConnectionId: connectionId })} /> : provider === "generic" ? <div className="rounded-lg bg-card p-5 shadow-border-small"><h3 className="font-medium">Use another Git server</h3><p className="mt-1 text-label text-muted-foreground">Public HTTPS repositories only. Credentials do not belong in the repository URL.</p></div> : hasInstall ? (
           <div data-tour="repo-source" data-tour-state="installed">
             <div className="mb-3 flex flex-wrap items-center gap-2">
               <label htmlFor="gh-install" className="sr-only">
@@ -712,6 +775,8 @@ export function NewProjectFlow({
                   repoFullName: r.fullName,
                   installationId: installation,
                   branch: r.defaultBranch,
+                  sourceProvider: "github",
+                  providerConnectionId: null,
                 })
               }
             />
@@ -748,7 +813,21 @@ export function NewProjectFlow({
               </Button>
             </div>
           </div>
-        ) : null}
+        ) : (
+          <div className="rounded-lg bg-card p-5 shadow-border-small">
+            <p className="font-medium tracking-[-0.02em]">Connect GitHub</p>
+            <p className="mt-1 text-muted-foreground">
+              Connect GitHub to pick from your repositories and deploy on every push. Whoever runs this Egg finishes
+              that setup (the GITHUB_APP settings), and it is not done here yet, so the repository picker is missing.
+              Public repositories work below in the meantime.
+            </p>
+            <div className="mt-4">
+              <Button variant="outline" className="px-3" render={<Link href="/docs/github" />}>
+                How GitHub setup works
+              </Button>
+            </div>
+          </div>
+        )}
 
         <form
           onSubmit={useUrl}
@@ -756,19 +835,19 @@ export function NewProjectFlow({
           className="mt-6 rounded-lg bg-card p-5 shadow-border-small"
         >
           <label htmlFor="repo-url" className="font-medium tracking-[-0.02em]">
-            {github.configured ? "Or use a public repository URL" : "Public repository URL"}
+            {provider === "github" && github.configured ? "Or use a public repository URL" : "Public repository URL"}
           </label>
-          <div className="mt-2 flex gap-2">
+          <div className="mt-2 flex flex-wrap gap-2">
             <Input
               id="repo-url"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://github.com/owner/name"
+              placeholder={SOURCE_PROVIDERS.find((p) => p.value === provider)?.example}
               aria-invalid={Boolean(urlError)}
               aria-describedby={urlError ? "repo-url-error" : undefined}
               autoComplete="off"
               spellCheck={false}
-              className="font-mono"
+              className="min-w-0 flex-1 basis-[240px] font-mono"
             />
             <Button type="submit" className="px-3" disabled={!url.trim()}>
               <GitBranchIcon aria-hidden="true" />
@@ -780,9 +859,19 @@ export function NewProjectFlow({
               {urlError}
             </p>
           ) : null}
-          {!github.configured ? (
+          {provider === "github" && !github.configured ? (
             <p className="mt-2 text-label text-muted-foreground">
-              The GitHub App is not set up on this installation, so only public repositories work, and pushes do not deploy automatically.
+              Pushes do not deploy automatically: there is no GitHub App here to hear them.
+            </p>
+          ) : null}
+          {provider !== "github" && <p className="mt-2 text-label text-muted-foreground">{provider === "generic" ? "A public URL connects no account: deploy by hand or set up a deploy hook." : "A public URL does not connect an account. Private repositories need a connection above; push deploys require a configured webhook."}</p>}
+          {provider === "github" ? (
+            <p className="mt-2 text-label text-muted-foreground">
+              Deploying a Discord, Slack or Telegram bot? Egg sets it up as a background app with no port. The{" "}
+              <Link href="/docs/bots-discordjs" className="link max-sm:min-h-10">
+                docs
+              </Link>{" "}
+              have guides for Discord, Slack and Telegram.
             </p>
           ) : null}
         </form>

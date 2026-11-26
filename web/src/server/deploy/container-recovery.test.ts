@@ -348,6 +348,7 @@ describe("taking over a stale build lock on the container", () => {
       script: (body: string, opts?: Parameters<NestSession["script"]>[1]) => session.script(STOP_DOES_NOTHING + body, opts),
       uploadFile: session.uploadFile.bind(session),
       writeFile: session.writeFile.bind(session),
+      exec: session.exec.bind(session),
     };
     await expect(
       runContainerBuild({

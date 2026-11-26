@@ -540,7 +540,7 @@ export function SettingsForm({
       <Card
         id="analytics-heading"
         title="Analytics defaults"
-        description="The features a project starts with when you first turn analytics on for it. Every one is off unless you switch it on here. Projects that already have analytics are not changed, and each project can still change its own."
+        description="The features a project starts with when you first turn analytics on for it. Every one is off unless you switch it on here; projects that already have analytics are not changed."
         footer={footer("analytics")}
       >
         <fieldset className="min-w-0">

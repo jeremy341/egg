@@ -46,6 +46,15 @@ describe("dailyStrip", () => {
     expect(days.every((d) => d.state === "none")).toBe(true);
   });
 
+  it("shows days before checking could have begun as none", () => {
+    const incidents = [{ from: at("2026-11-03T10:00:00Z"), to: at("2026-11-03T11:30:00Z") }];
+    const days = dailyStrip(incidents, now, 30, true, at("2026-11-02T06:00:00Z"));
+    expect(days.find((d) => d.day === "2026-11-01")?.state).toBe("none");
+    // The day checking started, and every day after it, is described as usual.
+    expect(days.find((d) => d.day === "2026-11-02")?.state).toBe("up");
+    expect(days.find((d) => d.day === "2026-11-03")).toEqual({ day: "2026-11-03", state: "partial", downMinutes: 90 });
+  });
+
   it("agrees with the uptime figure over the same window", () => {
     const incidents = [{ from: at("2026-11-03T10:00:00Z"), to: at("2026-11-03T11:30:00Z") }];
     const days = dailyStrip(incidents, now, 30);

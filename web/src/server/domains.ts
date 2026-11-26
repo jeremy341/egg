@@ -35,7 +35,7 @@ export const domainInput = z.object({
   serverId: z.string().min(1),
   domain: z.string().min(1).max(253),
   port: z.number().int().min(1).max(65535),
-  projectId: z.string().nullable().optional(),
+  projectId: z.string().min(1).nullable().optional(),
 });
 
 /** The name a custom domain should point at (CNAME). */
@@ -99,6 +99,7 @@ export async function addDomain(userId: string, raw: unknown) {
       .where(and(eq(schema.projects.id, input.projectId), eq(schema.projects.userId, userId)))
       .get();
     if (!project || project.serverId !== server.id) throw notFound("Project not found");
+    if (project.workloadKind === "worker" && !project.listenPort) throw new HttpError(400, "This worker exposes no port. Give it a listen port in Settings first.", "validation");
   }
   // One answer whether the domain is yours already or on someone else's server: it is taken.
   if (await db.select().from(schema.domains).where(eq(schema.domains.domain, domain)).get()) {
@@ -193,6 +194,7 @@ export async function updateDomain(userId: string, domainId: string, raw: unknow
         .where(and(eq(schema.projects.id, input.projectId), eq(schema.projects.userId, userId)))
         .get();
       if (!project || project.serverId !== row.serverId) throw notFound("Project not found");
+      if (project.workloadKind === "worker" && !project.listenPort) throw new HttpError(400, "This worker exposes no port. Give it a listen port in Settings first.", "validation");
       projectId = project.id;
       // Moving to a project without naming a port means "use that project's port".
       if (input.port === undefined) port = project.port;

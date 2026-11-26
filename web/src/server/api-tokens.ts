@@ -147,36 +147,42 @@ export async function createApiToken(userId: string, raw: unknown, now = new Dat
   const input = createTokenInput.parse(raw);
   const db = await getDb();
 
-  const existing = await db
-    .select({ revokedAt: schema.apiTokens.revokedAt, expiresAt: schema.apiTokens.expiresAt })
-    .from(schema.apiTokens)
-    .where(eq(schema.apiTokens.userId, userId));
-  const active = existing.filter((t) => !t.revokedAt && t.expiresAt.getTime() > now.getTime());
-  if (active.length >= MAX_TOKENS_PER_USER) {
-    throw new HttpError(400, `You can have up to ${MAX_TOKENS_PER_USER} active tokens. Revoke one first.`, "limit");
-  }
-
-  const short = holdsShortLivedScope(input.scopes);
-  const days = input.expiresInDays ?? (short ? SHORT_LIVED_MAX_DAYS : 90);
-  if (short && days > SHORT_LIVED_MAX_DAYS) {
-    throw new HttpError(400, `${SHORT_LIVED_NOTE} Pick 7 days, or remove that permission.`, "short_lived");
-  }
-
   const secret = `${TOKEN_PREFIX}${randomToken(32)}`;
   const id = newId();
-  const row = {
-    id,
-    userId,
-    name: input.name,
-    prefix: secret.slice(0, TOKEN_PREFIX.length + 6),
-    hash: sha256Hex(secret),
-    scopes: JSON.stringify([...new Set(input.scopes)]),
-    createdAt: now,
-    lastUsedAt: null,
-    expiresAt: new Date(now.getTime() + days * DAY),
-    revokedAt: null,
-  };
-  await db.insert(schema.apiTokens).values(row);
+
+  // The count and the insert share one transaction: SQLite lets one writer in at a
+  // time, so two tokens created together cannot both slip past the cap.
+  const row = await db.transaction(async (tx) => {
+    const existing = await tx
+      .select({ revokedAt: schema.apiTokens.revokedAt, expiresAt: schema.apiTokens.expiresAt })
+      .from(schema.apiTokens)
+      .where(eq(schema.apiTokens.userId, userId));
+    const active = existing.filter((t) => !t.revokedAt && t.expiresAt.getTime() > now.getTime());
+    if (active.length >= MAX_TOKENS_PER_USER) {
+      throw new HttpError(400, `You can have up to ${MAX_TOKENS_PER_USER} active tokens. Revoke one first.`, "limit");
+    }
+
+    const short = holdsShortLivedScope(input.scopes);
+    const days = input.expiresInDays ?? (short ? SHORT_LIVED_MAX_DAYS : 90);
+    if (short && days > SHORT_LIVED_MAX_DAYS) {
+      throw new HttpError(400, `${SHORT_LIVED_NOTE} Pick 7 days, or remove that permission.`, "short_lived");
+    }
+
+    const row = {
+      id,
+      userId,
+      name: input.name,
+      prefix: secret.slice(0, TOKEN_PREFIX.length + 6),
+      hash: sha256Hex(secret),
+      scopes: JSON.stringify([...new Set(input.scopes)]),
+      createdAt: now,
+      lastUsedAt: null,
+      expiresAt: new Date(now.getTime() + days * DAY),
+      revokedAt: null,
+    };
+    await tx.insert(schema.apiTokens).values(row);
+    return row;
+  });
   await audit(userId, "token.create", id, { name: input.name, scopes: input.scopes.join(", ") });
   return { token: summarize(row, now.getTime()), secret };
 }

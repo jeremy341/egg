@@ -3,7 +3,7 @@ import { z } from "zod";
 import { audit } from "@/server/audit";
 import { config } from "@/server/config";
 import { newId, open, seal } from "@/server/crypto";
-import { getDb, schema } from "@/server/db";
+import { getDb, schema, type Db } from "@/server/db";
 import { HttpError, notFound } from "@/server/http";
 import { terminals } from "@/server/terminal";
 import { NestSession, SshError } from "@/server/ssh/connection";
@@ -185,12 +185,16 @@ export async function deleteServer(
 ) {
   await assertNoServerCleanup(userId, serverId);
   const server = await getServerForUser(userId, serverId);
-  // Root shells opened with this server's key must not outlive the key.
-  await terminals().closeAllForUser(userId, "disabled", { serverId: server.id });
   const db = await getDb();
   const deleteProjects = options.deleteProjects === true;
   let projectCount = 0;
-  await db.transaction(async (tx) => {
+  // What must hold for a disconnect, checked twice: once before any terminal
+  // is closed, then alongside the destructive write. A refused disconnect
+  // leaves the user's terminals alone; a cleanup that starts while the
+  // terminal manager runs still aborts the write, keeping its keys and records.
+  const assertDisconnectAllowed = async (
+    tx: Db | Parameters<Parameters<Db["transaction"]>[0]>[0]
+  ) => {
     const current = await tx.select({ status: schema.servers.status }).from(schema.servers)
       .where(and(eq(schema.servers.id, server.id), eq(schema.servers.userId, userId))).get();
     if (!current) throw notFound("Server not found");
@@ -198,8 +202,6 @@ export async function deleteServer(
       .innerJoin(schema.projects, eq(schema.projects.id, schema.adoptionPlans.projectId))
       .where(and(eq(schema.projects.serverId, server.id), eq(schema.adoptionPlans.state, "executing"))).get();
     if (adoption) throw new HttpError(409, "An app cutover is in progress on this server.", "adoption_in_progress");
-    // A cleanup can start while the terminal manager is closing its sessions.
-    // Recheck alongside the destructive write so cleanup keeps its keys and records.
     const cleanup = await tx.select({ id: schema.cleanupJobs.id }).from(schema.cleanupJobs)
       .leftJoin(schema.cleanupItems, eq(schema.cleanupItems.cleanupJobId, schema.cleanupJobs.id))
       .where(and(eq(schema.cleanupJobs.userId, userId), inArray(schema.cleanupJobs.state, ["draining", "running", "failed"]),
@@ -211,6 +213,13 @@ export async function deleteServer(
     const projects = await tx.select({ id: schema.projects.id }).from(schema.projects)
       .where(eq(schema.projects.serverId, server.id));
     projectCount = projects.length;
+    return projects;
+  };
+  await assertDisconnectAllowed(db);
+  // Root shells opened with this server's key must not outlive the key.
+  await terminals().closeAllForUser(userId, "disabled", { serverId: server.id });
+  await db.transaction(async (tx) => {
+    const projects = await assertDisconnectAllowed(tx);
     if (deleteProjects || projects.length === 0) {
       // Foreign keys remove the projects, deployments, logs, domains and samples with it.
       await tx.delete(schema.servers).where(and(eq(schema.servers.id, server.id), eq(schema.servers.userId, userId)));
@@ -374,6 +383,13 @@ export async function testServer(
   opts: { confirmHostKey?: string } = {}
 ): Promise<TestResult> {
   const server = await getServerForUser(userId, serverId);
+  if (server.status === "disconnected") {
+    throw new HttpError(
+      409,
+      `${server.nestUsername} is disconnected. Connect it again to manage its projects.`,
+      "disconnected"
+    );
+  }
   const db = await getDb();
 
   try {

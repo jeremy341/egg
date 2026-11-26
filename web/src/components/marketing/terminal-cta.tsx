@@ -29,7 +29,7 @@ const LINES: { at: number; node: React.ReactNode }[] = [
     at: 1950,
     node: (
       <span className="flex items-center gap-2.5 font-medium">
-        <span aria-hidden="true" className="size-2 shrink-0 bg-[var(--chick)]" />
+        <span aria-hidden="true" className="size-2 shrink-0 bg-[var(--amber)]" />
         Live on your Nest
       </span>
     ),

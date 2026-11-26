@@ -29,7 +29,7 @@ export function FindButton({ className }: { className?: string }) {
     <button
       type="button"
       onClick={() => open()}
-      aria-keyshortcuts="F"
+      aria-keyshortcuts="F Control+K Meta+K"
       className={cn(
         "touch-target shadow-border-base flex h-8 w-full items-center gap-2 rounded-md bg-background px-2 text-left text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground",
         className
@@ -38,7 +38,7 @@ export function FindButton({ className }: { className?: string }) {
       <MagnifyingGlassIcon aria-hidden="true" className="size-4 shrink-0" />
       <span className="flex-1">Find</span>
       <kbd className="rounded-sm border px-1.5 font-mono text-[11px] leading-4">
-        F
+        F · Ctrl/⌘ K
       </kbd>
     </button>
   );

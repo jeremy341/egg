@@ -451,7 +451,7 @@ describe("create, change and delete a project", () => {
     const cleared = await run(updateProjectRoute, req(`/projects/${projectId}`, { secret: t.secret, method: "PATCH", body: { startCommand: null, port: 3050, autoDeploy: true } }), { projectId });
     expect((await cleared.json()).project).toMatchObject({ startCommand: null, port: 3050, autoDeploy: true });
 
-    await ctx.db.update(schema.projects).set({ autoDeploy: true, healthPath: "/", productionBranch: "main", rootDir: ".", port: 3000 }).where(eq(schema.projects.id, projectId));
+    await ctx.db.update(schema.projects).set({ autoDeploy: true, healthPath: "/", productionBranch: "main", rootDir: ".", port: 3000, listenPort: 3000 }).where(eq(schema.projects.id, projectId));
   });
 
   it("does not take where builds run as a setting, and reports every project as built on the container", async () => {
@@ -779,7 +779,7 @@ describe("notifications, alerts and the status page", () => {
     const secret = await token(["notifications:read"]);
     const set = await (await run(notifyRoute, req(`/projects/${projectId}/notify`, { secret }), { projectId })).json();
     expect(set).toEqual({ notifications: { configured: true, kind: "discord", on: "failures" } });
-    await ctx.db.insert(schema.projects).values({ ...(await ctx.db.select().from(schema.projects).where(eq(schema.projects.id, projectId)).get())!, id: "plain-project", slug: "plain", name: "Plain", port: 3999, notifyUrlEnc: null });
+    await ctx.db.insert(schema.projects).values({ ...(await ctx.db.select().from(schema.projects).where(eq(schema.projects.id, projectId)).get())!, id: "plain-project", slug: "plain", name: "Plain", port: 3999, listenPort: 3999, notifyUrlEnc: null });
     const none = await (await run(notifyRoute, req("/projects/plain-project/notify", { secret }), { projectId: "plain-project" })).json();
     expect(none).toEqual({ notifications: { configured: false, kind: null, on: null } });
     await ctx.db.delete(schema.projects).where(eq(schema.projects.id, "plain-project"));

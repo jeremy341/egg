@@ -20,7 +20,7 @@ export const CLONE_FIELDS = [
 export type CloneField = (typeof CLONE_FIELDS)[number];
 
 export type CloneSettings = {
-  runtime: "node" | "python" | "static" | "command";
+  runtime: import("@/server/db/schema").Runtime;
   installCommand: string | null;
   buildCommand: string | null;
   startCommand: string | null;

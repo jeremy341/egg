@@ -108,6 +108,7 @@ export const LABELS: Record<string, string> = {
   "webhook.delete": "Deleted a webhook",
   "webhook.rotate": "Replaced the secret of a webhook",
   "webhook.test": "Sent a test message to a webhook",
+  "provider.disconnect": "Disconnected a provider",
 };
 
 export function describeAction(action: string): string {

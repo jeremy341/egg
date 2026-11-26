@@ -160,16 +160,31 @@ export async function processJob(job: Job, deps: PipelineDeps = defaultDeps()) {
     else await runDeployJob(job.deploymentId, deps, abort.signal);
     await db.update(schema.jobs).set({ state: "done" }).where(and(eq(schema.jobs.id, job.id), eq(schema.jobs.state, "running"), eq(schema.jobs.lockedBy, lockOwner)));
   } catch (err) {
-    await db
-      .update(schema.jobs)
-      .set({ state: "failed", error: String((err as Error)?.message ?? err).slice(0, 500) })
-      .where(and(eq(schema.jobs.id, job.id), eq(schema.jobs.state, "running"), eq(schema.jobs.lockedBy, lockOwner)));
+    try {
+      await db
+        .update(schema.jobs)
+        .set({ state: "failed", error: String((err as Error)?.message ?? err).slice(0, 500) })
+        .where(and(eq(schema.jobs.id, job.id), eq(schema.jobs.state, "running"), eq(schema.jobs.lockedBy, lockOwner)));
+    } catch (dbErr) {
+      // The failure could not be recorded. Rethrow so the worker logs it and
+      // the stale-lease flow takes over, instead of losing the job silently.
+      throw new Error(
+        `Could not record the failure of job ${job.id}: ${String((dbErr as Error)?.message ?? dbErr)} (job failed with: ${String((err as Error)?.message ?? err)})`
+      );
+    }
   } finally {
     clearInterval(watcher);
   }
 }
 
 export type WorkerHandle = { stop: () => Promise<void>; workerId: string };
+
+/** Interval env vars: an empty or non-numeric value would otherwise silently disable the interval. */
+function envIntervalMs(raw: string | undefined, fallback: number): number {
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
 
 /** Poll for jobs until stopped. Used by `pnpm worker` and the embedded worker. */
 export function startWorker(options: {
@@ -219,10 +234,14 @@ export function startWorker(options: {
           // A claim made before stop owns a running queue row, so start and track it
           // even if stop was requested while the database claim was in progress.
           running++;
-          const p = (options.workerOps?.processJob ?? processJob)(job, options.deps).finally(() => {
-            running--;
-            inFlight.delete(p);
-          });
+          // processJob's rejection (a DB failure while recording a failed job) must
+          // never escape: an unhandled rejection would take down the worker process.
+          const p = (options.workerOps?.processJob ?? processJob)(job, options.deps)
+            .catch((err) => options.onError?.(err))
+            .finally(() => {
+              running--;
+              inFlight.delete(p);
+            });
           inFlight.add(p);
         }
       } catch (err) {
@@ -248,7 +267,7 @@ export function startWorker(options: {
   void tick();
   const staleTimer = setInterval(() => void reportStale().catch(options.onError), 5 * 60_000);
 
-  const monitorMs = options.monitorMs ?? Number(process.env.MONITOR_INTERVAL_MS ?? 5 * 60_000);
+  const monitorMs = options.monitorMs ?? envIntervalMs(process.env.MONITOR_INTERVAL_MS, 5 * 60_000);
   let monitoring = false;
   const monitorTimer =
     monitorMs > 0
@@ -263,7 +282,7 @@ export function startWorker(options: {
         }, monitorMs)
       : null;
 
-  const statusMs = options.statusMs ?? Number(process.env.STATUS_PROBE_INTERVAL_MS ?? 60_000);
+  const statusMs = options.statusMs ?? envIntervalMs(process.env.STATUS_PROBE_INTERVAL_MS, 60_000);
   let probing = false;
   const statusTimer =
     statusMs > 0

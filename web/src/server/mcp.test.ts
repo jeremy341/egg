@@ -399,7 +399,7 @@ describe("the expanded tool list", () => {
     for (const t of tools.values()) expect(t.inputSchema).toMatchObject({ type: "object", additionalProperties: false });
     expect(tools.get("set_env_var")!.inputSchema.required).toEqual(expect.arrayContaining(["projectId", "key", "value"]));
     expect(tools.get("terminal_send")!.inputSchema.required).toEqual(expect.arrayContaining(["projectId", "sessionId", "data"]));
-    expect(tools.get("create_project")!.inputSchema.required).toEqual(expect.arrayContaining(["serverId", "name", "repoUrl", "runtime", "port"]));
+    expect(tools.get("create_project")!.inputSchema.required).toEqual(expect.arrayContaining(["serverId", "name", "repoUrl", "runtime"]));
   });
 });
 

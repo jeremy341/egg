@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readRepo } from "@/server/repo-read";
-import { COMMITTED_ENV_WARNING, commandsFor, detectRepo, parseEnvNames } from "@/server/repo-detect";
+import { COMMITTED_ENV_WARNING, commandsFor, detectRepo, parseEnvNames, parseRequirementsNames } from "@/server/repo-detect";
 
 const pkg = (o: object) => JSON.stringify(o);
 
@@ -43,10 +43,9 @@ describe("package manager", () => {
     expect(d.warnings[0]).toContain("package-lock.json");
   });
 
-  it("flags bun as not built by Egg yet", () => {
+  it("recognises Bun as a supported package manager", () => {
     const d = detectRepo({ "package.json": pkg({}), "bun.lock": "" });
-    expect(d.packageManagerSupported).toBe(false);
-    expect(d.notes.join(" ")).toContain("Bun");
+    expect(d.packageManagerSupported).toBe(true);
   });
 });
 
@@ -112,13 +111,12 @@ describe("runtime and commands", () => {
   });
 
   it.each([
-    ["go.mod", "Go"],
-    ["Gemfile", "Ruby"],
-    ["Cargo.toml", "Rust"],
-  ] as const)("says %s is not supported yet", (file, label) => {
+    ["go.mod", "go"],
+    ["Gemfile", "ruby"],
+    ["Cargo.toml", "rust"],
+  ] as const)("detects %s", (file, runtime) => {
     const d = detectRepo({ [file]: "" });
-    expect(d.runtime).toBeNull();
-    expect(d.notes.join(" ")).toContain(`${label} is not supported yet`);
+    expect(d.runtime).toBe(runtime);
   });
 
   it("says a Dockerfile is not built", () => {
@@ -248,6 +246,80 @@ describe("committed env files", () => {
     const d = detectRepo({ ".env.example": "A=1" });
     expect(d.warnings).toEqual([]);
     expect(d.committedEnvFiles).toEqual([]);
+  });
+});
+
+describe("bot frameworks", () => {
+  it("detects discord.js in dependencies and suggests a worker with DISCORD_TOKEN", () => {
+    const d = detectRepo({ "package.json": pkg({ dependencies: { "discord.js": "14" } }) });
+    expect(d.bot).toBe("discord.js");
+    expect(d.suggestedWorkloadKind).toBe("worker");
+    const token = d.suggestedEnv.find((e) => e.name === "DISCORD_TOKEN");
+    expect(token).toMatchObject({ name: "DISCORD_TOKEN", suggested: true, hasExampleValue: false });
+    expect(d.notes.join(" ")).toContain("Discord bot");
+  });
+
+  it("detects discord.py from requirements.txt", () => {
+    const text = "discord.py==2.3.2\n# a comment\n--index-url https://example.com\nrequests >= 2";
+    const d = detectRepo({ "requirements.txt": text });
+    expect(d.bot).toBe("discord.py");
+    expect(d.suggestedWorkloadKind).toBe("worker");
+    expect(d.suggestedEnv.some((e) => e.name === "DISCORD_TOKEN" && e.suggested === true)).toBe(true);
+    expect(d.notes.join(" ")).toContain("Discord bot");
+  });
+
+  it("parseRequirementsNames keeps only lowercase package names", () => {
+    expect(parseRequirementsNames("discord.py==2.3.2\n# a comment\n--index-url https://example.com\nrequests >= 2")).toEqual([
+      "discord.py",
+      "requests",
+    ]);
+  });
+
+  it("detects Telegraf and suggests TELEGRAM_BOT_TOKEN", () => {
+    const d = detectRepo({ "package.json": pkg({ dependencies: { telegraf: "4" } }) });
+    expect(d.bot).toBe("telegraf");
+    expect(d.suggestedWorkloadKind).toBe("worker");
+    expect(d.suggestedEnv.some((e) => e.name === "TELEGRAM_BOT_TOKEN" && e.suggested === true)).toBe(true);
+    expect(d.notes.join(" ")).toContain("Telegram bot");
+  });
+
+  it("detects Bolt for JavaScript and suggests both Slack names", () => {
+    const d = detectRepo({ "package.json": pkg({ dependencies: { "@slack/bolt": "4" } }) });
+    expect(d.bot).toBe("slack-bolt");
+    expect(d.suggestedWorkloadKind).toBe("worker");
+    const names = d.suggestedEnv.filter((e) => e.suggested).map((e) => e.name);
+    expect(names).toContain("SLACK_BOT_TOKEN");
+    expect(names).toContain("SLACK_SIGNING_SECRET");
+    expect(d.suggestedEnv.every((e) => e.source === "Slack app (Bolt for JavaScript)")).toBe(true);
+    expect(d.notes.join(" ")).toContain("Slack app");
+  });
+
+  it("detects python-telegram-bot from requirements.txt", () => {
+    const d = detectRepo({ "requirements.txt": "python-telegram-bot==20.0" });
+    expect(d.bot).toBe("python-telegram-bot");
+    expect(d.suggestedWorkloadKind).toBe("worker");
+    expect(d.suggestedEnv.some((e) => e.name === "TELEGRAM_BOT_TOKEN" && e.suggested === true)).toBe(true);
+  });
+
+  it("lets a web framework win over a bot dependency", () => {
+    const d = detectRepo({
+      "package.json": pkg({ dependencies: { next: "16", "discord.js": "14" }, scripts: { start: "next start" } }),
+    });
+    expect(d.framework).toBe("next");
+    expect(d.bot).toBeNull();
+    expect(d.suggestedWorkloadKind).toBeNull();
+    expect(d.suggestedEnv).toEqual([]);
+  });
+
+  it("does not suggest a name already present in an example env file", () => {
+    const d = detectRepo({
+      "package.json": pkg({ dependencies: { "discord.js": "14" } }),
+      ".env.example": "DISCORD_TOKEN=xxx",
+    });
+    const occurrences = [...d.env, ...d.suggestedEnv].filter((e) => e.name === "DISCORD_TOKEN");
+    expect(occurrences).toHaveLength(1);
+    expect(occurrences[0].source).toBe(".env.example");
+    expect(d.suggestedEnv).toEqual([]);
   });
 });
 

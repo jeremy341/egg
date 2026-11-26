@@ -288,6 +288,7 @@ const reset = async () => {
   await ctx.db
     .update(schema.projects)
     .set({
+      workloadKind: "web",
       alertMutedUntil: null,
       alertMutedForever: false,
       alertOnDown: true,
@@ -367,6 +368,20 @@ describe("firing and sending", () => {
     await expect(openAlert(await row(), "cpu", "x", NOW, failing)).resolves.toBeUndefined();
     warn.mockRestore();
     expect(await events()).toHaveLength(1);
+  });
+
+  it("tells a stopped worker apart from an unanswering web service", async () => {
+    await reset();
+    await ctx.db
+      .update(schema.projects)
+      .set({ workloadKind: "worker" })
+      .where(eq(schema.projects.id, project.id));
+    const fetcher = vi.fn(okFetch);
+    await openAlert(await row(), "down", "The process is stopped.", NOW, fetcher);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    const payload = JSON.parse(String((fetcher.mock.calls[0] as [string, RequestInit])[1].body));
+    expect(payload.content).toContain("Alerted has stopped");
+    expect(payload.content).not.toContain("is not answering");
   });
 });
 

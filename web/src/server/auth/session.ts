@@ -22,6 +22,9 @@ export async function upsertUser(profile: {
   emailVerified?: boolean;
 }): Promise<SessionUser> {
   const db = await getDb();
+  // Store the email the way sign-in lookups normalize it (normalizeEmail):
+  // a stored form with surrounding spaces or non-ASCII case could never match.
+  const email = profile.email?.trim().toLowerCase().slice(0, 254) ?? null;
   const existing = await db
     .select()
     .from(schema.users)
@@ -31,12 +34,12 @@ export async function upsertUser(profile: {
   if (existing) {
     await db
       .update(schema.users)
-      .set({ name: profile.name, email: profile.email, emailVerified: profile.emailVerified === true, slackId: profile.slackId })
+      .set({ name: profile.name, email, emailVerified: profile.emailVerified === true, slackId: profile.slackId })
       .where(eq(schema.users.id, existing.id));
     return {
       id: existing.id,
       name: profile.name,
-      email: profile.email,
+      email,
       hackClubId: existing.hackClubId,
     };
   }
@@ -46,12 +49,12 @@ export async function upsertUser(profile: {
     id,
     hackClubId: profile.id,
     name: profile.name,
-    email: profile.email,
+    email,
     slackId: profile.slackId,
     emailVerified: profile.emailVerified === true,
     createdAt: new Date(),
   });
-  return { id, name: profile.name, email: profile.email, hackClubId: profile.id };
+  return { id, name: profile.name, email, hackClubId: profile.id };
 }
 
 /**

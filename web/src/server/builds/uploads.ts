@@ -129,7 +129,7 @@ const bad = (message: string, code = "invalid_header") => new HttpError(400, mes
 /** X-Egg-Commit, X-Egg-Sha256, X-Egg-Branch and X-Egg-Run, each checked before any body is read. */
 export function parseUploadHeaders(h: Headers): UploadHeaders {
   const commit = (h.get("x-egg-commit") ?? "").trim().toLowerCase();
-  if (!/^[0-9a-f]{40}$/.test(commit)) throw bad("X-Egg-Commit must be the 40-character commit hash.");
+  if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(commit)) throw bad("X-Egg-Commit must be the commit hash (40 or 64 hex characters).");
   const sha256 = (h.get("x-egg-sha256") ?? "").trim().toLowerCase();
   if (!/^[0-9a-f]{64}$/.test(sha256)) throw bad("X-Egg-Sha256 must be the 64-character SHA-256 of the archive.");
   const branch = (h.get("x-egg-branch") ?? "").trim();
@@ -200,16 +200,24 @@ async function streamToFile(
   limits: { idleMs: number; maxDurationMs: number }
 ): Promise<{ file: string; sha256: string; bytes: number }> {
   const file = path.join(uploadsDir(), `incoming-${randomUUID()}.part`);
-  const out = createWriteStream(file, { flags: "wx", mode: 0o600 });
-  const hash = createHash("sha256");
-  let bytes = 0;
-  let head = Buffer.alloc(0);
   // A deadline rejects this promise, which ends the read or drain it is racing. Nothing else observes it.
   let stop!: (err: HttpError) => void;
   const stopped = new Promise<never>((_, reject) => {
     stop = reject;
   });
   stopped.catch(() => {});
+  const out = createWriteStream(file, { flags: "wx", mode: 0o600 });
+  let writeError: HttpError | undefined;
+  // Write failures surface asynchronously from the thread pool; without a
+  // persistent listener the 'error' event is uncaught and takes down the
+  // process. Route it through the existing stop promise instead.
+  out.on("error", (err) => {
+    writeError ??= new HttpError(502, `The build upload could not be stored: ${err.message}`, "upload_store_failed");
+    stop(writeError);
+  });
+  const hash = createHash("sha256");
+  let bytes = 0;
+  let head = Buffer.alloc(0);
   let idle: ReturnType<typeof setTimeout> | undefined;
   let overall: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -256,7 +264,9 @@ async function streamToFile(
     // Wait for the file to close first: Windows will not delete a file that is still open.
     await finished(out).catch(() => {});
     rmSync(file, { force: true });
-    throw err;
+    // A storage failure during teardown must not mask the deadline/validation
+    // error that ended the upload; only raw stream errors map to writeError.
+    throw err instanceof HttpError && err.code !== "upload_store_failed" ? err : writeError ?? err;
   } finally {
     clearTimeout(idle);
     clearTimeout(overall);

@@ -29,6 +29,7 @@ export type PreflightFacts = {
   scopeOk: boolean;
   diskFreeMb: number | null;
   memTotalMb: number | null;
+  tools?: Record<string, boolean>;
 };
 
 export function preflightScript(releasesDir: string): string {
@@ -38,6 +39,7 @@ export function preflightScript(releasesDir: string): string {
     `echo "node_version=$(node -v 2>/dev/null)"`,
     `echo "has_npm=$(has npm)"`,
     `echo "has_corepack=$(has corepack)"`,
+    `for tool in bun go cargo ruby bundle php composer java mvn gradle; do echo "has_$tool=$(has "$tool")"; done`,
     `echo "has_python3=$(has python3)"`,
     `if python3 -m venv --help >/dev/null 2>&1; then echo python_venv=1; else echo python_venv=0; fi`,
     `echo "has_systemd_run=$(has systemd-run)"`,
@@ -81,6 +83,7 @@ export function parsePreflight(output: string): PreflightFacts {
     scopeOk: flag("scope_ok"),
     diskFreeMb: num("disk_free_mb"),
     memTotalMb: num("mem_total_mb"),
+    ...(kv.has("has_bun") ? { tools: Object.fromEntries(["bun", "go", "cargo", "ruby", "bundle", "php", "composer", "java", "mvn", "gradle"].map((tool) => [tool, flag(`has_${tool}`)])) } : {}),
   };
 }
 
@@ -196,11 +199,12 @@ export type PreflightNeeds = {
   node: boolean;
   nodeEngine: string | null;
   /** The package manager the lockfile needs, when the default install command is used. */
-  packageManager: "npm" | "pnpm" | "yarn" | null;
+  packageManager: "npm" | "pnpm" | "yarn" | "bun" | null;
   /** The project installs Python requirements. */
   python: boolean;
   /** Something has to run on the container (install or build), so it needs the cap. */
   buildWork: boolean;
+  tools?: string[];
 };
 
 export function preflightNeeds(
@@ -209,20 +213,32 @@ export function preflightNeeds(
   spec: Pick<RuntimeSpec, "buildInstall" | "buildCommand" | "remoteInstall">
 ): PreflightNeeds {
   const buildWork = Boolean(spec.buildInstall || spec.buildCommand || spec.remoteInstall);
-  const node = (input.runtime === "node" || input.runtime === "static") && files.hasPackageJson && buildWork;
+  const node = (input.runtime === "node" || input.runtime === "static") && files.hasPackageJson && buildWork && files.lockfile !== "bun";
+  const tools: string[] = [];
+  if (files.lockfile === "bun" && buildWork) tools.push("bun");
+  if (input.runtime === "go" && spec.buildCommand?.startsWith("go build")) tools.push("go");
+  if (input.runtime === "rust" && spec.buildCommand?.startsWith("cargo build")) tools.push("cargo");
+  if (input.runtime === "ruby") tools.push("ruby", ...(spec.remoteInstall ? ["bundle"] : []));
+  if (input.runtime === "php") tools.push("php", ...(spec.remoteInstall ? ["composer"] : []));
+  if (input.runtime === "java") {
+    tools.push("java");
+    if (spec.buildCommand?.startsWith("mvn ")) tools.push("mvn");
+    if (spec.buildCommand?.startsWith("gradle ")) tools.push("gradle");
+  }
   return {
     node,
     nodeEngine: files.nodeEngine ?? null,
     packageManager: node && !input.installCommand ? (files.lockfile ?? "npm") : null,
-    python: input.runtime === "python" && files.hasRequirements,
+    python: input.runtime === "python" && Boolean(files.hasRequirements || files.hasPyproject),
     buildWork,
+    ...(tools.length ? { tools } : {}),
   };
 }
 
 // ----------------------------------------------------------------- decisions
 
 export type PreflightProblem = {
-  check: "probe" | "node" | "package-manager" | "python" | "venv" | "disk" | "systemd-run" | "cgroup" | "timeout";
+  check: "probe" | "node" | "package-manager" | "python" | "venv" | "disk" | "systemd-run" | "cgroup" | "timeout" | "runtime-tool";
   /** One line telling the owner what to do. */
   fix: string;
 };
@@ -237,6 +253,10 @@ export function evaluatePreflight(facts: PreflightFacts, needs: PreflightNeeds):
         fix: "Egg could not check your container before building, so nothing was uploaded. Check that the container is running and try again.",
       },
     ];
+  }
+
+  for (const tool of needs.tools ?? []) {
+    if (!facts.tools?.[tool]) out.push({ check: "runtime-tool", fix: `Install ${tool} on your container before deploying this project.` });
   }
 
   if (facts.diskFreeMb !== null && facts.diskFreeMb < MIN_FREE_DISK_MB) {

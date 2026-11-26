@@ -166,6 +166,13 @@ export function buildEnvFile(home: string, slug: string, releaseId: string) {
   return `${projectDir(home, slug)}/incoming/${releaseId}.buildenv`;
 }
 
+/** The resolved Compose forms Docker itself produced, kept like the build variables files. */
+export function composeConfigFiles(home: string, slug: string, releaseId: string) {
+  if (!RELEASE_ID.test(releaseId)) throw new ContainerBuildError("The release id is not valid.");
+  const base = `${projectDir(home, slug)}/incoming/${releaseId}.compose`;
+  return { canonical: `${base}.yaml`, json: `${base}.json` };
+}
+
 /** Shell lines that export the build variables. Names were checked when they were saved. */
 export function renderBuildEnv(vars: Record<string, string>): string {
   const lines: string[] = [];
@@ -370,11 +377,13 @@ export function cappedBuildScript(a: {
   hasEnvFile: boolean;
   cache?: NpmCachePlan | null;
   npmLockHash?: string | null;
+  /** Docker modes: this build composes its own command instead of the runtime preset. */
+  docker?: boolean;
 }) {
   const scope = buildScopeName(a.releaseId);
   const dir = releaseDir(a.home, a.slug, a.releaseId);
   const envFile = buildEnvFile(a.home, a.slug, a.releaseId);
-  const root = safeRelative(a.archiveRoot);
+  const root = safeRelative(a.docker ? "." : a.archiveRoot);
   const cacheRoot = a.cache && a.npmLockHash ? `${projectDir(a.home, a.slug)}/cache/npm/${a.cache.context}` : undefined;
 
   const inner = [
@@ -475,10 +484,11 @@ export function discardBuildScript(a: { home: string; slug: string; releaseId: s
   const p = projectDir(a.home, a.slug);
   const dir = releaseDir(a.home, a.slug, a.releaseId);
   const scope = `${buildScopeName(a.releaseId)}.scope`;
+  const compose = composeConfigFiles(a.home, a.slug, a.releaseId);
   return (
     SH_MARKER_HELPERS +
     stopBuildScript(a.releaseId) +
-    `rm -f ${shellQuote(buildEnvFile(a.home, a.slug, a.releaseId))} ${shellQuote(incomingArchive(a.home, a.slug, a.releaseId))}\n` +
+    `rm -f ${shellQuote(buildEnvFile(a.home, a.slug, a.releaseId))} ${shellQuote(incomingArchive(a.home, a.slug, a.releaseId))} ${shellQuote(compose.canonical)} ${shellQuote(compose.json)}\n` +
     `if egg_dir_managed ${shellQuote(p)}; then\n` +
     `  live=$(readlink ${shellQuote(currentLink(a.home, a.slug))} 2>/dev/null || true)\n` +
     `  if [ "$live" != ${shellQuote(dir)} ]; then rm -rf ${shellQuote(dir)} ${shellQuote(`${dir}.out`)} ${shellQuote(envFileOf(a.home, a.slug, a.releaseId))}; fi\n` +
@@ -543,7 +553,7 @@ export function stopAllBuildScopesScript() {
 // ----------------------------------------------------------------- the lifecycle
 
 type BuildLog = { info: (m: string) => void; warn: (m: string) => void; error: (m: string) => void };
-type BuildSession = Pick<NestSession, "script" | "uploadFile" | "writeFile">;
+type BuildSession = Pick<NestSession, "script" | "uploadFile" | "writeFile" | "exec">;
 
 export type ContainerBuildInput = {
   session: BuildSession;
@@ -578,6 +588,18 @@ export type ContainerBuildInput = {
   recordStage?: StageRecorder;
   cache?: NpmCachePlan | null;
   npmLockHash?: string | null;
+  /**
+   * Dockerfile mode: the command that builds the release image, run inside the
+   * capped scope and the disk watchdog instead of the runtime presets.
+   */
+  dockerSteps?: BuildStep[];
+  /**
+   * Compose mode: run after the unpack, under the lock, and return the capped
+   * steps for this release. The script asks Docker on the target to resolve the
+   * Compose file; the JSON it writes is what Egg reads and validates, and the
+   * steps only ever use the resolved output, never the original file.
+   */
+  dockerPrepare?: { label: string; script: string; jsonPath: string; steps: (json: unknown) => BuildStep[] };
 };
 
 /** The pre-upload check. Throws one fix line for the first thing that is missing; changes nothing. */
@@ -669,9 +691,10 @@ export async function verifyStaleBuildHolder(a: {
 export async function runContainerBuild(a: ContainerBuildInput): Promise<{ memoryCapMb: number }> {
   const { session, log, signal } = a;
   const record = a.recordStage ?? (async () => {});
-  const steps = buildSteps(a.built.spec);
-  const buildWork = steps.length > 0;
-  const memoryCapMb = buildWork ? containerMemoryCapMb(a.memoryMb, a.containerMemoryMb, Boolean(a.built.spec.buildCommand)) : 0;
+  const dockerMode = Boolean(a.dockerSteps || a.dockerPrepare);
+  let steps = a.dockerSteps ?? buildSteps(a.built.spec);
+  const buildWork = dockerMode || steps.length > 0;
+  const memoryCapMb = buildWork ? containerMemoryCapMb(a.memoryMb, a.containerMemoryMb, dockerMode || Boolean(a.built.spec.buildCommand)) : 0;
   const cpuPercent = cpuQuotaPercent(a.cpuCores);
 
   /** True once a cleanup has been tried. The cleanup returns true only when the build's scope is confirmed stopped. */
@@ -769,6 +792,31 @@ export async function runContainerBuild(a: ContainerBuildInput): Promise<{ memor
               });
           }
           await measureStage("unpack", unpack, record);
+          if (a.dockerPrepare) {
+            // The Compose file is read by Docker itself on the target, and only the
+            // resolved output Egg validates and later runs. Nothing of the
+            // original file executes here.
+            const prepare = a.dockerPrepare;
+            const json = await measureStage("compose", async () => {
+              const res = await session.script(prepare.script, {
+                timeoutMs: 120_000,
+                signal: runSignal,
+                outputTailBytes: 65536,
+                onLine: (l, s) => (s === "stderr" ? log.warn(l) : log.info(l)),
+              });
+              if (res.code !== 0) throw new ContainerBuildError(`Docker could not read the Compose file on your container. Check the file path and its format.${a.appRunning ? " Your app is still running." : ""}`);
+              const read = await session.exec(`cat ${shellQuote(prepare.jsonPath)}`, { signal: runSignal });
+              if (read.code !== 0 || !read.stdout.trim()) throw new ContainerBuildError(`Docker did not return the Compose configuration. Check the file path and its format.${a.appRunning ? " Your app is still running." : ""}`);
+              return read.stdout;
+            }, record);
+            let parsed: unknown;
+            try {
+              parsed = JSON.parse(json);
+            } catch {
+              throw new ContainerBuildError("Docker returned a Compose configuration that could not be read.");
+            }
+            steps = prepare.steps(parsed);
+          }
           if (!buildWork) {
             if (lock.lost.aborted) throw lockLostMessage();
             return;
@@ -800,8 +848,9 @@ export async function runContainerBuild(a: ContainerBuildInput): Promise<{ memor
                 memoryMb: memoryCapMb,
                 cpuPercent,
                 steps,
-                archiveRoot: a.built.spec.archiveRoot,
+                archiveRoot: dockerMode ? "." : a.built.spec.archiveRoot,
                 hasEnvFile: Object.keys(a.env).length > 0,
+                docker: dockerMode || undefined,
                 cache: a.cache,
                 npmLockHash: a.npmLockHash,
               }),

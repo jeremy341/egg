@@ -1,8 +1,7 @@
-import { and, eq, lt } from "drizzle-orm";
+import { and, eq, like, lt, or } from "drizzle-orm";
 import { z } from "zod";
 import { audit } from "@/server/audit";
 import { isInstanceAdmin } from "@/server/admin-identity";
-import { newId } from "@/server/crypto";
 import { getDb, schema } from "@/server/db";
 import { LOCK_STALE_AFTER_MS, renewBuildLock } from "@/server/deploy/build-lock";
 import { HttpError } from "@/server/http";
@@ -11,7 +10,11 @@ import type { NestSession } from "@/server/ssh/connection";
 
 const inputSchema = z.object({
   confirm: z.literal(true), workerStoppedConfirmed: z.literal(true),
-  workerId: z.string().min(1).max(200), holder: z.string().uuid(), lockAt: z.string().datetime(),
+  workerId: z.string().min(1).max(200),
+  // A stale recovery attempt leaves a "recovery:<id>" fence as the holder; a retry
+  // may pass that fence or the bare deployment id, both resolve to the same holder.
+  holder: z.string().regex(/^(?:recovery:)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i),
+  lockAt: z.string().datetime(),
 }).strict();
 const JOB_STALE_MS = 60_000;
 const STOP_SCOPES = `set -euo pipefail
@@ -59,10 +62,15 @@ export async function recoverBuild(admin: string, serverId: string, raw: unknown
   connect: (server: ServerRow) => Promise<NestSession> = connectToServer): Promise<void> {
   adminOnly(admin);
   const input = inputSchema.parse(raw);
+  const holder = input.holder.replace(/^recovery:/i, "").toLowerCase();
   const db = await getDb();
   const at = new Date(input.lockAt);
-  const fence = `recovery:${newId()}`;
-  await audit(admin, "admin.recovery.attempt", serverId, { holder: input.holder, workerId: input.workerId, workerStoppedConfirmed: true });
+  // The fence embeds the holder it recovers, so it is deterministic: when a
+  // recovery attempt fails after re-locking (SSH down, scopes still running),
+  // the guard it leaves is the same fence the retry derives, so the retry can
+  // adopt it and finish instead of the server being locked out forever.
+  const fence = `recovery:${holder}`;
+  await audit(admin, "admin.recovery.attempt", serverId, { holder, workerId: input.workerId, workerStoppedConfirmed: true });
   let session: NestSession | undefined;
   let renewal: ReturnType<typeof setInterval> | undefined;
   let lost = false;
@@ -73,18 +81,22 @@ export async function recoverBuild(admin: string, serverId: string, raw: unknown
         .innerJoin(schema.projects, eq(schema.projects.serverId, schema.servers.id))
         .innerJoin(schema.deployments, eq(schema.deployments.projectId, schema.projects.id))
         .innerJoin(schema.jobs, eq(schema.jobs.deploymentId, schema.deployments.id))
-        .where(and(eq(schema.servers.id, serverId), eq(schema.deployments.id, input.holder),
-          eq(schema.jobs.state, "running"), eq(schema.jobs.lockedBy, input.workerId))).get();
+        .where(and(eq(schema.servers.id, serverId), eq(schema.deployments.id, holder),
+          eq(schema.jobs.state, "running"),
+          // A running job is either the stale worker's claim or a fence left by
+          // an earlier recovery attempt of this same deployment.
+          or(eq(schema.jobs.lockedBy, input.workerId), like(schema.jobs.lockedBy, "recovery:%")))).get();
       const now = Date.now();
-      if (!row || row.server.buildLockHolder !== input.holder || row.server.buildLockAt?.getTime() !== at.getTime()
+      if (!row || (row.server.buildLockHolder !== holder && row.server.buildLockHolder !== fence)
+        || row.server.buildLockAt?.getTime() !== at.getTime()
         || now - at.getTime() < LOCK_STALE_AFTER_MS || !row.job.lockedAt || now - row.job.lockedAt.getTime() < JOB_STALE_MS
         || row.deployment.state !== "building" || row.deployment.activationStartedAt) {
         throw new HttpError(409, "The guard or worker changed, is not stale, or has reached activation. Inspect it again.", "conflict");
       }
       const job = await tx.update(schema.jobs).set({ lockedBy: fence, lockedAt: new Date() })
-        .where(and(eq(schema.jobs.id, row.job.id), eq(schema.jobs.state, "running"), eq(schema.jobs.lockedBy, input.workerId), eq(schema.jobs.lockedAt, row.job.lockedAt))).returning({ id: schema.jobs.id });
+        .where(and(eq(schema.jobs.id, row.job.id), eq(schema.jobs.state, "running"), eq(schema.jobs.lockedBy, row.job.lockedBy ?? ""), eq(schema.jobs.lockedAt, row.job.lockedAt))).returning({ id: schema.jobs.id });
       const lock = await tx.update(schema.servers).set({ buildLockHolder: fence, buildLockAt: new Date() })
-        .where(and(eq(schema.servers.id, serverId), eq(schema.servers.buildLockHolder, input.holder), eq(schema.servers.buildLockAt, at)))
+        .where(and(eq(schema.servers.id, serverId), eq(schema.servers.buildLockHolder, row.server.buildLockHolder), eq(schema.servers.buildLockAt, at)))
         .returning({ id: schema.servers.id });
       if (job.length !== 1 || lock.length !== 1) throw new HttpError(409, "The guard changed; inspect it again.", "conflict");
       return row;
@@ -100,11 +112,11 @@ export async function recoverBuild(admin: string, serverId: string, raw: unknown
         .where(and(eq(schema.jobs.id, snapshot.job.id), eq(schema.jobs.state, "running"), eq(schema.jobs.lockedBy, fence))).returning({ id: schema.jobs.id });
       if (lock.length !== 1 || job.length !== 1 || lost) throw new Error("Recovery guard changed; the guard remains in place.");
       await tx.update(schema.deployments).set({ state: "error", error: "The operator recovered an interrupted build.", finishedAt: new Date() })
-        .where(and(eq(schema.deployments.id, input.holder), eq(schema.deployments.state, "building")));
+        .where(and(eq(schema.deployments.id, holder), eq(schema.deployments.state, "building")));
     });
-    await audit(admin, "admin.recovery.complete", serverId, { holder: input.holder, workerId: input.workerId });
+    await audit(admin, "admin.recovery.complete", serverId, { holder, workerId: input.workerId });
   } catch (err) {
-    await audit(admin, "admin.recovery.failed", serverId, { holder: input.holder, workerId: input.workerId });
+    await audit(admin, "admin.recovery.failed", serverId, { holder, workerId: input.workerId });
     throw err;
   } finally {
     if (renewal) clearInterval(renewal);

@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createClient } from "@libsql/client";
@@ -20,6 +20,28 @@ afterEach(() => {
 });
 
 describe("database migrations", () => {
+  it("backfills listener ports without losing existing project or deployment rows", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "egg-workload-migration-"));
+    dirs.push(dir);
+    const migrations = path.join(dir, "drizzle");
+    cpSync(path.join(process.cwd(), "drizzle"), migrations, { recursive: true });
+    const journalFile = path.join(migrations, "meta", "_journal.json");
+    const journal = JSON.parse(readFileSync(journalFile, "utf8"));
+    journal.entries = journal.entries.filter((entry: { idx: number }) => entry.idx < 44);
+    writeFileSync(journalFile, JSON.stringify(journal));
+    const client = createClient({ url: `file:${path.join(dir, "test.db").replace(/\\/g, "/")}` });
+    clients.push(client);
+    await client.execute("PRAGMA foreign_keys=ON");
+    await migrateDatabase(client, migrations);
+    await client.execute("INSERT INTO users (id, hack_club_id, name, created_at) VALUES ('u', 'hc', 'User', 1)");
+    await client.execute("INSERT INTO servers (id, user_id, nest_username, host, public_key, private_key_enc, key_fingerprint, created_at) VALUES ('s', 'u', 'user', 'host', 'pub', 'private', 'fingerprint', 1)");
+    await client.execute("INSERT INTO projects (id, user_id, server_id, slug, name, repo_url, runtime, port, created_at, updated_at) VALUES ('p', 'u', 's', 'app', 'App', 'https://github.com/a/b', 'node', 3000, 1, 1)");
+    await client.execute("INSERT INTO deployments (id, project_id, env, source, branch, port, release_id, created_at) VALUES ('d', 'p', 'production', 'manual', 'main', 3000, 'r', 1)");
+    await migrateDatabase(client, path.join(process.cwd(), "drizzle"));
+    expect((await client.execute("SELECT workload_kind, deployment_mode, listen_port FROM projects WHERE id='p'")).rows[0]).toMatchObject({ workload_kind: "web", deployment_mode: "native", listen_port: 3000 });
+    expect((await client.execute("SELECT listen_port FROM deployments WHERE id='d'")).rows[0]?.listen_port).toBe(3000);
+    expect((await client.execute("PRAGMA foreign_key_check")).rows).toEqual([]);
+  });
   it("recovers when first migrations compete across separate connections", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "egg-migration-race-"));
     dirs.push(dir);
