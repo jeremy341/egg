@@ -50,8 +50,16 @@ describe("the chicken", () => {
     expect(chick.glow).toBeGreaterThanOrEqual(1);
   });
 
-  it("is one big chicken, drawn at least three times the sprite size", () => {
-    expect(chick.scale).toBeGreaterThanOrEqual(3);
+  it("has a walk: the legs shuffle and the body does not change", () => {
+    expect(chick.seq.walk.length).toBeGreaterThanOrEqual(4);
+    const bodies = new Set(chick.seq.walk.map((i) => chick.frames[i].slice(0, -1).join("/")));
+    expect(bodies.size).toBe(1);
+    const legs = new Set(chick.seq.walk.map((i) => chick.frames[i].at(-1)));
+    expect(legs.size).toBe(3);
+  });
+
+  it("is one chicken, about as big as Orry: the sprite drawn twice as large", () => {
+    expect(chick.scale).toBe(2);
     expect(chick.count).toEqual([1, 1, 1]);
   });
 

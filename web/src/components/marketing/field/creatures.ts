@@ -26,7 +26,7 @@ export interface Species {
   frames: readonly Frame[];
   /**
    * Named pose sequences (indexes into `frames`): `move` and `rest`, `hop`, `flap`, `peep` (the
-   * peck and the cheep) and `intro` (the hatch).
+   * peck and the cheep), `walk` and `intro` (the hatch).
    */
   seq: Readonly<Record<string, readonly number[]>>;
   /** Poses per second through `move`. */
@@ -200,6 +200,15 @@ const EGG_OPEN: Frame = [
   ...eggCrack(8).slice(5),
 ];
 
+/**
+ * The walk. The body stays as it is and the legs shuffle under it: one step with the feet a cell
+ * to the left of where they stand, one a cell to the right, with the standing pose between. The
+ * field bobs the body a cell on each standing pose, so it is a waddle and not a bounce.
+ */
+const withLegs = (legs: string): Frame => [...CHICK_STAND.slice(0, -1), legs];
+const CHICK_WALK_L = withLegs("...L.L.....");
+const CHICK_WALK_R = withLegs(".....L.L...");
+
 export const SPECIES: readonly Species[] = [
   {
     id: "chick",
@@ -225,6 +234,8 @@ export const SPECIES: readonly Species[] = [
       eggCrack(5),
       eggCrack(8),
       EGG_OPEN,
+      CHICK_WALK_L,
+      CHICK_WALK_R,
     ],
     seq: {
       move: [1, 2, 3, 2, 1, 0],
@@ -233,6 +244,7 @@ export const SPECIES: readonly Species[] = [
       flap: [6, 7, 8, 7],
       peep: [0, 4, 5, 4, 0],
       intro: [9, 10, 9, 11, 9, 10, 9, 12, 13, 14, 15, 15],
+      walk: [16, 0, 17, 0],
     },
     fps: 13,
     count: [1, 1, 1],
@@ -244,7 +256,7 @@ export const SPECIES: readonly Species[] = [
     reach: 50,
     wake: ",'",
     glow: 2,
-    scale: 3,
+    scale: 2,
   },
 ];
 

@@ -31,7 +31,7 @@
 import { INK, SHELL, SPECIES } from "./creatures";
 import { GestureTracker, type GestureEvent, type GestureFrame, type Rect } from "./gestures";
 import { Mood, type IrritationStage } from "./mood";
-import { cellSize, coverage, glyphSet, hash, mirror, mixHex, parse, rng, smooth } from "./sim";
+import { coverage, glyphSet, hash, mirror, mixHex, parse, rng, smooth } from "./sim";
 import { TUNING } from "./tuning";
 
 export const STORAGE_KEY = "egg-chicken";
@@ -57,7 +57,7 @@ export interface Field {
 }
 
 type State =
-  | "away" | "hatch" | "idle" | "run" | "sniff" | "sleepy" | "sleep" | "wake" | "eat" | "follow"
+  | "away" | "hatch" | "idle" | "run" | "takeoff" | "fly" | "sniff" | "sleepy" | "sleep" | "wake" | "eat" | "follow"
   | "poke" | "tickle" | "pet" | "pinch" | "rub" | "swat" | "wary" | "annoyed" | "mad" | "sulk" | "stomp" | "turn" | "storm"
   | "flee" | "joy" | "held" | "fall" | "land" | "dizzy" | "stare";
 
@@ -65,7 +65,7 @@ type State =
 const FREE: readonly State[] = ["idle", "run", "sniff", "sleepy", "sleep", "pet", "follow", "eat"];
 const STAGES: readonly IrritationStage[] = ["calm", "wary", "annoyed", "angry", "furious"];
 
-type Anim = "stand" | "run" | "peck" | "squash" | "stretch" | "flap" | "wiggle" | "stomp" | "hatch";
+type Anim = "stand" | "run" | "dash" | "peck" | "squash" | "stretch" | "flap" | "wiggle" | "stomp" | "hatch";
 type Eye = "" | "-" | "^" | "x";
 
 interface Seed {
@@ -94,6 +94,14 @@ interface Mote {
 
 const S = SPECIES[0];
 const SC = S.scale;
+/** The size of a pixel for distances and speeds, so how it moves does not depend on the size of a cell. */
+const U = 10;
+/** Pixels a second: walking, the wing-assisted dash, and flying. */
+const WALK = 150;
+const DASH = 420;
+const FLY = 300;
+/** Pixels of walking in one cycle of the four leg poses. */
+const STRIDE = 64;
 const INTRO = 2.1;
 const FORM = 0.5;
 const MAX_MOTES = 80;
@@ -101,6 +109,8 @@ const MAX_SEEDS = 10;
 const SEED_LIFE = 16;
 /** How far above the bottom edge of the window the feet stand, in pixels. */
 const FLOOR_PAD = 12;
+/** The fixed header covers this much of the top of the window. */
+const HEADER = 64;
 /** Shades are mapped to colour in quarter steps: 1, 1.25, ... 5. */
 const LEVELS = 17;
 /** Body characters, from the faintest to the densest. */
@@ -227,6 +237,15 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean, params:
   let runSpeed = 0;
   let runThen: State = "idle";
   let eatSeed: Seed | null = null;
+  // Flying: where it is going, for how much longer, and whether it is to land at the end or leave the screen.
+  let fx = 0;
+  let fy = 0;
+  let flightLeft = 0;
+  let landing = false;
+  let leavingFlight = false;
+  let boostUntil = 0;
+  let recover = false;
+  let walkPhase = 0;
   let pecked = false;
   let heldFor = 0;
   let strongFor = 0;
@@ -271,6 +290,8 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean, params:
   const floorY = () => Math.floor((h - FLOOR_PAD) / u) * u;
   /** The nearest place where the sprite sits exactly on the grid. */
   const onGridX = (x: number) => (Math.round(x / u - BW / 2) + BW / 2) * u;
+  /** The highest the feet can be, so that the head stays under the header. */
+  const minFeet = () => HEADER + bodyH() * 0.95 + 6;
   const margin = () => bodyW() * 0.5;
   const clampX = (x: number) => Math.max(margin(), Math.min(w - margin(), x));
   const visible = () => state !== "away";
@@ -333,7 +354,8 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean, params:
     w = nw;
     h = nh;
     dpr = ndpr;
-    u = cellSize(w);
+    // As big as Orry: the body is 18 rows, so 7 pixel cells make it about 126 pixels tall on a desktop and 4 pixel cells about 72 on a phone.
+    u = w < 640 ? 4 : 7;
     if (resized) {
       canvas.width = Math.round(w * dpr);
       canvas.height = Math.round(h * dpr);
@@ -367,18 +389,18 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean, params:
   const ink = () => INK[theme()];
   /** `n` pixel hearts rising from the head; `big` for the bliss ones. */
   function hearts(n: number, big = false) {
-    for (let k = 0; k < n; k++) mote(c.x + between(-5, 5) * u, headY() + u * 3, "", COLORS.heart, between(-2, 2) * u, -between(5, 8) * u, 1.4, big ? 2.6 : 1.6, true);
+    for (let k = 0; k < n; k++) mote(c.x + between(-5, 5) * U, headY() + U * 3, "", COLORS.heart, between(-2, 2) * U, -between(5, 8) * U, 1.4, big ? 2.6 : 1.6, true);
   }
-  const anger = () => mote(c.x - c.face * 4 * u, headY() + u * 2, "#", COLORS.anger, 0, -u * 2, 1.0, SC);
+  const anger = () => mote(c.x - c.face * 4 * U, headY() + U * 2, "#", COLORS.anger, 0, -U * 2, 1.0, SC);
   const bang = (n = 1) => {
-    for (let k = 0; k < n; k++) mote(c.x + (k - (n - 1) / 2) * u * 3, headY(), "!", ink(), between(-1, 1) * u, -u * 5, 1.0, SC);
+    for (let k = 0; k < n; k++) mote(c.x + (k - (n - 1) / 2) * U * 3, headY(), "!", ink(), between(-1, 1) * U, -U * 5, 1.0, SC);
   };
-  const ask = () => mote(c.x + c.face * 3 * u, headY(), "?", ink(), 0, -u * 4, 1.2, SC);
-  const zee = () => mote(c.x + c.face * 6 * u, headY() + u * 4, "z", COLORS.z, c.face * u * 2, -u * 4, 2.0, SC * 0.8);
-  const star = () => mote(c.x + between(-8, 8) * u, headY() + u * 3, "*", COLORS.star, between(-3, 3) * u, -u * 2, 1.0, SC * 0.8);
-  const sweat = () => mote(c.x - c.face * 7 * u, headY() + u * 6, "'", COLORS.sweat, -c.face * u * 3, u * 3, 0.8, SC * 0.8);
+  const ask = () => mote(c.x + c.face * 3 * U, headY(), "?", ink(), 0, -U * 4, 1.2, SC);
+  const zee = () => mote(c.x + c.face * 6 * U, headY() + U * 4, "z", COLORS.z, c.face * U * 2, -U * 4, 2.0, SC * 0.8);
+  const star = () => mote(c.x + between(-8, 8) * U, headY() + U * 3, "*", COLORS.star, between(-3, 3) * U, -U * 2, 1.0, SC * 0.8);
+  const sweat = () => mote(c.x - c.face * 7 * U, headY() + U * 6, "'", COLORS.sweat, -c.face * U * 3, U * 3, 0.8, SC * 0.8);
   const dust = (n: number, from = c.x) => {
-    for (let k = 0; k < n; k++) mote(from + between(-6, 6) * u, c.y - u, ",'.", ink(), between(-8, 8) * u, -between(2, 8) * u, 0.5, 1.4);
+    for (let k = 0; k < n; k++) mote(from + between(-6, 6) * U, c.y - U, ",'.", ink(), between(-8, 8) * U, -between(2, 8) * U, 0.5, 1.4);
   };
 
   // ---- the state machine ---------------------------------------------------------------------
@@ -418,23 +440,57 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean, params:
     life = between(40, 90);
     c.y = floorY();
     c.vx = c.vy = 0;
-    if (forced || random() < 0.45) {
+    const roll = random();
+    if (forced || roll < 0.3) {
       // It hatches from an egg on the floor.
       c.x = onGridX(clampX(between(w * 0.2, w * 0.8)));
       c.face = random() < 0.5 ? 1 : -1;
       c.form = 0;
       enter("hatch");
-    } else {
-      // Or it runs in from the left or right edge.
+    } else if (roll < 0.6) {
+      // Or it walks in from the left or right edge.
       const left = random() < 0.5;
       c.x = left ? -bodyW() * 0.7 : w + bodyW() * 0.7;
       c.face = left ? 1 : -1;
       c.form = 1;
-      run(onGridX(clampX(between(w * 0.25, w * 0.75))), TUNING.run.speed, "idle");
+      run(onGridX(clampX(between(w * 0.25, w * 0.75))), WALK * 1.3, "idle");
+    } else {
+      // Or it flies in.
+      const left = random() < 0.5;
+      c.x = left ? -bodyW() * 0.7 : w + bodyW() * 0.7;
+      c.y = between(minFeet(), floorY() * 0.6);
+      c.face = left ? 1 : -1;
+      c.form = 1;
+      c.vx = (left ? 1 : -1) * FLY;
+      flightLeft = between(3, 7);
+      landing = false;
+      leavingFlight = false;
+      pickFlight();
+      enter("fly");
     }
   }
 
-  const leave = () => run(edgeFor(c.x), TUNING.run.speed * 1.2, "away");
+  /** Somewhere in the air to fly to, not too near where it is. */
+  function pickFlight() {
+    const lo = minFeet();
+    const hi = Math.max(lo + 10, floorY() - bodyH() * 0.15);
+    fx = clampX(between(0, w));
+    fy = between(lo, hi);
+    if (Math.hypot(fx - c.x, fy - c.y) < bodyW() * 0.8) fx = clampX(c.x + (c.x < w / 2 ? 1 : -1) * between(0.8, 1.6) * bodyW());
+  }
+
+  /** It goes the way it likes: off the side of the screen on foot, or up and away. */
+  function leave() {
+    if (state === "fly" || random() < 0.5) {
+      leavingFlight = true;
+      landing = false;
+      const dir = c.x < w / 2 ? -1 : 1;
+      fx = dir < 0 ? -bodyW() : w + bodyW();
+      fy = Math.max(minFeet(), c.y - bodyH() * 0.6);
+      if (state !== "fly") c.vy = -U * 45;
+      enter("fly");
+    } else run(edgeFor(c.x), DASH * 0.8, "away");
+  }
 
   function goAway(seconds: number) {
     away = seconds;
@@ -448,7 +504,7 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean, params:
     if (!ptr.on || !ptr.fine) return;
     const dx = ptr.x - c.x;
     const dy = ptr.y - (c.y - bodyH() / 2);
-    if (Math.abs(dx) > TUNING.gaze.rangeX || Math.abs(dy) > TUNING.gaze.rangeY || Math.abs(dx) < u * 4) return;
+    if (Math.abs(dx) > TUNING.gaze.rangeX || Math.abs(dy) > TUNING.gaze.rangeY || Math.abs(dx) < U * 4) return;
     const side = dx > 0 ? 1 : -1;
     if (ptr.moved > time - 0.1) gazeUntil = time + TUNING.gaze.holdAfterMoveMs / 1000;
     if (side === c.face) {
@@ -468,6 +524,14 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean, params:
     const sleeping = state === "sleep" || state === "sleepy";
     switch (ev.type) {
       case "tap":
+        if (state === "fly") {
+          // Poked in the air: it cheeps, and a burst of wings.
+          mood.poke();
+          c.cheep = 1;
+          boostUntil = time + 0.8;
+          bang();
+          return;
+        }
         if (sleeping) return wakeUp();
         if (free() && !fs.pinching) {
           mood.poke();
@@ -476,6 +540,12 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean, params:
         }
         return;
       case "tickle":
+        if (state === "fly") {
+          mood.tickle();
+          hearts(2);
+          boostUntil = time + 1;
+          return;
+        }
         if (free() || state === "poke") {
           mood.tickle();
           enter("tickle");
@@ -497,6 +567,16 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean, params:
         }
         return;
       case "charge":
+        if (state === "fly" && !leavingFlight && followCooldown <= 0) {
+          // Charged in the air: it bolts to the far side.
+          followCooldown = TUNING.charge.cooldownMs / 1000;
+          fx = clampX(ptr.x < c.x ? w - margin() : margin());
+          fy = between(minFeet(), floorY() * 0.7);
+          landing = false;
+          boostUntil = time + 1.4;
+          bang();
+          return;
+        }
         if (free() && followCooldown <= 0) {
           followCooldown = TUNING.charge.cooldownMs / 1000;
           enter("flee");
@@ -537,6 +617,7 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean, params:
     const stage = mood.irritationStage;
     if (dizzyHeld) mood.droppedAfterShake();
     afterDrop = dizzyHeld || stage === "angry" || stage === "furious" ? "mad" : heldFor >= TUNING.held.amused && gentleHold && !mood.grudge && !thrown ? "joy" : "normal";
+    recover = !thrown && !bigFall && afterDrop === "normal" && random() < 0.5;
     enter("fall");
   }
 
@@ -557,20 +638,21 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean, params:
     if (life <= 0) return leave();
     const roll = random();
     if (quiet > TUNING.sleep.quietMs / 1000 / ts && roll < TUNING.sleep.chance) return enter("sleepy");
-    if (roll < 0.6) {
-      // It never walks: it dashes, short or long.
+    if (roll < 0.4) {
+      // A walk, short or long, and now and then a dash with the wings out.
       const far = random() < 0.35;
       const reach = far ? between(0.35, 0.7) * w : between(0.8, 2) * bodyW();
-      return run(onGridX(clampX(c.x + (random() < 0.5 ? -1 : 1) * reach)), TUNING.run.speed, "idle");
+      return run(onGridX(clampX(c.x + (random() < 0.5 ? -1 : 1) * reach)), far && random() < 0.5 ? DASH * 0.7 : WALK, "idle");
     }
-    if (roll < 0.85) return enter("sniff");
+    if (roll < 0.58) return enter("sniff");
+    if (roll < 0.82 && !reduced) return enter("takeoff");
     flip();
     dwell = between(1.5, 3);
   }
 
   /** What each state does with the time that passed. */
   function update(dt: number) {
-    const G = u * 160;
+    const G = U * 160;
     st += dt;
     c.t += dt;
     if (c.form < 1 && state !== "hatch") c.form = Math.min(1, c.form + dt / FORM);
@@ -590,7 +672,7 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean, params:
         c.anim = "hatch";
         c.form = Math.min(1, st / FORM);
         if (st >= INTRO) {
-          for (let k = 0; k < 8; k++) mote(c.x + between(-6, 6) * u, c.y - between(3, 16) * u, SHELL, ink(), between(-6, 6) * u, between(-6, 1) * u, 0.9, 1.4);
+          for (let k = 0; k < 8; k++) mote(c.x + between(-6, 6) * U, c.y - between(3, 16) * U, SHELL, ink(), between(-6, 6) * U, between(-6, 1) * U, 0.9, 1.4);
           enter("idle");
         }
         break;
@@ -617,12 +699,13 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean, params:
         const dir = Math.sign(dx);
         const leaving = runThen === "away" || runThen === "storm";
         if (dir) c.face = dir as 1 | -1;
-        c.anim = "run";
-        c.vx += (dir * runSpeed - c.vx) * ease(10, dt);
+        // Up to a brisk walk it is a walk; faster than that it runs with its wings out.
+        c.anim = runSpeed > 300 ? "dash" : "run";
+        c.vx += (dir * runSpeed - c.vx) * ease(6, dt);
         c.x += c.vx * dt;
         if (!leaving) c.x = edge(c.x);
         life -= dt * ts;
-        if (Math.abs(dx) < u * 1.5 || (leaving && (c.x < -bodyW() * 0.6 || c.x > w + bodyW() * 0.6))) {
+        if (Math.abs(dx) < U * 1 || (leaving && (c.x < -bodyW() * 0.6 || c.x > w + bodyW() * 0.6))) {
           c.vx = 0;
           if (runThen === "away") goAway(between(8, 20));
           else if (runThen === "storm") {
@@ -634,6 +717,62 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean, params:
           c.vx = 0;
           enter("idle");
         }
+        break;
+      }
+      case "takeoff": {
+        // A crouch, then up.
+        c.anim = "squash";
+        c.vx = 0;
+        if (st > 0.28) {
+          flightLeft = between(5, 12);
+          landing = false;
+          leavingFlight = false;
+          pickFlight();
+          dust(3);
+          enter("fly");
+          c.vy = -U * 55;
+        }
+        break;
+      }
+      case "fly": {
+        c.anim = "flap";
+        c.beat += dt * S.fps * 0.7;
+        life -= dt * ts;
+        flightLeft -= dt;
+        // It cruises to a place, glides on to another, and in the end comes down.
+        if (!leavingFlight && !landing && flightLeft <= 0) {
+          landing = true;
+          fx = clampX(c.x + between(-0.25, 0.25) * w);
+          fy = floor;
+        }
+        const dx = fx - c.x;
+        const dy = fy - c.y;
+        const d = Math.hypot(dx, dy) || 1;
+        const boost = time < boostUntil ? 1.7 : 1;
+        const speed = FLY * boost * Math.min(1, d / 170 + 0.15);
+        const bob = landing ? 0 : Math.sin(c.t * 4.5) * 55;
+        const k = ease(3, dt);
+        c.vx += ((dx / d) * speed - c.vx) * k;
+        c.vy += ((dy / d) * speed + bob - c.vy) * k;
+        c.x += c.vx * dt;
+        c.y = Math.max(minFeet(), Math.min(floor, c.y + c.vy * dt));
+        if (!leavingFlight) c.x = Math.max(bodyW() * 0.2, Math.min(w - bodyW() * 0.2, c.x));
+        if (c.vx > 60) c.face = 1;
+        else if (c.vx < -60) c.face = -1;
+        if (leavingFlight) {
+          if (c.x < -bodyW() * 0.6 || c.x > w + bodyW() * 0.6) goAway(between(8, 20));
+        } else if (landing) {
+          if (c.y >= floor - 3 && d < 60) {
+            c.y = floor;
+            c.vx *= 0.3;
+            c.vy = 0;
+            thrown = false;
+            bigFall = false;
+            afterDrop = "normal";
+            dust(4);
+            enter("land");
+          }
+        } else if (d < 50) pickFlight();
         break;
       }
       case "sniff": {
@@ -667,7 +806,7 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean, params:
         c.anim = "stand";
         if (st < dt * 1.5) {
           bang();
-          c.vy = -u * 36;
+          c.vy = -U * 36;
           c.cheep = 1;
         }
         if (st > TUNING.beat.wake) enter("idle");
@@ -676,10 +815,10 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean, params:
       case "eat": {
         if (!eatSeed || !seeds.includes(eatSeed)) return enter("idle");
         const dx = eatSeed.x - c.x;
-        if (Math.abs(dx) > u * 3) {
+        if (Math.abs(dx) > U * 3) {
           c.face = Math.sign(dx) as 1 | -1;
           c.anim = "run";
-          c.vx += (Math.sign(dx) * TUNING.run.speed * 1.2 - c.vx) * ease(10, dt);
+          c.vx += (Math.sign(dx) * WALK * 1.8 - c.vx) * ease(6, dt);
           c.x = edge(c.x + c.vx * dt);
         } else {
           c.vx = 0;
@@ -688,7 +827,7 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean, params:
             pecked = true;
             st = 0;
           } else if (st > 0.7) {
-            mote(eatSeed.x, eatSeed.y - u, ",", ink(), between(-2, 2) * u, -u * 3, 0.6, 1.2);
+            mote(eatSeed.x, eatSeed.y - U, ",", ink(), between(-2, 2) * U, -U * 3, 0.6, 1.2);
             seeds = seeds.filter((s) => s !== eatSeed);
             eatSeed = null;
             if (random() < 0.4) hearts(1);
@@ -698,22 +837,56 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean, params:
         break;
       }
       case "follow": {
-        // Play: it runs after the pointer along the bottom, and when the pointer stops it stops and looks up, excited.
-        const dx = ptr.x - c.x;
+        // Play: it comes after the pointer, along the bottom or through the air, and when the pointer stops it stops and looks, excited.
         mood.play(dt * ts);
-        if (fs.speed < 60 || Math.abs(dx) < u * 4 || !ptr.on) {
-          c.vx = 0;
+        const gx = clampX(ptr.x);
+        const want = Math.min(floor, Math.max(minFeet(), ptr.y + bodyH() * 0.45));
+        const dx = gx - c.x;
+        const dy = want - c.y;
+        const aloft = c.y < floor - 4 || want < floor - 20;
+        const stopped = fs.speed < 60 || !ptr.on || (Math.abs(dx) < U * 4 && Math.abs(dy) < U * 6);
+        const k = ease(4, dt);
+        if (stopped) {
+          // It hovers, or stands, and looks pleased.
           c.eye = "^";
-          c.anim = "stand";
-          if (c.cheep <= 0 && st < dt * 2) c.cheep = 1;
-          if (st > 1.2) enter("idle");
+          c.vx += (0 - c.vx) * ease(6, dt);
+          if (aloft) {
+            c.anim = "flap";
+            c.beat += dt * S.fps * 0.5;
+            c.vy += (dy * 2 + Math.sin(c.t * 4) * 40 - c.vy) * k;
+          } else {
+            c.anim = "stand";
+            c.vy = 0;
+          }
+          if (st < dt * 1.5) c.cheep = 1;
+          if (st > 1.4) {
+            if (c.y < floor - 4) {
+              flightLeft = 0;
+              landing = true;
+              leavingFlight = false;
+              fx = c.x;
+              fy = floor;
+              enter("fly");
+            } else enter("idle");
+          }
         } else {
-          c.face = Math.sign(dx) as 1 | -1;
-          c.anim = "run";
-          c.vx += (Math.sign(dx) * TUNING.run.speed * 1.1 - c.vx) * ease(10, dt);
-          c.x = edge(c.x + c.vx * dt);
           st = 0;
+          c.face = (Math.sign(dx) || c.face) as 1 | -1;
+          const dist = Math.hypot(dx, dy) || 1;
+          const speed = Math.min(aloft ? FLY * 1.1 : DASH * 0.7, dist * 3);
+          if (aloft) {
+            c.anim = "flap";
+            c.beat += dt * S.fps * 0.7;
+            c.vx += ((dx / dist) * speed - c.vx) * k;
+            c.vy += ((dy / dist) * speed - c.vy) * k;
+          } else {
+            c.anim = "dash";
+            c.vx += ((dx / dist) * speed - c.vx) * ease(6, dt);
+            c.vy = 0;
+          }
         }
+        c.x = Math.max(bodyW() * 0.2, Math.min(w - bodyW() * 0.2, c.x + c.vx * dt));
+        c.y = Math.max(minFeet(), Math.min(floor, c.y + c.vy * dt));
         break;
       }
       case "poke": {
@@ -722,7 +895,7 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean, params:
           c.anim = "stand";
           if (st < dt * 1.5) {
             c.cheep = 1;
-            c.vy = -u * 40;
+            c.vy = -U * 40;
             bang();
           }
         } else {
@@ -767,7 +940,7 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean, params:
       case "pinch": {
         c.anim = st < TUNING.beat.pinch[0] ? "squash" : Math.floor(st * 2.5) % 2 ? "squash" : "stretch";
         c.eye = "-";
-        if (st < dt * 1.5) mote(c.x - c.face * 5 * u, headY() + u * 4, "o", ink(), 0, -u * 2, 0.8, SC);
+        if (st < dt * 1.5) mote(c.x - c.face * 5 * U, headY() + U * 4, "o", ink(), 0, -U * 2, 0.8, SC);
         if (!fs.pinching && !pressActive) enter("rub");
         break;
       }
@@ -806,7 +979,7 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean, params:
         if (st < dt * 1.5) anger();
         if (st > 1) {
           const off = ptr.x < c.x ? 1 : -1;
-          run(onGridX(clampX(c.x + off * between(1.2, 2.4) * bodyW())), TUNING.run.speed, "idle");
+          run(onGridX(clampX(c.x + off * between(1.2, 2.4) * bodyW())), WALK * 1.2, "idle");
         }
         break;
       }
@@ -845,7 +1018,7 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean, params:
         c.anim = "stand";
         c.eye = "-";
         if (st < dt * 1.5) c.face = ptr.x > c.x ? -1 : 1;
-        if (st > TUNING.beat.turn) run(edgeFor(c.x), TUNING.run.storm, "storm");
+        if (st > TUNING.beat.turn) run(edgeFor(c.x), DASH * 0.75, "storm");
         break;
       }
       case "flee": {
@@ -856,8 +1029,8 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean, params:
         } else {
           const off = ptr.x < c.x ? 1 : -1;
           c.face = off;
-          c.anim = "run";
-          c.vx += (off * TUNING.run.flee - c.vx) * ease(14, dt);
+          c.anim = "dash";
+          c.vx += (off * TUNING.run.flee * 0.6 - c.vx) * ease(10, dt);
           c.x = edge(c.x + c.vx * dt);
         }
         if (st > TUNING.flee.total) {
@@ -873,8 +1046,8 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean, params:
         if (st < crouch) c.anim = "squash";
         else if (st < launch) {
           c.anim = "stretch";
-          if (st - dt < crouch) c.vy = -u * 56;
-        } else if (c.y < floor - u) c.anim = "flap";
+          if (st - dt < crouch) c.vy = -U * 56;
+        } else if (c.y < floor - U) c.anim = "flap";
         else c.anim = st < landed ? "squash" : "stand";
         if (st > landed && st - dt < landed) {
           c.cheep = 1;
@@ -947,12 +1120,23 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean, params:
           c.eye = "x";
           every(0.4, sweat);
         }
-        if (c.vx > u * 2) c.face = 1;
-        else if (c.vx < -u * 2) c.face = -1;
+        if (c.vx > U * 2) c.face = 1;
+        else if (c.vx < -U * 2) c.face = -1;
         break;
       }
       case "fall": {
         c.anim = "flap";
+        if (recover && c.vy > 240) {
+          // Not hurt: it catches itself with its wings and flies off.
+          recover = false;
+          flightLeft = between(3, 7);
+          landing = false;
+          leavingFlight = false;
+          pickFlight();
+          c.vy *= 0.15;
+          enter("fly");
+          break;
+        }
         c.vy += G * dt;
         c.x += c.vx * dt;
         c.y += c.vy * dt;
@@ -1030,7 +1214,7 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean, params:
     }
 
     // Gravity for everything in the air that is not in a sequence that handles it.
-    if (state !== "held" && state !== "fall" && state !== "joy" && state !== "away") {
+    if (state !== "held" && state !== "fall" && state !== "joy" && state !== "away" && state !== "fly" && state !== "takeoff" && state !== "follow") {
       if (c.y < floor - 0.5 || c.vy < 0) {
         c.vy += G * dt;
         c.y = Math.min(floor, c.y + c.vy * dt);
@@ -1043,12 +1227,13 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean, params:
 
     // The beat: a hopping chicken takes a whole hop at a time and always lands before it stands.
     c.beat += dt * S.fps;
-    const walking = c.anim === "run" && Math.abs(c.vx) > u * 0.6;
-    if (walking || c.hop > 0) {
+    // The legs go round once for every STRIDE pixels it covers, so the feet never slide.
+    if (c.anim === "run") walkPhase += (Math.abs(c.vx) * dt) / STRIDE;
+    if (c.hop > 0) {
       c.hop += (dt * S.fps) / Q.hop.length;
-      if (c.hop >= 1) c.hop = walking ? c.hop - 1 : 0;
+      if (c.hop >= 1) c.hop = 0;
     }
-    if (walking && Math.abs(c.vx) > TUNING.run.speed * 0.6 && random() < dt * 6) dust(1, c.x - Math.sign(c.vx) * bodyW() * 0.25);
+    if (c.anim === "dash" && Math.abs(c.vx) > DASH * 0.4 && random() < dt * 8) dust(1, c.x - Math.sign(c.vx) * bodyW() * 0.25);
   }
 
   /** Reads the pointer, feeds the mood meters, and starts the reactions the gestures and the stages call for. */
@@ -1062,7 +1247,7 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean, params:
     quiet = fs.moveAgeMs > 2500 ? quiet + dt : 0;
 
     // Petting makes it happy, until it is too much; fast or jittery movement only annoys it.
-    if (fs.petting === "gentle" && fs.overHead) {
+    if (fs.petting === "gentle" && fs.overHead && (free() || state === "pet")) {
       petLast = time;
       mood.pet(dtm);
       if (mood.enough) mood.tiredOfPetting(dtm);
@@ -1103,9 +1288,11 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean, params:
       gestures.resetStare();
       enter("stare");
     }
-    const lowPointer = ptr.on && ptr.fine && ptr.y > h * 0.65 && !fs.over;
-    playFor = lowPointer && fs.speed > 200 && fs.speed < 900 ? playFor + dt : 0;
-    if ((state === "idle" || state === "run" || state === "sniff") && playFor > 0.6 && mood.affectionStage !== "none" && Math.abs(ptr.x - c.x) > bodyW() * 0.4) {
+    // Played with: a pointer that moves steadily and is not at it, and it is in the mood.
+    const playing = ptr.on && ptr.fine && !fs.over && fs.speed > 200 && fs.speed < 900;
+    playFor = playing ? playFor + dt : 0;
+    const canPlay = state === "idle" || state === "run" || state === "sniff" || (state === "fly" && !leavingFlight);
+    if (canPlay && playFor > 0.6 && mood.affectionStage !== "none") {
       playFor = 0;
       enter("follow");
     }
@@ -1115,7 +1302,9 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean, params:
   function frameOf(): number {
     switch (c.anim) {
       case "run":
-        return at(Q.hop, c.hop * Q.hop.length);
+        return Q.walk[Math.floor(walkPhase * 4) % Q.walk.length];
+      case "dash":
+        return Q.flap[Math.floor(c.beat) % Q.flap.length];
       case "peck":
         return Math.floor(c.t * 9) % 2 ? Q.rest[0] : Q.move[0];
       case "squash":
@@ -1176,7 +1365,9 @@ export function createField(canvas: HTMLCanvasElement, reduced: boolean, params:
     const X = onGridX(c.x) / u;
     const feet = Math.round(c.y / u);
     const lift = Math.sin(Math.PI * smooth((c.hop - 0.12) / 0.72)) * 1.7 * SC;
-    const Y = feet - Math.round(lift);
+    // A waddle: the body is a cell higher on each standing pose of the walk. A dash is a little above the ground.
+    const stepUp = c.anim === "run" && Math.abs(c.vx) > 5 && Q.walk[Math.floor(walkPhase * 4) % Q.walk.length] === Q.rest[0] ? 1 : 0;
+    const Y = feet - Math.round(lift) - stepUp - (c.anim === "dash" ? 2 : 0);
     // A soft shadow on the floor, smaller and fainter the higher it is.
     const floorRow = Math.round(floorY() / u);
     const up = Math.min(1, (floorRow - Y) / (4 * SC));
