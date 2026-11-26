@@ -211,7 +211,7 @@ if [ -L "$dst" ]; then rm -f -- "$dst"; elif [ -e "$dst" ]; then rm -rf -- "$dst
 export async function confirmImport(userId: string, projectId: string, planId: string, raw: unknown, token: string | undefined,
   connect: (server: ServerRow) => Promise<NestSession> = server => connectToServer(server, { adoptionExecutor: true })): Promise<void> {
   z.object({ confirm: z.literal(true) }).strict().parse(raw);
-  if ((await userForSessionToken(token))?.id !== userId || !(await isFreshAuth(token))) throw new HttpError(403, "Confirm a fresh Hack Club sign-in before cutover.", "reauth_required");
+  if ((await userForSessionToken(token))?.id !== userId || !(await isFreshAuth(token, Date.now(), userId))) throw new HttpError(403, "Confirm a fresh Hack Club sign-in before cutover.", "reauth_required");
   const project = await getProjectForUser(userId, projectId);
   if (project.runtime === "python") throw fail("Python virtual environments cannot safely be copied; use a supported Node, static or command project.");
   const server = await getServerForUser(userId, project.serverId);
