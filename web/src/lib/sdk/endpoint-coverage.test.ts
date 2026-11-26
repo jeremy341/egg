@@ -126,9 +126,9 @@ const CLIENT_CALLS: Record<string, Call$> = {
   get_killed_container_logs: (n) => n.getKilledContainerLogs("P"),
   list_crash_reports: (n) => n.listCrashReports("P"),
   get_crash_report: (n) => n.getCrashReport("CRASH"),
-  get_repo_branches: (n) => n.getRepoBranches(),
+  get_repo_branches: (n) => n.getRepoBranches("acme/site", { installation: 1701, limit: 10 }),
   get_repo_contents: (n) => n.getRepoContents(),
-  get_repo_dockerfiles: (n) => n.getRepoDockerfiles(),
+  get_repo_dockerfiles: (n) => n.getRepoDockerfiles("acme/site", { installation: 1701, ref: "main" }),
   detect_repo_config: (n) => n.detectRepoConfig(),
   list_github_deploy_targets: (n) => n.listGithubDeployTargets(),
   get_notification_channel: (n) => n.getNotificationChannel("HOOK"),
@@ -153,7 +153,7 @@ const CLIENT_CALLS: Record<string, Call$> = {
   diagnose_deployment: (n) => n.diagnoseDeployment("D"),
   get_deployment_next_steps: (n) => n.getDeploymentNextSteps("D"),
   list_github_repos: (n) => n.listGithubRepos(),
-  get_github_status: (n) => n.getGithubStatus("P"),
+  get_github_status: (n) => n.getGithubStatus(),
   add_env_vars: (n) => n.addEnvVars("P", { variables: [] }),
   set_env_vars: (n) => n.setEnvVars("P", { variables: [] }),
   delete_env_vars: (n) => n.deleteEnvVars("P", { keys: [] }),
@@ -240,6 +240,25 @@ describe("the typed client covers the whole public API", () => {
 });
 
 describe("request bodies and queries of the newer calls", () => {
+  it("sends the required GitHub repository selectors", async () => {
+    const { nest, calls } = recorder();
+    await nest.getRepoBranches("acme/site", { installation: 1701, limit: 10 });
+    await nest.getRepoDockerfiles("acme/site", { installation: 1701, ref: "main" });
+    expect(calls.map((call) => call.url.replace("https://x.test/api/v1", ""))).toEqual([
+      "/github/branches?installation=1701&repo=acme%2Fsite&limit=10",
+      "/github/dockerfiles?installation=1701&repo=acme%2Fsite&ref=main",
+    ]);
+  });
+
+  it("forwards raw API request inputs through the authenticated transport", async () => {
+    const { nest, calls } = recorder();
+    await nest.rawRequest("POST", "/deployments", { dryRun: true }, { branch: "main" });
+    expect(calls[0].url).toBe("https://x.test/api/v1/deployments?dryRun=true");
+    expect(calls[0].init.method).toBe("POST");
+    expect(calls[0].init.headers.Authorization).toBe("Bearer egg_testtesttest");
+    expect(JSON.parse(calls[0].init.body!)).toEqual({ branch: "main" });
+  });
+
   it("sends the channel host as confirmName when deleting a notification channel", async () => {
     const { nest, calls } = recorder();
     await nest.deleteNotificationChannel("HOOK", "hooks.example.com");

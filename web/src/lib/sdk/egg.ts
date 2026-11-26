@@ -522,6 +522,16 @@ export class Egg {
     }
   }
 
+  /** Make an authenticated request to an API path. The token remains private to this client. */
+  rawRequest(
+    method: string,
+    path: string,
+    query: Record<string, string | number | boolean | undefined> = {},
+    body?: unknown,
+  ): Promise<unknown> {
+    return this.request(method, path, query, body);
+  }
+
   // ------------------------------------------------------------------ account
 
   /** Who this token is, its scopes and expiry. Needs no scope: any valid token. */
@@ -906,8 +916,8 @@ export class Egg {
   listGithubRepos(): Promise<unknown> {
     return this.request("GET", "/github/repos");
   }
-  getGithubStatus(projectId: string): Promise<unknown> {
-    return this.request("GET", "/github/status", { projectId });
+  getGithubStatus(): Promise<unknown> {
+    return this.request("GET", "/github/status");
   }
   listEnvVars(projectId: string): Promise<unknown> {
     return this.request("GET", `/projects/${seg(projectId)}/env`);
@@ -1006,9 +1016,13 @@ export class Egg {
   getKilledContainerLogs(projectId: string, q: Query = {}): Promise<unknown> { return this.request("GET", `/projects/${seg(projectId)}/logs/killed`, q); }
   listCrashReports(projectId: string, q: Query = {}): Promise<unknown> { return this.request("GET", `/projects/${seg(projectId)}/crash-reports`, q); }
   getCrashReport(crashId: string): Promise<unknown> { return this.request("GET", `/crash-reports/${seg(crashId)}`); }
-  getRepoBranches(): Promise<unknown> { return this.request("GET", "/github/branches"); }
+  getRepoBranches(repo: string, options: { installation: number; limit?: number }): Promise<unknown> {
+    return this.request("GET", "/github/branches", { installation: options.installation, repo, limit: options.limit });
+  }
   getRepoContents(q: Query = {}): Promise<unknown> { return this.request("GET", "/github/contents", q); }
-  getRepoDockerfiles(): Promise<unknown> { return this.request("GET", "/github/dockerfiles"); }
+  getRepoDockerfiles(repo: string, options: { installation: number; ref?: string }): Promise<unknown> {
+    return this.request("GET", "/github/dockerfiles", { installation: options.installation, repo, ref: options.ref });
+  }
   detectRepoConfig(): Promise<unknown> { return this.request("GET", "/github/config"); }
   listGithubDeployTargets(): Promise<unknown> { return this.request("GET", "/github/deploy-targets"); }
   getNotificationChannel(channelId: string): Promise<unknown> { return this.request("GET", `/notification-channels/${seg(channelId)}`); }
