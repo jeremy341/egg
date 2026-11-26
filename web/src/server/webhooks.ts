@@ -518,14 +518,14 @@ export async function pruneDeliveries(now = new Date()): Promise<void> {
  */
 export async function dispatchDeploymentEvent(
   deploymentId: string,
-  deps: SendDeps & { state?: string } = {}
+  deps: SendDeps & { state?: string; event?: WebhookEventName } = {}
 ): Promise<void> {
   try {
     const db = await getDb();
     const dep = await db.select().from(schema.deployments).where(eq(schema.deployments.id, deploymentId)).get();
     if (!dep) return;
     const state = deps.state ?? dep.state;
-    const event = EVENT_FOR_STATE[state];
+    const event = deps.event ?? EVENT_FOR_STATE[state];
     if (!event) return;
     const project = await db.select().from(schema.projects).where(eq(schema.projects.id, dep.projectId)).get();
     if (!project) return;

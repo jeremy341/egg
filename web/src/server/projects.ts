@@ -142,12 +142,14 @@ export const updateProjectInput = createProjectInput
     autoDeploy: createProjectInput.shape.autoDeploy.removeDefault(),
     workloadKind: createProjectInput.shape.workloadKind.removeDefault(),
     deploymentMode: createProjectInput.shape.deploymentMode.removeDefault(),
+    /** Refuses deletion (and moving to the trash) while on. Set from the app's settings. */
+    deletionProtected: z.boolean(),
   })
   .partial();
 
 export type CreateProjectInput = z.infer<typeof createProjectInput>;
 
-async function assertOwned(userId: string, projectId: string): Promise<ProjectRow> {
+export async function assertOwned(userId: string, projectId: string): Promise<ProjectRow> {
   const db = await getDb();
   const row = await db
     .select()
@@ -800,49 +802,46 @@ export async function deploymentLogs(userId: string, deploymentId: string, after
     .limit(limit);
 }
 
-/** Delete a project's records (deployments, logs and env vars cascade). */
-export async function deleteProjectRecords(userId: string, projectId: string) {
-  const project = await assertOwned(userId, projectId);
-  const db = await getDb();
-  await db.transaction(async (tx) => {
-    await assertCleanupAllowsWork(tx, userId, projectId);
-    const activeJob = await tx
-      .select({ id: schema.jobs.id })
-      .from(schema.jobs)
-      .innerJoin(schema.deployments, eq(schema.jobs.deploymentId, schema.deployments.id))
-      .where(and(eq(schema.deployments.projectId, project.id), eq(schema.jobs.state, "running")))
-      .get();
-    if (activeJob) {
-      throw new HttpError(409, "A deployment is still stopping for this project. Wait for it to finish, then delete the project.", "conflict");
-    }
-    // The worker would keep writing a service and folders for a project that no longer exists.
-    const running = await tx
-      .select({ id: schema.deployments.id })
-      .from(schema.deployments)
-      .where(
-        and(
-          eq(schema.deployments.projectId, project.id),
-          inArray(schema.deployments.state, ["queued", "building", "deploying"])
-        )
+/** Refused while deletion protection is on. Checked before a project is moved to the trash or removed. */
+export function assertDeletable(project: Pick<ProjectRow, "deletionProtected">) {
+  if (project.deletionProtected) {
+    throw new HttpError(
+      409,
+      "Deletion protection is on for this app. Turn it off in the app's settings, then delete it.",
+      "deletion_protected"
+    );
+  }
+}
+
+/** Refuses while a deployment or a stop is still running for the project. Runs inside the caller's transaction. */
+export async function assertProjectIdle(tx: Pick<Db, "select">, projectId: string) {
+  const activeJob = await tx
+    .select({ id: schema.jobs.id })
+    .from(schema.jobs)
+    .innerJoin(schema.deployments, eq(schema.jobs.deploymentId, schema.deployments.id))
+    .where(and(eq(schema.deployments.projectId, projectId), eq(schema.jobs.state, "running")))
+    .get();
+  if (activeJob) {
+    throw new HttpError(409, "A deployment is still stopping for this project. Wait for it to finish, then delete the project.", "conflict");
+  }
+  // The worker would keep writing a service and folders for a project that no longer exists.
+  const running = await tx
+    .select({ id: schema.deployments.id })
+    .from(schema.deployments)
+    .where(
+      and(
+        eq(schema.deployments.projectId, projectId),
+        inArray(schema.deployments.state, ["queued", "building", "deploying"])
       )
-      .get();
-    if (running) {
-      throw new HttpError(
-        409,
-        "A deployment is still running for this project. Cancel it or wait for it to finish, then delete the project.",
-        "conflict"
-      );
-    }
-    const deployments = await tx
-      .select({ id: schema.deployments.id })
-      .from(schema.deployments)
-      .where(eq(schema.deployments.projectId, project.id));
-    await tx.delete(schema.projects).where(eq(schema.projects.id, project.id));
-    // The cascade removes the deployments; their delivery history survives by
-    // design, so the links that would now point at nothing are forgotten here.
-    await forgetDeliveriesForDeployments(tx, deployments.map((d) => d.id));
-  });
-  await audit(userId, "project.delete", null, { name: project.name });
+    )
+    .get();
+  if (running) {
+    throw new HttpError(
+      409,
+      "A deployment is still running for this project. Cancel it or wait for it to finish, then delete the project.",
+      "conflict"
+    );
+  }
 }
 
 // ------------------------------------------------------------ clone settings
