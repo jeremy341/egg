@@ -61,6 +61,28 @@ export const DOCS_NAV: DocsGroup[] = [
         ],
       },
       {
+        id: "build-github-actions",
+        title: "Build with GitHub Actions",
+        subsections: [
+          { id: "build-actions-what", title: "What it is and why it is recommended" },
+          { id: "build-actions-steps", title: "Setting it up" },
+          { id: "build-actions-secrets", title: "The four secrets" },
+          { id: "build-actions-pr", title: "What the pull request does" },
+          { id: "build-actions-safety", title: "Forks, pull requests and production secrets" },
+          { id: "build-actions-limits", title: "Limits" },
+          { id: "build-actions-troubleshooting", title: "When Test connection fails" },
+        ],
+      },
+      {
+        id: "build-on-nest",
+        title: "Build on Nest",
+        subsections: [
+          { id: "build-nest-what", title: "What it is" },
+          { id: "build-nest-caps", title: "The memory and CPU cap" },
+          { id: "build-nest-when", title: "When to prefer it" },
+        ],
+      },
+      {
         id: "deployments",
         title: "Deployments",
         subsections: [

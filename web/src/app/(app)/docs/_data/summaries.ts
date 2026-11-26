@@ -9,6 +9,8 @@ export const SUMMARIES: Record<string, string> = {
   "run-yourself": "Run your own copy of Egg with or without a Hack Club account: the setups, how sign-in works, where your apps run, and a link to the full guide.",
   servers: "Connect your Nest account with its own SSH key, test the link, replace the key or disconnect.",
   projects: "Link a repository, choose a runtime, set the build and run commands, and see what every app can rely on.",
+  "build-github-actions": "Build on GitHub and send the finished release to Egg: the setup steps, the four secrets, the pull request, safety, limits and what each failing check means.",
+  "build-on-nest": "Build on your own container under a memory and CPU cap, and when to choose it over GitHub Actions.",
   deployments: "What each deployment state means, how to redeploy, roll back, cancel or restart, how many releases are kept and how branch previews work.",
   env: "Add environment variables for production or previews, import a .env file, and see how values are stored and hidden in logs.",
   logs: "Build logs for each deployment and runtime logs for the running app, with a time range, level filter, search, older lines and download.",

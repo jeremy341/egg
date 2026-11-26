@@ -12,7 +12,7 @@ import { MIN_COHORT } from "@/server/analytics-retention";
 import { JSON_BODY_LIMIT } from "@/server/body-limit";
 import { trustProxyEnabled } from "@/server/config";
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "@/server/deployment-page";
-import { BUILD_TIMEOUT_SECONDS, containerMemoryCapMb, describeBuildFailure } from "@/server/deploy/container-build";
+import { BUILD_TIMEOUT_SECONDS, MIN_CONTAINER_CAP_MB, containerMemoryCapMb, describeBuildFailure } from "@/server/deploy/container-build";
 import { MIN_FREE_DISK_MB, evaluatePreflight, type PreflightFacts, type PreflightNeeds } from "@/server/deploy/container-probe";
 import { RESERVED_NAMES } from "@/server/domain-policy";
 import { STATUS_TTL_MS } from "@/server/service-status";
@@ -29,6 +29,8 @@ import { probeIssues, type NestProbe } from "@/server/ssh/probe";
 import { MAX_SERVERS_PER_USER } from "@/server/servers";
 import { JOB_TIMEOUT_SECONDS } from "@/server/deploy/jobs-remote";
 import { MAX_JOBS_PER_PROJECT } from "@/server/scheduled-jobs";
+import { WORKFLOW_PATH, WORKFLOW_SECRET_LIST, PRODUCTION_ENVIRONMENT } from "@/server/builds/workflow";
+import { MAX_ARCHIVE_BYTES } from "@/server/deploy/build";
 import { GETTING_STARTED_STEPS } from "./guide-c";
 import { CONTENT } from "./index";
 
@@ -648,6 +650,64 @@ describe("Run Egg yourself and the self-hosting guide", () => {
     expect(guide).toContain("<APP_URL>/api/webhooks/github");
     expect(MAX_SERVERS_PER_USER).toBe(5);
     expect(guide).toContain("up to 5 servers");
+  });
+});
+
+describe("the Build with GitHub Actions and Build on Nest pages", () => {
+  const actions = html("build-github-actions").replace(/&#x27;/g, "'");
+  const nest = html("build-on-nest");
+  const token = read("web/src/server/builds/token.ts");
+  const uploads = read("web/src/server/builds/uploads.ts");
+  const check = read("web/src/server/builds/connection-check.ts");
+  const workflow = read("web/src/server/builds/workflow.ts");
+
+  it("states the limits the setup steps show, from the constants the server enforces", () => {
+    expect(MAX_ARCHIVE_BYTES).toBe(500 * 1024 * 1024);
+    expect(actions).toContain("500 MiB (524,288,000 bytes)");
+    expect(uploads).toContain("export const UPLOAD_WAIT_MS = 60 * 60_000;");
+    expect(actions).toContain("60 minutes");
+    expect(token).toContain("export const BUILD_CREDENTIAL_TTL_MS = 90 * 24 * 60 * 60 * 1000;");
+    expect(actions).toContain("90 days");
+    expect(uploads).toContain('"GitHub did not send the build in time. Check the workflow run, then deploy again."');
+    expect(actions).toContain("GitHub did not send the build in time. Check the workflow run, then deploy again.");
+  });
+
+  it("names the file, the environment and every secret with where it is saved", () => {
+    expect(actions).toContain(WORKFLOW_PATH);
+    expect(actions).toContain(PRODUCTION_ENVIRONMENT);
+    for (const s of WORKFLOW_SECRET_LIST) {
+      const row = new RegExp(`${s.name}</code></td><td[^>]*>${s.store === "environment" ? "The egg-production environment" : "Repository secrets"}<`);
+      expect(actions, s.name).toMatch(row);
+    }
+  });
+
+  it("says the workflow runs on pushes and by hand, not on pull requests", () => {
+    expect(workflow).toContain("  push:");
+    expect(workflow).toContain("  workflow_dispatch:");
+    expect(workflow).not.toContain("pull_request:");
+    expect(actions).toContain("not on pull requests");
+    expect(actions).toContain("never runs it and never receives a secret");
+  });
+
+  it("explains each of the six connection checks by the label Egg prints, and the three app permissions", () => {
+    for (const label of ["Build location", "Build credentials", "GitHub app", "Repository access", "Workflow file", "Workflow settings"]) {
+      expect(check, label).toMatch(new RegExp(`"${label}"`));
+      expect(actions, label).toContain(label);
+    }
+    for (const permission of ["Contents", "Pull requests", "Workflows"]) expect(actions, permission).toContain(permission);
+    expect(actions).toContain("read and write");
+  });
+
+  it("gives the Nest build caps the way the code does", () => {
+    expect(BUILD_TIMEOUT_SECONDS).toBe(15 * 60);
+    expect(nest).toContain("15 minutes");
+    expect(nest).toContain("minus 512 MB");
+    expect(nest).toContain("768 MB");
+    expect(MIN_CONTAINER_CAP_MB).toBe(256);
+  });
+
+  it("uses no em or en dashes", () => {
+    expect(actions + nest).not.toMatch(/[–—]/);
   });
 });
 
