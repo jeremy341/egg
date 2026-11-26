@@ -321,6 +321,9 @@ export async function callEndpoint(p: Principal, ep: Endpoint, raw: unknown): Pr
   if (!ep.readOnly && !["cancel_deployment", "terminal_close"].includes(ep.id)) {
     const { maintenanceBlocksUser, maintenanceError } = await import("@/server/maintenance");
     if (await maintenanceBlocksUser(p.userId)) throw maintenanceError();
+    // Same rule as the browser: a suspended account past its grace period makes no API writes.
+    const { assertAccountCanWrite } = await import("@/server/account-standing");
+    await assertAccountCanWrite(p.userId);
   }
   const parsed = ep.input.safeParse(raw ?? {});
   if (!parsed.success) throw zodToHttp(parsed.error);

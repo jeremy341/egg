@@ -16,6 +16,7 @@ import { moveDomainsToPort } from "@/server/domains";
 import { getServerForUser } from "@/server/servers";
 import { assertCleanupAllowsWork } from "@/server/cleanup-guards";
 import { maintenanceBlocksUser } from "@/server/maintenance";
+import { assertAccountCanWrite } from "@/server/account-standing";
 import { projectReadableBy } from "@/server/project-roles";
 import { forgetDeliveriesForDeployments } from "@/server/webhooks";
 import { providerClientForUser, publicProviderClient, repositoryNameFromUrl, validateProviderSource } from "@/server/providers/connections";
@@ -210,6 +211,7 @@ async function assertGithubLinks(
 }
 
 export async function createProject(userId: string, raw: unknown): Promise<ProjectRow> {
+  await assertAccountCanWrite(userId);
   const input = createProjectInput.parse(raw);
   if (input.port !== undefined && input.listenPort !== undefined && input.port !== input.listenPort) throw new HttpError(400, "Port and listenPort must agree.", "validation");
   const selectedPort = input.listenPort !== undefined ? input.listenPort : input.port;
@@ -372,6 +374,7 @@ async function assertPortFree(tx: Tx, serverId: string, port: number, message: s
 }
 
 export async function updateProject(userId: string, projectId: string, raw: unknown) {
+  await assertAccountCanWrite(userId);
   const input = updateProjectInput.parse(raw);
   const project = await assertOwned(userId, projectId);
   if (input.autoDeploy && project.sourceProvider !== "github" && !project.providerWebhookSecretEnc) throw new HttpError(400, "Configure a provider webhook before enabling automatic deployments.", "validation");
@@ -460,6 +463,7 @@ export const envInput = z.object({
 });
 
 export async function setEnvVar(userId: string, projectId: string, raw: unknown) {
+  await assertAccountCanWrite(userId);
   const input = envInput.parse(raw);
   const project = await assertOwned(userId, projectId);
   const db = await getDb();
@@ -605,6 +609,8 @@ export async function enqueueDeployment(
       throw notFound("Project not found");
     }
     await assertCleanupAllowsWork(tx, project.userId, project.id);
+    // Every deployment, rollback and webhook or hook trigger lands here, so the owner's standing is checked inside the write.
+    await assertAccountCanWrite(project.userId, { db: tx });
     if (await maintenanceBlocksUser(project.userId, tx)) throw new HttpError(503, "Maintenance is active. New deployments are paused.", "maintenance");
     // A port is what production uses: the worker's listen port, or the web project's port.
     // Previews are web traffic (PRs); a worker preview stays portless and is checked as a process.
