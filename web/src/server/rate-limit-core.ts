@@ -149,6 +149,9 @@ export class SlidingWindowLimiter {
  */
 export const RATE_LIMITS = {
   terminalInput: { limit: 300, windowMs: 60_000, what: "terminal input" },
+  // Any request that opens an SSH session to the user's container (inventory, usage, server tests, status probes,
+  // logs, restarts, jobs, notification tests). Per signed-in user, per minute.
+  sshSession: { limit: 10, windowMs: 60_000, what: "container sessions" },
   fileWrite: { limit: 60, windowMs: 60_000, what: "file changes" },
   orphanRemoval: { limit: 10, windowMs: 60_000, what: "leftover removals" },
   signIn: { limit: 20, windowMs: 60_000, what: "sign-in attempts" },

@@ -161,10 +161,14 @@ export async function processJob(job: Job, deps: PipelineDeps = defaultDeps()) {
     else await runDeployJob(job.deploymentId, deps, abort.signal);
     await db.update(schema.jobs).set({ state: "done" }).where(and(eq(schema.jobs.id, job.id), eq(schema.jobs.state, "running"), eq(schema.jobs.lockedBy, lockOwner)));
   } catch (err) {
-    await db
-      .update(schema.jobs)
-      .set({ state: "failed", error: String((err as Error)?.message ?? err).slice(0, 500) })
-      .where(and(eq(schema.jobs.id, job.id), eq(schema.jobs.state, "running"), eq(schema.jobs.lockedBy, lockOwner)));
+    try {
+      await db
+        .update(schema.jobs)
+        .set({ state: "failed", error: String((err as Error)?.message ?? err).slice(0, 500) })
+        .where(and(eq(schema.jobs.id, job.id), eq(schema.jobs.state, "running"), eq(schema.jobs.lockedBy, lockOwner)));
+    } catch (writeErr) {
+      console.error(`Could not mark job ${job.id} as failed; it stays running until an operator checks it.`, writeErr);
+    }
   } finally {
     clearInterval(watcher);
   }
@@ -220,10 +224,24 @@ export function startWorker(options: {
           // A claim made before stop owns a running queue row, so start and track it
           // even if stop was requested while the database claim was in progress.
           running++;
-          const p = (options.workerOps?.processJob ?? processJob)(job, options.deps).finally(() => {
-            running--;
-            inFlight.delete(p);
-          });
+          const p = (options.workerOps?.processJob ?? processJob)(job, options.deps)
+            .catch((err: unknown) => {
+              // processJob should not reject, but if it does (for example a failed status write
+              // before its own catch), it must not become an unhandled rejection that crashes the web process.
+              if (options.onError) {
+                try {
+                  options.onError(err);
+                } catch {
+                  console.error(`Job ${job.id} failed and the error reporter also failed.`, err);
+                }
+              } else {
+                console.error(`Job ${job.id} failed outside its normal error path.`, err);
+              }
+            })
+            .finally(() => {
+              running--;
+              inFlight.delete(p);
+            });
           inFlight.add(p);
         }
       } catch (err) {
