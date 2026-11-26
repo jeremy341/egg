@@ -53,6 +53,7 @@ const CLIENT_CALLS: Record<string, Call$> = {
   delete_project: (n) => n.deleteProject("P"),
   list_deployments: (n) => n.listDeployments("P"),
   deploy_branch: (n) => n.deploy("P"),
+  deploy_from_github_url: (n) => n.deployFromGithubUrl("P", "https://github.com/a/b"),
   redeploy: (n) => n.redeploy("D"),
   cancel_deployment: (n) => n.cancelDeployment("D"),
   rollback_deployment: (n) => n.rollback("D"),

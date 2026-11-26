@@ -45,6 +45,7 @@ import { DOMAIN_ENDPOINTS } from "@/server/api-v1-domains";
 import { SERVICES_ENDPOINTS } from "@/server/api-v1-services";
 import { DEPLOYMENT_CRUD_ENDPOINTS } from "@/server/api-v1-deployments";
 import { DEPLOYMENT_METRICS_ENDPOINTS } from "@/server/api-v1-deployment-metrics";
+import { DEPLOY_FROM_URL_ENDPOINTS } from "@/server/api-v1-deploy-from-url";
 import { COMPOSE_ENDPOINTS } from "@/server/api-v1-compose";
 import { VERDICT_ENDPOINTS } from "@/server/api-v1-verdict";
 import { IMAGE_ENDPOINTS } from "@/server/api-v1-images";
@@ -141,11 +142,16 @@ export async function apiListDeployments(p: Principal, projectId: string, limit:
 }
 
 /** Deploy a branch (default: the production branch, which deploys to production). */
-export async function apiDeployBranch(p: Principal, projectId: string, branch?: string) {
+export async function apiDeployBranch(
+  p: Principal,
+  projectId: string,
+  branch?: string,
+  auditAction: "deploy.trigger" | "deploy.from_github_url" = "deploy.trigger",
+) {
   requireScope(p, "deployments:write");
   const created = await deployBranch(p.userId, projectId, branch);
   // The deploy button does not audit; an API deploy always does, with the token that made it.
-  await audit(p.userId, "deploy.trigger", projectId, {
+  await audit(p.userId, auditAction, projectId, {
     branch: created.branch,
     env: created.env,
     via: "api",
@@ -474,6 +480,7 @@ export const ENDPOINTS: Endpoint[] = [
   ...ORG_ENDPOINTS,
   ...RELEASE_ENDPOINTS,
   ...QUERY_ENDPOINTS,
+  ...DEPLOY_FROM_URL_ENDPOINTS,
 ];
 
 export function endpointById(id: string): Endpoint | undefined {

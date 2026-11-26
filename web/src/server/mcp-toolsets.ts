@@ -53,6 +53,7 @@ export const TOOLSET_OF: Record<string, Toolset> = {
   get_rollout: "deployments",
   create_project: "deployments",
   deploy_branch: "deployments",
+  deploy_from_github_url: "deployments",
   redeploy: "deployments",
   cancel_deployment: "deployments",
   rollback_deployment: "deployments",
