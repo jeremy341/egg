@@ -31,7 +31,8 @@ export function ProjectsView({
   const [query, setQuery] = useState("");
   const [view, setView] = useState<View>("grid");
 
-  if (!hasServer) {
+  // A member invited to a project has projects but may have no server of their own, so only show this when there is nothing to list.
+  if (!hasServer && projects.length === 0) {
     return (
       <EmptyState
         icon={<HardDrivesIcon />}

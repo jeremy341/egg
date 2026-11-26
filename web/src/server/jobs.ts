@@ -54,6 +54,7 @@ export async function claimNextJob(workerId: string): Promise<Job | null> {
                 AND (maintenance.starts_at IS NULL OR maintenance.starts_at <= ${now.getTime()})
                 AND (maintenance.ends_at IS NULL OR maintenance.ends_at > ${now.getTime()})
                 AND maintenance_project.user_id <> ${process.env.SECURITY_REPORT_ADMIN_ID?.trim() || ""}
+                AND NOT EXISTS (SELECT 1 FROM instance_admins AS granted WHERE granted.user_id = maintenance_project.user_id)
             )
             AND NOT EXISTS (
               SELECT 1 FROM cleanup_jobs AS cleanup
