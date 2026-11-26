@@ -7,9 +7,13 @@ import { deploymentViews } from "@/server/queries";
 
 export const metadata = { title: "Deployments" };
 
+/** This page loads the newest rows only. Older ones are on each project's Deployments tab. */
+const SHOWN = 100;
+
 export default async function DeploymentsPage() {
   const user = await requireUser();
-  const deployments = await deploymentViews(user.id);
+  const deployments = await deploymentViews(user.id, { limit: SHOWN });
+  const capped = deployments.length >= SHOWN;
   const projects = new Set(deployments.map((d) => d.projectId)).size;
   const building = deployments.filter((d) => d.state === "building" || d.state === "queued").length;
   const failed = deployments.filter((d) => d.state === "error").length;
@@ -22,7 +26,9 @@ export default async function DeploymentsPage() {
         description={
           deployments.length > 0 ? (
             <FactLine tones={deployments.slice(0, 24).map((d) => toneOf(d.state))}>
-              {deployments.length} {deployments.length === 1 ? "deployment" : "deployments"} across{" "}
+              {capped ? "The newest " : ""}
+              {deployments.length}
+              {capped ? "+" : ""} {deployments.length === 1 ? "deployment" : "deployments"} across{" "}
               {projects} {projects === 1 ? "project" : "projects"}.
               {building > 0 ? ` ${building} building.` : ""}
               {failed > 0 ? ` ${failed} failed.` : ""}

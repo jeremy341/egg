@@ -210,6 +210,9 @@ async function streamToFile(
     stop = reject;
   });
   stopped.catch(() => {});
+  // A failed write (for example a full disk) must end the read loop as a failed upload. Without a listener
+  // Node treats the error as unhandled and the whole web process goes down.
+  out.on("error", () => stop(new HttpError(507, "Egg could not save the build archive. Try again later.", "disk_full")));
   let idle: ReturnType<typeof setTimeout> | undefined;
   let overall: ReturnType<typeof setTimeout> | undefined;
   try {

@@ -307,6 +307,23 @@ export function checkSignIn({ env, dev }) {
   return result(name, false, "warning", "No way to sign in is set up", "Add LOCAL_MODE=1 to .env.local to sign in on this computer, or set the Hack Club Auth keys.");
 }
 
+/**
+ * Rate limits key on the client address. With TRUST_PROXY off there is no address, so sign-in and
+ * token guesses are not throttled per client. Only a proxy that sets X-Forwarded-For should change that.
+ */
+export function checkProxy({ env }) {
+  const name = "Rate limits";
+  const v = String(env?.TRUST_PROXY ?? "").trim().toLowerCase();
+  if (v === "1" || v === "true") return result(name, true, "warning", "TRUST_PROXY is on: limits use the address from the proxy");
+  return result(
+    name,
+    false,
+    "warning",
+    "TRUST_PROXY is off: sign-in and token guesses are not limited per address",
+    "Set TRUST_PROXY=1 only if a reverse proxy in front of Egg sets X-Forwarded-For. Otherwise leave it off."
+  );
+}
+
 // --------------------------------------------------------------------- output
 
 export const hasBlocker = (results) => results.some((r) => !r.ok && r.severity === "blocker");

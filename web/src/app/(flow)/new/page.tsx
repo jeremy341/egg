@@ -42,7 +42,7 @@ async function NewProjectContent({ searchParams }: Props) {
       ? `https://github.com/apps/${c.GITHUB_APP_SLUG}/installations/new`
       : null,
     installations: installations.map((i) => ({ id: i.id, account: i.accountLogin, type: i.accountType })),
-    notice: notice ? (NOTICES[notice] ?? null) : null,
+    notice: notice && Object.hasOwn(NOTICES, notice) ? NOTICES[notice] : null,
   };
 
   return (

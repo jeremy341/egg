@@ -360,7 +360,8 @@ export function ProjectSettings({
                   <option value="preview">{ENV_TARGET_LABEL.preview}</option>
                 </NativeSelect>
               </div>
-              <Button type="submit" disabled={!key.trim()} loading={envSaving}>
+              {/* The stored value is never shown, so an update must carry a new one. Saving blank would erase it. */}
+              <Button type="submit" disabled={!key.trim() || (editing && !value)} loading={envSaving}>
                 {envSaving ? "Saving…" : editing ? "Update" : "Save"}
               </Button>
             </form>
