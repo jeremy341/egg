@@ -304,7 +304,7 @@ Totals: 217 Orchard product tools. Present: 126. Partial: 10. Missing: 0. Not ap
 
 ## Not in the MCP list (ported or not, tracked separately)
 
-- CLI: Orchard has 421 command definitions in Go (`apps/cli/cmd`, cobra `Use:` strings, including group nodes and subcommands). Egg has 69 commands in `web/scripts/egg-cli.mjs`, including the bearer API commands.
+- CLI: Orchard has 421 command definitions in Go (`apps/cli/cmd`, cobra `Use:` strings, including group nodes and subcommands). Egg has 153 commands: the base set in `web/scripts/egg-cli.mjs` and one module per Orchard group in `web/scripts/egg-cli-groups`. The per-group checklist is `web/src/server/parity/cli/*.json`, checked by `cli-checklist.test.ts`; its not-applicable entries for infrastructure are in `infra.json`.
 - API routes: Orchard has 73 controllers. Egg has 171 route files under `web/src/app/api`.
 - Database migrations: Orchard has 145 SQL files. Egg has 56.
 - Grafts (extension system): Orchard has 3 (greenhouse, forum, announcements). Egg has a first-party grafts registry with Announcements (`web/src/server/grafts`). Greenhouse is not built: it needs cloud sandboxes.
