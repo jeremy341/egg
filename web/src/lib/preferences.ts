@@ -203,8 +203,6 @@ export type Appearance = ThemeChoice & {
 export type Preferences = Appearance & {
   defaultBranch: string | null;
   displayName: string | null;
-  /** Show the display name on public pages (status pages, the homepage feed). Off shows "Someone". */
-  showNamePublic: boolean;
   avatar: string;
   /** The analytics features a project starts with when analytics is first turned on. `{}` is all off. */
   analyticsDefaults: AnalyticsDefaults;
@@ -224,7 +222,6 @@ export const DEFAULT_PREFERENCES: Preferences = {
   ...DEFAULT_APPEARANCE,
   defaultBranch: null,
   displayName: null,
-  showNamePublic: true,
   avatar: "pixel-01",
   analyticsDefaults: {},
 };
@@ -302,20 +299,6 @@ export function characterPath(rows: readonly string[]): string {
 /** The name shown for a person: their chosen display name, else the Hack Club one. */
 export function shownName(prefs: { displayName: string | null }, hackClubName: string): string {
   return prefs.displayName?.trim() || hackClubName;
-}
-
-/** What public pages say in place of a name. */
-export const PUBLIC_FALLBACK_NAME = "Someone";
-
-/**
- * The name for a person on a public page. Only the chosen display name is ever
- * used, and only while the person has the switch on; anything else is "Someone".
- * The Hack Club name is never a candidate, so it cannot reach a public page.
- */
-export function publicName(prefs: { displayName: string | null; showNamePublic: boolean }): string {
-  if (!prefs.showNamePublic) return PUBLIC_FALLBACK_NAME;
-  const name = prefs.displayName?.trim();
-  return name ? name : PUBLIC_FALLBACK_NAME;
 }
 
 /**

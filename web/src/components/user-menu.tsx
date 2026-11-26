@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { BookOpenIcon, CompassIcon, GearSixIcon, PlusIcon, ShieldWarningIcon, SignOutIcon, UserCircleIcon } from "@phosphor-icons/react";
+import { BookOpenIcon, CompassIcon, GearSixIcon, PlusIcon, SignOutIcon, UserCircleIcon } from "@phosphor-icons/react";
 import { useAccount } from "@/components/account-context";
 import { api } from "@/components/api";
 import { requestReplay } from "@/components/onboarding/replay";
@@ -66,10 +66,6 @@ export function UserMenu({ className }: { className?: string }) {
         <DropdownMenuItem render={<Link href="/connect" />}>
           <PlusIcon />
           Connect a server
-        </DropdownMenuItem>
-        <DropdownMenuItem render={<Link href="/security/report" />}>
-          <ShieldWarningIcon />
-          Report a vulnerability
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => void showTour()}>
           <CompassIcon />

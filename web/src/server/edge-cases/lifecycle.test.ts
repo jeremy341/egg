@@ -5,8 +5,7 @@ import { createApiToken, revokeApiToken } from "@/server/api-tokens";
 import { upsertUser } from "@/server/auth/session";
 import { parseProfile } from "@/server/auth/hackclub";
 import { schema } from "@/server/db";
-import { createProject, deployBranch } from "@/server/projects";
-import { trashProject } from "@/server/project-trash";
+import { createProject, deployBranch, deleteProjectRecords } from "@/server/projects";
 import { deleteServer, createServer } from "@/server/servers";
 import type { ShellHandle } from "@/server/ssh/shell";
 import { TerminalManager } from "@/server/terminal";
@@ -104,7 +103,7 @@ describe("deleting a project", () => {
 
     // Removing the records under a running deploy leaves the worker writing a service and
     // folders to the container for a project that no longer exists.
-    await expect(trashProject(user.id, project.id)).rejects.toMatchObject({ status: 409 });
+    await expect(deleteProjectRecords(user.id, project.id)).rejects.toMatchObject({ status: 409 });
   });
 });
 
