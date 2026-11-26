@@ -562,8 +562,8 @@ describe("Run Egg yourself and the self-hosting guide", () => {
       expect(config, text).toContain(text);
       expect(guide, text).toContain(text);
     }
-    expect(config).toContain('.enum(["0", "1", "true", "false"])');
-    expect(guide).toContain('expected one of "0"\\|"1"\\|"true"\\|"false"');
+    expect(config).toContain('Expected 0, 1, true or false');
+    expect(guide).toContain('LOCAL_MODE: Expected 0, 1, true or false');
   });
 
   it("gives the defaults the code has", () => {
