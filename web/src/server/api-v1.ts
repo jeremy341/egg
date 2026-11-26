@@ -27,6 +27,7 @@ import {
 import { ME_ENDPOINTS } from "@/server/api-v1-me";
 import { ROLLOUT_ENDPOINTS } from "@/server/api-v1-rollout";
 import { EXPANDED_ENDPOINTS } from "@/server/api-v1-more";
+import { ORCHARD_ENDPOINTS } from "@/server/api-v1-orchard";
 import { SHELL_ENDPOINTS } from "@/server/api-v1-shell";
 import { getDb, schema } from "@/server/db";
 import { notFound, zodToHttp } from "@/server/http";
@@ -353,6 +354,7 @@ export const ENDPOINTS: Endpoint[] = [
   ...CORE_ENDPOINTS,
   ...ROLLOUT_ENDPOINTS,
   ...EXPANDED_ENDPOINTS,
+  ...ORCHARD_ENDPOINTS,
   ...SHELL_ENDPOINTS,
 ];
 
