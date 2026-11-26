@@ -173,6 +173,7 @@ describe("protocol", () => {
         "redeploy",
         "remove_domain",
         "rename_file",
+        "restart_service",
         "revoke_deploy_hook",
         "rollback_deployment",
         "rotate_deploy_hook",

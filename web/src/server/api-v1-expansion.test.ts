@@ -46,6 +46,7 @@ import { PATCH as dashboardPatchRoute } from "@/app/api/projects/[id]/route";
 import { GET as getDeploymentRoute } from "@/app/api/v1/deployments/[deploymentId]/route";
 import { GET as deploymentLogsRoute } from "@/app/api/v1/deployments/[deploymentId]/logs/route";
 import { GET as rolloutRoute } from "@/app/api/v1/deployments/[deploymentId]/rollout/route";
+import { POST as restartRoute } from "@/app/api/v1/projects/[projectId]/restart/route";
 import { GET as listEnvRoute } from "@/app/api/v1/projects/[projectId]/env/route";
 import { DELETE as deleteEnvRoute, PUT as setEnvRoute } from "@/app/api/v1/projects/[projectId]/env/[key]/route";
 import { GET as listDomainsRoute, POST as addDomainRoute } from "@/app/api/v1/domains/route";
@@ -263,6 +264,7 @@ const SPECS: Record<string, Spec> = {
   delete_project: { scope: "projects:write", handler: deleteProjectRoute, method: "DELETE", path: proj(""), params: projParams, owned: true },
   get_deployment: { scope: "deployments:read", handler: getDeploymentRoute, method: "GET", path: (i) => `/deployments/${i.deploymentId}`, params: (i) => ({ deploymentId: i.deploymentId }), owned: true },
   get_deployment_logs: { scope: "deployments:read", handler: deploymentLogsRoute, method: "GET", path: (i) => `/deployments/${i.deploymentId}/logs`, params: (i) => ({ deploymentId: i.deploymentId }), owned: true },
+  restart_service: { scope: "deployments:write", handler: restartRoute, method: "POST", path: proj("/restart"), params: projParams, owned: true },
   get_rollout: { scope: "deployments:read", handler: rolloutRoute, method: "GET", path: (i) => `/deployments/${i.deploymentId}/rollout`, params: (i) => ({ deploymentId: i.deploymentId }), owned: true },
   list_env_vars: { scope: "env:read", handler: listEnvRoute, method: "GET", path: proj("/env"), params: projParams, owned: true },
   set_env_var: { scope: "env:write", handler: setEnvRoute, method: "PUT", path: proj("/env/NEW_KEY"), params: (i) => ({ projectId: i.projectId, key: "NEW_KEY" }), body: () => ({ value: "x" }), owned: true },

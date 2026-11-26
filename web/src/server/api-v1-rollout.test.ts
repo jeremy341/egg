@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { eq } from "drizzle-orm";
 import { createApiToken, type Scope } from "@/server/api-tokens";
@@ -12,8 +12,18 @@ import { useFreshDb } from "@/server/test/db";
 import { GET as rolloutRoute } from "@/app/api/v1/deployments/[deploymentId]/rollout/route";
 import { POST as rollbackRoute } from "@/app/api/v1/deployments/[deploymentId]/rollback/route";
 import type { Principal } from "@/server/api-tokens";
+import { POST as restartRoute } from "@/app/api/v1/projects/[projectId]/restart/route";
+import { withServerSession } from "@/server/servers";
+
+vi.mock("@/server/servers", async (original) => {
+  const real = await original<typeof import("@/server/servers")>();
+  return { ...real, withServerSession: vi.fn() };
+});
 
 let ctx: Awaited<ReturnType<typeof useFreshDb>>;
+let projectId: string;
+let theirProjectId: string;
+const session = { script: vi.fn(async () => ({ code: 0, stdout: "", stderr: "" })) };
 let me: { id: string };
 let other: { id: string };
 let deploymentId: string;
@@ -41,16 +51,21 @@ beforeAll(async () => {
   other = await upsertUser({ id: "ro-2", name: "Kim", email: null, slackId: null });
   const base = { repoUrl: "https://github.com/sam/roll.git", runtime: "node" as const };
   const serverId = (await createServer(me.id, "ro-sam")).id;
-  const projectId = (await createProject(me.id, { ...base, serverId, name: "Roll", slug: "roll", port: 3920 })).id;
+  projectId = (await createProject(me.id, { ...base, serverId, name: "Roll", slug: "roll", port: 3920 })).id;
   deploymentId = (await deployBranch(me.id, projectId)).id;
   const theirServer = (await createServer(other.id, "ro-kim")).id;
-  const theirProject = (await createProject(other.id, { ...base, serverId: theirServer, name: "Theirs", slug: "theirs-roll", port: 3921 })).id;
-  theirDeploymentId = (await deployBranch(other.id, theirProject)).id;
+  theirProjectId = (await createProject(other.id, { ...base, serverId: theirServer, name: "Theirs", slug: "theirs-roll", port: 3921 })).id;
+  theirDeploymentId = (await deployBranch(other.id, theirProjectId)).id;
   readerSecret = (await createApiToken(me.id, { name: "reader", scopes: ["deployments:read"] })).secret;
   noReadSecret = (await createApiToken(me.id, { name: "none", scopes: ["projects:read"] })).secret;
   writerSecret = (await createApiToken(me.id, { name: "writer", scopes: ["deployments:read", "deployments:write"] })).secret;
 });
 afterAll(async () => ctx.cleanup());
+beforeEach(() => {
+  session.script.mockClear();
+  vi.mocked(withServerSession).mockReset();
+  vi.mocked(withServerSession).mockImplementation(async (_s, fn) => fn(session as never));
+});
 
 describe("the rollout endpoint, service level", () => {
   it("answers at once without wait, and does not sleep", async () => {
@@ -158,5 +173,44 @@ describe("rollback, watched through the rollout endpoint", () => {
     const watched = await get(writerSecret, rolledBack.id);
     expect((await watched.json()).rollout).toMatchObject({ done: false, deployment: { id: rolledBack.id, source: "rollback" } });
     await setState(deploymentId, "queued");
+  });
+});
+
+describe("restart the production service, for agents", () => {
+  const restart = (secret: string, id: string) =>
+    restartRoute(
+      new NextRequest(`http://localhost:3000/api/v1/projects/${id}/restart`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${secret}` },
+      }),
+      { params: Promise.resolve({ projectId: id }) }
+    );
+
+  it("restarts the service for a token with deployments:write, through one SSH session", async () => {
+    const res = await restart(writerSecret, projectId);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ restarted: true, projectId });
+    expect(session.script).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses a read-only token with 403 before any SSH session", async () => {
+    const res = await restart(readerSecret, projectId);
+    expect(res.status).toBe(403);
+    expect(withServerSession).not.toHaveBeenCalled();
+  });
+
+  it("returns not found for another user's project, without opening a session", async () => {
+    const res = await restart(writerSecret, theirProjectId);
+    expect(res.status).toBe(404);
+    expect(withServerSession).not.toHaveBeenCalled();
+  });
+
+  it("is listed as a change that needs deployments:write", () => {
+    expect(ENDPOINTS.find((e) => e.id === "restart_service")).toMatchObject({
+      method: "POST",
+      path: "/projects/{projectId}/restart",
+      scope: "deployments:write",
+      bucket: "write",
+    });
   });
 });

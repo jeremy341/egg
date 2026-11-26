@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { Principal } from "@/server/api-tokens";
 import { callEndpoint, ENDPOINTS, enforceApiRate, type Endpoint } from "@/server/api-v1";
 import { HttpError } from "@/server/http";
+import { endpointVisible, FULL_VIEW, McpView, SENSITIVE_TOOLS, viewAllows } from "@/server/mcp-toolsets";
 
 /**
  * A small MCP server over plain HTTP (JSON-RPC 2.0, one JSON response per
@@ -37,6 +38,8 @@ export type McpTool = {
   description: string;
   inputSchema: Record<string, unknown>;
   annotations: { readOnlyHint: boolean; destructiveHint: boolean; idempotentHint: boolean; openWorldHint: boolean };
+  /** Extra metadata for the client. `egg/sensitive` marks a result that carries a secret shown once. */
+  _meta?: Record<string, unknown>;
 };
 
 function toTool(ep: Endpoint): McpTool {
@@ -56,11 +59,28 @@ function toTool(ep: Endpoint): McpTool {
       idempotentHint: ep.readOnly,
       openWorldHint: false,
     },
+    ...(SENSITIVE_TOOLS.has(ep.id) ? { _meta: { "egg/sensitive": true } } : {}),
   };
 }
 
+/** Every tool the server knows, with no token or view applied. */
 export const TOOLS: McpTool[] = ENDPOINTS.map(toTool);
 const BY_NAME = new Map(ENDPOINTS.map((e) => [e.id, e]));
+
+/** The tools this token may see through this view. Nothing outside the token's scopes is ever listed. */
+export function toolsFor(p: Principal, view: McpView = FULL_VIEW): McpTool[] {
+  return ENDPOINTS.filter((ep) => endpointVisible(p, ep, view)).map((ep) => TOOLS.find((t) => t.name === ep.id)!);
+}
+
+/**
+ * The endpoint for a tool name when the connection's view includes it. A tool outside the view reads as
+ * unknown. A token's missing scope is not checked here: the call reaches the endpoint, which refuses it
+ * with a message that names the scope, as it always has.
+ */
+export function viewedEndpoint(name: string, view: McpView): Endpoint | undefined {
+  const ep = BY_NAME.get(name);
+  return ep && viewAllows(ep, view) ? ep : undefined;
+}
 
 // ---------------------------------------------------------------- JSON-RPC
 
@@ -126,12 +146,13 @@ function toolResult(ep: Endpoint, payload: string, isError: boolean) {
   return { content: [{ type: "text", text }], isError };
 }
 
-async function callTool(p: Principal, params: unknown, id: RpcId): Promise<RpcResponse> {
+async function callTool(p: Principal, params: unknown, id: RpcId, view: McpView): Promise<RpcResponse> {
   const parsed = callParams.safeParse(params);
   if (!parsed.success) return rpcError(id, RPC.invalidParams, "tools/call needs a tool name.");
   const { name, arguments: args } = parsed.data;
 
-  const ep = BY_NAME.get(name);
+  // A tool outside the view is indistinguishable from one that does not exist.
+  const ep = viewedEndpoint(name, view);
   if (!ep) return rpcError(id, RPC.invalidParams, `Unknown tool: ${name.slice(0, 80)}`);
   if (args !== undefined && (args === null || typeof args !== "object" || Array.isArray(args))) {
     return rpcError(id, RPC.invalidParams, "Tool arguments must be an object.");
@@ -156,7 +177,7 @@ async function callTool(p: Principal, params: unknown, id: RpcId): Promise<RpcRe
  * Handle one already-authenticated JSON-RPC message. Throws HttpError only for
  * the 429 rate limit; everything else becomes a JSON-RPC response.
  */
-export async function handleMcpMessage(p: Principal, raw: unknown): Promise<McpOutcome> {
+export async function handleMcpMessage(p: Principal, raw: unknown, view: McpView = FULL_VIEW): Promise<McpOutcome> {
   if (Array.isArray(raw)) {
     return { kind: "response", status: 400, body: rpcError(null, RPC.invalidRequest, "Batches are not supported. Send one message per request.") };
   }
@@ -174,7 +195,7 @@ export async function handleMcpMessage(p: Principal, raw: unknown): Promise<McpO
 
   const reply = (body: RpcResponse): McpOutcome => ({ kind: "response", status: 200, body });
 
-  if (method === "tools/call") return reply(await callTool(p, params, id));
+  if (method === "tools/call") return reply(await callTool(p, params, id, view));
 
   enforceApiRate(p, "read");
   switch (method) {
@@ -193,7 +214,7 @@ export async function handleMcpMessage(p: Principal, raw: unknown): Promise<McpO
     case "ping":
       return reply(rpcResult(id, {}));
     case "tools/list":
-      return reply(rpcResult(id, { tools: TOOLS }));
+      return reply(rpcResult(id, { tools: toolsFor(p, view) }));
     default:
       return reply(rpcError(id, RPC.methodNotFound, `Method not found: ${method.slice(0, 80)}`));
   }
