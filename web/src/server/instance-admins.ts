@@ -72,7 +72,7 @@ export async function grantInstanceAdmin(actorId: string, raw: unknown, freshSig
   if (already) return { userId: target.id, name: target.name, changed: false };
 
   await db.insert(schema.instanceAdmins).values({ userId: target.id, grantedBy: actorId, grantedAt: new Date() });
-  await audit(actorId, "admin.grant", target.id);
+  await audit(actorId, "admin.grant", target.id, undefined, { level: "instance" });
   return { userId: target.id, name: target.name, changed: true };
 }
 
@@ -89,6 +89,6 @@ export async function revokeInstanceAdmin(actorId: string, raw: unknown, freshSi
     .where(eq(schema.instanceAdmins.userId, userId))
     .returning({ userId: schema.instanceAdmins.userId });
   if (removed.length === 0) return { userId, changed: false };
-  await audit(actorId, "admin.revoke", userId);
+  await audit(actorId, "admin.revoke", userId, undefined, { level: "instance" });
   return { userId, changed: true };
 }

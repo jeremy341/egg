@@ -113,7 +113,7 @@ export async function createInvitation(
     updatedAt: now,
   });
   const delivery = await deliver(email, await orgName(orgId), token);
-  await audit(actorId, "org.invite", id, { role: input.role, delivery: delivery.delivery });
+  await audit(actorId, "org.invite", id, { role: input.role, delivery: delivery.delivery }, { level: "organization", orgId });
   return { id, email, role: input.role, expiresAt, ...delivery };
 }
 
@@ -132,7 +132,7 @@ export async function resendInvitation(actorId: string, invitationId: string, no
     .set({ tokenHash: sha256Hex(token), expiresAt, updatedAt: now })
     .where(eq(schema.invitations.id, row.id));
   const delivery = await deliver(row.email, await orgName(row.orgId), token);
-  await audit(actorId, "org.invite.resend", row.id, { delivery: delivery.delivery });
+  await audit(actorId, "org.invite.resend", row.id, { delivery: delivery.delivery }, { level: "organization", orgId: row.orgId });
   return { id: row.id, email: row.email, role: row.role, expiresAt, ...delivery };
 }
 
@@ -145,7 +145,7 @@ export async function cancelInvitation(actorId: string, invitationId: string, no
     .update(schema.invitations)
     .set({ cancelledAt: row.cancelledAt ?? now, updatedAt: now })
     .where(eq(schema.invitations.id, row.id));
-  await audit(actorId, "org.invite.cancel", row.id);
+  await audit(actorId, "org.invite.cancel", row.id, undefined, { level: "organization", orgId: row.orgId });
 }
 
 /** Every invitation for an organization, newest first. Admins only. Never includes a token or link. */
@@ -205,6 +205,6 @@ export async function acceptInvitation(userId: string, token: string, now = new 
   if (!won) throw new HttpError(410, "This invitation was already used.", "gone");
 
   const role = (await orgRoleOf(userId, row.orgId)) ?? row.role;
-  await audit(userId, "org.join", row.orgId, { role: row.role });
+  await audit(userId, "org.join", row.orgId, { role: row.role }, { level: "organization", orgId: row.orgId });
   return { orgId: row.orgId, role };
 }
