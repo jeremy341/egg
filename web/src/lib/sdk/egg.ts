@@ -205,6 +205,15 @@ export type ActivityItem = {
 };
 export type ActivityPage = { items: ActivityItem[]; nextCursor: string | null; total: number | null };
 export type ActivityQuery = { kind?: string; range?: string; limit?: number; cursor?: string };
+export type ProjectChange = {
+  time: string;
+  kind: "projects" | "deployments" | "domains" | "servers" | "access" | "monitoring" | "terminal";
+  actor: string;
+  summary: string;
+  deploymentId?: string;
+};
+export type ProjectChangesPage = { items: ProjectChange[]; nextCursor: string | null };
+export type ProjectChangesQuery = { limit?: number; cursor?: string };
 
 export type Server = {
   id: string;
@@ -733,6 +742,11 @@ export class Egg {
   /** One page of the activity log, newest first. Needs `activity:read`. */
   getActivity(query: ActivityQuery = {}): Promise<ActivityPage> {
     return this.request("GET", "/activity", { kind: query.kind, range: query.range, limit: query.limit, cursor: query.cursor });
+  }
+
+  /** One page of a project's change-type entries, newest first. Needs `activity:read`. */
+  getChanges(projectId: string, query: ProjectChangesQuery = {}): Promise<ProjectChangesPage> {
+    return this.request("GET", `/projects/${seg(projectId)}/changes`, { limit: query.limit, cursor: query.cursor });
   }
 
   /** Every activity entry that matches, page by page, following `nextCursor`. */

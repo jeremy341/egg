@@ -396,8 +396,8 @@
       "name": "get_changes",
       "source": "apps/server/src/mcp/tools/observability.ts",
       "status": "partial",
-      "ours": "get_activity",
-      "reason": "Egg activity is audit and activity history, not a Git change set or file diff."
+      "ours": "get_changes",
+      "reason": "Core deploy actions omit deployment ids, domain removals omit a project target, and dashboard environment removals and replacements omit key names."
     },
     {
       "name": "get_compose_stack",

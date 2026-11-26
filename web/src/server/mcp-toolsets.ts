@@ -126,6 +126,7 @@ export const TOOLSET_OF: Record<string, Toolset> = {
   get_status_page: "analytics",
 
   get_activity: "activity",
+  get_changes: "activity",
 
   terminal_status: "terminal",
   terminal_open: "terminal",
