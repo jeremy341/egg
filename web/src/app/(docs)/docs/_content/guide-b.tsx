@@ -305,6 +305,7 @@ const CALLS: Call[] = [
   ["create_project", "POST", "/projects", "projects:write", "Changes"],
   ["update_project", "PATCH", "/projects/{projectId}", "projects:write", "Changes"],
   ["delete_project", "DELETE", "/projects/{projectId}", "projects:write", "Changes"],
+  ["delete_service", "DELETE", "/services/{serviceId}", "projects:write", "Changes"],
   ["get_status_page", "GET", "/projects/{projectId}/status-page", "projects:read", "Reads"],
   ["list_deployments", "GET", "/projects/{projectId}/deployments", "deployments:read", "Reads"],
   ["deploy_branch", "POST", "/projects/{projectId}/deployments", "deployments:write", "Changes"],
@@ -342,6 +343,9 @@ const CALLS: Call[] = [
   ["get_resource_quota", "GET", "/projects/{projectId}/resources/quota", "resources:read", "Container session"],
   ["list_servers", "GET", "/servers", "container:read", "Reads"],
   ["get_container_inventory", "GET", "/servers/{serverId}/inventory", "container:read", "Container session"],
+  ["list_project_containers", "GET", "/projects/{projectId}/containers", "container:read", "Container session"],
+  ["get_project_container", "GET", "/projects/{projectId}/containers/{containerId}", "container:read", "Container session"],
+  ["get_project_health", "GET", "/projects/{projectId}/health", "container:read", "Container session"],
   ["list_files", "GET", "/projects/{projectId}/files", "files:read", "Container session"],
   ["read_file", "GET", "/projects/{projectId}/files/content", "files:read", "Container session"],
   ["download_file", "GET", "/projects/{projectId}/files/download", "files:read", "Container session"],
@@ -840,8 +844,11 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
       <P>
         A token with <C>activity:read</C> can also read the change feed with{" "}
         <C>GET /api/v1/projects/{"{projectId}"}/changes</C>, or the <C>get_changes</C> tool. It is a newest-first list of
-        one project’s deploys, rollbacks, redeploys, domain changes and build-config changes. Environment variables
-        appear by name only, never with their values.
+        one project’s deploys, rollbacks, redeploys, domain changes and build-config changes. An item can include{" "}
+        <C>deploymentId</C> for API deploys, redeploys, rollbacks, cancels, project restarts, deployment lifecycle
+        actions and preview deletions when the id belongs to the project. A project-linked domain removal appears in
+        that project’s feed. Environment deletion and replacement summaries show key names, including for shared
+        environment sets; values never appear.
       </P>
 
       {limits("activity-limits", [
@@ -2413,7 +2420,7 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         head={["Permission", "What it allows", "Calls"]}
         rows={[
           [<C key="1">projects:read</C>, "Read projects, their settings and status page.", "list_projects, get_project, get_status_page"],
-          [<C key="2">projects:write</C>, "Create, change and delete projects, including build and start commands.", "create_project, update_project, delete_project, deploy_from_github_url"],
+          [<C key="2">projects:write</C>, "Create, change and delete projects and services, including build and start commands.", "create_project, update_project, delete_project, delete_service, deploy_from_github_url"],
           [<C key="3">deployments:read</C>, "Read deployments, build output and deployment metrics.", "list_deployments, get_deployment, get_deployment_logs, get_deployment_metrics"],
           [<C key="4">deployments:write</C>, "Deploy, redeploy, cancel and roll back, and replace or revoke the deploy hook.", "deploy_branch, deploy_from_github_url, redeploy, cancel_deployment, rollback_deployment, rotate_deploy_hook, revoke_deploy_hook"],
           [<C key="5">logs:read</C>, "Read runtime logs and crash reports.", "get_logs, list_crash_reports, get_crash_report"],
@@ -2426,7 +2433,7 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
           [<C key="12">analytics:read</C>, "Read visitor analytics.", "get_analytics"],
           [<C key="13">activity:read</C>, "Read your activity log and a project’s change feed.", "get_activity, get_changes"],
           [<C key="14">resources:read</C>, "Read CPU, memory and disk, now and over time, and a project’s resource limits and usage.", "get_server_usage, get_resource_history, get_project_resources, get_resource_quota"],
-          [<C key="15">container:read</C>, "List servers and see what is on the container. Read only.", "list_servers, get_container_inventory"],
+          [<C key="15">container:read</C>, "List servers and inspect one project’s containers and health. Read only.", "list_servers, get_container_inventory, list_project_containers, get_project_container, get_project_health"],
           [<C key="16">files:read</C>, "List and read files in a project’s folder.", "list_files, read_file, download_file"],
           [<C key="17">files:write</C>, "Create, change, rename and delete files in a project’s shared/ folder.", "write_file, make_folder, rename_file, delete_file"],
           [<C key="18">terminal:use</C>, "Open and use a shell on the container.", "terminal_status, terminal_open, terminal_send, terminal_read, terminal_resize, terminal_close"],
@@ -2596,7 +2603,8 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
           <ExternalLink href={repoLink("web/scripts/egg-cli.mjs")}>egg-cli.mjs</ExternalLink>). Use Egg from a
           terminal: <C>egg whoami</C>, <C>egg projects list</C>, <C>egg deploy &lt;slug&gt;</C>,{" "}
           <C>egg logs &lt;deployment-id&gt; --follow</C>, <C>egg rollback &lt;deployment-id&gt;</C>,{" "}
-          <C>egg env names &lt;slug&gt;</C>, <C>egg domains list</C> and <C>egg status</C>. It reads{" "}
+          <C>egg env names &lt;slug&gt;</C>, <C>egg services delete &lt;service&gt; --confirm &lt;name&gt; [--remove-from-server]</C>,{" "}
+          <C>egg domains list</C> and <C>egg status</C>. It reads{" "}
           <C>EGG_TOKEN</C> and <C>EGG_URL</C> from the environment and never prints the token. Exit code 0 is done, 1
           is failed and 2 is wrong use.
         </li>

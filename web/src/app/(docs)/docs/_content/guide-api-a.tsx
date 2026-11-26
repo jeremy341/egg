@@ -252,10 +252,21 @@ export const GUIDE_API_A: Record<string, () => ReactNode> = {
       </P>
 
       <P>
-        <B>Deploy from a GitHub URL.</B> <C>POST /api/v1/projects/{"{projectId}"}/deploy-from-github-url</C> updates the project&apos;s repository, then
-        deploys it. It needs <C>deployments:write</C> and <C>projects:write</C>. The body takes a github.com URL in the
-        https, <C>.git</C> or <C>git@</C> form, with an optional <C>/tree/&lt;branch&gt;</C>. The URL&apos;s branch is
-        used when it has one, and the default branch otherwise. Credentials in the URL are never shown.
+        <B>Deploy from a GitHub URL.</B> <C>POST /api/v1/projects/{"{projectId}"}/deploy-from-github-url</C> sets the project&apos;s repository and
+        production branch, then queues a production deploy in one call. It needs <C>deployments:write</C> and{" "}
+        <C>projects:write</C>. The body takes a github.com URL in the https, <C>.git</C> or <C>git@</C> form, with
+        an optional <C>/tree/&lt;branch&gt;</C>. Egg uses that branch when present, or the repository&apos;s default branch
+        otherwise. Credentials in the URL are never shown.
+      </P>
+      <P>
+        <B>Delete a service.</B> <C>DELETE /api/v1/services/{"{serviceId}"}</C> needs <C>projects:write</C>. Its JSON
+        body must include <C>confirmName</C>, exactly matching the service name. Without the optional{" "}
+        <C>?removeFromServer=true</C> query, Egg deletes its project record and the app keeps running on the container,
+        now unmanaged. With it, Egg also stops the service and removes its releases and previews; the shared data folder
+        stays. The TypeScript client call is <C>deleteService(serviceId, confirmName)</C>; pass{" "}
+        <C>{"{ removeFromServer: true }"}</C> as its third argument to remove those files too. In the CLI, run{" "}
+        <C>egg services delete &lt;service&gt; --confirm &lt;name&gt; [--remove-from-server]</C>. The confirmation must
+        exactly match the service name.
       </P>
 
       <H2 id="api-resources-example" title="Example" />
@@ -286,12 +297,12 @@ export const GUIDE_API_A: Record<string, () => ReactNode> = {
   "api-monitoring": () => (
     <Section
       id="api-monitoring"
-      intro="Read deployment health, logs, resource signals and visitor analytics. Manage signed notification channels and their delivery history."
+      intro="Read project containers and health, deployment logs, resource signals and visitor analytics. Manage signed notification channels and their delivery history."
     >
       <H2 id="api-monitoring-what-it-does" title="What it does" />
       <P>
-        Monitoring endpoints return what Egg records for a project: deployment checks, build output, the service journal,
-        resource samples and counted page views.
+        Monitoring endpoints return what Egg records for a project: container details, deployment health and output, the
+        service journal, resource samples and counted page views.
       </P>
       <P>
         Page views are not every HTTP request. Egg does not collect a web server access log, so{" "}
@@ -317,62 +328,95 @@ export const GUIDE_API_A: Record<string, () => ReactNode> = {
             "Service journal lines, filtered by text, level (info, warn or error) and a time range of 1h, 24h or 7d, with a page limit.",
           ],
           [
-            <C key="k296">GET /api/v1/deployments/{"{deploymentId}"}/build-logs</C>,
-            <C key="k297">deployments:read</C>,
-            "Build output for one deployment, one page at a time.",
+            <C key="k298">GET /api/v1/deployments/{"{deploymentId}"}/build-logs</C>,
+            <C key="k299">deployments:read</C>,
+            "get_build_logs: build output for one deployment, one page at a time.",
           ],
           [
-            <C key="k301">GET /api/v1/projects/{"{projectId}"}/request-stats</C>,
-            <C key="k302">analytics:read</C>,
+            <C key="k296">GET /api/v1/deployments/{"{deploymentId}"}/logs</C>,
+            <C key="k297">deployments:read</C>,
+            "get_deployment_logs: build and deploy output for one deployment, oldest first and paged.",
+          ],
+          [
+            <C key="k300">GET /api/v1/projects/{"{projectId}"}/containers</C>,
+            <C key="k301">container:read</C>,
+            "Production Docker containers for one project, including Compose services. Native systemd projects return an empty list.",
+          ],
+          [
+            <C key="k302">GET /api/v1/projects/{"{projectId}"}/containers/{"{containerId}"}</C>,
+            <C key="k303">container:read</C>,
+            "Safe details for one container in that project's set, including image and creation time.",
+          ],
+          [
+            <C key="k304">GET /api/v1/projects/{"{projectId}"}/health</C>,
+            <C key="k305">container:read</C>,
+            "The project's existing cached systemd and HTTP health check.",
+          ],
+          [
+            <C key="k306">GET /api/v1/projects/{"{projectId}"}/request-stats</C>,
+            <C key="k307">analytics:read</C>,
             "Recorded page views, visitors, top pages and referrers for 1 to 90 days. Defaults to 30.",
           ],
           [
-            <C key="k306">GET /api/v1/projects/{"{projectId}"}/anomalies</C>,
-            <C key="k307">analytics:read</C>,
+            <C key="k308">GET /api/v1/projects/{"{projectId}"}/anomalies</C>,
+            <C key="k309">analytics:read</C>,
             "Client-error and resource anomalies for 1 to 90 days.",
           ],
           [
-            <C key="k311">GET /api/v1/projects/{"{projectId}"}/attack-signals</C>,
-            <C key="k312">analytics:read</C>,
+            <C key="k310">GET /api/v1/projects/{"{projectId}"}/attack-signals</C>,
+            <C key="k311">analytics:read</C>,
             "Repeated client-side error groups to investigate.",
           ],
           [
-            <C key="k316">GET /api/v1/notification-channels</C>,
-            <C key="k317">webhooks:read</C>,
+            <C key="k312">GET /api/v1/notification-channels</C>,
+            <C key="k313">webhooks:read</C>,
             "Each channel with its receiver host and event filter. Signing secrets are never returned.",
           ],
           [
-            <C key="k321">GET /api/v1/notification-channels/{"{channelId}"}/deliveries</C>,
-            <C key="k322">webhooks:read</C>,
+            <C key="k314">GET /api/v1/notification-channels/{"{channelId}"}/deliveries</C>,
+            <C key="k315">webhooks:read</C>,
             "Recent sends for one channel, 1 to 100 at a time. Defaults to 20.",
           ],
           [
-            <C key="k326">GET /api/v1/projects/{"{projectId}"}/crash-reports</C>,
-            <C key="k327">logs:read</C>,
+            <C key="k316">GET /api/v1/projects/{"{projectId}"}/crash-reports</C>,
+            <C key="k317">logs:read</C>,
             "Crash reports for the project. Each keeps up to 200 journal lines from the release that was live, with known secrets masked.",
           ],
           [
-            <C key="k328">GET /api/v1/crash-reports/{"{crashId}"}</C>,
-            <C key="k329">logs:read</C>,
+            <C key="k318">GET /api/v1/crash-reports/{"{crashId}"}</C>,
+            <C key="k319">logs:read</C>,
             "One crash report, with the same journal lines.",
           ],
           [
-            <C key="k330">GET /api/v1/deployments/{"{deploymentId}"}/metrics</C>,
-            <C key="k331">deployments:read</C>,
+            <C key="k320">GET /api/v1/deployments/{"{deploymentId}"}/metrics</C>,
+            <C key="k321">deployments:read</C>,
             "Bucketed CPU and memory averages and restart counts for the deployment’s project. Samples are per project, not per release.",
           ],
           [
-            <C key="k332">GET /api/v1/projects/{"{projectId}"}/resources/quota</C>,
-            <C key="k333">resources:read</C>,
+            <C key="k322">GET /api/v1/projects/{"{projectId}"}/resources/quota</C>,
+            <C key="k323">resources:read</C>,
             "Limits and current usage. A value Egg has not measured is null, never zero.",
           ],
           [
-            <C key="k334">GET /api/v1/projects/{"{projectId}"}/changes</C>,
-            <C key="k335">activity:read</C>,
-            "The project’s change feed, newest first: deploys, rollbacks, redeploys, domain and build-config changes. Environment variables appear by name only.",
+            <C key="k324">GET /api/v1/projects/{"{projectId}"}/changes</C>,
+            <C key="k325">activity:read</C>,
+            "The project’s change feed, newest first. Environment variable key names appear in deletion and replacement summaries; values never appear.",
           ],
         ]}
       />
+      <P>
+        The container endpoints are read only and project scoped. <C>restartCount</C> uses systemd&apos;s restart counter
+        for the main container and Docker&apos;s counter for Compose auxiliaries; <C>status.restarts</C> on the health
+        response is systemd&apos;s count. Health reuses the existing cached systemd and HTTP check and returns a{" "}
+        <C>cached</C> flag. These endpoints do not offer Docker exec into containers or per-container log streaming. Use{" "}
+        <C>get_deployment_logs</C> for build and deploy output. They do not provide a cluster-wide container listing.
+      </P>
+      <P>
+        In <C>get_changes</C>, an item can include <C>deploymentId</C> for API deploys (including a GitHub URL deploy),
+        redeploys, rollbacks, cancellations, project restarts, deployment lifecycle actions and preview deletions when
+        the id belongs to this project. A project-linked domain removal appears in that project&apos;s feed. Deletions
+        and replacements show environment variable key names, including for shared environment sets; values never appear.
+      </P>
       <P>
         Each request needs the scope in its row. Use <C>channelId</C> from the channel list, and <C>deliveryId</C> from the
         deliveries list. Creating a channel needs <C>webhooks:write</C>. The full list of parameters is in the OpenAPI

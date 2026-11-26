@@ -247,10 +247,15 @@ export const GUIDE_API_B: Record<string, () => ReactNode> = {
       <P>
         Ask the user before you delete or change a live resource. A permanent delete cannot be taken back. Through{" "}
         <C>call_api</C>, Egg refuses an operation flagged as destructive until <C>confirm</C> repeats its operation ID
-        exactly. Examples include <C>delete_project</C>, <C>delete_job</C>, <C>run_job</C> and{" "}
+        exactly. Examples include <C>delete_project</C>, <C>delete_service</C>, <C>delete_job</C>, <C>run_job</C> and{" "}
         <C>cancel_job_run</C>. Project deletion also needs <C>confirmName</C> set to the exact project name:
       </P>
       <CodeBlock label="JSON" code={DELETE_PROJECT_EXAMPLE} />
+      <P>
+        Deleting a service with <C>delete_service</C> also needs <C>confirmName</C>, exactly matching the service name.
+        The optional <C>removeFromServer</C> flag stops the service and removes its releases and previews from the
+        container; the shared data folder stays.
+      </P>
       <P>
         Deleting a notification channel needs <C>confirmName</C> set to the exact channel host, such as{" "}
         <C>hooks.example.com</C>. Egg records the channel delete in the audit log with the token that made it.

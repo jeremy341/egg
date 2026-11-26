@@ -51,7 +51,7 @@ These are the same commands as `pnpm egg start` and `pnpm run doctor` from `web/
 | `egg services create --name ... --server ... --repo ... --runtime ...` | Create a service | `projects:write` |
 | `egg services update <service> [settings]` | Change supported project-backed service settings | `projects:read`, `projects:write` |
 | `egg services configure <service> [--ports-file <json-file>] [--domain <name> \| --clear-domain]` | Replace all service ports and/or set or clear its internal DNS name | `projects:read`, `projects:write` |
-| `egg services delete <service> --confirm <name> [--remove-from-server]` | Delete a service after confirming its exact name | `projects:read`, `projects:write` |
+| `egg services delete <service> --confirm <name> [--remove-from-server]` | Delete a service only when `--confirm` exactly matches its name; `--remove-from-server` also stops it and removes its releases and previews, while keeping shared data | `projects:read`, `projects:write` |
 | `egg services logs <service>` | Read production runtime logs | `projects:read`, `logs:read` |
 | `egg services restart <service>` | Restart the production process | `projects:read`, `deployments:write` |
 | `egg services port <service> <port>` | Change its public port (linked domains return to pending until the Nest mapping is changed) | `projects:read`, `projects:write` |
