@@ -309,13 +309,6 @@
       "when": 1794595329949,
       "tag": "0043_homepage_feed",
       "breakpoints": true
-    },
-    {
-      "idx": 44,
-      "version": "6",
-      "when": 1795019743367,
-      "tag": "0044_instance_admins",
-      "breakpoints": true
     }
   ]
 }

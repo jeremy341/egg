@@ -331,8 +331,7 @@ export function pruneReleases(
     `    rm -rf -- "$d"; echo "Removed old release \${d:0:8}"\n` +
     `  fi\n` +
     `done\n` +
-    // Also matches "<archive>.partial", the name an upload uses until it finishes, so an interrupted upload is removed.
-    `rm -f ${shellQuote(projectDir(home, slug))}/incoming/*.tar.gz* 2>/dev/null || true\n`
+    `rm -f ${shellQuote(projectDir(home, slug))}/incoming/*.tar.gz 2>/dev/null || true\n`
   );
 }
 

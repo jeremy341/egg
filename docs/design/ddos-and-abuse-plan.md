@@ -1,17 +1,6 @@
 # Rate limits and DDoS protection (plan, not built)
 
-Status: plan written on 2026-11-14 from a read of `web/src/server/rate-limit.ts`, `deploy/Caddyfile` and the existing audits. Items marked **verify** were not checked against the code.
-
-**Update, 2026-11-16 (checked against the code): Layer 3 is built, and part of Layer 4.** Layers 1 and 2 are not.
-
-- Every request the proxy sees is limited per client address (`ingress`, 600 a minute), the public JSON routes `/api/stats`, `/api/public/*` and `/api/status/*` have a stricter limit on top (`ingressJson`, 60 a minute), and a request whose address is unknown shares one high ceiling (`ingressGlobal`). See `RATE_LIMITS` in `web/src/server/rate-limit-core.ts` and `web/src/proxy.ts`.
-- The four routes the proxy matcher skips apply their own address limit: build upload, file write and the security-report intake call `enforceIngress`, and the GitHub webhook calls `admitRequest` with its own `ingressWebhook` bucket (600 a minute). So gap 1 is closed.
-- An address that gets 300 refusals in 5 minutes is banned for 15 minutes (`INGRESS_BAN`). Gap 6 is closed.
-- `recordIngress` in `web/src/server/backend-metrics.ts` counts refused and total requests. Whether the admin diagnostics screen shows them, and whether an alert exists, is still **unverified**.
-- Tests: `proxy-ingress.test.ts`, `rate-limit-ingress.test.ts`, `ingress-limits.test.ts`, `ingress-handlers.test.ts`.
-- The address limits only work with `TRUST_PROXY=1` behind a proxy you run. The Compose example (`deploy/.env.example`) sets it. Without it, only the shared ceiling applies.
-
-Still open: Layer 1 (a CDN; needs the owner's decision), Layer 2 (stock Caddy cannot rate-limit; timeouts not verified), limits that survive a restart or are shared between processes (gap 2), and the alert. The list under "Gaps" below is the original, kept for history.
+Status: plan written on 2026-11-14 from a read of `web/src/server/rate-limit.ts`, `deploy/Caddyfile` and the existing audits. Nothing here is built. Items marked **verify** were not checked against the code.
 
 ## The honest limit first
 

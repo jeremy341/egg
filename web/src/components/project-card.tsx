@@ -49,10 +49,10 @@ export function ProjectCard({
         <span className="min-w-0 flex-1 truncate font-medium tracking-[-0.02em]">
           {project.name}
         </span>
-        <span className="hidden w-[24%] truncate text-label text-muted-foreground @xl:block">
+        <span className="hidden w-[24%] truncate text-label text-muted-foreground sm:block">
           {address}
         </span>
-        <span className="hidden w-[28%] truncate text-muted-foreground @3xl:block">
+        <span className="hidden w-[28%] truncate text-muted-foreground md:block">
           {commitText(project)}
         </span>
         {project.lastAge ? (

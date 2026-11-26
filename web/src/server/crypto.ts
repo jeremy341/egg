@@ -41,8 +41,7 @@ export function seal(plaintext: string, context: string): string {
 
 export function open(sealed: string, context: string): string {
   const [version, iv, tag, ct] = sealed.split(".");
-  // An empty value seals to an empty ciphertext segment, which is valid. Only a missing segment is malformed.
-  if (version !== VERSION || !iv || !tag || ct === undefined) {
+  if (version !== VERSION || !iv || !tag || !ct) {
     throw new Error("Unrecognised sealed value");
   }
   const decipher = createDecipheriv(

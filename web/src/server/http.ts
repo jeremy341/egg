@@ -85,7 +85,7 @@ async function enforceRequestMaintenance(req: NextRequest) {
     userId = (await getCurrentUser())?.id ?? null;
   }
   const { isInstanceAdmin } = await import("@/server/admin-identity");
-  if (!(await isInstanceAdmin(userId))) throw maintenanceError();
+  if (!isInstanceAdmin(userId)) throw maintenanceError();
 }
 
 /** Wrap a route handler: same-origin check plus uniform JSON errors. */

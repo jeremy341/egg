@@ -1,13 +1,8 @@
 import { Suspense } from "react";
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { PageHeader } from "@/components/page-header";
 import { ProjectSettings } from "@/components/project-settings";
 import { SettingsSkeleton } from "@/components/skeletons/settings";
-import { Alert } from "@/components/ui/alert";
-import { ROLE_LABEL, ROLE_NOTE } from "@/lib/team";
 import { requireUser } from "@/server/auth/current";
-import { getProjectRole } from "@/server/project-roles";
 import { listEnvVars } from "@/server/projects";
 import { projectViews } from "@/server/queries";
 
@@ -23,34 +18,6 @@ async function Content({ params }: Props) {
   const user = await requireUser();
   const project = (await projectViews(user.id)).find((p) => p.slug === slug);
   if (!project) notFound();
-
-  const role = await getProjectRole(user.id, project.id);
-  if (role !== "owner") {
-    // Only the owner can read or change settings and environment variables, so members see a short note instead.
-    const mine = role === "developer" || role === "viewer" ? role : null;
-    return (
-      <>
-        <PageHeader title="Settings" description={`${project.name} on ${project.nestUsername}.hackclub.app`} />
-        <div className="mx-auto w-full max-w-[720px]">
-          <Alert tone="note" title="Only the project owner can change settings.">
-            {mine ? (
-              <p>
-                You are a {ROLE_LABEL[mine].toLowerCase()} on this project. {ROLE_NOTE[mine]}
-              </p>
-            ) : (
-              <p>Ask the project owner to change them.</p>
-            )}
-            <p>
-              <Link href={`/projects/${slug}`} className="link font-medium">
-                Back to {project.name}
-              </Link>
-            </p>
-          </Alert>
-        </div>
-      </>
-    );
-  }
-
   const env = await listEnvVars(user.id, project.id);
   return <ProjectSettings project={project} env={env} />;
 }

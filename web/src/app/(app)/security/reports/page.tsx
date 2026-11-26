@@ -1,8 +1,8 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/server/auth/current";
-import { isInstanceAdmin } from "@/server/admin-identity";
 import {
+  isReportAdmin,
   listSecurityReports,
   REPORT_HEADROOM_HOURLY_LIMIT,
   securityReportCapacity,
@@ -24,7 +24,7 @@ export default function ReportsPage() {
 
 async function ReportsContent() {
   const user = await requireUser();
-  if (!(await isInstanceAdmin(user.id))) notFound();
+  if (!isReportAdmin(user)) notFound();
   const reports = await listSecurityReports(user.id);
   const capacity = await securityReportCapacity(user.id);
   return (

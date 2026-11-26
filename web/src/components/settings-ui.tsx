@@ -12,13 +12,10 @@ export function DocsLink({
   href,
   topic,
   className,
-  label = "Docs",
 }: {
   href: string;
   topic: string;
   className?: string;
-  /** The visible text. "Learn more" where a screen points to a page that carries the detail. */
-  label?: string;
 }) {
   return (
     <Link
@@ -26,7 +23,7 @@ export function DocsLink({
       aria-label={`Read the docs about ${topic}`}
       className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "shrink-0", className)}
     >
-      {label}
+      Docs
       <ArrowUpRightIcon aria-hidden="true" className="size-3.5" />
     </Link>
   );
@@ -45,7 +42,6 @@ export function Card({
   footer,
   docsHref,
   docsTopic,
-  docsLabel,
   tone = "default",
 }: {
   id: string;
@@ -56,8 +52,6 @@ export function Card({
   docsHref?: string;
   /** Finishes the Docs link's accessible name. Defaults to the lowercased title. */
   docsTopic?: string;
-  /** Visible text of the docs link. Defaults to "Docs". */
-  docsLabel?: string;
   tone?: "default" | "danger";
 }) {
   const danger = tone === "danger";
@@ -74,7 +68,7 @@ export function Card({
           <h2 id={id} className="scroll-mt-20 text-title-2">
             {title}
           </h2>
-          {docsHref ? <DocsLink href={docsHref} topic={docsTopic ?? title.toLowerCase()} label={docsLabel} /> : null}
+          {docsHref ? <DocsLink href={docsHref} topic={docsTopic ?? title.toLowerCase()} /> : null}
         </div>
         {description ? <p className="mt-1 text-muted-foreground">{description}</p> : null}
         <div className="mt-4">{children}</div>

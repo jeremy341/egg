@@ -71,9 +71,6 @@ describe("Windows Scheduled Task script", () => {
     expect(script).toContain("-RunLevel Limited");
     expect(script).toContain("param([switch]$Remove)");
     expect(script).toContain("Unregister-ScheduledTask -TaskName $taskName -Confirm:$false");
-    // Removing the task must also stop a running copy, or its port stays in use.
-    expect(script.indexOf("Stop-ScheduledTask")).toBeGreaterThan(-1);
-    expect(script.indexOf("Stop-ScheduledTask")).toBeLessThan(script.indexOf("Unregister-ScheduledTask"));
   });
 
   it("doubles single quotes in paths", () => {

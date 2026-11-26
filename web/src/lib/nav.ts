@@ -8,7 +8,6 @@ import {
   BookOpenTextIcon,
   FolderOpenIcon,
   TerminalWindowIcon,
-  UsersIcon,
   CubeFocusIcon,
   CodeIcon,
   GlobeSimpleIcon,
@@ -157,12 +156,6 @@ function projectItems(slug: string): NavItem[] {
       active: (p) => p.startsWith(`${base}/terminal`),
     },
     {
-      href: `${base}/team`,
-      label: "Team",
-      icon: UsersIcon,
-      active: (p) => p.startsWith(`${base}/team`),
-    },
-    {
       href: `${base}/settings`,
       label: "Settings",
       icon: GearSixIcon,
@@ -199,15 +192,9 @@ export function navFor(pathname: string): NavContext {
       backHref = `/projects/${slug}`;
     } else if (rest.startsWith("/files")) {
       title = "Files";
-      crumb = "Files";
       backHref = `/projects/${slug}`;
     } else if (rest.startsWith("/terminal")) {
       title = "Terminal";
-      crumb = "Terminal";
-      backHref = `/projects/${slug}`;
-    } else if (rest.startsWith("/team")) {
-      title = "Team";
-      crumb = "Team";
       backHref = `/projects/${slug}`;
     } else if (rest.startsWith("/settings")) {
       title = "Project settings";

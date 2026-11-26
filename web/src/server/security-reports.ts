@@ -4,7 +4,6 @@ import { getDb, schema } from "@/server/db";
 import { keyedDigestHex, newId, open, seal } from "@/server/crypto";
 import { HttpError, notFound } from "@/server/http";
 import { audit } from "@/server/audit";
-import { isInstanceAdmin } from "@/server/admin-identity";
 
 export const REPORT_BODY_LIMIT = 4_300_000;
 export const REPORT_IMAGE_BYTES = 1_000_000;
@@ -73,7 +72,7 @@ export function capacityOf(used: number, bytes: number): ReportCapacity {
 
 /** Current inbox fill, for the administrator's capacity banner. */
 export async function securityReportCapacity(userId: string): Promise<ReportCapacity> {
-  await assertReportAdmin(userId);
+  assertReportAdmin(userId);
   const db = await getDb();
   const totals = await db
     .select({
@@ -88,12 +87,14 @@ export async function securityReportCapacity(userId: string): Promise<ReportCapa
 export function reportAdminId(): string | null {
   return process.env.SECURITY_REPORT_ADMIN_ID?.trim() || null;
 }
-/** The inbox uses the same administrator check as the rest of the instance. */
-export async function assertReportAdmin(userId: string): Promise<void> {
-  if (!(await isInstanceAdmin(userId)))
+export function isReportAdmin(user: { id: string } | null): boolean {
+  return !!user && !!reportAdminId() && user.id === reportAdminId();
+}
+export function assertReportAdmin(userId: string) {
+  if (!isReportAdmin({ id: userId }))
     throw new HttpError(
       403,
-      "Only an instance administrator can read this inbox.",
+      "Only the configured security administrator can read this inbox.",
       "forbidden",
     );
 }
@@ -376,7 +377,7 @@ function unpack(row: typeof schema.securityReports.$inferSelect) {
   return { id: row.id, status: row.status, createdAt: row.createdAt, payload };
 }
 export async function listSecurityReports(userId: string) {
-  await assertReportAdmin(userId);
+  assertReportAdmin(userId);
   const db = await getDb();
   const rows = await db
     .select()
@@ -397,7 +398,7 @@ export async function listSecurityReports(userId: string) {
   });
 }
 export async function getSecurityReport(userId: string, id: string) {
-  await assertReportAdmin(userId);
+  assertReportAdmin(userId);
   const db = await getDb();
   const row = await db
     .select()
@@ -413,7 +414,7 @@ export async function updateSecurityReport(
   id: string,
   status: unknown,
 ) {
-  await assertReportAdmin(userId);
+  assertReportAdmin(userId);
   const value = z.enum(REPORT_STATUSES).parse(status);
   const db = await getDb();
   const rows = await db
@@ -425,7 +426,7 @@ export async function updateSecurityReport(
   await audit(userId, "security_report.status", id, { status: value });
 }
 export async function deleteSecurityReport(userId: string, id: string) {
-  await assertReportAdmin(userId);
+  assertReportAdmin(userId);
   const db = await getDb();
   const rows = await db
     .delete(schema.securityReports)

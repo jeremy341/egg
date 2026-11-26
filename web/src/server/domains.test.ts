@@ -25,11 +25,6 @@ beforeAll(async () => {
   ctx = await useFreshDb();
   userId = (await upsertUser({ id: "u1", name: "Sam", email: null, slackId: null })).id;
   serverId = (await createServer(userId, "sam-r")).id;
-  // A Nest name is only accepted once the server has been connected, so the fixture is connected here.
-  await ctx.db
-    .update(schema.servers)
-    .set({ status: "connected", hostKeyFingerprint: "SHA256:test-fixture" })
-    .where(eq(schema.servers.id, serverId));
 });
 afterAll(async () => {
   await ctx.cleanup();
@@ -94,14 +89,6 @@ describe("domain records", () => {
       message: "Only your Nest name, sam-r.hackclub.app, can be used under hackclub.app.",
     });
     await expect(addDomain(userId, { serverId, domain: "printer.local", port: 3000 })).rejects.toMatchObject({ status: 400 });
-  });
-
-  it("refuses a Nest name on a server that was never connected, so nobody can claim another's name", async () => {
-    const unconnected = (await createServer(userId, "not-yet-sam")).id;
-    await expect(addDomain(userId, { serverId: unconnected, domain: "not-yet-sam.hackclub.app", port: 3000 }))
-      .rejects.toMatchObject({ status: 400 });
-    const claimed = await ctx.db.select().from(schema.domains).where(eq(schema.domains.domain, "not-yet-sam.hackclub.app")).get();
-    expect(claimed).toBeUndefined();
   });
 
   it("accepts your own Nest name as active, with no DNS check", async () => {

@@ -1,7 +1,5 @@
 import type { ReactNode } from "react";
 import { repoLink } from "@/lib/developer";
-import { REPO_URL } from "@/lib/site";
-import { CodeBlock } from "../_components/code-block";
 import { B, C, Callout, ExternalLink, H2, InternalLink, List, P, Section, Table } from "../_components/prose";
 import { docsHref } from "../_data/nav";
 
@@ -275,149 +273,6 @@ export const GUIDE_C: Record<string, () => ReactNode> = {
     </Section>
   ),
 
-  "run-locally": () => (
-    <Section
-      id="run-locally"
-      intro="Set up a working copy of the Egg code on your computer, start the development server, sign in, fill it with sample data and run the checks."
-    >
-      <P>
-        Every command on this page runs in the <C>web</C> folder of the repository, unless it says otherwise. To use a
-        copy without changing it, <InternalLink href={docsHref("run-yourself")}>Run Egg yourself</InternalLink> is
-        shorter.
-      </P>
-
-      <H2 id="run-locally-prereqs" />
-      <P>
-        You need Node.js 22.13 or newer and Git. The repository pins pnpm 11.20.0 in <C>package.json</C>, and that pnpm
-        needs Node 22.13. This block checks the Node version, turns on corepack, which comes with Node and installs the
-        pinned pnpm, and prints the pnpm version.
-      </P>
-      <CodeBlock label="Terminal" code={"node -v\ncorepack enable\npnpm -v"} />
-      <P>If corepack is not allowed on your computer, install pnpm from pnpm.io and use the pinned version.</P>
-
-      <H2 id="run-locally-install" />
-      <P>This block downloads the code and installs its dependencies.</P>
-      <CodeBlock label="Terminal" code={`git clone ${REPO_URL}.git\ncd egg/web\npnpm install`} />
-
-      <H2 id="run-locally-env" />
-      <P>
-        This block creates <C>web/.env.local</C> with a new <C>APP_SECRET</C> and <C>LOCAL_MODE_SECRET</C>. It never
-        overwrites a file that exists. Type <C>pnpm run setup</C>, not <C>pnpm setup</C>, which is a different pnpm
-        command.
-      </P>
-      <CodeBlock label="Terminal" code="pnpm run setup" />
-      <P>
-        The file starts with the variables below, which are the ones the code reads for a local copy. The Hack Club and
-        GitHub app values are optional and stay empty. See{" "}
-        <InternalLink href={docsHref("selfhost")}>Running your own</InternalLink> for every setting.
-      </P>
-      <CodeBlock
-        label=".env.local"
-        code={[
-          "APP_SECRET=<32 or more random characters>",
-          "LOCAL_MODE_SECRET=<32 or more random characters>",
-          "APP_URL=http://localhost:3000",
-          "DATABASE_URL=file:./data/egg.db",
-          "LOCAL_MODE=1",
-          "DEV_LOGIN=0",
-          "RUN_WORKER=1",
-        ].join("\n")}
-      />
-      <List>
-        <li>
-          <C>APP_SECRET</C> seals the SSH keys and variables in your database. Back it up with <C>web/data/egg.db</C>.
-        </li>
-        <li>
-          <C>APP_URL</C> is the address you open in the browser. <C>pnpm egg start</C> uses its port for the server.
-        </li>
-        <li>
-          <C>RUN_WORKER=1</C> runs the deployment queue inside the same process.
-        </li>
-      </List>
-
-      <H2 id="run-locally-dev" />
-      <P>
-        This block starts the development server. It listens on <C>127.0.0.1</C> at port 3000, the Next.js default, and
-        reloads when you edit code. Open <C>http://localhost:3000/login</C>. The page at <C>/</C> is the public home
-        page, not the dashboard.
-      </P>
-      <CodeBlock label="Terminal" code="pnpm dev" />
-      <P>
-        This block checks the computer first, starts the development server on the port in <C>APP_URL</C> and opens the
-        browser. Ctrl+C stops either way of starting it.
-      </P>
-      <CodeBlock label="Terminal" code="pnpm egg start --dev" />
-      <P>
-        This block only checks the computer: Node.js, pnpm, <C>.env.local</C>, <C>APP_SECRET</C>, the port and the data
-        folder. It starts nothing.
-      </P>
-      <CodeBlock label="Terminal" code="pnpm run doctor" />
-
-      <H2 id="run-locally-devlogin" />
-      <P>
-        Development sign-in lets you in as a made-up user, with no Hack Club account. This line in <C>.env.local</C>{" "}
-        turns it on. Restart the server after you change it.
-      </P>
-      <CodeBlock label=".env.local" code="DEV_LOGIN=1" />
-      <List>
-        <li>
-          The login page then shows a <B>Development sign-in</B> form with a name (<C>dev</C> by default, 40 characters
-          at most) and a <B>Sign in</B> button. The user is stored as <C>dev:</C> and the lowercase name.
-        </li>
-        <li>
-          It works only in development. In a production build the form is not shown and the route answers 404,
-          whatever <C>DEV_LOGIN</C> says.
-        </li>
-        <li>
-          With <C>LOCAL_MODE=1</C> on, as <C>pnpm run setup</C> leaves it, the form also asks for the local password.
-          Make it first with <B>Sign in on this computer</B> and the recovery key from <C>.env.local</C>.
-        </li>
-        <li>
-          <B>Origin rule.</B> Egg refuses a browser write whose <C>Origin</C> is not the origin of <C>APP_URL</C> or of
-          the address the request came to. It answers 403 “Cross-origin request blocked”. Open the site at the address
-          in <C>APP_URL</C>, and change <C>APP_URL</C> if you use another port. After sign-in Egg redirects to{" "}
-          <C>APP_URL</C> followed by <C>/projects</C>.
-        </li>
-        <li>
-          <C>pnpm run doctor</C> counts <C>DEV_LOGIN</C> as a way to sign in only with <C>--dev</C>.
-        </li>
-      </List>
-
-      <H2 id="run-locally-demo" />
-      <P>
-        This block fills the local database with sample projects, deployments and charts for the <C>dev</C> user, so
-        you can see the dashboard full. Sign in with the development form and the name <C>dev</C> to see them. Every
-        sample row id starts with <C>demo-</C>.
-      </P>
-      <CodeBlock label="Terminal" code="pnpm seed:demo" />
-      <P>
-        The sample server points at <C>127.0.0.1</C> port 1, where nothing listens. Pages that read the server live,
-        such as the Service card and runtime logs, show a connection error. This block removes exactly the rows the
-        script made.
-      </P>
-      <CodeBlock label="Terminal" code="pnpm seed:demo --reset" />
-
-      <H2 id="run-locally-checks" />
-      <P>This block runs every test once. The test runner is Vitest.</P>
-      <CodeBlock label="Terminal" code="pnpm test" />
-      <P>This block runs the tests in one file. Replace the path with any test file.</P>
-      <CodeBlock label="Terminal" code="pnpm test src/server/config.test.ts" />
-      <P>This block runs the linter, then the TypeScript check, which writes no files.</P>
-      <CodeBlock label="Terminal" code={"pnpm lint\npnpm typecheck"} />
-
-      <H2 id="run-locally-build" />
-      <P>
-        This block makes the production build and starts it on <C>127.0.0.1</C>, at port 3000 unless <C>PORT</C> is
-        set. Development sign-in is off in this build, so sign in with local mode or Hack Club.
-      </P>
-      <CodeBlock label="Terminal" code={"pnpm build\npnpm start"} />
-      <P>
-        <C>pnpm egg start</C> does the same with the computer check first. It builds the first time by itself and uses
-        the port in <C>APP_URL</C>.
-      </P>
-    </Section>
-  ),
-
   "run-yourself": () => (
     <Section
       id="run-yourself"
@@ -553,10 +408,6 @@ export const GUIDE_C: Record<string, () => ReactNode> = {
         <li>
           <ExternalLink href={repoLink("docs/selfhost/README.md")}>The full guide</ExternalLink>, for each system, every
           setting and every error message.
-        </li>
-        <li>
-          <InternalLink href={docsHref("run-locally")}>Run Egg locally</InternalLink>, the commands for working on the
-          code: development server, sample data, tests and the production build.
         </li>
         <li>
           <InternalLink href={docsHref("selfhost")}>Running your own</InternalLink>, the reference page in these docs.

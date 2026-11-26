@@ -204,8 +204,8 @@ function ServerCard({ initial }: { initial: ServerView }) {
                   </span>
                   <span className="mt-0.5 block text-label text-muted-foreground">
                     {deleteProjects
-                      ? "Their deployments and logs are deleted too. Their apps keep running."
-                      : "Left unchecked, they are kept, and Egg stops managing them until you reconnect."}
+                      ? "Their deployments and logs are deleted too. Their apps keep running on the container."
+                      : "Left unchecked, they are kept. Their apps keep running, but Egg stops managing them until you connect this server again."}
                   </span>
                 </span>
               </label>
@@ -239,8 +239,9 @@ function ServerCard({ initial }: { initial: ServerView }) {
         <div className="space-y-3 border-t p-5">
           <p className="font-medium">Confirm host key</p>
           <p className="text-muted-foreground">
-            Check that this fingerprint matches the one Nest shows for {server.nestUsername}.hackclub.app, then confirm.
-            Egg sends nothing to the server until you do.
+            This is the first connection to {server.nestUsername}.hackclub.app. Check that this fingerprint matches the
+            one Nest shows for your server, then confirm. Egg sends nothing to the server until you do, and refuses any
+            other key afterwards.
           </p>
           <p
             data-tour="host-key"
@@ -395,10 +396,14 @@ export function ConnectFlow({ servers }: { servers: ServerView[] }) {
             </form>
           </Step>
           <Step n={2} title="Add the key in the Nest dashboard">
-            <p className="text-muted-foreground">The public key appears here after step 1.</p>
+            <p className="text-muted-foreground">
+              We show the public key here after step 1. Paste it on the SSH Keys page of the Nest dashboard.
+            </p>
           </Step>
           <Step n={3} title="Test the connection">
-            <p className="text-muted-foreground">Egg connects once and checks what your container can run.</p>
+            <p className="text-muted-foreground">
+              We connect once, remember the server&apos;s identity, and check what your container can run.
+            </p>
           </Step>
         </ol>
         <Alert tone="warning" className="mt-5">

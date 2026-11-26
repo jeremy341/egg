@@ -1,5 +1,5 @@
 /**
- * The chicken of the site, as data. Nothing here touches the DOM.
+ * The creatures of the homepage field, as data. Nothing here touches the DOM.
  *
  * A sprite frame is a list of rows on the cell grid. In a row:
  *   "."        an empty cell
@@ -8,30 +8,35 @@
  *   any other  a keyboard character drawn in the cell (legs, beaks, tails, eyes)
  * Frames face right. The field turns them (through a narrow in-between) when a creature turns.
  *
- * The chicken has many poses and the field cross-fades from one to the next, so an action reads
- * as one movement. The rocking and cracking egg are drawn by small functions here; the result is
- * still plain frames. It is drawn `scale` cells to a sprite cell, so it can be big and still crisp.
+ * A creature has many poses and the field cross-fades from one to the next, so an action reads
+ * as one movement. Poses that are easy to get wrong by hand are drawn by small functions here
+ * (the wing beats, the rocking and cracking egg); the result is still plain frames.
  *
- * It has one hue with two ramps of five colours: `dark` for the near-black page
+ * Every creature has one hue with two ramps of five colours: `dark` for the near-black page
  * (the core is the lightest colour, so it glows) and `light` for the white page (the core is the
  * deepest colour, so it does not wash out).
  */
+
+export type Mode = "hop" | "fly" | "perch" | "swim" | "dart" | "pulse";
 
 export type Frame = readonly string[];
 
 export interface Species {
   id: string;
+  /** The label on the switcher. */
   name: string;
+  mode: Mode;
   ramp: { dark: readonly string[]; light: readonly string[] };
   frames: readonly Frame[];
   /**
-   * Named pose sequences (indexes into `frames`): `move` and `rest`, `hop`, `flap`, `peep` (the
-   * peck and the cheep), `walk` and `intro` (the hatch).
+   * Named pose sequences (indexes into `frames`). Every creature has `move` and `rest`; the
+   * others belong to its way of moving: `hop`, `flap`, `peep` and `intro` (the hatch) for the
+   * chick, `blink`, `look` (away, towards) and `crouch` for the owl.
    */
   seq: Readonly<Record<string, readonly number[]>>;
   /** Poses per second through `move`. */
   fps: number;
-  /** How many are on the page at phone, tablet and desktop widths. */
+  /** How many are on the field at phone, tablet and desktop widths. */
   count: readonly [number, number, number];
   /** Cruising speed in cells per second, and how fast the speed follows the wish (1/s). */
   speed: number;
@@ -47,13 +52,21 @@ export interface Species {
   wake: string;
   /** Radius of the cell halo around the body, in cells. */
   glow: number;
-  /** Every sprite cell is drawn as `scale` by `scale` grid cells, so the chicken is that much bigger. */
-  scale: number;
+  /** Stands on a grid line (drawn from its feet up) instead of floating around its centre. */
+  ground?: boolean;
 }
 
 type Grid = string[][];
 const grid = (rows: Frame): Grid => rows.map((r) => [...r]);
 const frame = (g: Grid): Frame => g.map((r) => r.join(""));
+/** Colour a cell unless something brighter, or a character, is already there. */
+function dot(g: Grid, x: number, y: number, shade: number) {
+  const cx = Math.round(x);
+  const cy = Math.round(y);
+  const old = g[cy]?.[cx];
+  if (old === undefined || shade < 1) return;
+  if (old === "." || (old >= "1" && old <= "5" && Number(old) < shade)) g[cy][cx] = String(Math.min(5, shade));
+}
 /** A row moved sideways by whole cells. */
 const shift = (row: string, by: number) =>
   by > 0 ? ".".repeat(by) + row.slice(0, row.length - by) : row.slice(-by) + ".".repeat(-by);
@@ -200,22 +213,156 @@ const EGG_OPEN: Frame = [
   ...eggCrack(8).slice(5),
 ];
 
+/* ---- swallow ------------------------------------------------------------------------------- */
+
+const SWALLOW_BODY: Frame = [
+  "...............",
+  "...............",
+  "...............",
+  "...............",
+  "\\-.............",
+  "..23344444445>.",
+  "/-...555555....",
+  "...............",
+  "...............",
+  "...............",
+  "...............",
+];
 /**
- * The walk. The body stays as it is and the legs shuffle under it: one step with the feet a cell
- * to the left of where they stand, one a cell to the right, with the standing pose between. The
- * field bobs the body a cell on each standing pose, so it is a waddle and not a bounce.
+ * One pose of the wing beat. The wing is a tapered blade from the shoulder: `lift` (1 up, -1
+ * down) raises it, a flat wing sweeps back along the body, and the tip lags behind the stroke.
  */
-const withLegs = (legs: string): Frame => [...CHICK_STAND.slice(0, -1), legs];
-const CHICK_WALK_L = withLegs("...L.L.....");
-const CHICK_WALK_R = withLegs(".....L.L...");
+export function swallowPose(k: number, of: number): Frame {
+  const g = grid(SWALLOW_BODY);
+  const phase = (k / of) * Math.PI * 2;
+  const lift = Math.sin(phase);
+  const lag = Math.cos(phase) * 1.4;
+  const up = lift >= 0 ? 1 : -1;
+  for (let s = 0.08; s <= 1.001; s += 0.04) {
+    const x = 8.5 - s * 5.5 * (0.3 + (1 - Math.abs(lift)) * 0.6) - lag * s * s * up;
+    const y = (up > 0 ? 5 : 6) - up * Math.min(1, s * 5) - lift * 4.2 * s;
+    const shade = Math.round(4.4 - s * 3.4);
+    dot(g, x, y, shade);
+    if (s < 0.7) dot(g, x + 1, y, shade);
+  }
+  return frame(g);
+}
+const SWALLOW = Array.from({ length: 8 }, (_, k) => swallowPose(k, 8));
+
+/* ---- owl ----------------------------------------------------------------------------------- */
+
+const owl = (eye: string, look = 0): Frame => [
+  "23.....32",
+  "345555543",
+  shift(`45${eye}545${eye}54`, look).replace(/^\./, "4").replace(/\.$/, "4"),
+  shift("4555v5554", look).replace(/^\./, "4").replace(/\.$/, "4"),
+  "345555543",
+  "234545432",
+  "234454432",
+  ".2345432.",
+  "..23432..",
+  "..m...m..",
+];
+/** About to take off, or just landed: lower by a row. */
+const OWL_CROUCH: Frame = [".........", ...owl("O").slice(0, 6), ...owl("O").slice(7)];
+const OWL_UP: Frame = [
+  "12...23.....32...21",
+  "234..345555543..432",
+  ".234445O545O544432.",
+  "..2344555v5554432..",
+  ".....345555543.....",
+  ".....234545432.....",
+  "......2345432......",
+  ".......23432.......",
+];
+const OWL_LEVEL: Frame = [
+  ".....23.....32.....",
+  ".....345555543.....",
+  "1234445O545O5444321",
+  ".23444555v55544432.",
+  ".....345555543.....",
+  ".....234545432.....",
+  "......2345432......",
+  ".......23432.......",
+];
+const OWL_DOWN: Frame = [
+  ".....23.....32.....",
+  ".....345555543.....",
+  "..23445O545O54432..",
+  ".23444555v55544432.",
+  "234..345555543..432",
+  "12...234545432...21",
+  "......2345432......",
+  ".......23432.......",
+];
+
+/* ---- dragonfly ----------------------------------------------------------------------------- */
+
+const DRAGONFLY_BODY: Frame = [
+  "...............",
+  "...............",
+  "...............",
+  "...............",
+  "-------34554:..",
+  "...............",
+  "...............",
+  "...............",
+  "...............",
+];
+/** One pose of the wing flicker: two pairs of thin wings that sweep fore and aft, out of step. */
+export function dragonflyPose(k: number, of: number): Frame {
+  const g = grid(DRAGONFLY_BODY);
+  const phase = (k / of) * Math.PI * 2;
+  const wings: [number, number, number][] = [
+    [9.4, Math.sin(phase) * 2.2 - 0.4, 3],
+    [8, Math.sin(phase + 1.4) * 2.2 + 1.2, 2],
+  ];
+  for (const [root, sweep, shade] of wings) {
+    for (const side of [-1, 1]) {
+      for (let s = 0.2; s <= 1.001; s += 0.05) {
+        const x = root - sweep * s * s;
+        dot(g, x, 4 + side * s * 4, s > 0.75 ? shade - 1 : shade);
+        if (s > 0.3 && s < 0.8) dot(g, x - 1, 4 + side * s * 4, shade - 1);
+      }
+    }
+  }
+  return frame(g);
+}
+const DRAGONFLY = Array.from({ length: 6 }, (_, k) => dragonflyPose(k, 6));
+
+/* ---- firefly and koi ----------------------------------------------------------------------- */
+
+const FIREFLY_UP: Frame = [".'.'.", ".232.", ".454.", "..4.."];
+const FIREFLY_HALF: Frame = ["'...'", ".232.", ".454.", "..4.."];
+const FIREFLY_OUT: Frame = [".....", "-232-", ".454.", "..4.."];
+
+/**
+ * The koi is seen from above and bends as it swims, so it is not a fixed picture: each row here
+ * is one slice across its body, from nose to tail, and the field lays the slices along its spine.
+ */
+const KOI: Frame = [
+  "..4..",
+  ".454.",
+  ".555.",
+  "25452",
+  "15451",
+  ".455.",
+  ".544.",
+  ".454.",
+  "..5..",
+  "..4..",
+  ".3.3.",
+  "2...2",
+];
 
 export const SPECIES: readonly Species[] = [
   {
     id: "chick",
     name: "chick",
+    mode: "hop",
     ramp: {
       dark: ["#b45309", "#d97706", "#f59e0b", "#fbbf24", "#fde68a"],
-      light: ["#f6dc7c", "#f0c53e", "#e6aa00", "#cc8c00", "#a96c00"],
+      light: ["#f7b733", "#f09a0c", "#dd7d02", "#c26204", "#9a4a06"],
     },
     frames: [
       CHICK_STAND,
@@ -234,8 +381,6 @@ export const SPECIES: readonly Species[] = [
       eggCrack(5),
       eggCrack(8),
       EGG_OPEN,
-      CHICK_WALK_L,
-      CHICK_WALK_R,
     ],
     seq: {
       move: [1, 2, 3, 2, 1, 0],
@@ -244,19 +389,124 @@ export const SPECIES: readonly Species[] = [
       flap: [6, 7, 8, 7],
       peep: [0, 4, 5, 4, 0],
       intro: [9, 10, 9, 11, 9, 10, 9, 12, 13, 14, 15, 15],
-      walk: [16, 0, 17, 0],
     },
     fps: 13,
-    count: [1, 1, 1],
-    speed: 8,
+    count: [3, 5, 7],
+    speed: 5,
     accel: 5,
     turn: 0,
     rest: [1.2, 4],
     pointer: 1,
-    reach: 50,
+    reach: 30,
     wake: ",'",
     glow: 2,
-    scale: 2,
+    ground: true,
+  },
+  {
+    id: "swallow",
+    name: "swallow",
+    mode: "fly",
+    ramp: {
+      dark: ["#1e40af", "#2563eb", "#3b82f6", "#60a5fa", "#bfdbfe"],
+      light: ["#7fb0fb", "#4a8af4", "#2563eb", "#1d4ed8", "#1e3a8a"],
+    },
+    frames: SWALLOW,
+    seq: { move: [0, 1, 2, 3, 4, 5, 6, 7], rest: [0] },
+    fps: 22,
+    count: [3, 4, 6],
+    speed: 17,
+    accel: 2.5,
+    turn: 2.6,
+    rest: [0, 0],
+    pointer: -1,
+    reach: 16,
+    wake: "-~-",
+    glow: 1,
+  },
+  {
+    id: "owl",
+    name: "owl",
+    mode: "perch",
+    ramp: {
+      dark: ["#57534e", "#857b6e", "#b3a792", "#d9cdb8", "#f5eede"],
+      light: ["#b7a995", "#93826c", "#74634f", "#57483a", "#3b3026"],
+    },
+    frames: [owl("o"), owl("O"), owl("u"), owl("-"), owl("O", -1), owl("O", 1), OWL_CROUCH, OWL_UP, OWL_LEVEL, OWL_DOWN],
+    seq: { move: [7, 8, 9, 8], rest: [0], blink: [2, 3, 2], look: [4, 5], alert: [1], crouch: [6] },
+    fps: 9,
+    count: [2, 4, 5],
+    speed: 11,
+    accel: 2.2,
+    turn: 0,
+    rest: [4, 9],
+    pointer: -1,
+    reach: 11,
+    wake: "'",
+    glow: 2,
+    ground: true,
+  },
+  {
+    id: "koi",
+    name: "koi",
+    mode: "swim",
+    ramp: {
+      dark: ["#9a2a12", "#d9421c", "#f4623a", "#ff8a65", "#ffe9df"],
+      light: ["#f9a58c", "#f4623a", "#e03e16", "#b92d0c", "#7a1c05"],
+    },
+    frames: [KOI],
+    seq: { move: [0], rest: [0] },
+    fps: 1,
+    count: [3, 4, 6],
+    speed: 5.5,
+    accel: 1.6,
+    turn: 1.5,
+    rest: [0, 0],
+    pointer: 1,
+    reach: 30,
+    wake: "~o~",
+    glow: 2,
+  },
+  {
+    id: "dragonfly",
+    name: "dragonfly",
+    mode: "dart",
+    ramp: {
+      dark: ["#115e59", "#0f766e", "#14b8a6", "#2dd4bf", "#99f6e4"],
+      light: ["#5fd9c8", "#17b3a2", "#0d9488", "#0f766e", "#134e4a"],
+    },
+    frames: DRAGONFLY,
+    seq: { move: [0, 1, 2, 3, 4, 5], rest: [0, 1, 2, 3, 4, 5] },
+    fps: 30,
+    count: [3, 5, 7],
+    speed: 26,
+    accel: 5,
+    turn: 9,
+    rest: [0.5, 1.8],
+    pointer: -1,
+    reach: 13,
+    wake: "-:",
+    glow: 1,
+  },
+  {
+    id: "firefly",
+    name: "firefly",
+    mode: "pulse",
+    ramp: {
+      dark: ["#3f6212", "#65a30d", "#a3e635", "#d9f99d", "#f7fee7"],
+      light: ["#a3d94a", "#84cc16", "#65a30d", "#4d7c0f", "#365314"],
+    },
+    frames: [FIREFLY_UP, FIREFLY_HALF, FIREFLY_OUT],
+    seq: { move: [0, 1, 2, 1], rest: [0, 1, 2, 1] },
+    fps: 14,
+    count: [7, 11, 16],
+    speed: 2.4,
+    accel: 1.4,
+    turn: 2.5,
+    rest: [0, 0],
+    pointer: 1,
+    reach: 24,
+    wake: "*'",
+    glow: 4,
   },
 ];
 
@@ -273,7 +523,7 @@ export const SHADE_ALPHA = {
 export const INK = { dark: "#e4e4e4", light: "#2e2e2e" } as const;
 
 /**
- * Over text every cell and character is drawn at this fraction of its strength, so the text keeps
- * its contrast whatever passes under it (checked in creatures.test.ts).
+ * Behind the hero text every cell and character is drawn at this fraction of its strength, so the
+ * text keeps its contrast whatever passes under it (checked in creatures.test.ts).
  */
 export const TEXT_DIM = 0.13;

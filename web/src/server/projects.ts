@@ -42,8 +42,7 @@ const rootDir = z
   )
   .default(".");
 
-/** A git branch name. Every entry point uses this one rule, so a name that is refused in one place is refused everywhere. */
-export const branch = z
+const branch = z
   .string()
   .trim()
   .min(1)

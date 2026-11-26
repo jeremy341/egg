@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 /**
  * The top of every dashboard page: one h1, an optional description, optional
  * actions on the right. `leading` is a mark beside the title (a project's
- * pixel avatar). Actions line up with the title, not the description, so they stay put when the description wraps. On phones they drop below the title.
+ * pixel avatar). On phones the actions drop below the title.
  */
 export function PageHeader({
   title,
@@ -21,7 +21,7 @@ export function PageHeader({
   return (
     <div
       className={cn(
-        "mb-6 flex flex-wrap items-start justify-between gap-x-4 gap-y-3",
+        "mb-6 flex flex-wrap items-end justify-between gap-4",
         className
       )}
     >

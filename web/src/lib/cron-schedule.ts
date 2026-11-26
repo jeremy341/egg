@@ -109,9 +109,7 @@ export function parseSchedule(input: string): Schedule {
   const text = normaliseText(input);
   if (!text) throw new ScheduleError("Enter a schedule, for example */15 * * * * for every 15 minutes.");
   if (text.length > 100) throw new ScheduleError("That schedule is too long.");
-  // Own keys only: "constructor" or "toString" must not reach the object's built-in properties.
-  const nicknameKey = text.toLowerCase();
-  const expanded = Object.hasOwn(NICKNAMES, nicknameKey) ? NICKNAMES[nicknameKey] : text;
+  const expanded = NICKNAMES[text.toLowerCase()] ?? text;
   if (expanded.startsWith("@")) {
     throw new ScheduleError("Use @hourly, @daily, @weekly or @monthly, or write all five fields.");
   }
@@ -155,10 +153,6 @@ function smallestGapMinutes(s: Schedule): number | null {
   times.sort((a, b) => a - b);
   let min = Infinity;
   for (let i = 1; i < times.length; i++) min = Math.min(min, times[i] - times[i - 1]);
-  // The last time wraps round midnight to the first, so 23:58 and 00:00 are two minutes apart. That only holds on
-  // a day the job runs every day: with a day or weekday limit, 23:58 and 00:00 fall on different scheduled days.
-  const everyDay = s.days.length === 0 && s.weekdays.length === 0;
-  if (everyDay) min = Math.min(min, times[0] + 1440 - times[times.length - 1]);
   return min;
 }
 

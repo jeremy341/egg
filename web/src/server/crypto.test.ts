@@ -8,10 +8,6 @@ describe("seal/open", () => {
     expect(open(sealed, "server:1")).toBe("-----BEGIN KEY-----\nabc");
   });
 
-  it("round-trips an empty value, so a blank variable can still be deployed", () => {
-    expect(open(seal("", "env:1"), "env:1")).toBe("");
-  });
-
   it("uses a fresh IV every time", () => {
     expect(seal("same", "ctx")).not.toBe(seal("same", "ctx"));
   });

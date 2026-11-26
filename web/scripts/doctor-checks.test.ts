@@ -11,7 +11,6 @@ import {
   checkOs,
   checkPnpm,
   checkPort,
-  checkProxy,
   checkSignIn,
   dataDirFromDatabaseUrl,
   formatResults,
@@ -233,13 +232,6 @@ describe("operating system and database", () => {
     expect(checkDatabaseUrl({ url: undefined }).ok).toBe(true);
     expect(checkDatabaseUrl({ url: "libsql://x.turso.io" })).toMatchObject({ ok: false, severity: "warning" });
     expect(checkDatabaseUrl({ url: "file::memory:" }).ok).toBe(false);
-  });
-});
-
-describe("rate limits", () => {
-  it("warns when TRUST_PROXY is off, because limits then have no client address", () => {
-    expect(checkProxy({ env: {} }).ok).toBe(false);
-    expect(checkProxy({ env: { TRUST_PROXY: "1" } }).ok).toBe(true);
   });
 });
 

@@ -5,8 +5,7 @@ import "@/components/marketing/home.css";
 import { BuildLogs } from "@/components/build-logs";
 import { DeploymentsView } from "@/components/deployments-view";
 import { GridFrame } from "@/components/marketing/grid-frame";
-import { ReleaseRail } from "@/components/marketing/release-rail";
-import { TerminalCta } from "@/components/marketing/terminal-cta";
+import { HeroFieldLoader } from "@/components/marketing/hero-field-loader";
 import { HOME_FACTS, numberWord } from "@/components/marketing/home-facts";
 import { REPO_URL } from "@/lib/site";
 import { feedRowsToViews, homepageListMode, LIVE_CAPTION, SAMPLE_CAPTION } from "@/lib/public-feed";
@@ -34,8 +33,8 @@ const primary = cn(
 const secondary = cn(pill, "shadow-border-base bg-background hover:bg-[var(--ds-gray-100)]");
 
 /**
- * Text and two buttons, with the chicken (ChickenFieldLoader, in the layout) walking over the page
- * in the browser; without them the hero is the plain grid. The headline is scanned in a pixel column at a time and the
+ * Text and two buttons over a field of creatures (HeroFieldLoader: a canvas and its controls,
+ * loaded in the browser after this text; without it the hero is the plain grid). The headline is scanned in a pixel column at a time and the
  * rest rises in while the scan finishes. The hero fills the first screen under the 60px header, so
  * nothing else shows on load; the frame below starts under the fold (see GridFrame). It is sized
  * in svh, not dvh, so it does not change height (and push the page) when a phone's toolbar
@@ -46,11 +45,13 @@ function Hero() {
     <section data-no-ripple className="cf-hero flex min-h-[calc(100svh-3.75rem)] flex-col">
       <div className={cn(wrap, "cf-copy flex flex-1 flex-col items-center justify-center pt-16 pb-24 text-center xl:pb-16")}>
         <h1
+          data-field-zone=""
           className="hero-wipe font-pixel mx-auto max-w-[12ch] text-[clamp(3.5rem,10.5vw,11rem)] leading-[0.92] font-medium text-balance"
         >
           Deploy to your Nest.
         </h1>
         <p
+          data-field-zone=""
           style={{ "--rise-delay": "0.55s" } as React.CSSProperties}
           className="hero-rise mx-auto mt-9 max-w-[46ch] text-[clamp(1.125rem,1.7vw,1.5rem)] leading-[1.5] text-muted-foreground text-balance"
         >
@@ -58,6 +59,7 @@ function Hero() {
           builds and goes live on it, with logs, rollbacks and previews.
         </p>
         <div
+          data-field-zone=""
           style={{ "--rise-delay": "0.65s" } as React.CSSProperties}
           className="hero-rise mt-10 flex flex-wrap justify-center gap-3"
         >
@@ -72,16 +74,15 @@ function Hero() {
           </a>
         </div>
         <p
+          data-field-zone=""
           style={{ "--rise-delay": "0.75s" } as React.CSSProperties}
           className="hero-rise mt-7 max-w-[52ch] text-[14px] leading-6 text-muted-foreground text-balance"
         >
           Free. Made by a Hack Club member, and not an official Hack Club product.
         </p>
       </div>
-      <p className="cf-hint" aria-hidden="true">
-        <span className="cf-fine">Click the grid to feed the chicken. Poke it, stroke it, pick it up.</span>
-        <span className="cf-coarse">Tap the grid to feed the chicken. Tap it to poke it.</span>
-      </p>
+      {/* After the text, so its buttons follow the hero links in the tab order. */}
+      <HeroFieldLoader />
     </section>
   );
 }
@@ -92,9 +93,9 @@ function Row({ cols, className, children }: { cols?: string; className?: string;
   return <div className={cn("vg-row", cols && `vg-cols ${cols}`, className)}>{children}</div>;
 }
 
-/** A small amber square: the chick colour, used only for "this one is live / running". */
-function Mark({ building = false }: { building?: boolean }) {
-  return <span aria-hidden="true" className={cn("vg-mark", building && "vg-mark-building")} />;
+/** An empty band of grid between two sections. */
+function Gap() {
+  return <div aria-hidden="true" className="vg-gap" />;
 }
 
 const SETUP: [string, string][] = [
@@ -112,36 +113,29 @@ const SETUP: [string, string][] = [
 function Start() {
   return (
     <section id="start" aria-labelledby="start-title" className="vg-sec scroll-mt-15">
-      <Row>
-        <div className="vg-head">
-          <h2 id="start-title" className="vg-h1">
-            Every push to GitHub goes live on your Nest.
-          </h2>
-        </div>
-      </Row>
-      <Row cols="vg-c-half">
-        <div className="order-2 lg:order-none">
-          <ol className="vg-steps">
-            {SETUP.map(([title, text], i) => (
-              <li key={title}>
-                <span aria-hidden="true" className="vg-num">
-                  {i + 1}
-                </span>
-                <div>
-                  <h3 className="vg-h3">{title}</h3>
-                  <p className="vg-p">{text}</p>
-                </div>
-              </li>
-            ))}
-          </ol>
-          <p className="vg-after">After that, every push to your production branch deploys on its own.</p>
-        </div>
-        <div className="vg-sticky-col order-1 lg:order-none">
+      <Row cols="vg-c-list">
+        <div className="vg-cell vg-top">
           <div className="vg-sticky">
-            <TerminalCta />
-            <p className="vg-caption">Sample data</p>
+            <h2 id="start-title" className="vg-h2 vg-h2-cell">
+              Every push to GitHub goes live on your Nest.
+            </h2>
           </div>
         </div>
+        <ol className="vg-stack">
+          {SETUP.map(([title, text], i) => (
+            <li key={title} className={cn("vg-cell", i === 0 && "vg-top")}>
+              <h3 className="vg-h3">
+                <span className="mr-3 inline-block w-4 tabular text-muted-foreground">{i + 1}</span>
+                {title}
+              </h3>
+              <p className="vg-p">{text}</p>
+            </li>
+          ))}
+          <li className="vg-cell">
+            <p className="vg-code vg-ink">$ git push</p>
+            <p className="vg-p mt-2">After that, every push to your production branch deploys on its own.</p>
+          </li>
+        </ol>
       </Row>
     </section>
   );
@@ -175,18 +169,12 @@ async function Deployments() {
   );
 }
 
-const PREVIEWS: { name: string; port: number; building: boolean; kind: string }[] = [
-  { name: "feat/pagination", port: F.previewPortMin, building: true, kind: "Branch" },
-  { name: "fix/login-redirect", port: F.previewPortMin + 1, building: false, kind: "Branch" },
-  { name: "#14 from feat/csv", port: F.previewPortMin + 2, building: false, kind: "Pull request" },
-];
-
 function Product() {
   return (
     <section id="product" aria-labelledby="product-title" className="vg-sec scroll-mt-15">
       <Row>
-        <div className="vg-head">
-          <h2 id="product-title" className="vg-h1">
+        <div className="vg-cell vg-head vg-mid">
+          <h2 id="product-title" className="vg-h2">
             Every push becomes a release.
           </h2>
         </div>
@@ -198,198 +186,134 @@ function Product() {
           </Suspense>
         </div>
       </Row>
-      <Row cols="vg-c-wide">
-        <div className="vg-feature">
-          <h3 className="vg-h2s">Rollbacks</h3>
-          <p className="vg-p">
-            Production keeps your last {numberWord(F.releasesKept)} releases on the container. Rolling back switches
-            to one of them, so nothing is rebuilt.
+      <Row cols="vg-c-half">
+        <div className="vg-cell">
+          <p className="vg-lead">
+            <strong>Previews.</strong> Any branch that is not production builds a preview on its own port, from{" "}
+            {F.previewPortMin}. A pull request from the same repository gets one too, with a comment that updates
+            as it finishes.
           </p>
-          <div className="vg-panel">
-            <ReleaseRail />
-          </div>
-          <p className="vg-caption vg-caption-flush">Sample data. Try it.</p>
         </div>
-        <div className="vg-feature">
-          <h3 className="vg-h2s">Previews</h3>
-          <p className="vg-p">
-            Any branch that is not production builds a preview on its own port, from {F.previewPortMin}. A pull
-            request from the same repository gets one too, with a comment that updates as it finishes.
+        <div className="vg-cell">
+          <p className="vg-lead">
+            <strong>Rollbacks.</strong> Production keeps your last {numberWord(F.releasesKept)} releases on the
+            container. Rolling back switches to one of them, so nothing is rebuilt.
           </p>
-          <div className="vg-panel">
-            <ul className="vg-previews" aria-label="Sample previews">
-              {PREVIEWS.map((p) => (
-                <li key={p.name}>
-                  <Mark building={p.building} />
-                  <span className="vg-prev-name">
-                    <span className="vg-prev-kind">{p.kind}</span>
-                    {p.name}
-                  </span>
-                  <span className="vg-prev-port">:{p.port}</span>
-                  <span className="vg-prev-state">{p.building ? "Building" : "Ready"}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-          <p className="vg-caption vg-caption-flush">Sample data</p>
         </div>
       </Row>
-      <Row cols="vg-c-side">
-        <div className="vg-feature">
-          <h3 className="vg-h2s">No config file</h3>
-          <p className="vg-p">
-            Egg reads your repo and picks the install, build and start commands. You can write your own for anything
-            else.
+      <Row cols="vg-c-half">
+        <div className="vg-cell">
+          <p className="vg-lead">
+            <strong>No config file.</strong> Egg reads your repo and picks the install, build and start commands.
+            You can write your own for anything else.
           </p>
         </div>
-        <div className="vg-feature vg-mid">
+        <div className="vg-cell vg-mid">
           {/* The longest command is wider than a phone: the list scrolls inside itself. */}
-          <div className="vg-panel">
-            <p className="vg-panel-head">Start command when you set none</p>
-            <dl className="vg-defaults vg-scroll" tabIndex={0} aria-label="Default start commands">
-              {(
-                [
-                  ["Node.js", "npm start"],
-                  ["Python", "python3 app.py"],
-                  ["Static", `Egg static server on ${F.defaultPort}`],
-                ] as const
-              ).map(([runtime, command]) => (
-                <div key={runtime}>
-                  <dt>{runtime}</dt>
-                  <dd>{command}</dd>
-                </div>
-              ))}
-            </dl>
-          </div>
+          <dl className="vg-code vg-scroll" tabIndex={0} aria-label="Default start commands">
+            {(
+              [
+                ["Node.js", "npm start"],
+                ["Python", "python3 app.py"],
+                ["Static", `Egg static server on ${F.defaultPort}`],
+              ] as const
+            ).map(([runtime, command]) => (
+              <div key={runtime} className="grid grid-cols-[72px_auto] gap-x-4">
+                <dt className="text-muted-foreground">{runtime}</dt>
+                <dd>{command}</dd>
+              </div>
+            ))}
+          </dl>
         </div>
       </Row>
     </section>
   );
 }
-
-const SAFETY: { stat: string; unit: string; text: React.ReactNode }[] = [
-  {
-    stat: String(F.healthWaitSeconds),
-    unit: "seconds",
-    text: (
-      <>
-        <strong>Health check.</strong> Egg waits up to {F.healthWaitSeconds} seconds for your app to answer on its
-        port. If it never does, the previous release is put back.
-      </>
-    ),
-  },
-  {
-    stat: String(F.checkIntervalMinutes),
-    unit: "minutes",
-    text: (
-      <>
-        <strong>Checks.</strong> Egg checks each app every {F.checkIntervalMinutes} minutes.
-      </>
-    ),
-  },
-  {
-    stat: String(F.failedChecksBeforeAlert),
-    unit: "in a row",
-    text: (
-      <>
-        <strong>Alerts.</strong> After {numberWord(F.failedChecksBeforeAlert)} failed checks in a row it tells you in
-        Discord or Slack, if you gave the project a webhook.
-      </>
-    ),
-  },
-];
 
 function WhenItBreaks() {
   return (
     <section aria-labelledby="fail-title" className="vg-sec">
-      <Row>
-        <div className="vg-head">
-          <h2 id="fail-title" className="vg-h1">
-            A failed deploy puts the old release back.
-          </h2>
-          <p className="vg-lead">
-            Build output streams to the page as it happens. Runtime logs come from your app&apos;s systemd service,
-            and you can search or download them.
-          </p>
-        </div>
-      </Row>
-      <Row cols="vg-c-logw">
-        <div className="vg-solid vg-log">
+      <Row cols="vg-c-log">
+        <div className="vg-solid vg-log order-2 lg:order-none">
           <BuildLogs deploymentId="sample" initialLines={SAMPLE_LOG} rawState="error" duration="48s" />
           <p className="vg-caption">Sample data</p>
         </div>
-        <ul className="vg-stats">
-          {SAFETY.map((s) => (
-            <li key={s.unit}>
-              <p className="vg-stat" aria-hidden="true">
-                <span className="vg-stat-n">{s.stat}</span>
-                <span className="vg-stat-u">{s.unit}</span>
-              </p>
-              <p className="vg-p">{s.text}</p>
-            </li>
-          ))}
-        </ul>
+        <div className="vg-cell vg-top order-1 lg:order-none">
+          <h2 id="fail-title" className="vg-h2 vg-h2-cell">
+            A failed deploy puts the old release back.
+          </h2>
+          <div className="vg-items">
+            <p className="vg-p">
+              <strong>Health check.</strong> Egg waits up to {F.healthWaitSeconds} seconds for your app to answer
+              on its port. If it never does, the previous release is put back.
+            </p>
+            <p className="vg-p">
+              <strong>Logs.</strong> Build output streams to the page as it happens. Runtime logs come from your
+              app&apos;s systemd service, and you can search or download them.
+            </p>
+            <p className="vg-p">
+              <strong>Alerts.</strong> Egg checks each app every {F.checkIntervalMinutes} minutes. After{" "}
+              {numberWord(F.failedChecksBeforeAlert)} failed checks in a row it tells you in Discord or Slack, if
+              you gave the project a webhook.
+            </p>
+          </div>
+        </div>
       </Row>
     </section>
   );
 }
 
-const TRUST: { name: string; text: string; spec: string[] }[] = [
-  {
-    name: "One key, only for Egg",
-    text: "Each server gets its own ed25519 key, encrypted before it reaches the database. The first connection records Nest's host key, and if it ever changes Egg stops before sending anything.",
-    spec: ["ed25519", "host key pinned"],
-  },
-  {
-    name: "Built on your container",
-    text: "Your repo is built on your own Nest under a memory and CPU cap, or in GitHub Actions if you set that up. It is not built on the machine that runs Egg.",
-    spec: [`${F.buildMemoryMb} MB build cap by default`],
-  },
-  {
-    name: "Terminal and file changes start off",
-    text: `Both are off for every server until you turn them on, and that needs a Hack Club sign-in from the last ${F.reauthMinutes} minutes.`,
-    spec: ["terminal off", "file changes off"],
-  },
-  {
-    name: "Take access back any time",
-    text: "Delete the key in your Nest dashboard. Egg's access ends at once, and your apps keep running.",
-    spec: ["apps keep running"],
-  },
+const TRUST: [string, string][] = [
+  [
+    "One key, only for Egg",
+    "Each server gets its own ed25519 key, encrypted before it reaches the database. The first connection records Nest's host key, and if it ever changes Egg stops before sending anything.",
+  ],
+  [
+    "Built on your container",
+    "Your repo is built on your own Nest under a memory and CPU cap, or in GitHub Actions if you set that up. It is not built on the machine that runs Egg.",
+  ],
+  [
+    "Terminal and file changes start off",
+    `Both are off for every server until you turn them on, and that needs a Hack Club sign-in from the last ${F.reauthMinutes} minutes.`,
+  ],
+  [
+    "Take access back any time",
+    "Delete the key in your Nest dashboard. Egg's access ends at once, and your apps keep running.",
+  ],
 ];
 
 function Trust() {
   return (
     <section id="security" aria-labelledby="security-title" className="vg-sec scroll-mt-15">
-      <Row>
-        <div className="vg-head">
-          <h2 id="security-title" className="vg-h1">
+      <Row cols="vg-c-list" className="vg-term vg-term-lead">
+        <div className="vg-cell vg-head vg-mid">
+          <h2 id="security-title" className="vg-h2 vg-h2-cell">
             The key can do what you can do.
           </h2>
-          <p className="vg-lead">
+        </div>
+        <div className="vg-cell vg-mid">
+          <p className="vg-lead vg-ink">
             SSH into Nest puts you in a root shell inside your own container, so the key Egg holds has the same
             reach. We say so before you add it.
           </p>
         </div>
       </Row>
-      <Row cols="vg-c-half" className="vg-trust">
-        {TRUST.map((t) => (
-          <div key={t.name} className="vg-feature">
-            <h3 className="vg-h3">{t.name}</h3>
-            <p className="vg-p">{t.text}</p>
-            <p className="vg-spec">
-              {t.spec.map((s) => (
-                <span key={s}>{s}</span>
-              ))}
-            </p>
-          </div>
+      <dl>
+        {TRUST.map(([name, text]) => (
+          <Row key={name} cols="vg-c-list" className="vg-term">
+            <dt className="vg-cell vg-h3">{name}</dt>
+            <dd className="vg-cell vg-p">{text}</dd>
+          </Row>
         ))}
-      </Row>
-      <Row>
-        <div className="vg-band">
+      </dl>
+      <Row cols="vg-c-list" className="vg-term vg-term-lead">
+        <div className="vg-cell vg-mid">
           <p className="vg-p vg-ink">
             Egg is an independent project by a Hack Club member. It is not an official Hack Club product, and the
             Nest team does not run it.
           </p>
+        </div>
+        <div className="vg-cell vg-mid items-start">
           <Link href="/security" className={secondary}>
             How Egg protects your container
           </Link>
@@ -428,7 +352,7 @@ const FAQ: [string, React.ReactNode][] = [
 function Faq() {
   return (
     <section id="faq" aria-labelledby="faq-title" className="vg-sec scroll-mt-15">
-      <Row cols="vg-c-side">
+      <Row cols="vg-c-list">
         <div className="vg-cell vg-head">
           <div className="vg-sticky">
             <h2 id="faq-title" className="vg-h2">
@@ -460,24 +384,22 @@ function Faq() {
   );
 }
 
-/** One block, left aligned. It does not repeat the hero. */
+/** One row, left aligned. It does not repeat the hero. */
 function Close() {
   return (
-    <section aria-labelledby="close-title" className="vg-sec">
-      <Row>
-        <div className="vg-head">
-          <h2 id="close-title" className="vg-h1">
-            Connect your Nest, then push.
-          </h2>
-          <div className="mt-[var(--vg-lead-gap)] flex flex-wrap items-center gap-3">
-            <Link href="/login" className={cn(primary, "h-12 px-7 text-[15px]")}>
-              Sign in with Hack Club
-            </Link>
-            <a href={REPO_URL} target="_blank" rel="noreferrer" className={cn(secondary, "h-12 px-7 text-[15px]")}>
-              View the source
-              <span className="sr-only"> (opens in a new tab)</span>
-            </a>
-          </div>
+    <section aria-label="Get started" className="vg-sec">
+      <Row cols="vg-c-half" className="vg-term vg-term-lead">
+        <div className="vg-cell vg-head vg-mid">
+          <p className="vg-lead vg-ink">Connect your Nest, then push.</p>
+        </div>
+        <div className="vg-cell vg-head flex flex-wrap items-center gap-3">
+          <Link href="/login" className={cn(primary, "h-12 px-7 text-[15px]")}>
+            Sign in with Hack Club
+          </Link>
+          <a href={REPO_URL} target="_blank" rel="noreferrer" className={cn(secondary, "h-12 px-7 text-[15px]")}>
+            View the source
+            <span className="sr-only"> (opens in a new tab)</span>
+          </a>
         </div>
       </Row>
     </section>
@@ -490,10 +412,15 @@ export default function HomePage() {
       <Hero />
       <GridFrame>
         <Start />
+        <Gap />
         <Product />
+        <Gap />
         <WhenItBreaks />
+        <Gap />
         <Trust />
+        <Gap />
         <Faq />
+        <Gap />
         <Close />
       </GridFrame>
     </div>
