@@ -36,6 +36,12 @@ export default function DocsShellLayout({ children }: { children: React.ReactNod
         >
           Open Egg
         </Link>
+        <Link
+          href="/docs/run-yourself"
+          className="touch-target flex h-8 items-center rounded-md bg-primary px-3 text-[14px] font-medium text-primary-foreground transition-colors duration-(--dur-fast) hover:bg-primary-hover"
+        >
+          Install Egg
+        </Link>
       </header>
       <div className="flex min-w-0 flex-1">
         <aside
