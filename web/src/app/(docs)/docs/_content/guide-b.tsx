@@ -2600,13 +2600,18 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         ))}
         <li>
           <ExternalLink href={repoLink("docs/developers/cli.md")}>Egg command line</ExternalLink> (the script is{" "}
-          <ExternalLink href={repoLink("web/scripts/egg-cli.mjs")}>egg-cli.mjs</ExternalLink>). Use Egg from a
-          terminal: <C>egg whoami</C>, <C>egg projects list</C>, <C>egg deploy &lt;slug&gt;</C>,{" "}
-          <C>egg logs &lt;deployment-id&gt; --follow</C>, <C>egg rollback &lt;deployment-id&gt;</C>,{" "}
-          <C>egg env names &lt;slug&gt;</C>, <C>egg services delete &lt;service&gt; --confirm &lt;name&gt; [--remove-from-server]</C>,{" "}
-          <C>egg domains list</C> and <C>egg status</C>. It reads{" "}
-          <C>EGG_TOKEN</C> and <C>EGG_URL</C> from the environment and never prints the token. Exit code 0 is done, 1
-          is failed and 2 is wrong use.
+          <ExternalLink href={repoLink("web/scripts/egg-cli.mjs")}>egg-cli.mjs</ExternalLink>) covers 153 commands
+          for projects, deployments, environments, jobs, services, domains, notifications, observability, GitHub,
+          organizations, context, and local Egg information. For example, run <C>egg whoami</C>,{" "}
+          <C>egg projects list</C>, <C>egg deploy create &lt;project&gt;</C>,{" "}
+          <C>egg deploy logs &lt;deployment-id&gt; --follow</C>, <C>egg env names &lt;project&gt;</C>,{" "}
+          <C>egg domains list</C>, or <C>egg status</C>. Remote commands read <C>EGG_TOKEN</C> and{" "}
+          <C>EGG_URL</C> from the environment and never print the token; offline context and information commands do
+          not use a token. Destructive commands require exact confirmation, and a mismatch exits 2. Exit codes are 0
+          for done, 1 for other failures, 2 for wrong use, 3 for authentication, 4 for not found, 6 for rate limits,
+          7 for server errors, and 8 for timeouts. The CLI still lacks alert metric rules, status-page management,
+          environment pull, several observability commands, Compose stack creation, and other operations listed in
+          its command reference.
         </li>
       </List>
       {steps("api-examples-steps", "Common calls", [
