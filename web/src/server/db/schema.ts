@@ -139,7 +139,8 @@ export const providerConnections = sqliteTable("provider_connections", {
 export const RUNTIMES = ["node", "python", "static", "command", "go", "rust", "ruby", "php", "java"] as const;
 export type Runtime = (typeof RUNTIMES)[number];
 export const WORKLOAD_KINDS = ["web", "worker"] as const;
-export const DEPLOYMENT_MODES = ["native", "dockerfile", "compose"] as const;
+/** "image": a prebuilt container image pulled from a registry; nothing is built from source. */
+export const DEPLOYMENT_MODES = ["native", "dockerfile", "compose", "image"] as const;
 
 /**
  * How a new release replaces the running one. "rolling" (the default) starts the new copy before the
@@ -149,6 +150,7 @@ export const DEPLOYMENT_MODES = ["native", "dockerfile", "compose"] as const;
  */
 export const DEPLOY_STRATEGIES = ["rolling", "recreate", "blue_green"] as const;
 export type DeployStrategy = (typeof DEPLOY_STRATEGIES)[number];
+export type PullPolicy = (typeof PULL_POLICIES)[number];
 
 /**
  * Where a project is built. "container": on the user's Nest container, under a memory and CPU
@@ -158,6 +160,27 @@ export type DeployStrategy = (typeof DEPLOY_STRATEGIES)[number];
  */
 export const BUILD_LOCATIONS = ["container", "github"] as const;
 export type BuildLocation = (typeof BUILD_LOCATIONS)[number];
+
+/**
+ * Logins for private container registries, one per owner and registry host. The username and the
+ * password are sealed with the instance key (server/crypto); the password is never sent back by the API.
+ */
+export const registryCredentials = sqliteTable(
+  "registry_credentials",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    /** Registry host, with an optional port, such as ghcr.io or registry.example.com:5000. */
+    host: text("host").notNull(),
+    usernameEnc: text("username_enc").notNull(),
+    passwordEnc: text("password_enc").notNull(),
+    createdAt: ts("created_at").notNull(),
+    updatedAt: ts("updated_at").notNull(),
+  },
+  (t) => [uniqueIndex("registry_credentials_user_host_idx").on(t.userId, t.host)]
+);
+
+export const PULL_POLICIES = ["auto", "always", "cached"] as const;
 
 export const projects = sqliteTable(
   "projects",
@@ -188,6 +211,12 @@ export const projects = sqliteTable(
     workloadKind: text("workload_kind", { enum: WORKLOAD_KINDS }).notNull().default("web"),
     deploymentMode: text("deployment_mode", { enum: DEPLOYMENT_MODES }).notNull().default("native"),
     deployStrategy: text("deploy_strategy", { enum: DEPLOY_STRATEGIES }).notNull().default("rolling"),
+    /** Image mode only: the image reference, such as nginx:1.27 or ghcr.io/owner/app@sha256:... */
+    imageRef: text("image_ref"),
+    /** Image mode only: when Docker pulls the image. "auto" pulls only if it is missing. */
+    pullPolicy: text("pull_policy", { enum: PULL_POLICIES }).notNull().default("auto"),
+    /** Image mode only: the registry login for a private image. Null for a public image. */
+    registryCredentialId: text("registry_credential_id").references(() => registryCredentials.id, { onDelete: "restrict" }),
     /** Set by the last Compose deploy: the main service mounts a named volume. Such an app must use "recreate". */
     hasVolumes: integer("has_volumes", { mode: "boolean" }).notNull().default(false),
     /** Dockerfile path relative to the repository root; used only in "dockerfile" mode. */

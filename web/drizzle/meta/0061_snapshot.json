@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "e91fd478-a1d0-4860-af41-2e5d38ea81bc",
+  "id": "f4200d23-4950-455d-8de1-8debb05433c5",
   "prevId": "916f8807-fbe6-408a-8ac2-a2e61453d850",
   "tables": {
     "adoption_plans": {
@@ -2640,6 +2640,28 @@
           "autoincrement": false,
           "default": "'rolling'"
         },
+        "image_ref": {
+          "name": "image_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "pull_policy": {
+          "name": "pull_policy",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'auto'"
+        },
+        "registry_credential_id": {
+          "name": "registry_credential_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "has_volumes": {
           "name": "has_volumes",
           "type": "integer",
@@ -3011,6 +3033,19 @@
           ],
           "onDelete": "restrict",
           "onUpdate": "no action"
+        },
+        "projects_registry_credential_id_registry_credentials_id_fk": {
+          "name": "projects_registry_credential_id_registry_credentials_id_fk",
+          "tableFrom": "projects",
+          "tableTo": "registry_credentials",
+          "columnsFrom": [
+            "registry_credential_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -3140,6 +3175,88 @@
           "tableTo": "projects",
           "columnsFrom": [
             "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "registry_credentials": {
+      "name": "registry_credentials",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "host": {
+          "name": "host",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "username_enc": {
+          "name": "username_enc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "password_enc": {
+          "name": "password_enc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "registry_credentials_user_host_idx": {
+          "name": "registry_credentials_user_host_idx",
+          "columns": [
+            "user_id",
+            "host"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "registry_credentials_user_id_users_id_fk": {
+          "name": "registry_credentials_user_id_users_id_fk",
+          "tableFrom": "registry_credentials",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
           ],
           "columnsTo": [
             "id"
