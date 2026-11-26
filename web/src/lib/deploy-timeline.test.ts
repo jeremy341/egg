@@ -326,7 +326,7 @@ describe("buildTimeline: a build failure", () => {
 
   it("adds a plain OOM explanation with the configured build cap and matching line", () => {
     const line = "The build failed (exit 137).";
-    const oom = buildTimeline({ ...dep, error: line }, metrics, beforeBuild);
+    const oom = buildTimeline({ ...dep, error: line, buildMemoryLimitMb: 1024 }, metrics, beforeBuild);
 
     expect(oom.failure).toMatchObject({
       plainMessage: "Memory ran out. The configured limit is 1024 MB.",
@@ -481,6 +481,29 @@ describe("explainFailure", () => {
       message: "Your app did not become healthy on port 3000. Make it listen on the PORT environment variable and on 0.0.0.0.",
       known: true,
       plainMessage: "Port 3000 is already in use by another process.",
+      plainLine: line,
+    });
+  });
+
+  it("states the server memory limit when the app is killed during startup", () => {
+    const line = "Process exited with code 137.";
+    const timeline = buildTimeline(
+      {
+        ...base,
+        state: "error",
+        startedAt: at(1),
+        activationStartedAt: at(2),
+        finishedAt: at(3),
+        error: line,
+        serverMemoryLimitMb: 4096,
+      },
+      [],
+      [log(3, line, "error")],
+    );
+
+    expect(timeline.failure).toMatchObject({
+      stage: "starting",
+      plainMessage: "Memory ran out. The configured limit is 4096 MB.",
       plainLine: line,
     });
   });

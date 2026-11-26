@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/server/db";
+import { reportedMemoryMb } from "@/lib/build-memory";
 import { buildTimeline, type Timeline, type TimelineLog, type TimelineMetric } from "@/lib/deploy-timeline";
 
 function outcomeOf(metadata: string): TimelineMetric["outcome"] {
@@ -20,6 +21,18 @@ export async function deploymentTimeline(deploymentId: string, logs: TimelineLog
   const db = await getDb();
   const dep = await db.select().from(schema.deployments).where(eq(schema.deployments.id, deploymentId)).get();
   if (!dep) return null;
+  const project = await db
+    .select({ serverId: schema.projects.serverId })
+    .from(schema.projects)
+    .where(eq(schema.projects.id, dep.projectId))
+    .get();
+  const server = project
+    ? await db
+        .select({ buildMemoryMb: schema.servers.buildMemoryMb, probe: schema.servers.probe })
+        .from(schema.servers)
+        .where(eq(schema.servers.id, project.serverId))
+        .get()
+    : null;
   const rows = await db
     .select({
       stage: schema.deployStageMetrics.stage,
@@ -38,5 +51,9 @@ export async function deploymentTimeline(deploymentId: string, logs: TimelineLog
     durationMs: r.durationMs,
     outcome: outcomeOf(r.metadata ?? ""),
   }));
-  return buildTimeline(dep, metrics, logs);
+  return buildTimeline({
+    ...dep,
+    buildMemoryLimitMb: server?.buildMemoryMb ?? null,
+    serverMemoryLimitMb: reportedMemoryMb(server?.probe),
+  }, metrics, logs);
 }

@@ -32,8 +32,12 @@ export type TimelineDeployment = {
   /** Optional for older timeline callers. A null listen port identifies a worker snapshot. */
   listenPort?: number | null;
   workloadKind?: "web" | "worker";
-  /** Known memory ceiling, in MB, for plain failure explanations. */
+  /** Explicit memory ceiling, in MB, for plain failure explanations. */
   memoryLimitMb?: number | null;
+  /** Build sandbox cap, in MB, for build failures. */
+  buildMemoryLimitMb?: number | null;
+  /** Server memory ceiling, in MB, for app-start failures. */
+  serverMemoryLimitMb?: number | null;
   error: string | null;
   createdAt: When;
   startedAt: When;
@@ -660,7 +664,8 @@ export function buildTimeline(dep: TimelineDeployment, metricsIn: TimelineMetric
 
   // The failure, and the line for a polite live region.
   const failedKey = stages.find((s) => s.status === "failed")?.key ?? stages[Math.min(reached, stages.length - 1)].key;
-  const failure = failedState ? explainFailure({ error: dep.error, logs: logsIn, port: dep.port, listenPort: dep.listenPort, workloadKind: dep.workloadKind, memoryLimitMb: dep.memoryLimitMb, stage: failedKey }) : null;
+  const memoryLimitMb = dep.memoryLimitMb ?? (failedKey === "building" ? dep.buildMemoryLimitMb : dep.serverMemoryLimitMb);
+  const failure = failedState ? explainFailure({ error: dep.error, logs: logsIn, port: dep.port, listenPort: dep.listenPort, workloadKind: dep.workloadKind, memoryLimitMb, stage: failedKey }) : null;
   const canceledWhy = canceled ? explainCancel(dep.error) : null;
   const currentIndex = stages.findIndex((s) => s.status === "current");
 
