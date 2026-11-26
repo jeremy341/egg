@@ -86,6 +86,7 @@ export const TOOLSET_OF: Record<string, Toolset> = {
 
   update_project: "projects",
   delete_project: "projects",
+  get_resource_quota: "projects",
 
   list_domains: "domains",
   add_domain: "domains",
