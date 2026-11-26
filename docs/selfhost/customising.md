@@ -10,10 +10,10 @@ The name is not one setting. It is written out in the places below, and each one
 
 | What you see | File and line | Text to change |
 | --- | --- | --- |
-| Browser tab title and its template | `web/src/app/layout.tsx:20` and `:21` | `"Egg"` and `"%s \| Egg"` |
-| Sign-in page heading and sentence | `web/src/app/(auth)/login/page.tsx:101` and `:144` | `Log in to Egg` and `It doesn't give Egg access to your server` |
-| Sign-in page logo label | `web/src/app/(auth)/login/page.tsx:91` | `aria-label="Egg, home"` |
-| Sidebar logo label | `web/src/components/sidebar.tsx:55` | `aria-label="Egg home"` |
+| Browser tab title and its template | `web/src/app/layout.tsx:21` and `:22` | `"Egg"` and `"%s \| Egg"` |
+| Sign-in page heading and sentence | `web/src/app/(auth)/login/page.tsx:94` and `:137` | `Log in to Egg` and `It doesn't give Egg access to your server` |
+| Sign-in page logo label | `web/src/app/(auth)/login/page.tsx:84` | `aria-label="Egg, home"` |
+| Sidebar logo label | `web/src/components/sidebar.tsx:61` | `aria-label="Egg home"` |
 | Top bar logo label | `web/src/components/top-bar.tsx:56` | `aria-label="Egg home"` |
 | Setup flow logo label | `web/src/app/(flow)/layout.tsx:31` | `aria-label="Egg home"` |
 | "Page not found" page | `web/src/app/not-found.tsx:20` and `:22` | label and the visible name |
@@ -38,6 +38,8 @@ Colours are CSS variables in `web/src/app/globals.css`. Light mode is the `:root
 ### The accent colour
 
 The accent is used for focus rings, links, selection and the current-production pill.
+
+Each person can already pick Neutral, Blue, Green or Violet for themselves on the Settings page, with no code change. Blue, Green and Violet are the `[data-accent]` blocks that follow the dark block in the same file, and Neutral is the default values below. Change the variables below to change the colour everyone starts with.
 
 | Variable | Light line | Dark line | Used for |
 | --- | --- | --- | --- |

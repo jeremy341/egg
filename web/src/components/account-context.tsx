@@ -10,7 +10,8 @@ export type AccountServer = {
 };
 
 export type Account = {
-  user: { name: string };
+  /** `name` is the Hack Club name. `shownName` is the display name if one is set, else `name`. */
+  user: { name: string; shownName: string; avatar: string };
   servers: AccountServer[];
   projects: { slug: string; name: string }[];
 };
@@ -35,4 +36,9 @@ export function useAccount(): Account {
 
 export function initials(name: string) {
   return name.replace(/[^a-zA-Z0-9]/g, "").slice(0, 2).toUpperCase() || "ND";
+}
+
+/** The account when inside the app shell, or null on public pages. */
+export function useOptionalAccount(): Account | null {
+  return useContext(AccountContext);
 }

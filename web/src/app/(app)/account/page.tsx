@@ -1,9 +1,10 @@
+import Link from "next/link";
 import { cookies } from "next/headers";
 import { AccountView } from "@/components/account-view";
 import { ContainerPermissionsSection } from "@/components/container-permissions";
 import { Card } from "@/components/settings-ui";
 import { PageHeader } from "@/components/page-header";
-import { PixelAvatar } from "@/components/ui/pixel-avatar";
+import { CharacterAvatar } from "@/components/ui/character-avatar";
 import { WebhooksCard } from "@/components/webhooks-card";
 import { timeAgo } from "@/lib/status";
 import { browserLabel, listInstallations, listSessions } from "@/server/account";
@@ -12,6 +13,8 @@ import { SESSION_COOKIE } from "@/server/auth/session";
 import { permissionsOf } from "@/server/permissions";
 import { listServers } from "@/server/servers";
 import { normalizePermissions } from "@/lib/container-permissions";
+import { characterFor, shownName } from "@/lib/preferences";
+import { getPreferences } from "@/server/preferences";
 
 export const metadata = { title: "Account" };
 
@@ -27,16 +30,17 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 export default async function AccountPage() {
   const user = await requireUser();
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
-  const [sessions, installations, servers] = await Promise.all([
+  const [sessions, installations, servers, prefs] = await Promise.all([
     listSessions(user.id, token),
     listInstallations(user.id),
     listServers(user.id),
+    getPreferences(user.id),
   ]);
 
   return (
     <div className="motion-enter mx-auto max-w-[720px]">
       <PageHeader
-        leading={<PixelAvatar seed={user.name} size={40} />}
+        leading={<CharacterAvatar id={prefs.avatar} size={40} />}
         title="Account"
         description="Who you are signed in as, and where."
       />
@@ -45,10 +49,17 @@ export default async function AccountPage() {
         <Card
           id="profile-heading"
           title="Profile"
-          description="This comes from your Hack Club account. Change it there."
+          description="Your Hack Club details come from your Hack Club account. Change them there."
         >
           <dl className="hairline-y overflow-hidden rounded-md shadow-border-base">
-            <Row label="Name">{user.name}</Row>
+            <Row label="Shown as">
+              {shownName(prefs, user.name)}
+              <span className="ml-2 text-label text-muted-foreground">{characterFor(prefs.avatar).label}</span>
+              <Link href="/settings#profile-heading" className="link ml-3 text-label font-medium max-sm:inline-flex max-sm:min-h-10 max-sm:items-center">
+                Change in Settings
+              </Link>
+            </Row>
+            <Row label="Hack Club name">{user.name}</Row>
             <Row label="Email">{user.email ?? "Not shared"}</Row>
           </dl>
         </Card>

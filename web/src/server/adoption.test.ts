@@ -202,7 +202,7 @@ describe("on a container", () => {
     row = await createServer(userId, "sam-r", { host: "127.0.0.1", port: 1 });
     mock = await startMockSsh({ authorizedKeys: [row.publicKey] });
     installFakeSystemd(mock);
-    await db.db.update(schema.servers).set({ port: mock.port }).where(eq(schema.servers.id, row.id));
+    await db.db.update(schema.servers).set({ port: mock.port, hostKeyFingerprint: mock.hostKeyFingerprint }).where(eq(schema.servers.id, row.id));
     row = await getServerForUser(userId, row.id);
     home = mock.home.replace(/\\/g, "/");
     process.env.UNIT_DIR = `${home}/units`;

@@ -1,3 +1,4 @@
+import { readJsonLimited } from "@/server/body-limit";
 import { authed, handle, ok } from "@/server/http";
 import { listEnvVars, setEnvVar } from "@/server/projects";
 
@@ -13,6 +14,6 @@ export const GET = handle<Ctx>(async (_req, { params }) => {
 export const POST = handle<Ctx>(async (req, { params }) => {
   const user = await authed();
   const { id } = await params;
-  await setEnvVar(user.id, id, await req.json().catch(() => ({})));
+  await setEnvVar(user.id, id, await readJsonLimited(req, { fallback: {} }));
   return ok({ env: await listEnvVars(user.id, id) }, 201);
 });

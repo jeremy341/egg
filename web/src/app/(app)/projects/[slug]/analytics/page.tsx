@@ -5,6 +5,7 @@ import { ChartLineUpIcon } from "@phosphor-icons/react/dist/ssr";
 import { AnalyticsChart } from "@/components/analytics-chart";
 import { AnalyticsFeatures } from "@/components/analytics-features";
 import { ClicksCard, FunnelCard, TimeCard } from "@/components/analytics-insights";
+import { CampaignsCard, ErrorsCard, EventsCard, LiveCard, RetentionCard, SpeedCard } from "@/components/analytics-more";
 import { AnalyticsSetup } from "@/components/analytics-setup";
 import { TopList } from "@/components/analytics-top-list";
 import { Stagger } from "@/components/motion/stagger";
@@ -14,10 +15,12 @@ import { AnalyticsSkeleton } from "@/components/skeletons/analytics";
 import { buttonVariants } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { requireUser } from "@/server/auth/current";
-import { analyticsSummary, snippet } from "@/server/analytics";
+import { analyticsSummary, campaignsSummary, snippet } from "@/server/analytics";
 import { getFeatures } from "@/server/analytics-config";
-import { clicksSummary, timeSummary } from "@/server/analytics-events";
+import { clicksSummary, eventsSummary, timeSummary } from "@/server/analytics-events";
 import { funnelSummary } from "@/server/analytics-funnel";
+import { liveSummary, retentionSummary } from "@/server/analytics-retention";
+import { errorsSummary, speedSummary } from "@/server/analytics-speed";
 import { projectViews } from "@/server/queries";
 import { cn } from "@/lib/utils";
 
@@ -67,11 +70,17 @@ async function Content({ params }: Props) {
   const on = Boolean(project.analyticsKey);
   const features = await getFeatures(project.id);
   // Only what the owner switched on is read, so a project with everything off does no extra work.
-  const [summary, clicks, time, funnel] = await Promise.all([
+  const [summary, clicks, time, funnel, campaigns, speed, errors, events, live, retention] = await Promise.all([
     analyticsSummary(user.id, project.id, 30),
     features.clicks ? clicksSummary(user.id, project.id, 30) : null,
     features.time ? timeSummary(user.id, project.id, 30) : null,
     features.funnel ? funnelSummary(user.id, project.id, 30) : null,
+    features.referrers ? campaignsSummary(user.id, project.id, 30) : null,
+    features.vitals ? speedSummary(user.id, project.id, 30) : null,
+    features.vitals ? errorsSummary(user.id, project.id, 30) : null,
+    features.events ? eventsSummary(user.id, project.id, 30) : null,
+    features.live ? liveSummary(user.id, project.id) : null,
+    features.retention ? retentionSummary(user.id, project.id) : null,
   ]);
 
   return (
@@ -82,6 +91,8 @@ async function Content({ params }: Props) {
         description={`Visits to ${project.name} over the last 30 days, counted by a script on your site.`}
         actions={<DocsLink href="/docs/analytics" topic="analytics" className="max-sm:hidden" />}
       />
+
+      {live ? <LiveCard summary={live} /> : null}
 
       {summary.views === 0 ? (
         <EmptyState
@@ -117,12 +128,15 @@ async function Content({ params }: Props) {
               rows={summary.pages.map((p) => ({ label: p.path, views: p.views }))}
               empty="No pages yet."
             />
-            <TopList
-              title="Where visitors came from"
-              rows={summary.referrers.map((r) => ({ label: r.host, views: r.views }))}
-              empty="Most visits had no referring site."
-            />
+            {features.referrers || summary.referrers.length ? (
+              <TopList
+                title="Where visitors came from"
+                rows={summary.referrers.map((r) => ({ label: r.host, views: r.views }))}
+                empty="Most visits had no referring site."
+              />
+            ) : null}
           </div>
+          {campaigns ? <CampaignsCard summary={campaigns} /> : null}
         </>
       )}
 
@@ -133,6 +147,10 @@ async function Content({ params }: Props) {
           {clicks ? <ClicksCard summary={clicks} /> : null}
         </div>
       ) : null}
+      {events ? <EventsCard summary={events} /> : null}
+      {speed ? <SpeedCard summary={speed} /> : null}
+      {errors ? <ErrorsCard summary={errors} /> : null}
+      {retention ? <RetentionCard summary={retention} /> : null}
 
       <AnalyticsSetup
         projectId={project.id}

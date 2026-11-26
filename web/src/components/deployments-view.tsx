@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -76,37 +76,148 @@ const RANGES: { value: RangeFilter; label: string }[] = [
   { value: "30d", label: "Last 30 days" },
 ];
 
+/** What the server filters on. Sort stays in the browser, over the rows loaded so far. */
+type ServerFilter = { status: StatusFilter; env: EnvFilter; range: RangeFilter; q: string };
+
+const serverFilterOf = (q: DeploymentQuery): ServerFilter => ({
+  status: q.status,
+  env: q.env,
+  range: q.range,
+  q: q.search.trim(),
+});
+
+function pageUrl(projectId: string, f: ServerFilter, cursor?: string | null) {
+  const p = new URLSearchParams();
+  if (cursor) p.set("cursor", cursor);
+  if (f.status !== "all") p.set("status", f.status);
+  if (f.env !== "all") p.set("env", f.env);
+  if (f.range !== "any") p.set("range", f.range);
+  if (f.q) p.set("q", f.q);
+  const qs = p.toString();
+  return `/api/projects/${projectId}/deployments${qs ? `?${qs}` : ""}`;
+}
+
+type PageResponse = { deployments: DeploymentView[]; nextCursor: string | null };
+
+/** Adds `next` after `rows`, skipping any row already there. */
+function appendUnique(rows: DeploymentView[], next: DeploymentView[]) {
+  const have = new Set(rows.map((d) => d.id));
+  return [...rows, ...next.filter((d) => !have.has(d.id))];
+}
+
 export function DeploymentsView({
   deployments,
   showProject = true,
   demo = false,
+  paging,
 }: {
   deployments: DeploymentView[];
   showProject?: boolean;
   /** Sample data on the homepage: only the status filter, rows are not links. */
   demo?: boolean;
+  /**
+   * One project's list, loaded a page at a time. `deployments` is the first page
+   * and `nextCursor` the way to the page after it. Status, environment, time range and
+   * search are then answered by the server, so older pages are not hidden by them.
+   * Without it the list is filtered in the browser over `deployments`.
+   */
+  paging?: { projectId: string; nextCursor: string | null };
 }) {
   const router = useRouter();
   const searchPlaceholder = useSearchPlaceholder();
+  const serverMode = Boolean(paging) && !demo;
+  const projectId = paging?.projectId ?? "";
   const [query, setQuery] = useState<DeploymentQuery>(DEFAULT_QUERY);
   const [shown, setShown] = useState(PAGE);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [comparing, setComparing] = useState(false);
+  // Paged mode: the rows loaded so far, the cursor for the next page, and what is loading.
+  const [loaded, setLoaded] = useState(deployments);
+  const [cursor, setCursor] = useState(paging?.nextCursor ?? null);
+  const [fetching, setFetching] = useState<"first" | "more" | null>(null);
+  const [pageError, setPageError] = useState<{ message: string; during: "first" | "more" } | null>(null);
+  const requestId = useRef(0);
+  const applied = useRef<ServerFilter>(serverFilterOf(DEFAULT_QUERY));
+  const queryRef = useRef(query);
+  useEffect(() => {
+    queryRef.current = query;
+  });
   // The clock is read after mount, so the server render and the first client render match.
   const [now, setNow] = useState<number | null>(null);
   useEffect(() => {
     const id = setTimeout(() => setNow(Date.now()), 0);
     return () => clearTimeout(id);
   }, []);
+
+  /** Starts again from the newest page with the server-side filters of `q`. */
+  const loadFirst = useCallback(
+    async (q: DeploymentQuery) => {
+      const mine = ++requestId.current;
+      const filter = serverFilterOf(q);
+      setFetching("first");
+      setPageError(null);
+      try {
+        const res = await api<PageResponse>(pageUrl(projectId, filter));
+        if (mine !== requestId.current) return;
+        applied.current = filter;
+        setLoaded(res.deployments);
+        setCursor(res.nextCursor);
+      } catch (e) {
+        if (mine !== requestId.current) return;
+        setPageError({
+          message: e instanceof Error ? e.message : "Could not load deployments",
+          during: "first",
+        });
+      } finally {
+        if (mine === requestId.current) setFetching(null);
+      }
+    },
+    [projectId]
+  );
+
+  async function loadMore() {
+    if (!cursor || fetching) return;
+    const mine = ++requestId.current;
+    setFetching("more");
+    setPageError(null);
+    try {
+      const res = await api<PageResponse>(pageUrl(projectId, applied.current, cursor));
+      if (mine !== requestId.current) return;
+      setLoaded((rows) => appendUnique(rows, res.deployments));
+      setCursor(res.nextCursor);
+    } catch (e) {
+      // The rows already shown stay; the button tries the same page again.
+      if (mine !== requestId.current) return;
+      setPageError({
+        message: e instanceof Error ? e.message : "Could not load older deployments",
+        during: "more",
+      });
+    } finally {
+      if (mine === requestId.current) setFetching(null);
+    }
+  }
+
+  // Typing in the search box asks the server once typing pauses.
+  useEffect(() => {
+    if (!serverMode) return;
+    const t = setTimeout(() => {
+      if (queryRef.current.search.trim() !== applied.current.q) void loadFirst(queryRef.current);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [serverMode, query.search, loadFirst]);
+
   const set = <K extends keyof DeploymentQuery>(key: K, value: DeploymentQuery[K]) => {
-    setQuery((q) => ({ ...q, [key]: value }));
+    const next = { ...query, [key]: value };
+    setQuery(next);
     setShown(PAGE); // a new filter starts again from the top of the list
     clearSelection(); // a selection never carries rows the filter just hid
+    if (serverMode && (key === "status" || key === "env" || key === "range")) void loadFirst(next);
   };
   const resetQuery = () => {
     setQuery(DEFAULT_QUERY);
     setShown(PAGE);
     clearSelection();
+    if (serverMode) void loadFirst(DEFAULT_QUERY);
   };
   function clearSelection() {
     setSelected(new Set());
@@ -122,16 +233,29 @@ export function DeploymentsView({
     setComparing(false);
   }
 
+  const source = serverMode ? loaded : deployments;
+
   const projects = useMemo(() => {
     const seen = new Map<string, string>();
-    for (const d of deployments) seen.set(d.projectId, d.projectName);
+    for (const d of source) seen.set(d.projectId, d.projectName);
     return [...seen].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
-  }, [deployments]);
+  }, [source]);
 
-  const visible = useMemo(() => applyDeploymentQuery(deployments, query, now), [deployments, query, now]);
-  const counts = useMemo(() => statusCounts(deployments, query, now), [deployments, query, now]);
+  // Paged mode: the server already applied status, environment, range and search, so only
+  // the order is applied here. Doing both would hide rows the server counted as matches.
+  const visible = useMemo(
+    () =>
+      applyDeploymentQuery(
+        source,
+        serverMode ? { ...query, status: "all", env: "all", range: "any", search: "" } : query,
+        now
+      ),
+    [source, query, now, serverMode]
+  );
+  const counts = useMemo(() => statusCounts(source, query, now), [source, query, now]);
 
-  if (deployments.length === 0) {
+  // With a filter on, an empty first page is "no matches", not "no deployments yet".
+  if (source.length === 0 && (!serverMode || (isDefaultQuery(query) && fetching === null && !pageError))) {
     return (
       <EmptyState
         icon={<CubeIcon />}
@@ -152,7 +276,7 @@ export function DeploymentsView({
     );
   }
 
-  const page = visible.slice(0, shown);
+  const page = serverMode ? visible : visible.slice(0, shown);
   const rows = page.map((d) => (
     <DeploymentRow
       key={d.id}
@@ -186,6 +310,7 @@ export function DeploymentsView({
     }
     clearSelection();
     router.refresh();
+    if (serverMode) void loadFirst(query);
   }
 
   async function bulk(path: "bulk-cancel" | "bulk-delete", eligible: (d: DeploymentView) => boolean) {
@@ -213,16 +338,18 @@ export function DeploymentsView({
     report(results, "Deleted", "preview");
   }
 
+  // Counts only make sense over the whole list. When it is loaded a page at a time they would lie.
+  const bare = demo || serverMode;
   const statusFilter = (
     <Segmented<StatusFilter>
       label="Filter by status"
       value={query.status}
       onChange={(v) => set("status", v)}
       options={[
-        { value: "all", label: demo ? "All" : `All ${counts.all}` },
-        { value: "ready", label: demo ? "Ready" : `Ready ${counts.ready}` },
-        { value: "building", label: demo ? "Building" : `Building ${counts.building}` },
-        { value: "error", label: demo ? "Error" : `Error ${counts.error}` },
+        { value: "all", label: bare ? "All" : `All ${counts.all}` },
+        { value: "ready", label: bare ? "Ready" : `Ready ${counts.ready}` },
+        { value: "building", label: bare ? "Building" : `Building ${counts.building}` },
+        { value: "error", label: bare ? "Error" : `Error ${counts.error}` },
       ]}
     />
   );
@@ -344,11 +471,15 @@ export function DeploymentsView({
             <p
               role="status"
               aria-live="polite"
-              className={cn("tabular text-label text-muted-foreground", !filtered && "sr-only")}
+              className={cn("tabular text-label text-muted-foreground", !filtered && !serverMode && "sr-only")}
             >
-              {filtered
-                ? `${visible.length} of ${deployments.length} deployments`
-                : `${deployments.length} deployments`}
+              {serverMode
+                ? cursor
+                  ? `Showing ${visible.length} of many`
+                  : `Showing all ${visible.length} ${visible.length === 1 ? "deployment" : "deployments"}`
+                : filtered
+                  ? `${visible.length} of ${deployments.length} deployments`
+                  : `${deployments.length} deployments`}
             </p>
           </div>
           {filtered ? (
@@ -425,7 +556,7 @@ export function DeploymentsView({
         <DeploymentCompare a={pair[0]} b={pair[1]} onClose={() => setComparing(false)} />
       ) : null}
 
-      {visible.length === 0 ? (
+      {visible.length === 0 && fetching !== "first" ? (
         <div className="rounded-lg bg-card px-4 shadow-border-small">
           <EmptyState
             size="compact"
@@ -446,10 +577,55 @@ export function DeploymentsView({
         </div>
       ) : (
         <>
-          <Stagger aria-label="Deployments" className={cn(LIST)}>
-            {rows}
-          </Stagger>
-          {visible.length > shown ? (
+          <div aria-busy={fetching === "first" || undefined} className={cn(fetching === "first" && "opacity-60")}>
+            <Stagger aria-label="Deployments" className={cn(LIST)}>
+              {rows}
+            </Stagger>
+          </div>
+          {serverMode ? (
+            <div className="mt-4 space-y-2">
+              {cursor || pageError ? (
+                <div className="flex flex-wrap items-center gap-3">
+                  {cursor ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      loading={fetching === "more"}
+                      onClick={() => void loadMore()}
+                    >
+                      {fetching === "more" ? "Loading older…" : "Load older"}
+                    </Button>
+                  ) : null}
+                  {pageError ? (
+                    <>
+                      <p role="alert" className="text-label text-destructive">
+                        {pageError.message}
+                        {pageError.during === "more"
+                          ? ". The rows above are still here."
+                          : ". Showing the previous results."}
+                      </p>
+                      {pageError.during === "first" ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          loading={fetching === "first"}
+                          onClick={() => void loadFirst(query)}
+                        >
+                          {fetching === "first" ? "Trying again…" : "Try again"}
+                        </Button>
+                      ) : null}
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
+              {cursor && query.sort !== "newest" ? (
+                <p className="text-label text-muted-foreground">
+                  Sorted among the rows loaded so far. Load older to bring in more.
+                </p>
+              ) : null}
+            </div>
+          ) : visible.length > shown ? (
             <div className="mt-4 flex justify-center">
               <Button type="button" variant="outline" onClick={() => setShown((n) => n + PAGE)}>
                 Show {Math.min(PAGE, visible.length - shown)} more

@@ -249,7 +249,8 @@ export async function apiDeleteEnv(p: Principal, projectId: string, key: string,
 
 const instructionsSchema = z.object({
   steps: z.array(z.string()),
-  cname: z.object({ name: z.string(), value: z.string() }).nullable(),
+  cname: z.object({ name: z.string(), value: z.string() }).nullable().describe("A CNAME record that proves the domain is yours, or null when none is needed."),
+  txt: z.object({ name: z.string(), value: z.string() }).nullable().describe("A TXT record that proves it instead of the CNAME (use it on a bare domain), or null when none is needed."),
 });
 
 const appCheckSchema = z.object({

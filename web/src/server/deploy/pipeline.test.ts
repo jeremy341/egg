@@ -74,7 +74,7 @@ beforeAll(async () => {
   server = await createServer(userId, "sam-r", { host: "127.0.0.1", port: 1 });
   mock = await startMockSsh({ authorizedKeys: [server.publicKey] });
   installFakeSystemd(mock);
-  await ctx.db.update(schema.servers).set({ port: mock.port }).where(eq(schema.servers.id, server.id));
+  await ctx.db.update(schema.servers).set({ port: mock.port, hostKeyFingerprint: mock.hostKeyFingerprint }).where(eq(schema.servers.id, server.id));
   server = await getServerForUser(userId, server.id);
 
   const port = await freePort();

@@ -1,3 +1,4 @@
+import { readJsonLimited } from "@/server/body-limit";
 import { authed, handle, ok } from "@/server/http";
 import {
   deleteProjectRecords,
@@ -17,7 +18,7 @@ export const GET = handle<Ctx>(async (_req, { params }) => {
 export const PATCH = handle<Ctx>(async (req, { params }) => {
   const user = await authed();
   const { id } = await params;
-  const body = await req.json().catch(() => ({}));
+  const body = await readJsonLimited(req, { fallback: {} });
   return ok({ project: await updateProject(user.id, id, body) });
 });
 

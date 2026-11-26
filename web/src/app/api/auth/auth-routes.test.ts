@@ -41,6 +41,7 @@ afterAll(async () => {
   resetConfigForTests();
 });
 beforeEach(() => {
+  vi.stubEnv("TRUST_PROXY", "1");
   rateLimiter().clear();
   vi.mocked(completeLogin).mockReset();
 });

@@ -232,7 +232,11 @@ export type UpdateProjectInput = Partial<
 
 export type EnvTarget = "all" | "production" | "preview";
 
-export type DomainInstructions = { steps: string[]; cname: { name: string; value: string } | null };
+export type DomainInstructions = {
+  steps: string[];
+  cname: { name: string; value: string } | null;
+  txt: { name: string; value: string } | null;
+};
 
 export type DomainAppCheck = {
   skipped: boolean;

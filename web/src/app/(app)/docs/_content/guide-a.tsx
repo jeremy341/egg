@@ -23,28 +23,16 @@ const steps = (page: string, items: Step[]) => (
   <Steps id={`${page}-steps`} items={items.map(toStep)} level={levelOf(page)} />
 );
 
-/** A limit's name with, under it, the file in the code that holds the number. */
-const named = (name: string, source?: string): ReactNode =>
-  source ? (
-    <>
-      {name}
-      <span className="mt-0.5 block text-[13px] leading-5 font-normal text-muted-foreground">
-        In the code: <C>{source}</C>
-      </span>
-    </>
-  ) : (
-    name
-  );
-
 const limits = (page: string, rows: [string, string, ReactNode, string?][]) => {
   const items: LimitItem[] = rows.map(([name, value, atLimit, source]) => ({
-    name: named(name, source),
+    name,
+    source,
     value,
     atLimit,
   }));
   return (
     <Limits id={`${page}-limits`} items={items} level={levelOf(page)}>
-      These numbers are read from the code that enforces them. Under each name is the file that holds the number,
+      These numbers are read from the code that enforces them. Under each message is the file that holds the number,
       relative to the web/src folder.
     </Limits>
   );
@@ -138,7 +126,8 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
           body: (
             <>
               It clones the branch, then runs your install and build commands inside a Docker container on the
-              Egg side, with 2 GB of memory and 2 CPUs. Your container’s memory stays free for your app.
+              Egg side, with 2 GB of memory by default (you can change it per server on the Container page) and 2 CPUs.
+              Your container’s memory stays free for your app.
             </>
           ),
         },
@@ -291,8 +280,9 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
               Open Connect, titled “Connect a Nest server”. Under <B>Add your server</B>, type your Nest username
               in <B>Nest username</B> and press <B>Create key</B>. The status reads “Waiting for the key”. Copy
               the <B>Public key</B>, press <B>Open the Nest dashboard</B> and paste the key on the SSH Keys page
-              there. Come back and press <B>Test connection</B>. The status turns to “Connected” and a “Reached
-              your container” panel appears.
+              there. Come back and press <B>Test connection</B>. The first time, check the fingerprint
+              in the “Confirm host key” box and press <B>Confirm host key</B>. The status turns to “Connected” and a
+              “Reached your container” panel appears.
             </>
           ),
         },
@@ -500,9 +490,11 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
       </P>
       <P>
         The private key is sealed with AES-256-GCM, tied to that server, before it is stored. It is never shown.
-        The first successful connection records the SHA-256 fingerprint of Nest’s host key, and Test connection is
-        normally that first connection. After that, any other host key stops the connection before anything is
-        sent. The address is <C>hackclub.app</C> on port 22. A self-hosted copy can change both with the{" "}
+        The first time you press Test connection, Egg reaches the host, reads its host key, hangs up and shows the
+        SHA-256 fingerprint under “Confirm host key”. Nothing is sent to the server until you press{" "}
+        <B>Confirm host key</B>. The fingerprint is then recorded, and any other host key stops the connection
+        before anything is sent. Until it is confirmed, no deploy, file change or terminal can connect. The
+        address is <C>hackclub.app</C> on port 22. A self-hosted copy can change both with the{" "}
         <C>NEST_HOST</C> and <C>NEST_PORT</C> settings.
       </P>
       {why(
@@ -537,7 +529,10 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
           title: "Test the connection",
           body: (
             <>
-              Back on Connect, press <B>Test connection</B>. The button reads “Connecting…”. On success the
+              Back on Connect, press <B>Test connection</B>. The button reads “Connecting…”. The first time, the
+              page stops at a “Confirm host key” box that says “This is the first connection to NAME.hackclub.app”
+              and shows a fingerprint. Check that it matches the one Nest shows for your server, then press{" "}
+              <B>Confirm host key</B> (“Confirming…”). Egg then reads your container. On success the
               status reads “Connected” and a “Reached your container” panel lists System, Logged in as, Node.js,
               Python, systemd and Key fingerprint. That last row is the fingerprint of the key Egg made, not of
               Nest’s host key. If a tool is missing, the panel shows “not installed” for it.
@@ -557,7 +552,7 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
       <H3 id="servers-manage" />
       <List>
         <li>
-          <B>Test connection</B> opens an SSH session, records the host key the first time it works, and reads
+          <B>Test connection</B> opens an SSH session, asks you to confirm the host key the first time, and reads
           what your container has: operating system, user, Node.js and Python versions, which tools exist,
           systemd, CPU, memory and disk. It can be pressed at any time. A failure saves the message and the status
           becomes “Could not connect”; the next success clears it.
@@ -585,7 +580,7 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
         A disconnected server drops out of the list and no longer counts toward the limit of five. Its kept projects
         stay in Egg but cannot be deployed or read: any attempt answers “NAME is disconnected. Connect it again to
         manage its projects.” To bring them back, add the same Nest username again on Connect. You get a new key and
-        a new host key pin, and the kept projects attach to it. Egg never touches the apps on your container while
+        a new host key to confirm, and the kept projects attach to it. Egg never touches the apps on your container while
         the server is disconnected.
       </Callout>
       <Table
@@ -651,7 +646,7 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
         ["Servers per Nest username", "One per account", "“NAME is already connected.”", "server/servers.ts"],
         ["Connect timeout", "20 seconds", "“Timed out connecting to Nest. Your container may be stopped or starting; try again in a minute.”", "server/ssh/connection.ts"],
         ["Connection read", "30 seconds", "The test fails and the Connect page shows the error.", "server/ssh/probe.ts"],
-        ["Host key", "Pinned on the first successful connection", "Any other key stops the connection. Only Disconnect, then adding the server again, clears the pin.", "server/servers.ts"],
+        ["Host key", "Pinned when you confirm it on the first Test connection", "Until then nothing connects: a deploy answers “Confirm host key: open the Connect page, check the fingerprint of this server and confirm it first.” Any other key stops the connection. Only Disconnect, then adding the server again, clears the pin.", "server/servers.ts"],
         ["Free disk before a warning", "1024 MB", "An amber warning after a test.", "server/ssh/probe.ts"],
       ])}
       {wrong("servers", [
@@ -666,6 +661,13 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
         [
           "“Could not reach the Nest SSH host (reason).”",
           <>The connection failed before login. Try again in a minute, and check that Nest itself is up.</>,
+        ],
+        [
+          "“Confirm host key: open the Connect page, check the fingerprint of this server and confirm it first.”",
+          <>
+            The server has no confirmed host key yet, so a deploy, file change or terminal will not connect to it.
+            Open Connect, press <B>Test connection</B> and then <B>Confirm host key</B>.
+          </>,
         ],
         [
           "“The host key of HOST changed (was OLD, now NEW). Nothing was sent. If you expected this, reconnect the server.”",
@@ -703,14 +705,14 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
         steps: [
           { title: "Create the key", body: <>Sam opens Connect, types <C>sam-r</C> and presses Create key.</> },
           { title: "Paste it in Nest", body: <>Sam pastes the public key on the Nest dashboard’s SSH Keys page.</> },
-          { title: "Test", body: <>Sam presses Test connection.</> },
+          { title: "Test and confirm", body: <>Sam presses Test connection, checks the fingerprint in the “Confirm host key” box and presses Confirm host key.</> },
           { title: "Replace the key later", body: <>Sam presses New key, then Generate key, pastes the new public key in Nest, removes the old one there and presses Test connection again.</> },
         ],
         result: (
           <>
             The first test shows “Reached your container” with the system, Node.js and systemd rows, and the status
             reads “Connected”. After the replacement the status goes to “Waiting for the key” and back to
-            “Connected”. The host key was not asked for again. Sam’s projects and apps were not touched.
+            “Connected”. The host key was not asked for again, because it was confirmed the first time. Sam’s projects and apps were not touched.
           </>
         ),
       })}
@@ -740,7 +742,8 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
               Press <B>New project</B>. Pick the account under <B>GitHub account</B>, find the repository with{" "}
               <B>Search repositories…</B> and press <B>Import</B>. Or paste a public address under “Or use a public
               repository URL” and press <B>Continue</B>; it has to look like{" "}
-              <C>https://github.com/owner/name</C>. A pasted address starts on the branch <C>main</C>. With no
+              <C>https://github.com/owner/name</C>. A pasted address starts on your Default branch from Settings, which is <C>main</C> until you
+              change it. With no
               server connected the page shows “Connect a server first”.
             </>
           ),
@@ -798,7 +801,7 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
         caption="Project settings"
         head={["Setting", "What it does", "Default"]}
         rows={[
-          ["Production branch", "A push here deploys to production. Any other branch builds a preview.", "The repository’s default branch; a pasted address starts at main"],
+          ["Production branch", "A push here deploys to production. Any other branch builds a preview.", "The repository’s default branch; a pasted address starts at your Default branch from Settings (main unless you changed it)"],
           ["Root directory", "The folder inside the repository to build, for monorepos. For a subfolder, a help line shows what GitHub has there: package.json, Lockfile, requirements.txt and Start script.", <C key="r">.</C>],
           ["Runtime", "How to install, build and run it. See Runtimes.", "Node.js"],
           ["Install command, Build command, Start command", "Override a command. Each is one line of at most 500 characters.", "Detected from the runtime"],
@@ -1225,7 +1228,16 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
         that are not finished) or <B>Delete previews</B> (previews that are not live and are at least 24 hours
         old). Deleting asks “Delete N previews?” and says each preview is stopped and its files removed from your
         container, and that production releases and the live release are never deleted. The record stays in the
-        list. The page loads the newest 100 deployments and shows 25 at a time with a <B>Show N more</B> button.
+        list.
+      </P>
+      <P>
+        The Deployments page for all projects loads the newest 100 deployments and shows 25 at a time with a{" "}
+        <B>Show N more</B> button. A single project’s Deployments tab works differently, so a long history does not
+        have to load at once. It loads the newest 25 and a <B>Load older</B> button (“Loading older…”) fetches the
+        next 25. Search, status, environment and time are answered by the server, not by the rows already on the
+        page, so a match is found however far back it is. The search waits until you stop typing. Sorting only
+        reorders the rows loaded so far, and the page says so under the list. If a page cannot be loaded the rows
+        already shown stay, and the button tries again.
       </P>
       <P>
         To keep a record outside the dashboard, open a project’s Deployments tab and press <B>Export CSV</B>. The
@@ -1285,7 +1297,8 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
         ["Live build stream", "About 3.75 hours", "The stream stops; reload the page.", "app/api/deployments/[id]/stream/route.ts"],
         ["Bulk actions", "50 deployments at a time", "Each one runs on its own; one failure does not stop the others.", "server/deployments-bulk.ts, MAX_BULK"],
         ["Delete previews", "Not live, not cleaned up, not running, 24 hours old or more", "“Only old previews that are not live or removed can be deleted in bulk.”", "lib/deployments-filter.ts"],
-        ["Deployments page", "Newest 100, shown 25 at a time", "Older ones do not appear on the page.", "server/queries.ts, components/deployments-view.tsx"],
+        ["Deployments page, all projects", "Newest 100, shown 25 at a time", "Older ones do not appear on the page. Open the project’s Deployments tab for them.", "server/queries.ts, components/deployments-view.tsx"],
+        ["A project’s Deployments tab", "25 at a time, up to 100 for an API request", "Load older brings in the next page. Filters and search run on the server.", "server/deployment-page.ts, DEFAULT_PAGE_SIZE and MAX_PAGE_SIZE"],
         ["CSV export", "Newest 5,000 deployments, 10 exports a minute", "“Too many exports. Wait N seconds and try again.”", "server/export-csv-data.ts"],
       ])}
       {wrong("deployments", [
@@ -1480,10 +1493,11 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
           the variable as unset rather than empty.
         </li>
         <li>
-          Build and deploy logs, and the error text of a failed deployment, hide each value of 4 or more characters
-          as <C>***</C>. In a multi-line value such as a key file, each line of 8 or more characters is hidden on its
-          own. A value shorter than 4 characters is not hidden, and neither is a changed form of a value, such as
-          one encoded in base64.
+          Build and deploy logs, and the error text of a failed deployment, hide each value as <C>***</C>. The
+          base64 form of a value and its percent-encoded form are hidden too. In a multi-line value such as a key
+          file, each line of 8 or more characters is hidden on its own. A value of 2 or 3 characters is hidden only
+          where it stands alone, not inside a longer word or number, and a one-character value is never hidden.
+          Another changed form, such as hex or a hash, is not recognised.
         </li>
         <li>
           Saving a name and target that already exist replaces the value. The same name for All and for one target
@@ -1515,7 +1529,7 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
         ["Value", "10,000 characters", "“value: Too big: expected string to have <=10000 characters”", "server/projects.ts"],
         ["Reserved names", "PORT, HOST, PATH, HOME, EGG, in any letter case", "“key: That name is set by Egg”", "server/deploy/runtime.ts, RESERVED_ENV"],
         ["Names found in a repository", "100, from files up to 200,000 bytes", "The rest are not listed.", "server/repo-detect.ts"],
-        ["Masking", "Values of 4 or more characters", "Shorter values show in the log as typed.", "server/deploy/redact.ts"],
+        ["Masking", "Values of 2 or more characters, and their base64 and percent-encoded forms. 2 or 3 characters only where they stand alone", "A one-character value shows in the log as typed.", "server/deploy/redact.ts"],
       ])}
       {wrong("env", [
         [
@@ -1634,11 +1648,26 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
           ),
         },
         {
+          title: "Load older lines",
+          body: (
+            <>
+              The page opens with the newest 300 lines. When the journal holds more inside the time range, a{" "}
+              <B>Load older lines</B> button (“Loading older lines…”) sits above them. Each press adds the 300 lines
+              before the ones you see, using the same time range, level and search, and keeps your place in the
+              list. A screen reader is told how many lines were added. When the journal has nothing earlier in the
+              range, the button goes away. If a stretch has no match, the button stays so you can keep looking. If a read
+              fails, the lines above stay and the button tries again. Changing the range, level or search starts the
+              list again from the newest lines.
+            </>
+          ),
+        },
+        {
           title: "Follow it live",
           body: (
             <>
               Tick <B>Refresh every 5s</B> to follow the log. A “Live” marker appears and the page reads quietly in
-              the background. Or press <B>Refresh</B> when you want to.
+              the background. With older lines on screen it adds only what is new at the bottom. Or press{" "}
+              <B>Refresh</B> when you want to.
             </>
           ),
         },
@@ -1646,7 +1675,7 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
           title: "Keep a copy",
           body: (
             <>
-              Press <B>Download</B> to save exactly the lines on screen as a text file, for example{" "}
+              Press <B>Download</B> to save exactly the lines on screen, older lines included, as a text file, for example{" "}
               <C>recipe-bot-logs-24h-2026-11-05.txt</C>. The name has the project, the range (<C>1h</C>,{" "}
               <C>24h</C> or <C>7d</C>) and the UTC date. The button is off when there are no lines.
             </>
@@ -1656,8 +1685,9 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
       <List>
         <li>
           Runtime logs are the production service’s journal on your container (<C>journalctl -u egg-NAME.service</C>).
-          The page shows up to 300 lines. A search or the Warnings and errors level reads the newest 1000 lines
-          first, filters them, and keeps the newest 300. A preview’s output is not on this page.
+          The page shows up to 300 lines at a time. A search or the Warnings and errors level reads up to 1000 lines
+          first, filters them, and keeps the newest 300 of what matches. Load older lines repeats that read for the
+          lines before the last ones shown. A preview’s output is not on this page.
         </li>
         <li>
           Egg decides a line’s level from its text, in this order. A level the program printed itself wins:{" "}
@@ -1688,7 +1718,8 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
       )}
       {limits("logs", [
         ["Runtime log lines shown", "300", "The newest 300 after any filter.", "components/logs-view.tsx"],
-        ["Lines read for a search or level filter", "1000", "Older lines are not searched.", "server/runtime-info.ts"],
+        ["Lines read for a search or level filter", "1000 for each read, 300 kept", "Press Load older lines to search further back, inside the time range.", "server/runtime-info.ts"],
+        ["Lines added by Load older lines", "300 at a time", "The button goes away when the journal has nothing before the first line.", "components/logs-view.tsx, lib/log-page.ts"],
         ["Lines the API can be asked for", "1 to 1000", "Other numbers are clamped.", "app/api/projects/[id]/runtime-logs/route.ts"],
         ["Search text", "200 characters", "The rest is cut off.", "server/runtime-info.ts"],
         ["Reading the journal", "30 seconds", "“Could not read the logs from your container.” or a timeout message.", "server/runtime-info.ts"],
@@ -1730,7 +1761,7 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
         ],
         [
           "“No lines match “TEXT”.”",
-          <>Only the newest 1000 lines are searched. Pick a shorter word, or a shorter time range.</>,
+          <>Each read looks through 1000 lines. If the page offers it, press Load older lines to search further back, or pick a shorter word or a shorter time range.</>,
         ],
         [
           "“Nothing to read yet”",
@@ -1739,8 +1770,8 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
         [
           "A secret appears in a build log",
           <>
-            Masking only covers values of 4 or more characters that appear exactly as stored. Do not print secrets
-            from your own code.
+            Masking covers a value as stored, and its base64 and percent-encoded forms. It does not cover a value
+            of one character, or one changed in another way, such as a hash. Do not print secrets from your own code.
           </>,
         ],
       ])}
@@ -1774,14 +1805,42 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
   domains: () => (
     <Section
       id="domains"
-      intro="Nest maps domains to ports on its own dashboard and has no API for it, so Egg tells you what to enter and checks that it worked."
+      intro="Your Nest name is free. A custom domain needs a DNS record first. Egg shows a domain as active only after its DNS check passes."
     >
       <P>
         A domain gives your app a name people can type. Three places have to agree: your DNS provider sends the name
         to Nest, the Nest dashboard maps the name to your app’s port, and Egg keeps a record of both so it can check
-        them. Egg can do only the last part. You need a connected server and a domain you can edit DNS for, or a
-        name that already ends in <C>.hackclub.app</C>. The form adds the domain to the server you connected first.
+        them. Egg can do only the last part. You need a connected server and either a domain you can edit DNS for
+        or your own Nest name. The form adds the domain to the server you connected first.
       </P>
+      <List>
+        <li>
+          <B>Your Nest name is free.</B> <C>your-nest-username.hackclub.app</C>, and any name under it such as{" "}
+          <C>app.your-nest-username.hackclub.app</C>, needs no DNS record and is active as soon as you add it.
+          Other names under <C>hackclub.app</C> are refused: “Only your Nest name, NAME.hackclub.app, can be used
+          under hackclub.app.”
+        </li>
+        <li>
+          <B>A custom domain needs a DNS record.</B> Add a CNAME to <C>your-nest-username.hackclub.app</C>, or a TXT
+          record with the value <C>domain-verification=your-nest-username</C>. This is the same proof Nest asks for
+          when you add the domain on its dashboard. The domain waits as “Waiting for DNS” until Egg finds the record.
+        </li>
+        <li>
+          <B>A subdomain of a domain you already verified</B> on the same server, such as <C>api.example.com</C>{" "}
+          when <C>example.com</C> is active, needs no new record.
+        </li>
+        <li>
+          <B>Reserved names are blocked.</B> Names such as <C>admin</C>, <C>api</C>, <C>dashboard</C>,{" "}
+          <C>status</C>, <C>www</C>, <C>nest</C>, <C>hackclub</C> and <C>egg</C> cannot be used as the name under{" "}
+          <C>hackclub.app</C>, <C>hackclub.com</C> or <C>hackclub.dev</C>, or on their own. The message is “That
+          name is reserved. Choose another domain.”
+        </li>
+        <li>
+          <B>Only active after the DNS check.</B> Egg shows a domain as active only when it is your Nest name, a
+          subdomain of a verified domain, or its DNS record was found. IP addresses, <C>localhost</C> and internal
+          names such as <C>.local</C> are refused.
+        </li>
+      </List>
       {steps("domains", [
         {
           title: "Add the domain",
@@ -1797,9 +1856,11 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
           title: "Point DNS at Nest",
           body: (
             <>
-              At your DNS provider, create a CNAME record using the “CNAME name” and “CNAME value” shown. The value
-              is <C>your-nest-username.hackclub.app</C>. Names that already end in <C>.hackclub.app</C> skip this
-              step.
+              At your DNS provider, add one of the two records shown: a CNAME with the “CNAME value”, which is{" "}
+              <C>your-nest-username.hackclub.app</C>, or a TXT record with the “TXT value”, which is{" "}
+              <C>domain-verification=your-nest-username</C>. Use the TXT record for a bare domain such as{" "}
+              <C>example.com</C>, where a CNAME often cannot sit beside the other records. Your Nest name and
+              subdomains of a verified domain skip this step.
             </>
           ),
         },
@@ -1807,8 +1868,8 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
           title: "Map it in the Nest dashboard",
           body: (
             <>
-              In the Domains page of your Nest dashboard, add the same domain with the same port. Egg cannot do this
-              for you.
+              In the Domains page of your Nest dashboard, add the same domain with the same port. Nest looks for the same
+              record when you add it, so do step 2 first. Egg cannot do this for you.
             </>
           ),
         },
@@ -1816,21 +1877,22 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
           title: "Check",
           body: (
             <>
-              Press <B>Check</B>. The button reads “Checking…”. The status moves from “Not checked” to “Valid” when
-              the CNAME is right, or to “Needs attention” with a reason. DNS changes can take a few minutes, so
-              check again after a short wait.
+              Press <B>Check</B>. The button reads “Checking…”. The status moves from “Waiting for DNS” to “Active”
+              when the record is found, and stays on “Waiting for DNS” with a reason when it is not. DNS changes can
+              take a few minutes, so check again after a short wait.
             </>
           ),
         },
       ])}
       <List>
         <li>
-          <B>DNS check.</B> Valid when the domain’s CNAME includes your <C>username.hackclub.app</C> name. For a name
-          under <C>username.hackclub.app</C>, or that exact name, an A record is enough. A domain that has only an A
-          record, and is not under your Nest name, gets “No CNAME found yet”.
+          <B>DNS check.</B> Passes when the domain has a TXT record <C>domain-verification=username</C>, or a CNAME
+          to <C>username.hackclub.app</C>. For a name under <C>username.hackclub.app</C>, or that exact name, an A
+          record is enough. A domain that has only an A record, and is not under your Nest name, gets “No CNAME
+          found yet”. A subdomain of a domain you already verified passes without its own record.
         </li>
         <li>
-          <B>App check.</B> Only once DNS is Valid. Egg sends a GET over HTTPS to <C>/</C> and, if the project has a
+          <B>App check.</B> Only once DNS passes. Egg sends a GET over HTTPS to <C>/</C> and, if the project has a
           different health path, to that path too. It waits 5 seconds for each, checks the certificate, follows no
           redirects and reads no body. It shows “Certificate accepted” or “Certificate not verified yet”, then
           “Answers with HTTP CODE” for any status below 500, or “Reachable but returning CODE” for 500 and above. A
@@ -1839,7 +1901,7 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
         </li>
         <li>
           <B>Edit</B> (the pencil, “Edit DOMAIN”) changes the project and port. Changing the port resets the status
-          to “Not checked” and says “Saved. Also change the target port to N on the Domains page of your Nest
+          to “Not checked” (“Waiting for DNS” for a custom domain) and says “Saved. Also change the target port to N on the Domains page of your Nest
           dashboard, then press Check.” Changing a project’s port in its Settings does the same to every domain
           linked to that project.
         </li>
@@ -1852,15 +1914,24 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
         caption="Statuses"
         head={["Status", "Meaning"]}
         rows={[
-          ["Not checked", "Added, or its port changed, and not checked since."],
-          ["Valid", "DNS points at your Nest account. The app check may still show a problem."],
-          ["Needs attention", "DNS does not point at your Nest account yet. The reason sits under the row."],
+          ["Waiting for DNS", "A custom domain whose record has not been found yet. The record to add sits under the row."],
+          ["Not checked", "A Nest name or a subdomain of a verified domain whose port changed and has not been checked since."],
+          ["Active", "Your Nest name, a subdomain of a verified domain, or a domain whose DNS record was found. The app check may still show a problem."],
+          ["Needs attention", "A domain that was active and no longer passes the check. The row says “DNS no longer points here. Check your record.” Egg never removes the domain."],
         ]}
       />
+      <P>
+        Egg looks again at active custom domains whenever the Domains page opens, at most once a minute for each. If
+        the record has gone, the row shows the warning “DNS no longer points here. Check your record.” and a failed
+        lookup shows nothing. Fix the record and press <B>Check</B>.
+      </P>
       {why(
         <>
           Egg checks DNS and the app instead of changing anything, because the mapping lives in the Nest dashboard,
-          which has no API. A record in Egg is a note of your intent. The two checks are separate on purpose: DNS
+          which has no API. A record in Egg is a note of your intent. The rules follow Nest’s own: your Nest name
+          is free, a custom domain proves itself with the same TXT or CNAME record, and the reserved names Nest
+          keeps for itself are blocked here too. Egg shows a domain as active only after that proof, so a name that
+          is not yours never looks live. The two checks are separate on purpose: DNS
           proves the name reaches Nest, and the app check proves your app answers behind it, so you can tell which
           side to fix.
         </>
@@ -1868,7 +1939,11 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
       {limits("domains", [
         ["Domain", "A hostname up to 253 characters, each part up to 63, ending in letters; no IP address or URL", "“Enter a domain name such as app.example.com (not an IP address or a URL).”", "server/domains.ts"],
         ["Target port", "1 to 65535", "“Enter a port between 1 and 65535.”", "server/domains.ts"],
-        ["Same domain twice", "Once across all users", "“DOMAIN is already added.”", "server/domains.ts"],
+        ["Same domain twice", "Once across all users. Egg does not say whose it is", "“DOMAIN is already added.”", "server/domains.ts"],
+        ["Reserved names", "119 names from Nest (admin, api, dashboard, docs, help, status, www and more) plus egg, nest, hackclub, hack-club, nest-deploy, egg-deploy and loadout", "“That name is reserved. Choose another domain.”", "server/domain-policy.ts"],
+        ["Names under hackclub.app", "Only your own Nest name and names under it", "“Only your Nest name, NAME.hackclub.app, can be used under hackclub.app.”", "server/domain-policy.ts"],
+        ["Public domains only", "No IP address, localhost, .local, .internal or .home.arpa name", "“Use a public domain name such as app.example.com. IP addresses, localhost and internal names cannot be used.”", "server/domain-policy.ts"],
+        ["How long a re-check is remembered", "60 seconds for each domain", "Opening the page again within a minute shows the same answer.", "server/domains.ts"],
         ["App check wait", "5 seconds for each path", "“No answer within 5 seconds.”", "server/app-check.ts"],
         ["Servers the form can use", "Your first server, the one you connected first", "A second server’s domains cannot be added from this form.", "components/domains-view.tsx"],
       ])}
@@ -1878,8 +1953,20 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
           <>Change the CNAME at your DNS provider to the value shown. The first form means X is another hackclub.app name.</>,
         ],
         [
-          "“No CNAME found yet. Create one pointing to TARGET. DNS changes can take a few minutes.”",
-          <>Add the record, wait a few minutes, press Check.</>,
+          "“No CNAME found yet. Create one pointing to TARGET, or add a TXT record with the value domain-verification=NAME. DNS changes can take a few minutes.”",
+          <>Add one of the two records, wait a few minutes, press Check.</>,
+        ],
+        [
+          "“That name is reserved. Choose another domain.”",
+          <>The name is on the reserved list. Pick another name, or use a domain of your own.</>,
+        ],
+        [
+          "“Only your Nest name, NAME.hackclub.app, can be used under hackclub.app.”",
+          <>Under <C>hackclub.app</C> you can use only your own Nest name and names beneath it. Use a domain of your own for anything else.</>,
+        ],
+        [
+          "“DNS no longer points here. Check your record.”",
+          <>An active domain no longer passes the check. Restore the CNAME or TXT record, then press Check. Egg keeps the domain.</>,
         ],
         [
           "“The name does not resolve yet. Add it in the Nest dashboard first.”",
@@ -1895,7 +1982,7 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
         ],
         [
           "“The app check runs once DNS points at Nest.”",
-          <>Fix DNS first. The app check only starts after the status is Valid.</>,
+          <>Fix DNS first. The app check only starts after the status is Active.</>,
         ],
         [
           "“The certificate has expired.”, “The certificate is for a different name.” or “The certificate is not trusted.”",
@@ -1935,13 +2022,13 @@ export const GUIDE_A: Record<string, () => ReactNode> = {
           </>
         ),
         steps: [
-          { title: "Add the domain", body: <>Sam adds <C>recipes.example.com</C> with project <C>recipe-bot</C>, which fills port <C>3000</C>.</> },
-          { title: "Set DNS and Nest", body: <>Sam creates a CNAME for <C>recipes.example.com</C> pointing to <C>sam-r.hackclub.app</C> and adds the same domain and port in the Nest dashboard.</> },
+          { title: "Add the domain", body: <>Sam adds <C>recipes.example.com</C> with project <C>recipe-bot</C>, which fills port <C>3000</C>. The row reads “Waiting for DNS” and shows the records.</> },
+          { title: "Set DNS and Nest", body: <>Sam creates a CNAME for <C>recipes.example.com</C> pointing to <C>sam-r.hackclub.app</C>, then adds the same domain and port in the Nest dashboard.</> },
           { title: "Check", body: <>Sam presses Check, and finds “No CNAME found yet”. Ten minutes later Sam presses Check again.</> },
         ],
         result: (
           <>
-            The status reads “Valid” and the app check shows “Certificate accepted” and “Answers with HTTP 200”.
+            The status reads “Active” and the app check shows “Certificate accepted” and “Answers with HTTP 200”.
           </>
         ),
       })}
@@ -2543,7 +2630,8 @@ export function isFromEgg(secret, header, body) {
           ["Attempts", "3, with pauses of 2 and 10 seconds", "A failed delivery is listed with a short reason, such as “receiver answered 500” or “could not connect”.", "server/webhooks.ts"],
           ["Signature age", "300 seconds", "Your code should refuse an older timestamp.", "server/webhook-sign.ts"],
           ["Delivery history", "30 days", "Older rows are removed.", "server/webhooks.ts"],
-        ] as [string, string, ReactNode, string][]).map(([name, value, atLimit, source]) => ({ name: named(name, source), value, atLimit }))}
+        ] as [string, string, ReactNode, string][]).map(([name, value, atLimit, source]) => ({ name,
+    source, value, atLimit }))}
       />
       {related([
         ["monitoring", "Monitoring and uptime"],
@@ -2567,8 +2655,13 @@ export function isFromEgg(secret, header, body) {
         the health path with a 3 second limit.
       </P>
       <List>
-        <li>It refreshes when the page opens and every 30 seconds while the tab is visible.</li>
-        <li><B>Check now</B> reads it on demand.</li>
+        <li>
+          It looks again every 30 seconds while the tab is visible. Egg reuses a reading that is under 30 seconds old,
+          so opening the page does not always open a new connection to your container. A line under the card says
+          when the reading was taken: “Checked” with the time, “Readings are reused for 30 seconds; Check now asks the
+          container again.”
+        </li>
+        <li><B>Check now</B> always asks your container, whatever the age of the last reading.</li>
         <li>
           <B>Restart</B> restarts the production service after you confirm “Restart the service?”. It builds
           nothing.
@@ -2671,7 +2764,7 @@ export function isFromEgg(secret, header, body) {
         ["Resource limits", "1 to 100 each, default 90", "“The disk limit must be a whole number from 1 to 100.” or “The disk limit must be from 1 to 100.” (and memory, CPU)"],
         ["Slow response limit", "50 to 60000 ms, or empty", "“The response time limit must be a whole number from 50 to 60000.” or “The response time limit must be from 50 to 60000.”"],
         ["Samples kept", "7 days", "Older readings are deleted; the charts show 24 hours or 7 days."],
-        ["Service card refresh", "30 seconds, 20 second read", "“Could not read the service from your container.”"],
+        ["Service card refresh", "Every 30 seconds, with a 20 second read. A reading under 30 seconds old is reused; Check now is never reused", "“Could not read the service from your container.”"],
       ])}
       {wrong("monitoring", [
         [
@@ -2781,6 +2874,7 @@ export function isFromEgg(secret, header, body) {
       </List>
       {limits("status-page", [
         ["Window", "30 days", "Older days are not shown."],
+        ["How long the page is kept before it is read again", "60 seconds, dropped early when the app’s state changes or the page is unpublished", "A change can take up to a minute to show on a page that is already open.", "server/status-page-cache.ts"],
         ["Recent outages listed", "10", "Older outages are not listed."],
         ["Check interval", "5 minutes", "An outage shorter than that can be missed."],
         ["Status pages per project", "One", "Publishing again makes a new key."],
@@ -2875,14 +2969,16 @@ export function isFromEgg(secret, header, body) {
       <H3 id="analytics-data" />
       <P>
         “Page views” and “Visitors” for the last 30 days, “Page views per day” as a bar for each day, your top
-        10 pages under “Top pages”, and the top 10 sites under “Where visitors came from”. Visitors are counted per day, so someone who comes on two days counts twice.
+        10 pages under “Top pages”, and, once Referrers and campaigns is on, the top 10 sites under “Where visitors came from”. Visitors are counted per day, so someone who comes on two days counts twice.
         Percentages, shares and the median appear only with at least 50 visits behind them. Below that you see
         counts and “Not enough data”.
       </P>
       <P>
-        The “What else to record” card, which appears once analytics is on, adds three things. Each is a
-        checkbox that is off until you tick it and saves at once, with “Saved.” beneath. With all three off
-        the script is the plain page view script.
+        The “What else to record” card, which appears once analytics is on, adds eight things. Each is a
+        checkbox that is off until you tick it and saves at once, with “Saved.” beneath. With all of them off
+        the script is the plain page view script: the path, nothing more. Under Settings, “Analytics defaults”
+        has the same eight checkboxes, all off. They decide what a project starts with the first time you turn
+        analytics on for it. Projects that already have analytics are not changed.
       </P>
       <List>
         <li>
@@ -2899,10 +2995,52 @@ export function isFromEgg(secret, header, body) {
           <B>Funnel.</B> Two to six steps in order. For each, pick Page and type a path starting with <C>/</C>,
           or pick Tracked name. Press <B>Add step</B> for more, then <B>Save steps</B>. A visitor counts at a step only after reaching the ones before it, on the same UTC day.
         </li>
+        <li>
+          <B>Referrers and campaigns</B> (“Where visitors came from” and “Campaigns”). The script sends the host of
+          the referring site only, never its full address or query string. It does this once for each page load, and
+          a link from one page of your own site to another is not a referrer. It also sends <C>utm_source</C>, <C>utm_medium</C> and <C>utm_campaign</C> from the address when they are
+          there, each trimmed and cut to 80 characters. No other parameter is read. They are stored with the page
+          view, and the host is kept as sent, so <C>www.</C> stays.
+        </li>
+        <li>
+          <B>Speed and errors</B> (“Speed” and “Errors”). Five measurements from the browser, sent once per page
+          view when the visitor leaves or switches tab: Largest Contentful Paint, Cumulative Layout Shift,
+          Interaction to Next Paint, First Contentful Paint and Time to First Byte. Times are in milliseconds (ms)
+          and shown in ms or seconds (s); layout shift is a score with no unit. The table shows the median and the
+          75th percentile for each, and labels the 75th percentile Good, Needs work or Poor with Google’s
+          thresholds: LCP 2.5 s and 4 s, CLS 0.1 and 0.25, INP 200 ms and 500 ms, FCP 1.8 s and 3 s, TTFB 800 ms
+          and 1800 ms. Errors are the message (at most 200 characters, with any query string cut from addresses
+          and any email address replaced), the script’s file name without its address, and the line. At most 5
+          errors are sent for a page view. No stack, no address and no visitor id.
+        </li>
+        <li>
+          <B>Custom events</B> (“Events”). A click on an element with <C>data-egg-track</C> is recorded by name. Add{" "}
+          <C>data-egg-value</C> for a value of up to 40 characters, letters, numbers, spaces and - _ . : only, such
+          as a plan name. A value that breaks the rule is dropped and the event still counts. It stores the name,
+          the value and the day, no visitor id. A funnel step can use the same name.
+        </li>
+        <li>
+          <B>Live view</B> (“On the site now”). Page views in the last 5 minutes and, with Retention on, the
+          distinct visitors in that window. With Retention off it says “Unique visitors need retention on”. While
+          a page is open and visible, the script sends a small signal every 60 seconds, which Egg deletes after an
+          hour. It needs Retention to count visitors, so the script sends the signal only when both are on.
+        </li>
+        <li>
+          <B>Retention</B> (“Returning visitors”). This stores a random id in the visitor’s browser, not a cookie.
+          The id is kept in the browser’s local storage under the name <C>_egg_id</C>, and a visitor can remove it by
+          clearing site data. Egg stores only an HMAC (a keyed hash) of it together with the project, never the id. The salt comes from the server secret and changes every 90
+          days, so someone who comes back after a change counts as new. Turning retention off deletes the codes
+          already stored, and the script removes the id from the browser. To turn it off, clear the Retention checkbox
+          under What else to record on the project’s Analytics tab, and leave it cleared under Analytics defaults
+          in Settings. The card shows the visitors in the last 7
+          days, then of the visitors who first came 7 to 14 days ago how many came back on a later day within 7
+          days, and of those who first came 30 to 37 days ago how many came back within 30 days. A group under 20
+          visitors shows “Not enough data yet”.
+        </li>
       </List>
       <H3 id="analytics-privacy" />
       <List>
-        <li>By default only the page path and the referring site are recorded. No cookies.</li>
+        <li>By default only the page path is recorded. No cookies. Everything else is a switch that starts off.</li>
         <li>
           No IP address or browser details are stored. A visitor is a hash of the address, browser, project and
           the date, salted with the server secret and shortened. It changes daily, so nobody can be followed
@@ -2913,7 +3051,19 @@ export function isFromEgg(secret, header, body) {
           known bots. The collector also drops requests that carry either signal.
         </li>
         <li>
-          The path loses its query and fragment. The referrer is reduced to its host without <C>www.</C>.
+          The path loses its query and fragment. The referrer is reduced to its host, kept as it is.
+        </li>
+        <li>
+          The script stores nothing in the browser unless Retention is on, and then only one random id in local
+          storage. No IP address is stored by any feature. The address is used only to limit how fast one visitor
+          can send.
+        </li>
+        <li>
+          On a copy of Egg that you run yourself behind a reverse proxy, set <C>TRUST_PROXY=1</C>. It is off by
+          default. Without it Egg ignores the proxy headers, so every visitor counts as one address: the daily
+          visitor hash then tells people apart only by browser, and the limits on how fast one visitor can send are
+          shared by everyone. Turn it on only when every request comes through a proxy you run that sets those
+          headers itself.
         </li>
         <li>
           History is kept for 90 days. A change to a setting reaches visitors within about 5 minutes, because the
@@ -2926,9 +3076,16 @@ export function isFromEgg(secret, header, body) {
         ["Funnel steps", "2 to 6", "“A funnel needs at least 2 steps” or “A funnel has at most 6 steps”"],
         ["Tracked name", "Letters, digits, spaces and - _ . : up to 40 characters", "“A tracked name uses letters, numbers, spaces and - _ . : and is at most 40 characters”"],
         ["Page step", "Starts with /", "“A page step starts with \"/\", like /pricing”"],
-        ["Page views", "1 per second per project and address", "Extra views are dropped."],
-        ["Click, time and goal events", "30 per 10 seconds per project and address", "Extra events are dropped."],
+        ["Page views", "1 per second per project and address. With TRUST_PROXY off, all visitors share one address", "Extra views are dropped.", "server/analytics.ts"],
+        ["Every other report (clicks, time, goals, events, speed, errors, live signal)", "30 per 10 seconds per project and address. With TRUST_PROXY off, all visitors share one address", "Extra events are dropped.", "server/analytics-events.ts"],
         ["Path and referrer", "200 and 100 characters", "The rest is cut off."],
+        ["Campaign values", "80 characters each", "The rest is cut off."],
+        ["Error message and file name", "200 and 100 characters, 5 errors per page view", "The rest is cut off or not sent."],
+        ["Event value", "Letters, digits, spaces and - _ . : up to 40 characters", "The value is dropped. The event still counts."],
+        ["Speed figures", "At least 50 page views per measurement", "“Not enough data”"],
+        ["Live view", "Last 5 minutes, signal every 60 seconds, deleted after 1 hour", "Older signals are deleted."],
+        ["Returning visitors", "At least 20 visitors in the group", "“Not enough data yet”"],
+        ["Retention code", "Changes every 90 days", "A visitor after a change counts as new."],
       ])}
       {wrong("analytics", [
         [
@@ -2941,6 +3098,14 @@ export function isFromEgg(secret, header, body) {
         [
           "“Not enough data”",
           <>The percentages need 50 visits behind them. The counts are still shown.</>,
+        ],
+        [
+          "“Not enough data yet” under Returning visitors",
+          <>The group needs at least 20 visitors. Retention only counts visitors from the day it was turned on.</>,
+        ],
+        [
+          "“Unique visitors need retention on”",
+          <>Turn on Retention under What else to record. Without the random id, visitors cannot be told apart for 5 minutes.</>,
         ],
         [
           "“Could not save” or “Could not change analytics”",

@@ -3,22 +3,26 @@ import { PageHeader } from "@/components/page-header";
 import { FactLine, type PixelTone } from "@/components/pixel-kit";
 import { DocsLink } from "@/components/settings-ui";
 import { requireUser } from "@/server/auth/current";
+import { activeDomainWarnings } from "@/server/domains";
 import { domainViews, projectViews, serverViews } from "@/server/queries";
 
 export const metadata = { title: "Domains" };
 
 export default async function DomainsPage() {
   const user = await requireUser();
-  const [domains, projects, servers] = await Promise.all([
+  const [views, projects, servers] = await Promise.all([
     domainViews(user.id),
     projectViews(user.id),
     serverViews(user.id),
   ]);
+  // Active domains whose DNS record has gone. Cached for a minute; nothing is removed.
+  const warned = await activeDomainWarnings(views);
+  const domains = views.map((d) => ({ ...d, dnsWarning: warned.has(d.id) }));
 
-  const invalid = domains.filter((d) => d.status === "invalid").length;
+  const invalid = domains.filter((d) => d.status === "invalid" || d.dnsWarning).length;
   const unchecked = domains.filter((d) => d.status === "pending").length;
   const tones: PixelTone[] = domains.map((d) =>
-    d.status === "valid" ? "ready" : d.status === "invalid" ? "error" : "neutral"
+    d.status === "invalid" || d.dnsWarning ? "error" : d.status === "valid" ? "ready" : "neutral"
   );
 
   return (
@@ -33,8 +37,8 @@ export default async function DomainsPage() {
               {invalid > 0
                 ? `${invalid} ${invalid === 1 ? "needs" : "need"} attention.`
                 : unchecked > 0
-                  ? `${unchecked} not checked yet.`
-                  : "All valid."}
+                  ? `${unchecked} waiting for DNS.`
+                  : "All active."}
             </FactLine>
           ) : (
             "Route a domain to a port on your Nest container."

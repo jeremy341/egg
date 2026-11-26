@@ -1,3 +1,4 @@
+import { readJsonLimited } from "@/server/body-limit";
 import { addDomain, listDomains } from "@/server/domains";
 import { authed, handle, ok } from "@/server/http";
 
@@ -8,6 +9,6 @@ export const GET = handle(async () => {
 
 export const POST = handle(async (req) => {
   const user = await authed();
-  const body = await req.json().catch(() => ({}));
+  const body = await readJsonLimited(req, { fallback: {} });
   return ok(await addDomain(user.id, body), 201);
 });

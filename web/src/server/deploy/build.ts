@@ -11,7 +11,7 @@ import {
   type RuntimeInput,
   type RuntimeSpec,
 } from "@/server/deploy/runtime";
-import { secretNeedles } from "@/server/deploy/redact";
+import { maskSecrets, secretNeedles } from "@/server/deploy/redact";
 import { DEFAULT_BUILD_MEMORY_MB, checkBuildMemory } from "@/lib/build-memory";
 
 export type LogFn = (level: "info" | "warn" | "error", message: string) => void;
@@ -254,11 +254,7 @@ export function detectFiles(dir: string): ProjectFiles {
 
 function redactor(secrets: string[]) {
   const list = secretNeedles(secrets);
-  return (line: string) => {
-    let out = line;
-    for (const s of list) out = out.split(s).join("***");
-    return out;
-  };
+  return (line: string) => maskSecrets(line, list);
 }
 
 async function sha256File(file: string): Promise<string> {

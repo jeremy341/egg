@@ -133,7 +133,7 @@ describe("worker", () => {
     const srv = await createServer(userId, "sam-w", { host: "127.0.0.1", port: 1 });
     mock = await startMockSsh({ authorizedKeys: [srv.publicKey] });
     installFakeSystemd(mock);
-    await ctx.db.update(schema.servers).set({ port: mock.port }).where(eq(schema.servers.id, srv.id));
+    await ctx.db.update(schema.servers).set({ port: mock.port, hostKeyFingerprint: mock.hostKeyFingerprint }).where(eq(schema.servers.id, srv.id));
     const refreshed = await getServerForUser(userId, srv.id);
 
     const project = await createProject(userId, {

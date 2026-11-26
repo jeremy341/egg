@@ -4,7 +4,8 @@ import { getDb, schema } from "@/server/db";
 import { DEFAULT_UNIT_DIR, unitName } from "@/server/deploy/layout";
 import { config } from "@/server/config";
 import { removePreview, removeProject, runtimeLogs, startUnit } from "@/server/deploy/remote";
-import { filterByLevel, journalSince, type LogLevel, type LogRange } from "@/lib/log-filter";
+import { journalSince, type LogLevel, type LogRange } from "@/lib/log-filter";
+import { decodeLogCursor, pageLogLines } from "@/lib/log-page";
 import { HttpError } from "@/server/http";
 import { getProjectForUser } from "@/server/projects";
 import { getServerForUser, withServerSession } from "@/server/servers";
@@ -40,6 +41,24 @@ export async function fetchRuntimeLogs(
   search = "",
   filter: { range?: LogRange; level?: LogLevel } = {}
 ) {
+  return (await fetchRuntimeLogPage(userId, projectId, lines, search, filter)).lines;
+}
+
+/**
+ * The same read as `fetchRuntimeLogs`, plus `older`: a cursor for the lines
+ * before these (null when the journal has none). Passing `before` (a cursor from
+ * an earlier answer) reads the page that ends where that cursor starts. A cursor
+ * that is not valid is a 400.
+ */
+export async function fetchRuntimeLogPage(
+  userId: string,
+  projectId: string,
+  lines = 200,
+  search = "",
+  filter: { range?: LogRange; level?: LogLevel; before?: string | null } = {}
+): Promise<{ lines: string[]; older: string | null }> {
+  const cursor = filter.before ? decodeLogCursor(filter.before) : null;
+  if (filter.before && !cursor) throw new HttpError(400, "That cursor is not valid.", "bad_cursor");
   const project = await getProjectForUser(userId, projectId);
   const server = await getServerForUser(userId, project.serverId);
   const q = search.trim().toLowerCase().slice(0, 200);
@@ -49,11 +68,15 @@ export async function fetchRuntimeLogs(
   // limited to the warnings among the newest few.
   const level = filter.level ?? "all";
   const window = q || level !== "all" ? 1000 : lines;
+  // The lines of the cursor's second that were already shown are read again and dropped.
+  const asked = Math.max(1, Math.min(window + (cursor?.skip ?? 0), 1000));
   const since = filter.range ? journalSince(filter.range) : undefined;
   let res;
   try {
     res = await withServerSession(server, (s) =>
-      s.script(runtimeLogs(unitName(project.slug), window, since), { timeoutMs: 30_000 })
+      s.script(runtimeLogs(unitName(project.slug), asked, since, cursor ? cursor.at + 1 : undefined), {
+        timeoutMs: 30_000,
+      })
     );
   } catch (err) {
     // An SSH failure is the container's side, not ours: say so plainly and
@@ -64,11 +87,10 @@ export async function fetchRuntimeLogs(
   if (res.code !== 0) {
     throw new HttpError(502, "Could not read the logs from your container.", "upstream");
   }
-  const all = filterByLevel(
+  return pageLogLines(
     res.stdout.split(/\r?\n/).filter((l) => l.length > 0),
-    level
+    { lines, asked, q, level, cursor }
   );
-  return q ? all.filter((l) => l.toLowerCase().includes(q)).slice(-lines) : all.slice(-lines);
 }
 
 /** Restart the production service without building anything. */

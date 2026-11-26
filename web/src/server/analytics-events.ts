@@ -1,19 +1,26 @@
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { z } from "zod";
 import { featuresForKey } from "@/server/analytics-config";
-import { KEY_PREFIX, isBot, recordPageview, visitorHash } from "@/server/analytics";
+import { BROWSER_ID, KEY_PREFIX, isBot, recordPageview, retentionCode, visitorHash } from "@/server/analytics";
+import { VITALS, cleanError, cleanEventName, cleanEventValue, cleanPath, cleanVital } from "@/server/analytics-fields";
 import { getDb, schema } from "@/server/db";
 import { getProjectForUser } from "@/server/projects";
 import { MIN_SAMPLE } from "@/server/stats";
 
 /**
- * Opt-in analytics events: clicks, time on page and funnel goals.
+ * Opt-in analytics events: clicks, time on page, funnel goals, custom events
+ * (a name and an optional value), speed measurements, script errors and the
+ * live view heartbeat.
  *
  * Click and time events store the project and the UTC day, and a short label or
  * a time bucket. They store no visitor id, no timestamp, no IP address, no
  * cookie and no browser details. A goal event (a funnel step the owner named)
  * also stores the same daily salted visitor hash a page view has, and the time,
- * because a funnel has to count a visitor once and in order.
+ * because a funnel has to count a visitor once and in order. A custom event stores
+ * its name, its value and the day. A speed summary stores the path, the time and
+ * the rounded measurements; an error stores the message, the file name and the
+ * line; neither has a visitor id. A heartbeat stores the project, the time and
+ * the salted retention code, and is deleted after an hour.
  */
 
 export const TIME_BUCKETS = ["lt10", "10-60", "60-300", "gt300"] as const;
@@ -54,6 +61,23 @@ const event = z.discriminatedUnion("e", [
   z.object({ e: z.literal("click"), l: z.string().max(400) }),
   z.object({ e: z.literal("time"), b: z.enum(TIME_BUCKETS) }),
   z.object({ e: z.literal("goal"), n: z.string().max(100) }),
+  z.object({ e: z.literal("track"), n: z.string().max(100), v: z.string().max(100).optional() }),
+  z.object({
+    e: z.literal("vitals"),
+    p: z.string().max(2000).default("/"),
+    lcp: z.unknown().optional(),
+    cls: z.unknown().optional(),
+    inp: z.unknown().optional(),
+    fcp: z.unknown().optional(),
+    ttfb: z.unknown().optional(),
+  }),
+  z.object({
+    e: z.literal("err"),
+    m: z.string().max(2000),
+    f: z.string().max(400).optional(),
+    l: z.unknown().optional(),
+  }),
+  z.object({ e: z.literal("ping"), i: z.string().max(100) }),
 ]);
 
 // A person clicks in bursts, so this is looser than the page view limit: 30
@@ -74,8 +98,9 @@ function overLimit(key: string, now: number): boolean {
 
 /**
  * Record one report from the script: a page view (the default) or, when the
- * project has switched the feature on, a click, a time or a goal event. Any
- * other report is dropped, and so is one for a switch that is off.
+ * project has switched the feature on, a click, time, goal, custom event,
+ * speed summary, error or heartbeat. Any other report is dropped, and so is one
+ * for a switch that is off.
  */
 export async function recordHit(
   key: string,
@@ -106,6 +131,36 @@ export async function recordHit(
     if (!features.time) return false;
     if (overLimit(`${projectId}|${who.ip}`, now.getTime())) return false;
     await db.insert(schema.analyticsEvents).values({ projectId, day, kind: "time", bucket: e.b });
+    return true;
+  }
+  if (e.e === "track") {
+    const label = cleanEventName(e.n);
+    if (!features.events || !label) return false;
+    if (overLimit(`${projectId}|${who.ip}`, now.getTime())) return false;
+    // A value that breaks the plain-text rule is dropped; the event is still counted.
+    await db.insert(schema.analyticsEvents).values({ projectId, day, kind: "track", label, value: cleanEventValue(e.v) });
+    return true;
+  }
+  if (e.e === "vitals") {
+    if (!features.vitals) return false;
+    const m = Object.fromEntries(VITALS.map((k) => [k, cleanVital(k, e[k])])) as Record<(typeof VITALS)[number], number | null>;
+    if (VITALS.every((k) => m[k] === null)) return false;
+    if (overLimit(`${projectId}|${who.ip}`, now.getTime())) return false;
+    await db.insert(schema.analyticsVitals).values({ projectId, at: now, path: cleanPath(e.p), ...m });
+    return true;
+  }
+  if (e.e === "err") {
+    const clean = cleanError({ message: e.m, file: e.f, line: e.l });
+    if (!features.vitals || !clean) return false;
+    if (overLimit(`${projectId}|${who.ip}`, now.getTime())) return false;
+    await db.insert(schema.analyticsErrors).values({ projectId, at: now, ...clean });
+    return true;
+  }
+  if (e.e === "ping") {
+    // A heartbeat only means something with the retention code to count, so it needs both switches.
+    if (!features.live || !features.retention || !BROWSER_ID.test(e.i)) return false;
+    if (overLimit(`${projectId}|${who.ip}`, now.getTime())) return false;
+    await db.insert(schema.analyticsLive).values({ projectId, at: now, vid: retentionCode({ projectId, browserId: e.i, at: now }) });
     return true;
   }
   // A goal counts only when it is one of the funnel's own named steps.
@@ -241,4 +296,36 @@ export async function timeSummary(userId: string, projectId: string, days = 30, 
   const counts: Record<TimeBucket, number> = { lt10: 0, "10-60": 0, "60-300": 0, gt300: 0 };
   for (const r of rows) if ((TIME_BUCKETS as readonly string[]).includes(r.bucket ?? "")) counts[r.bucket as TimeBucket] = Number(r.n);
   return { ...summariseTime(counts), days };
+}
+
+// ------------------------------------------------------------ custom events
+
+export type EventsSummary = {
+  days: number;
+  total: number;
+  rows: { name: string; value: string | null; count: number }[];
+};
+
+/** Custom events by name and value for the last `days` days, the most frequent first. */
+export async function eventsSummary(userId: string, projectId: string, days = 30, now = new Date()): Promise<EventsSummary> {
+  const project = await getProjectForUser(userId, projectId);
+  const db = await getDb();
+  const where = and(
+    eq(schema.analyticsEvents.projectId, project.id),
+    eq(schema.analyticsEvents.kind, "track"),
+    gte(schema.analyticsEvents.day, sinceDay(days, now))
+  );
+  const rows = await db
+    .select({ name: schema.analyticsEvents.label, value: schema.analyticsEvents.value, count: sql<number>`count(*)` })
+    .from(schema.analyticsEvents)
+    .where(where)
+    .groupBy(schema.analyticsEvents.label, schema.analyticsEvents.value)
+    .orderBy(desc(sql`count(*)`), schema.analyticsEvents.label, schema.analyticsEvents.value)
+    .limit(20);
+  const total = await db.select({ n: sql<number>`count(*)` }).from(schema.analyticsEvents).where(where).get();
+  return {
+    days,
+    total: Number(total?.n ?? 0),
+    rows: rows.map((r) => ({ name: r.name ?? "", value: r.value, count: Number(r.count) })),
+  };
 }

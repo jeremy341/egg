@@ -227,6 +227,10 @@ export function navFor(pathname: string): NavContext {
     return { title: "Account", backHref: "/projects", items: TEAM_ITEMS };
   }
 
+  if (pathname.startsWith("/settings")) {
+    return { title: "Settings", backHref: "/projects", items: TEAM_ITEMS };
+  }
+
   const known = TEAM_ITEMS.find((i) => i.active(pathname));
   return {
     title: TEAM_TITLES[known?.href ?? "/projects"] ?? "Egg",
@@ -256,6 +260,7 @@ export function findTargets(
       icon: i.icon,
     })),
     { href: "/account", label: "Account", group: "Pages", icon: UserCircleIcon },
+    { href: "/settings", label: "Settings", group: "Pages", icon: GearSixIcon },
     { href: "/new", label: "New project", group: "Pages", icon: PlusIcon },
     { href: DOCS_ITEM.href, label: DOCS_ITEM.label, group: "Pages", icon: DOCS_ITEM.icon },
     ...projects.map((p) => ({

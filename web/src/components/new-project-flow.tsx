@@ -586,7 +586,16 @@ function GithubRepos({
   );
 }
 
-export function NewProjectFlow({ servers, github }: { servers: Server[]; github: GithubState }) {
+export function NewProjectFlow({
+  servers,
+  github,
+  defaultBranch = "main",
+}: {
+  servers: Server[];
+  github: GithubState;
+  /** From Settings > Deploys: the production branch pre-filled for a repository URL. */
+  defaultBranch?: string;
+}) {
   const [source, setSource] = useState<Source | null>(null);
   const [installation, setInstallation] = useState<number | null>(github.installations[0]?.id ?? null);
   const [query, setQuery] = useState("");
@@ -625,7 +634,7 @@ export function NewProjectFlow({ servers, github }: { servers: Server[]; github:
       repoUrl: `https://github.com/${m[1]}/${m[2]}`,
       repoFullName: null,
       installationId: null,
-      branch: "main",
+      branch: defaultBranch,
     });
   }
 

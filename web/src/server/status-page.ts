@@ -4,6 +4,7 @@ import { config } from "@/server/config";
 import { randomToken } from "@/server/crypto";
 import { getDb, schema } from "@/server/db";
 import { getProjectForUser } from "@/server/projects";
+import { invalidateStatusPage } from "@/server/status-tags";
 
 /**
  * A public page that says whether a project is answering. It shows the name,
@@ -26,6 +27,7 @@ export async function enableStatusPage(userId: string, projectId: string) {
     .set({ statusKey: key, updatedAt: new Date() })
     .where(eq(schema.projects.id, project.id));
   await audit(userId, "status.enable", project.id);
+  await invalidateStatusPage(key);
   return { key, url: statusUrl(key) };
 }
 
@@ -37,6 +39,8 @@ export async function disableStatusPage(userId: string, projectId: string) {
     .set({ statusKey: null, updatedAt: new Date() })
     .where(eq(schema.projects.id, project.id));
   await audit(userId, "status.disable", project.id);
+  // Take the page down at once, not after the 60 seconds it may be kept.
+  await invalidateStatusPage(project.statusKey);
 }
 
 export type Incident = { from: Date; to: Date | null };

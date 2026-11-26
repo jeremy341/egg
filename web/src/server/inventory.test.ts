@@ -353,7 +353,7 @@ beforeAll(async () => {
 
   row = await createServer(userId, "sam-r", { host: "127.0.0.1", port: 1 });
   mock = await startMockSsh({ authorizedKeys: [row.publicKey] });
-  await ctx.db.update(schema.servers).set({ port: mock.port }).where(eq(schema.servers.id, row.id));
+  await ctx.db.update(schema.servers).set({ port: mock.port, hostKeyFingerprint: mock.hostKeyFingerprint }).where(eq(schema.servers.id, row.id));
   row = await getServerForUser(userId, row.id);
 
   // A systemd that knows just enough for the inventory and the cleanup.
@@ -436,6 +436,7 @@ describe("getInventory on a container", () => {
 
   it("returns a plain error, not a crash, when the container cannot be reached", async () => {
     const dead = await createServer(userId, "sam-dead", { host: "127.0.0.1", port: 1 });
+    await ctx.db.update(schema.servers).set({ hostKeyFingerprint: "SHA256:" + "A".repeat(43) }).where(eq(schema.servers.id, dead.id));
     await expect(getInventory(userId, dead.id)).rejects.toMatchObject({
       status: 502,
       code: "upstream",

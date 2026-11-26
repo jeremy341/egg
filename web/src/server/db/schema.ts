@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   index,
   integer,
@@ -263,6 +264,19 @@ export const deployments = sqliteTable(
   (t) => [
     index("deployments_project_idx").on(t.projectId, t.createdAt),
     index("deployments_state_idx").on(t.state),
+    // Closes the check-then-act race in the webhook dedupe: a retried or racing
+    // push for the same commit cannot start a second active build.
+    uniqueIndex("deployments_active_webhook_commit_idx")
+      .on(t.projectId, t.branch, t.commitSha)
+      .where(
+        sql`${t.source} = 'webhook' and ${t.commitSha} is not null and ${t.state} in ('queued', 'building', 'deploying')`
+      ),
+    // Closes the same race for deploy hooks: one active hook deployment per project.
+    uniqueIndex("deployments_active_hook_idx")
+      .on(t.projectId)
+      .where(
+        sql`${t.source} = 'hook' and ${t.state} in ('queued', 'building', 'deploying')`
+      ),
   ]
 );
 
@@ -329,8 +343,38 @@ export const jobs = sqliteTable(
     error: text("error"),
     createdAt: ts("created_at").notNull(),
   },
-  (t) => [index("jobs_state_idx").on(t.state, t.createdAt)]
+  (t) => [
+    index("jobs_state_idx").on(t.state, t.createdAt),
+    // One live job per deployment, so a double enqueue cannot run it twice.
+    uniqueIndex("jobs_active_deployment_idx")
+      .on(t.deploymentId)
+      .where(sql`${t.state} in ('queued', 'running')`),
+  ]
 );
+
+/** Display and interface choices, one row per user. Values are validated in code, not in SQL. */
+export const userPreferences = sqliteTable("user_preferences", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  /** "light" | "dark" | "system". */
+  theme: text("theme").notNull().default("system"),
+  /** Accent palette name. */
+  accent: text("accent").notNull().default("default"),
+  /** "comfortable" | "compact". */
+  density: text("density").notNull().default("comfortable"),
+  /** "system" | "reduce" | "no-preference". */
+  reducedMotion: text("reduced_motion").notNull().default("system"),
+  defaultBranch: text("default_branch"),
+  displayName: text("display_name"),
+  avatar: text("avatar").notNull().default("pixel-01"),
+  /** JSON object of the analytics features a new project starts with. `{}` means every one is off. */
+  analyticsDefaults: text("analytics_defaults").notNull().default("{}"),
+  updatedAt: ts("updated_at").notNull(),
+});
+
+export type UserPreferences = typeof userPreferences.$inferSelect;
+export type NewUserPreferences = typeof userPreferences.$inferInsert;
 
 export const auditLog = sqliteTable("audit_log", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -374,8 +418,15 @@ export const pageviews = sqliteTable(
       .references(() => projects.id, { onDelete: "cascade" }),
     at: ts("at").notNull(),
     path: text("path").notNull(),
+    /** The referring site's host, only when the project records referrers. */
     referrer: text("referrer"),
     visitor: text("visitor").notNull(),
+    /** The campaign values from the address, only when the project records referrers. At most 80 characters each. */
+    utmSource: text("utm_source"),
+    utmMedium: text("utm_medium"),
+    utmCampaign: text("utm_campaign"),
+    /** Salted HMAC of the random id in the visitor's browser, only when the project records retention. */
+    vid: text("vid"),
   },
   (t) => [index("pageviews_project_at_idx").on(t.projectId, t.at)]
 );
@@ -393,6 +444,16 @@ export const analyticsSettings = sqliteTable("analytics_settings", {
   time: integer("time", { mode: "boolean" }).notNull().default(false),
   funnel: integer("funnel", { mode: "boolean" }).notNull().default(false),
   funnelSteps: text("funnel_steps"),
+  /** Referring site and campaign values on page views. */
+  referrers: integer("referrers", { mode: "boolean" }).notNull().default(false),
+  /** Web vitals and script errors. */
+  vitals: integer("vitals", { mode: "boolean" }).notNull().default(false),
+  /** Custom events (data-egg-track with an optional data-egg-value). */
+  events: integer("events", { mode: "boolean" }).notNull().default(false),
+  /** The "on the site now" view. */
+  live: integer("live", { mode: "boolean" }).notNull().default(false),
+  /** A random id in the visitor's browser, to tell new visitors from returning ones. */
+  retention: integer("retention", { mode: "boolean" }).notNull().default(false),
   updatedAt: ts("updated_at").notNull(),
 });
 
@@ -417,8 +478,70 @@ export const analyticsEvents = sqliteTable(
     bucket: text("bucket"),
     visitor: text("visitor"),
     at: ts("at"),
+    /** For kind "track": the optional data-egg-value (at most 40 plain characters). */
+    value: text("value"),
   },
   (t) => [index("analytics_events_project_day_idx").on(t.projectId, t.day, t.kind)]
+);
+
+/**
+ * One speed summary per page view, sent when the page is hidden. Each metric is
+ * rounded and null when the browser did not report it. Milliseconds, except
+ * `cls`, which is a unitless score. No visitor id.
+ */
+export const analyticsVitals = sqliteTable(
+  "analytics_vitals",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    at: ts("at").notNull(),
+    path: text("path").notNull(),
+    lcp: integer("lcp"),
+    cls: real("cls"),
+    inp: integer("inp"),
+    fcp: integer("fcp"),
+    ttfb: integer("ttfb"),
+  },
+  (t) => [index("analytics_vitals_project_at_idx").on(t.projectId, t.at)]
+);
+
+/**
+ * A JavaScript error reported by the page: the message (at most 200
+ * characters), the script's file name without its address, and the line.
+ * No stack, no address, no visitor id.
+ */
+export const analyticsErrors = sqliteTable(
+  "analytics_errors",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    at: ts("at").notNull(),
+    message: text("message").notNull(),
+    file: text("file"),
+    line: integer("line"),
+  },
+  (t) => [index("analytics_errors_project_at_idx").on(t.projectId, t.at)]
+);
+
+/**
+ * Heartbeats for the live view: one row a minute from each open, visible page,
+ * with the salted retention code. Deleted after an hour.
+ */
+export const analyticsLive = sqliteTable(
+  "analytics_live",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    at: ts("at").notNull(),
+    vid: text("vid").notNull(),
+  },
+  (t) => [index("analytics_live_project_at_idx").on(t.projectId, t.at)]
 );
 
 /** Memory, CPU and restarts of one project's service, sampled by the worker. */

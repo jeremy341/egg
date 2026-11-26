@@ -9,6 +9,7 @@ import {
   recordPageview,
   visitorHash,
 } from "@/server/analytics";
+import { updateFeatures } from "@/server/analytics-config";
 import { createSession, upsertUser } from "@/server/auth/session";
 import { schema } from "@/server/db";
 import { addDomain, updateDomain } from "@/server/domains";
@@ -52,7 +53,8 @@ describe("analytics input cleaning", () => {
   });
 
   it("keeps only the referring host", () => {
-    expect(cleanReferrer("https://www.news.example.com/post/1?id=9")).toBe("news.example.com");
+    // The host is kept as it is, so www. stays.
+    expect(cleanReferrer("https://www.news.example.com/post/1?id=9")).toBe("www.news.example.com");
     expect(cleanReferrer("javascript:alert(1)")).toBeNull();
     expect(cleanReferrer("not a url")).toBeNull();
     expect(cleanReferrer(undefined)).toBeNull();
@@ -69,6 +71,7 @@ describe("analytics input cleaning", () => {
 describe("analytics collection and summary", () => {
   it("counts page views and visitors, ignores bots and unknown keys", async () => {
     const { key } = await enableAnalytics(userId, projectId);
+    await updateFeatures(userId, projectId, { referrers: true });
     const now = new Date("2026-11-04T12:00:00Z");
     const person = (ip: string) => ({ ip, ua: "Mozilla/5.0 Firefox" });
 

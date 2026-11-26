@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { GET as scriptRoute } from "@/app/api/analytics/script/route";
 import { POST as collectRoute } from "@/app/api/collect/[key]/route";
@@ -17,6 +17,7 @@ let projectId: string;
 let key: string;
 
 beforeAll(async () => {
+  vi.stubEnv("TRUST_PROXY", "1");
   ctx = await useFreshDb();
   userId = (await upsertUser({ id: "u1", name: "Sam", email: null, slackId: null })).id;
   otherId = (await upsertUser({ id: "u2", name: "Alex", email: null, slackId: null })).id;
@@ -33,6 +34,7 @@ beforeAll(async () => {
   ).id;
   key = (await enableAnalytics(userId, projectId)).key;
 });
+afterAll(() => vi.unstubAllEnvs());
 afterAll(async () => {
   await ctx.cleanup();
 });
@@ -55,7 +57,17 @@ const views = async () => (await getDb()).select().from(schema.pageviews);
 
 describe("analytics settings", () => {
   it("are all off for a new project", async () => {
-    expect(await featuresForUser(userId, projectId)).toEqual({ clicks: false, time: false, funnel: false, steps: [] });
+    expect(await featuresForUser(userId, projectId)).toEqual({
+      clicks: false,
+      time: false,
+      funnel: false,
+      steps: [],
+      referrers: false,
+      vitals: false,
+      events: false,
+      live: false,
+      retention: false,
+    });
   });
 
   it("change one switch at a time and keep the others", async () => {

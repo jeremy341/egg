@@ -1,6 +1,9 @@
+import { cache } from "react";
 import { and, asc, count, desc, eq, gte, inArray } from "drizzle-orm";
 import { getDb, schema } from "@/server/db";
+import { isNestName, ownedParentOf } from "@/server/domain-policy";
 import { notFound } from "@/server/http";
+import { pageLimit, selectDeploymentPage, type DeploymentFilter } from "@/server/deployment-page";
 import { getServerForUser, listServers, publicServer } from "@/server/servers";
 import { notifySummary } from "@/server/notify";
 import { getProjectForUser } from "@/server/projects";
@@ -107,7 +110,7 @@ function toDeploymentView(
   };
 }
 
-export async function projectViews(userId: string): Promise<ProjectView[]> {
+async function loadProjectViews(userId: string): Promise<ProjectView[]> {
   const db = await getDb();
   const projects = await db
     .select({ p: schema.projects, nest: schema.servers.nestUsername })
@@ -167,6 +170,13 @@ export async function projectViews(userId: string): Promise<ProjectView[]> {
   });
 }
 
+/**
+ * Every project a person has. The shell, the top bar and the page each ask for
+ * this on one request; React runs the query once and hands the same answer to
+ * all of them. (Outside a React render it simply runs every time.)
+ */
+export const projectViews = cache(loadProjectViews);
+
 export async function projectBySlug(userId: string, slug: string) {
   const views = await projectViews(userId);
   const v = views.find((p) => p.slug === slug);
@@ -174,22 +184,34 @@ export async function projectBySlug(userId: string, slug: string) {
   return v;
 }
 
+export type DeploymentPage = { rows: DeploymentView[]; nextCursor: string | null };
+
+/**
+ * One page of deployments, newest first. `cursor` is the `nextCursor` of the
+ * previous page (an invalid one is a 400). The size is 25 unless asked, at most 100.
+ */
+export async function deploymentPage(
+  userId: string,
+  options: { projectId?: string; limit?: number; cursor?: string | null; filter?: DeploymentFilter } = {}
+): Promise<DeploymentPage> {
+  const { rows, nextCursor } = await selectDeploymentPage(userId, {
+    projectId: options.projectId,
+    cursor: options.cursor,
+    filter: options.filter,
+    limit: pageLimit(options.limit),
+  });
+  return { rows: rows.map(({ d, p }) => toDeploymentView(d, p)), nextCursor };
+}
+
+/** The newest deployments in one list, 100 unless `limit` says otherwise. */
 export async function deploymentViews(
   userId: string,
   options: { projectId?: string; limit?: number } = {}
 ): Promise<DeploymentView[]> {
-  const db = await getDb();
-  const rows = await db
-    .select({ d: schema.deployments, p: schema.projects })
-    .from(schema.deployments)
-    .innerJoin(schema.projects, eq(schema.projects.id, schema.deployments.projectId))
-    .where(
-      options.projectId
-        ? and(eq(schema.projects.userId, userId), eq(schema.deployments.projectId, options.projectId))
-        : eq(schema.projects.userId, userId)
-    )
-    .orderBy(desc(schema.deployments.createdAt))
-    .limit(options.limit ?? 100);
+  const { rows } = await selectDeploymentPage(userId, {
+    projectId: options.projectId,
+    limit: Math.max(1, Math.floor(options.limit ?? 100)),
+  });
   return rows.map(({ d, p }) => toDeploymentView(d, p));
 }
 
@@ -213,7 +235,7 @@ export async function deploymentView(userId: string, deploymentId: string) {
   };
 }
 
-export async function serverViews(userId: string) {
+async function loadServerViews(userId: string) {
   const rows = await listServers(userId);
   const db = await getDb();
   const counts = await db
@@ -231,6 +253,9 @@ export async function serverViews(userId: string) {
     };
   });
 }
+
+/** The person's servers, once per request, for the same reason as projectViews. */
+export const serverViews = cache(loadServerViews);
 
 export type ServerView = Awaited<ReturnType<typeof serverViews>>[number];
 
@@ -280,18 +305,31 @@ export async function domainViews(userId: string) {
     .leftJoin(schema.projects, eq(schema.projects.id, schema.domains.projectId))
     .where(eq(schema.domains.userId, userId))
     .orderBy(schema.domains.createdAt);
-  return rows.map(({ d, nest, project }) => ({
-    id: d.id,
-    domain: d.domain,
-    port: d.port,
-    status: d.status,
-    serverId: d.serverId,
-    nestUsername: nest,
-    projectName: project,
-    projectId: d.projectId,
-    cname: d.domain.endsWith(".hackclub.app") ? null : `${nest}.hackclub.app`,
-    age: timeAgo(d.createdAt),
-  }));
+  return rows.map(({ d, nest, project }) => {
+    // A Nest name, or a subdomain of a domain already verified here, has no record to add.
+    const kind = isNestName(d.domain, nest)
+      ? "nest"
+      : ownedParentOf(
+            d.domain,
+            rows.filter((r) => r.d.id !== d.id && r.d.serverId === d.serverId).map((r) => r.d)
+          )
+        ? "subdomain"
+        : "custom";
+    return {
+      id: d.id,
+      domain: d.domain,
+      port: d.port,
+      status: d.status,
+      serverId: d.serverId,
+      nestUsername: nest,
+      projectName: project,
+      projectId: d.projectId,
+      kind: kind as "nest" | "subdomain" | "custom",
+      cname: kind === "custom" ? `${nest}.hackclub.app` : null,
+      txt: kind === "custom" ? `domain-verification=${nest}` : null,
+      age: timeAgo(d.createdAt),
+    };
+  });
 }
 
 export type ProjectSamplePoint = {

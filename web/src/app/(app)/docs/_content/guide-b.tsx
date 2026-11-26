@@ -30,29 +30,17 @@ const steps = (id: string, title: string, items: Step[], level: 2 | 3 = 3) => (
   <Steps id={id} title={title} items={items.map(toStep)} level={level} />
 );
 
-/** A limit's name with, under it, the file in the code that holds the number. */
-const named = (name: string, source?: string): ReactNode =>
-  source ? (
-    <>
-      {name}
-      <span className="mt-0.5 block text-[13px] leading-5 font-normal text-muted-foreground">
-        In the code: <C>{source}</C>
-      </span>
-    </>
-  ) : (
-    name
-  );
-
 /** Limits as name, value and what happens at it. The optional last item is the file that sets the number. */
 const limits = (id: string, rows: [string, string, ReactNode, string?][], level: 2 | 3 = 2) => {
   const items: LimitItem[] = rows.map(([name, value, atLimit, source]) => ({
-    name: named(name, source),
+    name,
+    source,
     value,
     atLimit,
   }));
   return (
     <Limits id={id} items={items} level={level}>
-      These numbers are read from the code that enforces them. Under each name is the file that holds the number,
+      These numbers are read from the code that enforces them. Under each message is the file that holds the number,
       relative to the web/src folder.
     </Limits>
   );
@@ -378,19 +366,22 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         The Connect page says so before you add it. Connect only a container you are happy to deploy to.
       </Callout>
       <P>
-        The first connection that gets through pins the SHA-256 fingerprint of Nest’s SSH host. That is normally{" "}
-        <B>Test connection</B>, and a terminal never opens to a server that has not been pinned. After that, if the
-        host presents any other key, Egg stops before it sends anything. <B>New key</B> replaces your key but keeps
-        the pin. The way to clear a pin is <B>Disconnect</B>, then connecting the server again.
+        Egg does not trust Nest’s SSH host on sight. The first time you press <B>Test connection</B>, Egg reaches the
+        host, reads its host key, hangs up and shows the SHA-256 fingerprint in a “Confirm host key” box. Nothing is
+        sent until you press <B>Confirm host key</B>. Only then is the fingerprint pinned. Until it is, no deploy,
+        file change or terminal connects to the server. After that, if the host presents any other key, Egg stops
+        before it sends anything. <B>New key</B> replaces your key but keeps the pin. The way to clear a pin is{" "}
+        <B>Disconnect</B>, then connecting the server again, which asks you to confirm the fingerprint again.
       </P>
       {why(
         <>
           Nest cannot hand Egg a narrower login than yours, so the key is as strong as your own. A key made for one
           server means you can end Egg’s access by deleting that one key in the Nest dashboard, without touching
-          anything else. The pin exists because SSH trusts whatever answers the first time. After the first
-          connection a different host is refused before any file or variable is sent. The first connection itself
-          cannot be checked, so if something sat between Egg and Nest at that moment, its key would be the one
-          pinned.
+          anything else. The pin exists because SSH trusts whatever answers the first time. After you
+          confirm the fingerprint, a different host is refused before any file or variable is sent. Egg cannot
+          know the right fingerprint for you, so check it against the one Nest shows for your server. If you
+          confirm a fingerprint without checking it and something sat between Egg and Nest at that moment, its key
+          is the one that gets pinned.
         </>
       )}
       <Callout tone="warning" title="Disconnect asks about the server’s projects">
@@ -492,10 +483,12 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
           deploy time they are written to a <C>.env</C> file on your container with mode 600.
         </li>
         <li>
-          <B>Log masking.</B> A value of 4 or more characters is replaced by <C>***</C> in build and deploy logs and
-          in a deployment’s error text. A value that spans several lines, such as a PEM key, is masked line by line
-          for each line of 8 or more characters. Masking matches the exact text only: a value shorter than 4
-          characters, or one your build prints in another form such as base64, is not masked. Do not print secrets.
+          <B>Log masking.</B> A value is replaced by <C>***</C> in build and deploy logs and in a deployment’s error
+          text. The base64 form of a value (padded, unpadded or URL-safe) and its percent-encoded form are replaced
+          too. A value of 2 or 3 characters is masked only where it stands alone, not inside a longer word or number.
+          A value of one character is never masked, because it would garble every line. A value that spans several
+          lines, such as a PEM key, is also masked line by line for each line of 8 or more characters. Any other
+          change to a value, such as hex or a hash, is not recognised. Do not print secrets.
         </li>
         <li>
           <B>Deploy hooks, access tokens and sessions.</B> Only a SHA-256 of each is stored. A hook URL and a token
@@ -533,7 +526,8 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         <li>
           <B>Requests.</B> Every change from the browser must come from this site, because the <C>Origin</C> header
           is checked. A write with no <C>Origin</C> that the browser marks as cross-site is refused too. The API and
-          the MCP endpoint never read cookies. They take a bearer token only.
+          the MCP endpoint never read cookies. They take a bearer token only. A JSON request from the dashboard is
+          read up to 256 KB and a larger one is refused with 413.
         </li>
         <li>
           <B>Sensitive switches.</B> The Terminal and File changes switches need a Hack Club sign-in from the last 5
@@ -541,8 +535,10 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         </li>
         <li>
           <B>Guessing.</B> One address may make 20 sign-in attempts a minute, and 60 requests a minute with access
-          tokens that are not valid. Past that the answer is 429. With no proxy header there is no address to count,
-          so nothing is limited.
+          tokens that are not valid. Past that the answer is 429. The address comes from the proxy headers only when
+          the <C>TRUST_PROXY</C> setting is on, and it is off by default, so with it off there is no address to count
+          and these two limits do not apply. Turn it on only when every request reaches Egg through a reverse proxy
+          you run.
         </li>
         <li>
           <B>GitHub events.</B> A webhook is accepted only with a valid <C>X-Hub-Signature-256</C> signature over the
@@ -602,6 +598,8 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         ["Servers per account", "5", "“You can connect up to 5 servers.”", "server/servers.ts (MAX_SERVERS_PER_USER)"],
         ["GitHub delivery", "25 MB, id remembered 1 hour", "A larger body or a repeated id is dropped.", "app/api/webhooks/github/route.ts, server/github/webhook.ts (DELIVERY_TTL_MS)"],
         ["Deploy hook body", "4 KB", "413.", "app/api/hooks/deploy/[token]/route.ts (MAX_BODY_BYTES)"],
+        ["Dashboard JSON request", "256 KB", "413 “That request is too large.”", "server/body-limit.ts (JSON_BODY_LIMIT)"],
+        ["Host key", "Confirmed by you on the first Test connection", "Nothing connects until it is confirmed. A different key later stops the connection.", "server/servers.ts"],
         ["Build output", "500 MB", "The deployment fails with the size in the message.", "server/deploy/build.ts (MAX_ARCHIVE_BYTES)"],
         ["Build log", "20,000 lines", "One line says the rest was dropped.", "server/deploy/logger.ts (MAX_LOG_ROWS)"],
         ["Build memory", "2048 MB by default, 512 MB up to the server’s memory", "“Build memory must be a whole number of MB from 512 to <max>.”", "lib/build-memory.ts"],
@@ -666,8 +664,8 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         ],
         result: (
           <>
-            The log shows <C>key is ***</C>. Had the value been <C>abc</C> (3 characters) or printed as base64, the
-            log would have shown it.
+            The log shows <C>key is ***</C>. The same happens if the build prints the base64 form of the value. Had the
+            value been printed as a hash or in hex, the log would have shown it.
           </>
         ),
       })}
@@ -828,16 +826,18 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
   account: () => (
     <Section
       id="account"
-      intro="Your Hack Club sign-in, the browsers that are signed in, the cards on the Account page, and how to delete your account."
+      intro="Your Hack Club sign-in, the Settings page, the browsers that are signed in, the cards on the Account page, and how to delete your account."
     >
       <P>
         Open Account from the account menu. It has cards for Profile, GitHub, Container permissions, Webhooks,
-        Signed-in browsers and Delete Account.
+        Signed-in browsers and Delete Account. How Egg looks and what new projects start with are on a separate
+        page, Settings, which is in the same menu.
       </P>
       <List>
         <li>
-          <B>Profile</B> shows your Name and Email from Hack Club, or “Not shared” when there is no email. It is
-          read only: change them at Hack Club.
+          <B>Profile</B> shows “Shown as” (your display name and character, with a “Change in Settings” link),
+          your Hack Club name, and your Email, or “Not shared” when there is no email. The Hack Club name and email
+          are read only: change them at Hack Club. The name and character you are shown as are changed in Settings.
         </li>
         <li>
           <B>GitHub</B> lists the accounts where the GitHub app is installed, each with a “Manage on GitHub” link.
@@ -850,6 +850,60 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         <li>
           <B>Webhooks</B> send a signed message to your own code when a deployment starts, succeeds or fails. They
           are covered on the <InternalLink href={docsHref("notifications")}>notifications</InternalLink> page.
+        </li>
+      </List>
+      <H2 id="account-settings" />
+      <P>
+        Settings holds your own choices. They are saved to your account as you make them, with a “Saved at” time
+        under each card, and they follow you to other devices. The look is also kept in a browser cookie called{" "}
+        <C>egg_prefs</C>, so a page is drawn the right way before it loads. Nothing on this page changes a project
+        that already exists.
+      </P>
+      <Table
+        caption="The Settings page"
+        head={["Card and setting", "Choices", "Default"]}
+        rows={[
+          [
+            "Profile, Display name",
+            "Up to 40 characters. Shown in the menu and on the Account page. It is not used in any address, and two people can share a name. Control and invisible characters are refused.",
+            "Empty: your Hack Club name is shown",
+          ],
+          [
+            "Profile, Character",
+            "One of eight small pixel characters: Egg, Cat, Ghost, Robot, Frog, Alien, Owl or Mushroom. You cannot upload a picture.",
+            "Egg",
+          ],
+          ["Appearance, Theme", "Light, Dark or System", "System"],
+          ["Appearance, Accent colour", "Neutral, Blue, Green or Violet. It colours buttons, links and the focus ring.", "Neutral"],
+          ["Appearance, Density", "Comfortable or Compact", "Comfortable"],
+          [
+            "Deploys, Default branch",
+            "A valid git branch name of up to 100 characters. It is filled in as the production branch when you add a project from a pasted repository URL. A repository you pick from GitHub keeps its own default branch.",
+            <C key="b">main</C>,
+          ],
+          [
+            "Analytics defaults",
+            "Eight checkboxes: Clicks, Time on page, Funnel, Referrers and campaigns, Speed and errors, Custom events, Live view and Retention. They decide which analytics features a project starts with the first time you turn analytics on for it.",
+            "All off",
+          ],
+          [
+            "Preferences, Motion",
+            "Device follows your system setting. Reduce turns animation off. Allow keeps transitions even if your device asks for less.",
+            "Device",
+          ],
+        ]}
+      />
+      <List>
+        <li>
+          <B>Analytics defaults</B> only apply to a project the first time analytics is turned on for it. A project
+          that already has analytics is not changed, and every project can still change its own switches. A Funnel
+          switched on by default does nothing until the project has two steps. Retention stores a random id in the
+          visitor’s browser, so leave it off unless you want returning visitors. See{" "}
+          <InternalLink href={docsHref("analytics")}>Analytics</InternalLink>.
+        </li>
+        <li>
+          <B>Default branch</B> changes only the starting value of the form. You can still type another branch on
+          each project.
         </li>
       </List>
       <H2 id="account-signin" />
@@ -881,7 +935,7 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
       <H2 id="account-delete" />
       {steps("account-delete-steps", "Delete your account", [
         { title: "Open the Delete Account card", body: "It is at the bottom of Account." },
-        { title: "Type your name", body: "Type it exactly as Profile shows it. Spaces at the start and end are ignored." },
+        { title: "Type your name", body: "Type your Hack Club name exactly as Profile shows it under Hack Club name. Spaces at the start and end are ignored." },
         { title: "Press Delete account", body: "Your terminals close first, then your records are deleted." },
       ])}
       <P>
@@ -898,6 +952,8 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         ["Servers", "5 per account", "“You can connect up to 5 servers.”", "server/servers.ts (MAX_SERVERS_PER_USER)"],
         ["Access tokens", "25 active", "Revoke one to make another.", "server/api-tokens.ts (MAX_TOKENS_PER_USER)"],
         ["Webhooks", "10 per account", "“You can have up to 10 webhooks. Delete one first.”", "server/webhooks.ts (MAX_WEBHOOKS_PER_USER)"],
+        ["Display name", "40 characters", "“The display name can be at most 40 characters”", "server/preferences.ts"],
+        ["Default branch", "100 characters, a valid git branch name", "“That is not a valid git branch name”", "server/preferences.ts, lib/preferences.ts"],
       ])}
 
       {wrong("account-wrong", [
@@ -906,10 +962,11 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         ["That sign-in link was not valid. Please try again.", "Start again from the login page."],
         ["The sign-in took too long or came from another browser. Please try again.", "Start and finish in one browser within 10 minutes."],
         ["Hack Club could not sign you in. Please try again in a moment.", "Wait a minute and try again."],
-        ["Something went wrong signing in.", "Try again. It also shows after more than 20 attempts in a minute from one address: wait a minute. If it keeps happening, open an issue on GitHub."],
+        ["Too many sign-in attempts. Wait a minute and try again.", "More than 20 sign-in attempts in a minute from one address. Wait a minute. On your own copy this only counts attempts when TRUST_PROXY is on."],
+        ["Something went wrong signing in.", "Try again. If it keeps happening, open an issue on GitHub."],
         ["That is the session you are using. Sign out instead.", "Use Sign out in the account menu for this browser."],
         ["Session not found", "That session already ended. Reload the page."],
-        ["Type your name exactly to confirm.", "Copy your name from the Profile card."],
+        ["Type your name exactly to confirm.", "Copy your Hack Club name from the Profile card."],
         ["Could not delete the account", "Nothing was deleted. Try again."],
         ["Could not sign that browser out", "Try again."],
         ["Could not sign the others out", "Try again."],
@@ -1395,7 +1452,7 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
           ["Changes", "30 a minute per token.", <C key="6">API_LIMITS.write</C>],
           ["Calls that open a session to your container", "10 a minute per token.", <C key="7">API_LIMITS.ssh</C>],
           ["Terminal input through the API", "300 a minute per token.", <C key="8">API_LIMITS.input</C>],
-          ["Invalid tokens", "60 a minute per address.", <C key="9">RATE_LIMITS.badToken, server/rate-limit.ts</C>],
+          ["Invalid tokens", "60 a minute per address. Counted only when TRUST_PROXY is on.", <C key="9">RATE_LIMITS.badToken, server/rate-limit.ts</C>],
           ["Request body", "16 KB. A file write takes 4 MB, terminal input 64 KB, webhooks 4 KB and the MCP endpoint 64 KB.", <C key="10">DEFAULT_MAX_BODY_BYTES, server/api-v1-kit.ts</C>],
           ["File write through the API", "1 MB. A download is 2 MB.", <C key="11">server/api-v1-shell.ts</C>],
           ["List sizes", "Deployments 1 to 100, runtime log lines 1 to 1000, build log lines 1 to 1000, activity 1 to 100, analytics 1 to 90 days, resource history 1 to 168 hours.", <C key="12">query fields in server/api-v1*.ts</C>],
@@ -1410,14 +1467,16 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
           ["Uptime checks", "Every 5 minutes by default. Down after 2 failed checks in a row, which you can set from 1 to 10 per project.", <C key="1">MONITOR_INTERVAL_MS, server/jobs.ts</C>],
           ["Alert limits", "Disk, memory and CPU 1 to 100, default 90. Slow response 50 to 60000 ms.", <C key="2">server/notify.ts</C>],
           ["Resource history", "Sampled every 5 minutes, kept 7 days, shown for 24 hours or 7 days.", <C key="3">SAMPLE_KEEP_MS, server/monitor.ts</C>],
-          ["Runtime logs", "Up to 300 lines shown. A search or the Warnings and errors level reads the newest 1000 first.", <C key="4">components/logs-view.tsx</C>],
+          ["Runtime logs", "Up to 300 lines shown, and 300 more each time you press Load older lines. A search or the Warnings and errors level reads up to 1000 lines for each read.", <C key="4">components/logs-view.tsx, lib/log-page.ts</C>],
           ["Alert history", "The newest 50 shown, kept 90 days.", <C key="5">ALERT_KEEP_MS, server/notify.ts</C>],
           ["Analytics history", "90 days.", <C key="6">PAGEVIEW_KEEP_MS, server/analytics.ts</C>],
           ["Funnel", "2 to 6 steps.", <C key="7">MIN_STEPS, MAX_STEPS, server/analytics-config.ts</C>],
-          ["Analytics events", "30 per 10 seconds per project and address.", <C key="8">server/analytics-events.ts</C>],
+          ["Analytics events", "30 per 10 seconds per project and address. Page views are 1 per second. With TRUST_PROXY off every visitor shares one address.", <C key="8">server/analytics-events.ts, server/analytics.ts</C>],
+          ["Analytics fields", "Campaign values 80 characters, event value 40, error message 200, 5 errors per page view. Speed and returning-visitor figures need 50 page views and 20 visitors.", <C key="8b">server/analytics-fields.ts, server/analytics-retention.ts</C>],
+          ["Live view and retention", "A 5 minute window. Signals are kept 1 hour. The retention code changes every 90 days.", <C key="8c">server/analytics.ts (LIVE_WINDOW_MS, LIVE_KEEP_MS, RETENTION_PERIOD_MS)</C>],
           ["Status page", "30 days and the latest 10 outages.", <C key="9">server/status-page.ts</C>],
           ["Webhook delivery", "3 attempts, 5 seconds each, history kept 30 days.", <C key="10">MAX_ATTEMPTS, DELIVERY_RETENTION_MS, server/webhooks.ts</C>],
-          ["Deployments page", "The newest 100, shown 25 at a time.", <C key="11">server/queries.ts, components/deployments-view.tsx</C>],
+          ["Deployments page", "All projects: the newest 100, shown 25 at a time. One project’s tab: 25 at a time with Load older, and search and filters run on the server.", <C key="11">server/queries.ts, server/deployment-page.ts, components/deployments-view.tsx</C>],
           ["Activity", "50 a page. A search reads the newest 5000. An export is 5000 entries and 10 a minute.", <C key="12">PAGE_SIZE, SCAN_LIMIT, EXPORT_ROW_LIMIT</C>],
         ]}
       />
@@ -1429,7 +1488,8 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
           ["Session", "30 days.", <C key="1">SESSION_DAYS, server/auth/session.ts</C>],
           ["Fresh sign-in", "5 minutes.", <C key="2">REAUTH_WINDOW_MS, server/auth/session.ts</C>],
           ["Sign-in handshake", "10 minutes.", <C key="3">app/api/auth/login/route.ts</C>],
-          ["Sign-in attempts", "20 a minute per address.", <C key="4">RATE_LIMITS.signIn, server/rate-limit.ts</C>],
+          ["Sign-in attempts", "20 a minute per address. Counted only when TRUST_PROXY is on.", <C key="4">RATE_LIMITS.signIn, server/rate-limit.ts</C>],
+          ["Dashboard JSON request", "256 KB.", <C key="5">JSON_BODY_LIMIT, server/body-limit.ts</C>],
         ]}
       />
       {why(
@@ -1498,11 +1558,12 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
           title: "Install and set up",
           body: (
             <>
-              From the <C>web</C> folder, <C>pnpm setup</C> writes <C>.env.local</C> with a fresh <C>APP_SECRET</C>.
-              It never overwrites an existing file.
+              From the <C>web</C> folder, <C>pnpm run setup</C> writes <C>.env.local</C> with a fresh{" "}
+              <C>APP_SECRET</C>. It never overwrites an existing file. Use <C>pnpm run setup</C>, not{" "}
+              <C>pnpm setup</C>: pnpm has a built-in command of that name that does something else.
             </>
           ),
-          code: { label: "Terminal", code: "cd web\npnpm install\npnpm setup" },
+          code: { label: "Terminal", code: "cd web\npnpm install\npnpm run setup" },
         },
         {
           title: "Pick a way to sign in",
@@ -1510,7 +1571,7 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
             <>
               Add <C>LOCAL_MODE=1</C> to <C>.env.local</C> for a private copy with no account: the login page gets a
               <B> Sign in on this computer</B> button. Or set the Hack Club values to use Hack Club sign-in.{" "}
-              <C>pnpm setup</C> also writes <C>DEV_LOGIN=1</C>, which shows a Development sign-in form in{" "}
+              The setup script also writes <C>DEV_LOGIN=1</C>, which shows a Development sign-in form in{" "}
               <C>pnpm dev</C> only.
             </>
           ),
@@ -1529,9 +1590,10 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
           title: "Try deploys without a Nest account",
           body: (
             <>
-              Run <C>pnpm fake-nest</C> in a second terminal and set the three values it prints:{" "}
-              <C>NEST_HOST</C>, <C>NEST_PORT</C> and <C>UNIT_DIR</C>. It is for trying things out only, never a
-              substitute for a real Nest container.
+              Run <C>pnpm fake-nest</C> in a second terminal. Set <C>NEST_HOST=127.0.0.1</C> and{" "}
+              <C>NEST_PORT=2222</C>, plus the <C>UNIT_DIR</C> value it prints, before you add the server. It is for trying things out only, never a
+              substitute for a real Nest container. On Windows it runs its commands in WSL. The first Test connection
+              still asks you to confirm the host key.
             </>
           ),
         },
@@ -1562,6 +1624,7 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
           [<C key="4">HACKCLUB_CLIENT_ID, HACKCLUB_CLIENT_SECRET</C>, "From a Hack Club Auth app. Without them the Continue with Hack Club button is off."],
           [<C key="5">LOCAL_MODE</C>, "1 or true adds a Sign in on this computer button that signs you in as one owner, with no external account. Off by default. Refused unless APP_URL is localhost, 127.0.0.1 or ::1, and each sign-in request must arrive on a local address."],
           [<C key="6">LOCAL_MODE_ALLOW_REMOTE</C>, "1 lets LOCAL_MODE run on another address. Use it only behind a VPN or access proxy you control, because anyone who can reach the site could sign in as the owner."],
+          [<C key="6b">TRUST_PROXY</C>, "Off by default. 1 or true makes Egg believe X-Forwarded-For and X-Real-IP for the visitor’s address. Set it to 1 only when every request reaches Egg through a reverse proxy you run that sets those headers itself. Without it, every visitor counts as one address for analytics, and the sign-in and invalid-token limits do not apply."],
           [<C key="7">DEV_LOGIN</C>, "1 shows a fake sign-in in pnpm dev. It is ignored in a production build."],
           [<C key="8">GITHUB_APP_ID, GITHUB_APP_SLUG, GITHUB_APP_CLIENT_ID, GITHUB_APP_CLIENT_SECRET, GITHUB_APP_PRIVATE_KEY, GITHUB_WEBHOOK_SECRET</C>, "All six are needed for private repositories, the repository picker and deploys on push. The private key may use \\n escapes."],
           [<C key="9">RUN_WORKER</C>, "1 runs the queue inside the web process. Anything else means no builds run there. Use pnpm worker."],
@@ -1633,8 +1696,8 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
       ])}
 
       {wrong("selfhost-wrong", [
-        ["Invalid environment configuration", "The first request or the worker start checks every setting, and the lines under it name the one that is wrong. Fix it, or run pnpm setup."],
-        ["APP_SECRET must be at least 32 characters", "Use a longer secret. pnpm setup makes one."],
+        ["Invalid environment configuration", "The first request or the worker start checks every setting, and the lines under it name the one that is wrong. Fix it, or run pnpm run setup."],
+        ["APP_SECRET must be at least 32 characters", "Use a longer secret. pnpm run setup makes one."],
         [
           "LOCAL_MODE signs anyone in as the owner, so APP_URL must be localhost or 127.0.0.1. Set APP_URL to a local address, or set LOCAL_MODE_ALLOW_REMOTE=1 if you control who can reach the site.",
           "Set APP_URL=http://localhost:3000, or read the override above before you set LOCAL_MODE_ALLOW_REMOTE.",
@@ -1663,7 +1726,7 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
         title: "Run a private copy on your laptop",
         given: "A laptop with Node.js, pnpm and Docker, and a Nest container to deploy to.",
         steps: [
-          { title: "Set up", body: "Run pnpm install and pnpm setup in the web folder." },
+          { title: "Set up", body: "Run pnpm install and pnpm run setup in the web folder." },
           { title: "Turn on local mode", body: "Add LOCAL_MODE=1 to .env.local." },
           { title: "Build and start", body: "Run pnpm build, then pnpm start." },
           { title: "Sign in", body: "Open http://localhost:3000/login and press Sign in on this computer." },
@@ -1695,7 +1758,9 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
           ["Nest rejected the key. Check that you pasted the public key on the SSH Keys page of the Nest dashboard, and that the username is exactly your Nest username.", "Paste the public key again, exactly as shown. After New key, the old one is dead. Check the username."],
           ["Timed out connecting to Nest. Your container may be stopped or starting; try again in a minute.", "Wait a minute and press Test connection again."],
           ["Could not reach the Nest SSH host (<reason>).", "The reason is the network error. Try again later."],
-          ["The host key of <host> changed (was <old>, now <new>). Nothing was sent. If you expected this, reconnect the server.", "This stops on purpose. Disconnect and add the server again. The box asks whether to keep or delete the server’s projects."],
+          ["Confirm host key", "The first Test connection stops here on purpose. Check the fingerprint against the one Nest shows for your server, then press Confirm host key."],
+          ["Confirm host key: open the Connect page, check the fingerprint of this server and confirm it first.", "409. A deploy, file change or terminal was tried before the host key was confirmed. Open Connect, press Test connection, then Confirm host key."],
+          ["The host key of <host> changed (was <old>, now <new>). Nothing was sent. If you expected this, reconnect the server.", "This stops on purpose. Disconnect and add the server again. The box asks whether to keep or delete the server’s projects. You confirm the new fingerprint on the next Test connection."],
           ["SSH error: <message>", "Anything else. Read the message, then try again."],
           ["That does not look like a Nest username. Use the name you log in with, for example sam-r.", "Use letters, digits, dot, underscore and hyphen, starting with a letter or digit, up to 32 characters."],
           ["<name> is already connected.", "One server per Nest username. Use the one you have."],
@@ -1719,7 +1784,7 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
           ["The build ran out of memory (limit <n> MB). Raise the build memory for this server on the Container page, or make the build use less.", "Exit 137. Raise Build memory (MB) on the Container page, or use less memory in the build."],
           ["Build memory must be a whole number of MB from 512 to <max>. Change it on the Container page.", "The saved build memory no longer fits the range, for example after the server reported less memory. Open Container, set Build memory (MB) inside the range and press Save."],
           ["The output folder \"<dir>\" was not created by the build.", "Set Output directory to the folder your build really writes."],
-          ["The build output is <n> MB, over the 500 MB limit.", "Leave out what the app does not need to run."],
+          ["The build output is <n> MB, over the 524.288 MB limit.", "Leave out what the app does not need to run. The limit is 500 MiB, measured on the packed archive."],
           ["Set a start command for this project (for example ./my-binary).", "A Custom command project needs a Start command."],
           ["Static sites need Python 3 or Node.js on your Nest container to be served.", "Install one of them on the container."],
           ["The worker stopped while this deployment was running. Try again.", "Press Redeploy. The worker restarted during the build."],
@@ -1815,10 +1880,14 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
       {wrong(
         "troubleshooting-domain-list",
         [
-          ["No CNAME found yet. Create one pointing to <target>. DNS changes can take a few minutes.", "Add the CNAME at your DNS provider, wait, and press Check."],
+          ["No CNAME found yet. Create one pointing to <target>, or add a TXT record with the value domain-verification=<name>. DNS changes can take a few minutes.", "Add the CNAME or the TXT record at your DNS provider, wait, and press Check."],
           ["The CNAME points to <x>. It should point to <target>.", "Change the CNAME value."],
           ["The name does not resolve yet. Add it in the Nest dashboard first.", "Add the domain and port on the Domains page of the Nest dashboard."],
           ["DNS could not be checked right now. Try again in a minute.", "Press Check again."],
+          ["That name is reserved. Choose another domain.", "The name is on the reserved list, for example admin, api, dashboard, status or www. Pick another name or a domain of your own."],
+          ["Only your Nest name, <name>.hackclub.app, can be used under hackclub.app.", "Under hackclub.app only your own Nest name and names beneath it are allowed."],
+          ["Use a public domain name such as app.example.com. IP addresses, localhost and internal names cannot be used.", "Use a real public domain name."],
+          ["DNS no longer points here. Check your record.", "A domain that was active no longer passes the check. Restore the CNAME or TXT record and press Check. Egg keeps the domain."],
           ["<domain> is already added.", "A domain can be added once across all accounts."],
           ["Certificate not verified yet", "The app check found no trusted certificate. Wait for Nest to issue one, then press Check again."],
         ],
@@ -1931,7 +2000,9 @@ export const GUIDE_B: Record<string, () => ReactNode> = {
           ["The health path took <ms> ms to answer, over your limit of <n> ms.", "Raise the Slow response limit, or make the page faster."],
           ["No data yet", "A status page says this until the first check has run. Wait for the next 5 minute pass."],
           ["Not responding", "The app has stopped answering, by the same check as the alerts."],
-          ["Not enough data", "Percentages and medians need 50 visits behind them. The counts are shown."],
+          ["Not enough data", "Percentages and medians need 50 visits behind them, and speed figures need 50 page views. The counts are shown."],
+          ["Not enough data yet", "Returning visitors need at least 20 visitors in the group, counted from the day Retention was turned on."],
+          ["Unique visitors need retention on", "Turn on Retention under What else to record. Without the random id in the browser, visitors cannot be told apart."],
           ["A funnel needs at least 2 steps", "Add a second step, or leave the funnel empty."],
           ["A funnel has at most 6 steps", "Remove a step."],
           ["Nothing is counted on a page", "The snippet is missing or the page was not redeployed. Nothing is counted for Do Not Track or Global Privacy Control, on localhost, or for known bots."],

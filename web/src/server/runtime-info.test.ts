@@ -1,5 +1,7 @@
+import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { upsertUser } from "@/server/auth/session";
+import { schema } from "@/server/db";
 import { createProject } from "@/server/projects";
 import { fetchRuntimeLogs } from "@/server/runtime-info";
 import { createServer } from "@/server/servers";
@@ -16,6 +18,7 @@ describe("fetchRuntimeLogs when the container cannot be reached", () => {
     userId = (await upsertUser({ id: "u1", name: "Sam", email: null, slackId: null })).id;
     // Nothing listens on port 1, so the SSH connection is refused.
     const server = await createServer(userId, "sam-r", { host: "127.0.0.1", port: 1 });
+    await ctx.db.update(schema.servers).set({ hostKeyFingerprint: "SHA256:" + "A".repeat(43) }).where(eq(schema.servers.id, server.id));
     projectId = (
       await createProject(userId, {
         serverId: server.id,

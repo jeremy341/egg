@@ -4,6 +4,7 @@ import { NewProjectSkeleton } from "@/components/skeletons/new-project";
 import { requireUser } from "@/server/auth/current";
 import { config, githubConfigured } from "@/server/config";
 import { userInstallations } from "@/server/github/app";
+import { getPreferences } from "@/server/preferences";
 import { serverViews } from "@/server/queries";
 
 export const metadata = { title: "New Project" };
@@ -28,9 +29,10 @@ export default function NewProjectPage({ searchParams }: Props) {
 async function NewProjectContent({ searchParams }: Props) {
   const user = await requireUser();
   const { github: notice } = await searchParams;
-  const [servers, installations] = await Promise.all([
+  const [servers, installations, prefs] = await Promise.all([
     serverViews(user.id),
     githubConfigured() ? userInstallations(user.id) : Promise.resolve([]),
+    getPreferences(user.id),
   ]);
   const c = config();
 
@@ -47,6 +49,7 @@ async function NewProjectContent({ searchParams }: Props) {
     <NewProjectFlow
       servers={servers.map((s) => ({ id: s.id, nestUsername: s.nestUsername, status: s.status }))}
       github={github}
+      defaultBranch={prefs.defaultBranch ?? "main"}
     />
   );
 }

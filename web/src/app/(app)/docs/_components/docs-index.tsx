@@ -31,15 +31,11 @@ export function DocsIndex() {
   const filtering = query.trim() !== "";
 
   return (
-    <section aria-labelledby="docs-all-pages" className="mt-[60px]">
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-[15px]">
+    <section aria-labelledby="docs-all-pages" className="mt-12">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
         <h2 id="docs-all-pages" className={H2_CLASS}>
           All pages
         </h2>
-        <p aria-live="polite" className="text-[14px] leading-5 text-muted-foreground sm:order-last sm:ml-auto">
-          {count} {count === 1 ? "page" : "pages"}
-          {filtering ? " match" : ""}
-        </p>
         <div className="relative w-full sm:w-72">
           <MagnifyingGlassIcon
             aria-hidden="true"
@@ -52,7 +48,7 @@ export function DocsIndex() {
             onKeyDown={(e) => {
               if (e.key === "Escape") setQuery("");
             }}
-            placeholder="Filter pages"
+            placeholder="Search docs"
             aria-label="Filter all docs pages"
             aria-controls={listId}
             autoComplete="off"
@@ -60,37 +56,43 @@ export function DocsIndex() {
             className="pl-8"
           />
         </div>
+        <p aria-live="polite" className="text-[14px] leading-5 text-muted-foreground">
+          {count} {count === 1 ? "page" : "pages"}
+          {filtering ? " match" : ""}
+        </p>
       </div>
 
-      <div id={listId} className="mt-[30px]">
+      <div id={listId} className="mt-6">
         {groups.length === 0 ? (
-          <div className="rounded-md border bg-background-subtle p-4">
+          <div className="border-y py-4">
             <p className="text-[15px] leading-6 text-muted-foreground">No page matches &ldquo;{query.trim()}&rdquo;.</p>
             <Button variant="outline" size="sm" className="mt-2" onClick={() => setQuery("")}>
               Clear filter
             </Button>
           </div>
         ) : (
-          <div className="space-y-[45px]">
+          <div className="space-y-10">
             {groups.map((g) => {
               const labelId = `${listId}-${g.group.replace(/\s+/g, "-")}`;
               return (
                 <section key={g.group} aria-labelledby={labelId}>
-                  <h3 id={labelId} className="text-[19px] leading-[30px] font-semibold text-foreground">
+                  <h3 id={labelId} className="text-[17px] leading-6 font-semibold text-foreground">
                     {g.group}
                   </h3>
                   {GROUP_NOTES[g.group] ? (
-                    <p className="text-[15px] leading-[30px] text-muted-foreground">{GROUP_NOTES[g.group]}</p>
+                    <p className="text-[14px] leading-6 text-muted-foreground">{GROUP_NOTES[g.group]}</p>
                   ) : null}
-                  <ul className="mt-[15px] divide-y overflow-hidden rounded-md border bg-background">
+                  <ul className="mt-3 divide-y border-y">
                     {g.sections.map((s) => (
                       <li key={s.id} className="group relative">
                         <Link
                           href={docsHref(s.id)}
-                          className="grid gap-x-6 px-4 py-3 -outline-offset-2 transition-colors duration-(--dur-fast) hover:bg-[var(--ds-gray-alpha-100)] max-sm:px-3 sm:grid-cols-[13rem_minmax(0,1fr)]"
+                          className="grid gap-x-6 py-3 -outline-offset-2 sm:grid-cols-[13rem_minmax(0,1fr)]"
                         >
-                          <span className="text-[16px] leading-6 font-semibold text-foreground">{s.title}</span>
-                          <span className="text-[15px] leading-6 text-muted-foreground max-sm:mt-0.5">{SUMMARIES[s.id]}</span>
+                          <span className="text-[15px] leading-6 font-semibold text-foreground underline decoration-transparent underline-offset-4 transition-colors duration-(--dur-fast) group-hover:decoration-current">
+                            {s.title}
+                          </span>
+                          <span className="text-[14px] leading-6 text-muted-foreground max-sm:mt-0.5">{SUMMARIES[s.id]}</span>
                         </Link>
                       </li>
                     ))}

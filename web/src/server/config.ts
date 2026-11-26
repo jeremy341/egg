@@ -9,6 +9,17 @@ const bool = z
   .default("0")
   .transform((v) => v === "1" || v === "true");
 
+/**
+ * Whether to believe the proxy headers (X-Forwarded-For, X-Real-IP) for client addresses.
+ * Off unless TRUST_PROXY is 1 or true. Turn it on only when every request reaches Egg
+ * through a reverse proxy you run, which sets those headers itself. Read straight from the
+ * environment so a rate limit never depends on the rest of the configuration being valid.
+ */
+export function trustProxyEnabled(env: Record<string, string | undefined> = process.env): boolean {
+  const v = env.TRUST_PROXY?.trim().toLowerCase();
+  return v === "1" || v === "true";
+}
+
 /** True for localhost, any 127.x.x.x address and ::1. Anything else is a remote address. */
 export function isLoopbackHost(host: string): boolean {
   const h = host.trim().toLowerCase().replace(/^\[|\]$/g, "");
@@ -34,6 +45,8 @@ const schema = z
     LOCAL_MODE: bool,
     /** Explicit override that lets LOCAL_MODE run on a non-local APP_URL. Use only behind your own access control. */
     LOCAL_MODE_ALLOW_REMOTE: bool,
+    /** Believe X-Forwarded-For and X-Real-IP for client addresses. See trustProxyEnabled. */
+    TRUST_PROXY: bool,
 
     GITHUB_APP_ID: z.string().optional(),
     GITHUB_APP_SLUG: z.string().optional(),

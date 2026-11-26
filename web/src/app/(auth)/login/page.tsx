@@ -7,18 +7,11 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LoadingRegion, Skeleton, SkeletonText } from "@/components/ui/skeleton";
 import { pixel } from "@/lib/fonts";
+import { LOGIN_ERRORS, loginErrorMessage } from "@/lib/login-errors";
 import { config, hackClubConfigured, localModeEnabled } from "@/server/config";
 import { cn } from "@/lib/utils";
 
 export const metadata = { title: "Log in" };
-
-const ERRORS: Record<string, string> = {
-  not_configured: "Hack Club sign-in is not set up on this installation yet.",
-  denied: "You did not approve the sign-in. Try again when you are ready.",
-  invalid_request: "That sign-in link was not valid. Please try again.",
-  state_mismatch: "The sign-in took too long or came from another browser. Please try again.",
-  login_failed: "Hack Club could not sign you in. Please try again in a moment.",
-};
 
 const shell =
   "relative isolate flex min-h-[100dvh] flex-1 items-center justify-center overflow-hidden bg-background px-4 py-12";
@@ -107,7 +100,7 @@ async function LoginContent({
         >
           {showError ? (
             <Notice tone="error" role="alert" className="mb-4">
-              {ERRORS[error] ?? "Something went wrong signing in."}
+              {loginErrorMessage(error)}
             </Notice>
           ) : null}
 
@@ -135,7 +128,7 @@ async function LoginContent({
                 Continue with Hack Club
               </Button>
               <Notice tone="note" className="mt-4">
-                <span id="login-unavailable">{ERRORS.not_configured}</span>
+                <span id="login-unavailable">{LOGIN_ERRORS.not_configured}</span>
               </Notice>
             </>
           )}

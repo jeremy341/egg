@@ -8,6 +8,7 @@ import { openAlert, pruneAlertEvents, resolveAlert } from "@/server/notify";
 import { withServerSession } from "@/server/servers";
 import { parseServiceStatus, type ServiceStatus } from "@/server/service-status";
 import { probeSession } from "@/server/ssh/probe";
+import { invalidateStatusPage } from "@/server/status-tags";
 
 /**
  * Uptime checks and usage history, run by the worker on a timer.
@@ -273,6 +274,8 @@ async function checkServer(server: typeof schema.servers.$inferSelect, now: Date
         ...(next.change ? { monitorSince: now } : {}),
       })
       .where(eq(schema.projects.id, p.id));
+    // The public status page keeps its data for 60 seconds; a change of state should not wait.
+    if (next.change || next.state !== p.monitorState) await invalidateStatusPage(p.statusKey);
     if (next.change) {
       const detail =
         next.change === "down" ? describe(status, p.alertSlowMs) : "It is answering again.";

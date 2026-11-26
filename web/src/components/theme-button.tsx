@@ -1,6 +1,6 @@
 "use client";
 
-import { useTheme } from "next-themes";
+import { useThemeChoice } from "@/components/use-theme-choice";
 import { MoonIcon, SunIcon } from "@phosphor-icons/react";
 
 /**
@@ -9,7 +9,7 @@ import { MoonIcon, SunIcon } from "@phosphor-icons/react";
  * hydration. The footer keeps the three-way toggle that includes "system".
  */
 export function ThemeButton({ className }: { className?: string }) {
-  const { resolvedTheme, setTheme } = useTheme();
+  const { resolvedTheme, setTheme } = useThemeChoice();
 
   return (
     <button

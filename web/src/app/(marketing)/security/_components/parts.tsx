@@ -8,20 +8,38 @@ import type { ReactNode } from "react";
  */
 
 /** One section of the page: the heading, then a column of text no wider than a comfortable line. */
-export function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
+export function Section({
+  id,
+  title,
+  number,
+  children,
+}: {
+  id: string;
+  title: string;
+  number: number;
+  children: ReactNode;
+}) {
   return (
     <section
       id={id}
       aria-labelledby={`${id}-title`}
-      className="scroll-mt-24 border-t border-border p-5 first:border-t-0 sm:p-8 lg:p-10"
+      className="scroll-mt-24 border-t-2 border-foreground px-5 pt-8 pb-12 sm:px-8 sm:pt-10 sm:pb-14 lg:px-10 lg:pt-12 lg:pb-16"
     >
-      <h2
-        id={`${id}-title`}
-        className="font-pixel text-[clamp(1.5rem,2.4vw,2rem)] leading-[1.15] font-medium text-balance text-foreground"
-      >
-        {title}
-      </h2>
-      <div className="mt-5 flex max-w-[65ch] flex-col gap-4 text-[1.0625rem] leading-[1.75rem] text-reading">
+      <div className="flex items-baseline gap-4 border-b border-border pb-5">
+        <span
+          aria-hidden="true"
+          className="shrink-0 border border-foreground px-2 py-0.5 font-mono text-[0.8125rem] leading-5 tabular-nums text-foreground"
+        >
+          {String(number).padStart(2, "0")}
+        </span>
+        <h2
+          id={`${id}-title`}
+          className="font-pixel text-[clamp(1.5rem,2.4vw,2rem)] leading-[1.15] font-medium text-balance text-foreground"
+        >
+          {title}
+        </h2>
+      </div>
+      <div className="mt-6 flex max-w-[65ch] flex-col gap-4 text-[1.0625rem] leading-[1.75rem] text-reading">
         {children}
       </div>
     </section>

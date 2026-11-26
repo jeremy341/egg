@@ -1,5 +1,19 @@
 # Edge cases: what real users will hit
 
+## Status of the security items after the May–November round
+
+Checked against the code on 2026-11-08. Only the items that touch security are listed here; the other rows are not re-checked in this round. Paths are under `web/`.
+
+| # | Status | Where |
+|---|---|---|
+| 2 | Fixed | `src/server/servers.ts` calls `terminals().closeAllForUser(userId, "disabled", { serverId })` when a server is disconnected |
+| 6 | Fixed | `src/server/github/webhook.ts` `installationTrusted`: a project with no installation accepts only an installation its owner linked. An event with no installation id is left to the signature check |
+| 8 | Fixed | `src/server/api-tokens.ts` revoke calls `terminals().closeAllForToken` |
+| 13 | Fixed | `src/server/deploy/runtime.ts` `renderEnvFile` turns `\r` and `\r\n` into `\n` escapes |
+| 14 | Fixed | `src/server/deploy/logger.ts` `MAX_LOG_ROWS` = 20,000, then one truncated line (the table above says 25,000; that was the old figure) |
+| 15 | Fixed | `src/server/deploy/logger.ts` strips ANSI sequences and control characters |
+| Found, no test | Open | `src/app/api/deployments/[id]/stream/route.ts` checks the session only on connect and can run for about 3.75 hours |
+
 Read-only pass over `web/src/server` (no application code changed). Each confirmed bug has a failing test in `web/src/server/edge-cases/`, named T:file. Status is bug (confirmed, test fails), works, or n/a.
 
 ## Confirmed bugs

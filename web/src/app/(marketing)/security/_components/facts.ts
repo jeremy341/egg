@@ -19,8 +19,10 @@ export const SECURITY_FACTS = {
   leftoverRemovalsPerMinute: 10,
   /** Terminals one account can have open at once (TERMINAL_LIMITS.maxSessionsPerUser). */
   terminalsPerAccount: 5,
-  /** Most API requests, in KB (DEFAULT_MAX_BODY_BYTES). */
+  /** Most requests made with an access token, in KB (DEFAULT_MAX_BODY_BYTES). */
   apiBodyKb: 16,
+  /** JSON requests from a signed-in browser, in KB (JSON_BODY_LIMIT). */
+  dashboardBodyKb: 256,
   /** A deploy hook request body, in KB. */
   deployHookBodyKb: 4,
   /** An MCP request body, in KB. */
@@ -37,4 +39,10 @@ export const SECURITY_FACTS = {
   buildCpus: 2,
   /** Most processes a build may run at once. */
   buildProcesses: 2048,
+  /** Longest campaign value (utm source, medium or campaign) kept, in characters (UTM_MAX). */
+  utmChars: 80,
+  /** How long page views and events are kept, in days (PAGEVIEW_KEEP_MS). */
+  analyticsKeepDays: 90,
+  /** How often the key behind the returning-visitor code changes, in days (RETENTION_PERIOD_MS). */
+  retentionRotationDays: 90,
 } as const;

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { config } from "@/server/config";
 import { randomToken, sha256Hex } from "@/server/crypto";
 import { getDb, schema } from "@/server/db";
+import { isUniqueViolation } from "@/server/db/errors";
 import { HttpError, notFound } from "@/server/http";
 import { enqueueDeployment, getProjectForUser, type DeploymentRow } from "@/server/projects";
 
@@ -99,14 +100,22 @@ export async function triggerDeployHook(token: string, rawBody: unknown): Promis
   }
 
   const branch = body.data.branch ?? project.productionBranch;
-  const dep = await enqueueDeployment(project, {
-    env: branch === project.productionBranch ? "production" : "preview",
-    source: "hook",
-    branch,
-    commitMessage: "Triggered by deploy hook",
-    author: "deploy hook",
-    triggeredBy: null,
-  });
+  let dep: DeploymentRow;
+  try {
+    dep = await enqueueDeployment(project, {
+      env: branch === project.productionBranch ? "production" : "preview",
+      source: "hook",
+      branch,
+      commitMessage: "Triggered by deploy hook",
+      author: "deploy hook",
+      triggeredBy: null,
+    });
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      throw new HttpError(409, "A deployment is already running for this project.", "busy");
+    }
+    throw err;
+  }
   await db.insert(schema.auditLog).values({
     userId: project.userId,
     action: "hook.trigger",

@@ -1,6 +1,7 @@
 import { type NextRequest } from "next/server";
 import { optedOut, recordHit } from "@/server/analytics-events";
 import { handle } from "@/server/http";
+import { clientIp } from "@/server/rate-limit";
 
 type Ctx = { params: Promise<{ key: string }> };
 
@@ -16,8 +17,9 @@ export function OPTIONS() {
   return new Response(null, { status: 204, headers: CORS });
 }
 
-function clientIp(req: NextRequest): string {
-  return req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || req.headers.get("x-real-ip") || "0.0.0.0";
+/** Without TRUST_PROXY there is no trusted address, so every visitor counts as one. */
+function visitorIp(req: NextRequest): string {
+  return clientIp(req.headers) ?? "0.0.0.0";
 }
 
 export const POST = handle<Ctx>(
@@ -36,7 +38,7 @@ export const POST = handle<Ctx>(
     }
     try {
       await recordHit(key, body, {
-        ip: clientIp(req),
+        ip: visitorIp(req),
         ua: req.headers.get("user-agent") ?? "",
       });
     } catch {

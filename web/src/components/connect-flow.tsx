@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
 type TestResponse = {
   result:
     | { ok: true; issues: { level: "error" | "warning"; message: string }[] }
-    | { ok: false; error: string; kind: string };
+    | { ok: false; error: string; kind: string; hostKey?: string };
   server: ServerView;
 };
 
@@ -81,12 +81,16 @@ function ServerCard({ initial }: { initial: ServerView }) {
   /** From the page data, not the server state: the test and key routes do not return it. */
   const projectCount = initial.projectCount;
 
-  async function test() {
+  /** With `confirmHostKey`, the owner has checked that fingerprint and agrees to trust it. */
+  async function test(confirmHostKey?: string) {
     setTesting(true);
     setError(null);
     setOutcome(null);
     try {
-      const res = await api<TestResponse>(`/api/servers/${server.id}/test`, { method: "POST" });
+      const res = await api<TestResponse>(`/api/servers/${server.id}/test`, {
+        method: "POST",
+        body: confirmHostKey ? { confirmHostKey } : undefined,
+      });
       setServer(res.server);
       setOutcome(res.result);
       router.refresh();
@@ -119,7 +123,11 @@ function ServerCard({ initial }: { initial: ServerView }) {
 
   const connected = server.status === "connected";
   const issues = server.issues;
-  const failure = error ?? (outcome && !outcome.ok ? outcome.error : server.lastError);
+  const pendingHostKey =
+    outcome && !outcome.ok && outcome.kind === "host-key-unconfirmed" ? (outcome.hostKey ?? null) : null;
+  const failure = pendingHostKey
+    ? null
+    : (error ?? (outcome && !outcome.ok ? outcome.error : server.lastError));
   const headingId = `server-${server.id}`;
 
   return (
@@ -148,7 +156,7 @@ function ServerCard({ initial }: { initial: ServerView }) {
         </div>
         <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center">
           <Button
-            onClick={() => void test()}
+            onClick={() => void test(undefined)}
             loading={testing}
             className="col-span-2 px-3 sm:col-span-1"
           >
@@ -221,6 +229,21 @@ function ServerCard({ initial }: { initial: ServerView }) {
             <ArrowUpRightIcon aria-hidden="true" className="size-4" />
             <span className="sr-only">(opens in a new tab)</span>
           </a>
+        </div>
+      ) : null}
+
+      {pendingHostKey ? (
+        <div className="space-y-3 border-t p-5">
+          <p className="font-medium">Confirm host key</p>
+          <p className="text-muted-foreground">
+            This is the first connection to {server.nestUsername}.hackclub.app. Check that this fingerprint matches the
+            one Nest shows for your server, then confirm. Egg sends nothing to the server until you do, and refuses any
+            other key afterwards.
+          </p>
+          <p className="break-all rounded-md bg-[var(--ds-gray-100)] px-3 py-2 font-mono text-[12px]">{pendingHostKey}</p>
+          <Button onClick={() => void test(pendingHostKey)} loading={testing}>
+            {testing ? "Confirming…" : "Confirm host key"}
+          </Button>
         </div>
       ) : null}
 

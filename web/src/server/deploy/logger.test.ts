@@ -6,6 +6,7 @@ describe("DeploymentLogger.mask", () => {
     const log = new DeploymentLogger("d1");
     log.setSecrets(["s3cr3t-token-value", "abc"]);
     expect(log.mask("fatal: could not read s3cr3t-token-value from remote")).toBe("fatal: could not read *** from remote");
-    expect(log.mask("abc")).toBe("abc"); // under 4 characters would only add noise
+    expect(log.mask("pw abc")).toBe("pw ***"); // short values are masked where they stand alone
+    expect(log.mask("abcdef")).toBe("abcdef");
   });
 });

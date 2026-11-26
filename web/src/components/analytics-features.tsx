@@ -9,9 +9,20 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
+import { RETENTION_NOTICE } from "@/lib/analytics-defaults";
 
 type Step = { kind: "page" | "track"; value: string };
-export type Features = { clicks: boolean; time: boolean; funnel: boolean; steps: Step[] };
+export type Features = {
+  clicks: boolean;
+  time: boolean;
+  funnel: boolean;
+  steps: Step[];
+  referrers: boolean;
+  vitals: boolean;
+  events: boolean;
+  live: boolean;
+  retention: boolean;
+};
 
 const MAX_STEPS = 6;
 const MIN_STEPS = 2;
@@ -23,6 +34,14 @@ export const RECORDS = {
   time: "Records how long a page was open and visible, as one of four ranges (under 10 seconds, 10 to 60 seconds, 1 to 5 minutes, over 5 minutes), sent when the visitor leaves. Time in a hidden tab is not counted. It stores the day and no visitor id.",
   funnel:
     "Counts the visitors who reach each step you list, in order. A page step uses the page views already recorded. A step set by data-egg-track name also records that name with the same daily visitor code a page view has, which changes every day and cannot follow anyone across days.",
+  referrers:
+    "Records the host of the site a visitor came from (never the full address or its query string) and the utm_source, utm_medium and utm_campaign values in the address, each up to 80 characters, with the page view. No cookies.",
+  vitals:
+    "Records how fast each page loaded (five measurements, sent once per page view when the visitor leaves) and JavaScript errors: the message cut to 200 characters, the script's file name without its address, and the line, at most 5 per page view. No stack, no address, no visitor id.",
+  events:
+    "Records a click on an element marked with data-egg-track, with an optional data-egg-value of up to 40 plain characters (a plan name, for example). Stores the name, the value and the day, and no visitor id. Never put personal details in a value.",
+  live: "Shows page views and visitors in the last 5 minutes. A page that is open and visible sends a small signal every 60 seconds, which is deleted after an hour. Counting visitors needs Retention to be on too.",
+  retention: `${RETENTION_NOTICE} It tells new visitors from returning ones over 7 and 30 days. Only a salted code made from the id is stored, never the id itself, and the code changes every 90 days. Turning it off deletes the codes already stored.`,
 } as const;
 
 function Switch({
@@ -103,7 +122,7 @@ export function AnalyticsFeatures({ projectId, initial }: { projectId: string; i
     <Card
       id="analytics-features"
       title="What else to record"
-      description="Each of these is off until you turn it on. Page views and visitors are always counted when analytics is on."
+      description="Each of these is off until you turn it on. Page views and visitors are always counted when analytics is on. New projects start from your account defaults in Settings."
     >
       <div className="divide-y">
         <Switch
@@ -193,6 +212,46 @@ export function AnalyticsFeatures({ projectId, initial }: { projectId: string; i
             </div>
           </fieldset>
         </div>
+        <Switch
+          id="analytics-referrers"
+          title="Referrers and campaigns"
+          sentence={RECORDS.referrers}
+          checked={features.referrers}
+          busy={busy !== null}
+          onChange={(referrers) => void save("referrers", { referrers })}
+        />
+        <Switch
+          id="analytics-vitals"
+          title="Speed and errors"
+          sentence={RECORDS.vitals}
+          checked={features.vitals}
+          busy={busy !== null}
+          onChange={(vitals) => void save("vitals", { vitals })}
+        />
+        <Switch
+          id="analytics-events"
+          title="Custom events"
+          sentence={RECORDS.events}
+          checked={features.events}
+          busy={busy !== null}
+          onChange={(events) => void save("events", { events })}
+        />
+        <Switch
+          id="analytics-live"
+          title="Live view"
+          sentence={RECORDS.live}
+          checked={features.live}
+          busy={busy !== null}
+          onChange={(live) => void save("live", { live })}
+        />
+        <Switch
+          id="analytics-retention"
+          title="Retention"
+          sentence={RECORDS.retention}
+          checked={features.retention}
+          busy={busy !== null}
+          onChange={(retention) => void save("retention", { retention })}
+        />
       </div>
       <p className="mt-3 text-label text-muted-foreground">
         These work with the snippet above, whose address ends in <code className="font-mono">?key=</code>. If you pasted

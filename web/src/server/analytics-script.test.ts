@@ -1,3 +1,4 @@
+import { gzipSync } from "node:zlib";
 import vm from "node:vm";
 import { describe, expect, it } from "vitest";
 import { buildScript } from "@/server/analytics-script";
@@ -13,6 +14,10 @@ function browser(
     host?: string;
     sendBeacon?: boolean;
     hidden?: boolean;
+    referrer?: string;
+    search?: string;
+    store?: Record<string, string>;
+    storeBlocked?: boolean;
   } = {}
 ) {
   const bodies: string[] = [];
@@ -36,12 +41,12 @@ function browser(
       getAttribute: (n: string) => (n === "data-key" ? "nda_k" : null),
       src: "https://nest.example/api/analytics/script?key=nda_k",
     },
-    referrer: "",
+    referrer: opts.referrer ?? "",
     hidden: opts.hidden ?? false,
     visibilityState: opts.hidden ? "hidden" : "visible",
   };
   const win: Record<string, unknown> = { ...target("window"), doNotTrack: undefined };
-  const location = { hostname: opts.host ?? "app.example", pathname: "/" };
+  const location = { hostname: opts.host ?? "app.example", pathname: "/", search: opts.search ?? "" };
   const history = {
     pushState(path?: string) {
       if (path) location.pathname = path;
@@ -54,7 +59,47 @@ function browser(
       return true;
     };
   }
+  const store: Record<string, string> = opts.store ?? {};
+  const localStorage = {
+    getItem: (k: string) => {
+      if (opts.storeBlocked) throw new Error("blocked");
+      return k in store ? store[k] : null;
+    },
+    setItem: (k: string, v: string) => {
+      if (opts.storeBlocked) throw new Error("blocked");
+      store[k] = v;
+    },
+    removeItem: (k: string) => {
+      delete store[k];
+    },
+  };
+  // Observers the script makes, so a test can feed them entries.
+  const observers: { type: string; opts: Record<string, unknown>; fn: (l: { getEntries: () => unknown[] }) => void; live: boolean }[] = [];
+  class FakeObserver {
+    fn: (l: { getEntries: () => unknown[] }) => void;
+    mine: (typeof observers)[number] | null = null;
+    constructor(fn: (l: { getEntries: () => unknown[] }) => void) {
+      this.fn = fn;
+    }
+    observe(o: Record<string, unknown>) {
+      this.mine = { type: String(o.type), opts: o, fn: this.fn, live: true };
+      observers.push(this.mine);
+    }
+    disconnect() {
+      if (this.mine) this.mine.live = false;
+    }
+  }
+  const timers: { fn: () => void; ms: number; live: boolean }[] = [];
   const ctx = vm.createContext({
+    localStorage,
+    crypto: { getRandomValues: (a: Uint8Array) => a.fill(171) },
+    URLSearchParams,
+    PerformanceObserver: FakeObserver,
+    performance: { getEntriesByType: () => [{ responseStart: 123.4 }] },
+    setInterval: (fn: () => void, ms: number) => timers.push({ fn, ms, live: true }),
+    clearInterval: (n: number) => {
+      if (timers[n - 1]) timers[n - 1].live = false;
+    },
     document: doc,
     window: win,
     navigator: nav,
@@ -75,6 +120,12 @@ function browser(
     listeners,
     history,
     doc,
+    store,
+    observers,
+    timers,
+    feed: (type: string, entries: unknown[]) => {
+      for (const o of observers) if (o.live && o.type === type) o.fn({ getEntries: () => entries });
+    },
     sent: async () => {
       await Promise.all(pending);
       return bodies.map((b) => JSON.parse(b) as Record<string, unknown>);
@@ -289,6 +340,221 @@ describe("the analytics script", () => {
       expect(b.listeners.filter((l) => l.type === "click")).toHaveLength(1);
       b.fire("window", "pagehide", { persisted: false });
       expect(b.listeners).toHaveLength(0);
+    });
+  });
+
+  describe("referrers and campaigns", () => {
+    const script = buildScript({ clicks: false, time: false, goals: [], referrers: true });
+    const views = async (b: ReturnType<typeof browser>) => (await b.sent()).filter((m) => !m.e);
+
+    it("sends the referrer's host only, never the address or the query string", async () => {
+      const b = browser(script, { referrer: "https://www.news.example.com/post/1?id=9&token=secret#top" });
+      expect(await views(b)).toEqual([{ p: "/", r: "www.news.example.com" }]);
+    });
+
+    it("sends no referrer for a visit from the same site or with none", async () => {
+      expect(await views(browser(script, { referrer: "https://app.example/other" }))).toEqual([{ p: "/" }]);
+      expect(await views(browser(script, { referrer: "" }))).toEqual([{ p: "/" }]);
+      expect(await views(browser(script, { referrer: "not a url" }))).toEqual([{ p: "/" }]);
+    });
+
+    it("sends the three utm values, trimmed and cut to 80 characters, and no other parameter", async () => {
+      const long = "x".repeat(120);
+      const b = browser(script, {
+        search: `?utm_source=%20news%20&utm_medium=email&utm_campaign=${long}&utm_term=secret&email=a%40b.co`,
+      });
+      const [v] = await views(b);
+      expect(v).toEqual({ p: "/", us: "news", um: "email", uc: "x".repeat(80) });
+    });
+
+    it("sends the referrer and campaign with the first page only, not with a later navigation", async () => {
+      const b = browser(script, { referrer: "https://news.example.com/", search: "?utm_source=a" });
+      b.history.pushState("/next");
+      expect(await views(b)).toEqual([{ p: "/", r: "news.example.com", us: "a" }, { p: "/next" }]);
+    });
+
+    it("is left out entirely when the switch is off", async () => {
+      const b = browser(buildScript({ clicks: false, time: false, goals: [] }), {
+        referrer: "https://news.example.com/",
+        search: "?utm_source=a",
+      });
+      expect(await views(b)).toEqual([{ p: "/" }]);
+    });
+  });
+
+  describe("speed and errors", () => {
+    const script = buildScript({ clicks: false, time: false, goals: [], vitals: true });
+    const sentOf = async (b: ReturnType<typeof browser>, e: string) => (await b.sent()).filter((m) => m.e === e);
+    const feedAll = (b: ReturnType<typeof browser>) => {
+      b.feed("largest-contentful-paint", [{ startTime: 900.2 }, { startTime: 2412.6 }]);
+      b.feed("layout-shift", [{ value: 0.05, hadRecentInput: false }, { value: 0.5, hadRecentInput: true }, { value: 0.0334, hadRecentInput: false }]);
+      b.feed("paint", [{ name: "first-paint", startTime: 100 }, { name: "first-contentful-paint", startTime: 640.4 }]);
+      b.feed("event", [{ interactionId: 1, duration: 56 }, { interactionId: 0, duration: 900 }, { interactionId: 2, duration: 184.2 }]);
+    };
+
+    it("sends one rounded summary when the page is hidden, with the path it loaded", async () => {
+      const b = browser(script);
+      feedAll(b);
+      b.doc.hidden = true;
+      b.fire("document", "visibilitychange");
+      expect(await sentOf(b, "vitals")).toEqual([{ e: "vitals", p: "/", lcp: 2413, cls: 0.083, fcp: 640, inp: 184, ttfb: 123 }]);
+    });
+
+    it("sends the summary once however often the page is hidden or left", async () => {
+      const b = browser(script);
+      feedAll(b);
+      b.doc.hidden = true;
+      b.fire("document", "visibilitychange");
+      b.fire("document", "visibilitychange");
+      b.fire("window", "pagehide", { persisted: false });
+      expect(await sentOf(b, "vitals")).toHaveLength(1);
+    });
+
+    it("sends nothing when the browser reported nothing, and ignores layout shifts caused by input", async () => {
+      const b = browser(script);
+      b.feed("layout-shift", [{ value: 0.4, hadRecentInput: true }]);
+      b.doc.hidden = true;
+      b.fire("document", "visibilitychange");
+      const [v] = await sentOf(b, "vitals");
+      expect(v).toEqual({ e: "vitals", p: "/", ttfb: 123 });
+    });
+
+    it("reads interactions from a duration threshold of 40 ms and disconnects its observers on leaving", () => {
+      const b = browser(script);
+      expect(b.observers.find((o) => o.type === "event")?.opts.durationThreshold).toBe(40);
+      expect(b.observers.length).toBe(4);
+      b.fire("window", "pagehide", { persisted: false });
+      expect(b.observers.every((o) => !o.live)).toBe(true);
+      expect(b.listeners).toHaveLength(0);
+    });
+
+    it("sends an error's message cut to 200 characters, the file name without its address, and the line", async () => {
+      const b = browser(script);
+      b.fire("window", "error", { message: "x".repeat(500), filename: "https://cdn.example.com/js/app.js?v=3#a", lineno: 42, error: { stack: "at https://cdn.example.com/js/app.js?v=3:42:1" } });
+      const [e] = await sentOf(b, "err");
+      expect(e).toEqual({ e: "err", m: "x".repeat(200), f: "app.js", l: 42 });
+      expect(JSON.stringify(e)).not.toContain("cdn.example.com");
+    });
+
+    it("reports an unhandled rejection by its message", async () => {
+      const b = browser(script);
+      b.fire("window", "unhandledrejection", { reason: { message: "network down" } });
+      b.fire("window", "unhandledrejection", { reason: "plain text" });
+      expect((await sentOf(b, "err")).map((m) => m.m)).toEqual(["network down", "plain text"]);
+    });
+
+    it("sends at most 5 errors for a page view, and again after the address changes", async () => {
+      const b = browser(script);
+      for (let i = 0; i < 12; i++) b.fire("window", "error", { message: `e${i}`, filename: "a.js", lineno: i });
+      expect(await sentOf(b, "err")).toHaveLength(5);
+      b.history.pushState("/next");
+      for (let i = 0; i < 12; i++) b.fire("window", "error", { message: `f${i}`, filename: "a.js", lineno: i });
+      expect(await sentOf(b, "err")).toHaveLength(10);
+    });
+
+    it("adds no observers or error listeners when the switch is off", () => {
+      const b = browser(buildScript({ clicks: false, time: false, goals: [] }));
+      expect(b.observers).toHaveLength(0);
+      expect(b.listeners.some((l) => l.type === "error" || l.type === "unhandledrejection")).toBe(false);
+    });
+  });
+
+  describe("custom events", () => {
+    const script = buildScript({ clicks: false, time: false, goals: [], events: true });
+    const tracks = async (b: ReturnType<typeof browser>) => (await b.sent()).filter((m) => m.e === "track");
+
+    it("sends the name and the value of a data-egg-track element", async () => {
+      const b = browser(script);
+      b.fire("document", "click", clickOn("Buy", { "data-egg-track": "buy", "data-egg-value": "pro" }));
+      expect(await tracks(b)).toEqual([{ e: "track", n: "buy", v: "pro" }]);
+    });
+
+    it("sends the name alone when there is no value or the value is over 40 characters", async () => {
+      const b = browser(script);
+      b.fire("document", "click", clickOn("Buy", { "data-egg-track": "buy" }));
+      b.fire("document", "click", clickOn("Buy", { "data-egg-track": "buy", "data-egg-value": "v".repeat(41) }));
+      expect(await tracks(b)).toEqual([{ e: "track", n: "buy" }, { e: "track", n: "buy" }]);
+    });
+
+    it("sends nothing for a link or button with no data-egg-track, and reads no value from it", async () => {
+      const b = browser(script);
+      b.fire("document", "click", clickOn("Plain", { "data-egg-value": "x" }));
+      expect(await tracks(b)).toEqual([]);
+    });
+
+    it("still sends a funnel goal for the same name", async () => {
+      const b = browser(buildScript({ clicks: false, time: false, goals: ["buy"], events: true }));
+      b.fire("document", "click", clickOn("Buy", { "data-egg-track": "buy", "data-egg-value": "pro" }));
+      expect((await b.sent()).filter((m) => m.e)).toEqual([{ e: "track", n: "buy", v: "pro" }, { e: "goal", n: "buy" }]);
+    });
+  });
+
+  describe("retention and the live view", () => {
+    const on = buildScript({ clicks: false, time: false, goals: [], retention: true });
+    const live = buildScript({ clicks: false, time: false, goals: [], retention: true, live: true });
+
+    it("makes a random id in localStorage, sets no cookie, and sends it with the page view", async () => {
+      const b = browser(on);
+      const id = b.store["_egg_id"];
+      expect(id).toMatch(/^[a-f0-9]{24}$/);
+      expect(await b.sent()).toEqual([{ p: "/", i: id }]);
+      expect(on).not.toMatch(/cookie/i);
+    });
+
+    it("keeps the id it already has", async () => {
+      const b = browser(on, { store: { _egg_id: "abcdef0123456789abcdef01" } });
+      expect(await b.sent()).toEqual([{ p: "/", i: "abcdef0123456789abcdef01" }]);
+    });
+
+    it("sends no id when storage is blocked", async () => {
+      const b = browser(on, { storeBlocked: true });
+      expect(await b.sent()).toEqual([{ p: "/" }]);
+    });
+
+    it("removes an id left by an earlier setting when retention is off", async () => {
+      const b = browser(buildScript({ clicks: false, time: false, goals: [] }), { store: { _egg_id: "abcdef0123456789abcdef01" } });
+      expect(b.store["_egg_id"]).toBeUndefined();
+      expect(await b.sent()).toEqual([{ p: "/" }]);
+    });
+
+    it("sends a heartbeat every 60 seconds while the page is visible", async () => {
+      const b = browser(live);
+      expect(b.timers).toHaveLength(1);
+      expect(b.timers[0].ms).toBe(60_000);
+      b.timers[0].fn();
+      b.doc.hidden = true;
+      b.timers[0].fn();
+      b.doc.hidden = false;
+      b.timers[0].fn();
+      const pings = (await b.sent()).filter((m) => m.e === "ping");
+      expect(pings).toEqual([{ e: "ping", i: b.store["_egg_id"] }, { e: "ping", i: b.store["_egg_id"] }]);
+    });
+
+    it("stops the heartbeat when the page is left for good", () => {
+      const b = browser(live);
+      b.fire("window", "pagehide", { persisted: false });
+      expect(b.timers.every((t) => !t.live)).toBe(true);
+    });
+
+    it("sets no timer without live view, and none without the retention id to count", () => {
+      expect(browser(on).timers).toHaveLength(0);
+      expect(browser(buildScript({ clicks: false, time: false, goals: [], live: true })).timers).toHaveLength(0);
+    });
+  });
+
+  describe("size", () => {
+    it("stays small with everything on", () => {
+      const all = buildScript({
+        clicks: true,
+        time: true,
+        goals: ["signup"],
+        referrers: true,
+        vitals: true,
+        events: true,
+        live: true,
+        retention: true,
+      });
+      expect(gzipSync(all).length).toBeLessThan(2500);
     });
   });
 });

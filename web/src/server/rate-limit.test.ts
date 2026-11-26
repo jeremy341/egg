@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { trustProxyEnabled } from "@/server/config";
 import { HttpError } from "@/server/http";
-import { RATE_LIMITS, SlidingWindowLimiter, clientIp, enforceRateLimit, rateLimiter } from "@/server/rate-limit";
+import { RATE_LIMITS, SlidingWindowLimiter, clientIp, enforceRateLimit, pickClientIp, rateLimiter } from "@/server/rate-limit";
 
 function clock(start = 1_000_000) {
   let t = start;
@@ -115,18 +116,47 @@ describe("enforceRateLimit", () => {
   });
 });
 
-describe("clientIp", () => {
+describe("pickClientIp", () => {
   const h = (init: Record<string, string>) => new Headers(init);
 
-  it("trusts the address the nearest proxy appended, not the one the client wrote", () => {
-    expect(clientIp(h({ "x-forwarded-for": "6.6.6.6, 203.0.113.9" }))).toBe("203.0.113.9");
-    expect(clientIp(h({ "x-forwarded-for": "203.0.113.9" }))).toBe("203.0.113.9");
+  it("ignores proxy headers when the proxy is not trusted, so a client cannot choose its address", () => {
+    expect(pickClientIp(h({ "x-forwarded-for": "6.6.6.6" }), false)).toBeNull();
+    expect(pickClientIp(h({ "x-real-ip": "6.6.6.6" }), false)).toBeNull();
+    expect(pickClientIp(h({ "x-forwarded-for": "6.6.6.6", "x-real-ip": "7.7.7.7" }), false, "10.0.0.5")).toBe("10.0.0.5");
+    expect(pickClientIp(h({}), false, "  ")).toBeNull();
   });
 
-  it("falls back to x-real-ip, then to null", () => {
-    expect(clientIp(h({ "x-real-ip": "198.51.100.4" }))).toBe("198.51.100.4");
-    expect(clientIp(h({}))).toBeNull();
-    expect(clientIp(h({ "x-forwarded-for": " , " }))).toBeNull();
+  it("trusts the address the nearest proxy appended, not the one the client wrote", () => {
+    expect(pickClientIp(h({ "x-forwarded-for": "6.6.6.6, 203.0.113.9" }), true)).toBe("203.0.113.9");
+    expect(pickClientIp(h({ "x-forwarded-for": "203.0.113.9" }), true)).toBe("203.0.113.9");
+  });
+
+  it("falls back to x-real-ip, then to null, when the proxy is trusted", () => {
+    expect(pickClientIp(h({ "x-real-ip": "198.51.100.4" }), true)).toBe("198.51.100.4");
+    expect(pickClientIp(h({}), true)).toBeNull();
+    expect(pickClientIp(h({ "x-forwarded-for": " , " }), true)).toBeNull();
+  });
+});
+
+describe("clientIp and TRUST_PROXY", () => {
+  afterEach(() => vi.unstubAllEnvs());
+  const xff = new Headers({ "x-forwarded-for": "6.6.6.6, 203.0.113.9" });
+
+  it("is off by default", () => {
+    vi.stubEnv("TRUST_PROXY", "");
+    expect(trustProxyEnabled()).toBe(false);
+    expect(clientIp(xff)).toBeNull();
+  });
+
+  it("is on for 1 or true only", () => {
+    for (const v of ["1", "true", "TRUE"]) {
+      vi.stubEnv("TRUST_PROXY", v);
+      expect(clientIp(xff)).toBe("203.0.113.9");
+    }
+    for (const v of ["0", "false", "yes", "on"]) {
+      vi.stubEnv("TRUST_PROXY", v);
+      expect(clientIp(xff)).toBeNull();
+    }
   });
 });
 

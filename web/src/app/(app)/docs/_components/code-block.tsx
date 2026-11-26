@@ -54,7 +54,7 @@ function renderShell(code: string): ReactNode[] {
  * A code block with a caption and a Copy button that announces "Copied".
  * - `label`: the caption: "Terminal", a file name, or "In the dashboard".
  * - `code`: the exact text to show and copy. "Terminal" blocks dim a trailing `# comment`.
- * Up to 760px wide; long lines scroll inside the frame, which the keyboard can reach.
+ * Up to 680px wide; long lines scroll inside the frame, which the keyboard can reach.
  */
 export function CodeBlock({ label, code }: { label: Label; code: string }) {
   const [copied, setCopied] = useState(false);
@@ -77,7 +77,7 @@ export function CodeBlock({ label, code }: { label: Label; code: string }) {
   }
 
   return (
-    <div className="mt-[30px] max-w-[760px] overflow-hidden rounded-md border bg-[var(--code-bg)]">
+    <div className="mt-8 max-w-[680px] overflow-hidden rounded-md border bg-[var(--code-bg)]">
       <div className="flex h-10 items-center justify-between border-b px-3">
         <span className="min-w-0 truncate font-mono text-[12px] text-muted-foreground">{label}</span>
         <button
