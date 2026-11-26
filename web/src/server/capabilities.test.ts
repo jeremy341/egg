@@ -12,7 +12,7 @@ const noDocker = "engine=0\ncompose=0\nnative=1\nnode=1\npython=1\ncgroup=\nroot
 describe("target capabilities", () => {
   it("enables the container modes when Docker answers with cgroup v2, disk space and the port proxy", async () => {
     const result = await probeTargetCapabilities(session(fullOk) as never);
-    expect(result.deploymentModes).toEqual({ native: true, dockerfile: true, compose: true });
+    expect(result.deploymentModes).toEqual({ native: true, dockerfile: true, compose: true, image: true });
     expect(result.docker.available).toBe(true);
     expect(result.docker.composeAvailable).toBe(true);
     expect(result.docker.reason).toBeNull();
@@ -53,7 +53,7 @@ describe("target capabilities", () => {
   it("fails closed on a nonzero or malformed probe result", async () => {
     for (const fake of [session(fullOk, 1), session("noise\n")]) {
       const result = await probeTargetCapabilities(fake as never);
-      expect(result.deploymentModes).toEqual({ native: false, dockerfile: false, compose: false });
+      expect(result.deploymentModes).toEqual({ native: false, dockerfile: false, compose: false, image: false });
       expect(result.docker.available).toBe(false);
     }
   });
